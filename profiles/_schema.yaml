@@ -1,0 +1,144 @@
+# Profile Validation Schema
+# All company profiles MUST conform to this schema.
+# Uses RFC 2119 keywords: MUST, SHOULD, MAY.
+
+type: object
+required:
+  - version
+  - company
+  - stack
+  - quality
+
+properties:
+  version:
+    type: string
+    pattern: "^\\d+\\.\\d+$"
+    description: "Schema version (MUST be semver major.minor)"
+
+  company:
+    type: object
+    required: [name, profile_id]
+    properties:
+      name:
+        type: string
+        description: "Company or organization name"
+      profile_id:
+        type: string
+        pattern: "^[a-z0-9-]+$"
+        description: "Unique profile identifier (kebab-case)"
+
+  stack:
+    type: object
+    description: "Technology stack configuration"
+    properties:
+      backend:
+        type: object
+        required: [language, framework]
+        properties:
+          language:
+            type: string
+            enum: [csharp, typescript, python, java, go, rust]
+          framework:
+            type: string
+          orm:
+            type: string
+          testing:
+            type: string
+      frontend:
+        type: object
+        properties:
+          language:
+            type: string
+          framework:
+            type: string
+          state:
+            type: string
+          e2e:
+            type: string
+      database:
+        type: object
+        properties:
+          engine:
+            type: string
+          migrations:
+            type: string
+      cloud:
+        type: object
+        properties:
+          provider:
+            type: string
+            enum: [azure, aws, gcp, self-hosted]
+          services:
+            type: array
+            items:
+              type: string
+      ci_cd:
+        type: object
+        properties:
+          platform:
+            type: string
+            enum: [github-actions, azure-devops, gitlab-ci, jenkins, circleci]
+
+  quality:
+    type: object
+    required: [coverage_minimum]
+    properties:
+      coverage_minimum:
+        type: integer
+        minimum: 0
+        maximum: 100
+        description: "Minimum code coverage percentage (MUST be >= 0)"
+      coverage_critical:
+        type: integer
+        minimum: 0
+        maximum: 100
+        description: "Coverage for critical paths (auth, payments)"
+      max_file_lines:
+        type: integer
+        minimum: 100
+        description: "Maximum lines per file"
+      max_function_lines:
+        type: integer
+        minimum: 10
+        description: "Maximum lines per function"
+      require_tdd:
+        type: boolean
+        description: "MUST use test-driven development"
+      require_code_review:
+        type: boolean
+        description: "MUST have code review before merge"
+      require_security_review:
+        type: boolean
+        description: "MUST have security review for sensitive code"
+
+  compliance:
+    type: object
+    properties:
+      frameworks:
+        type: array
+        items:
+          type: string
+          enum: [soc2, hipaa, gdpr, pci-dss, iso27001, none]
+        description: "Compliance frameworks to enforce"
+      audit_trail:
+        type: boolean
+        description: "MUST maintain audit trail of changes"
+      change_approval:
+        type: string
+        enum: [peer-review, manager-approval, change-board, none]
+
+  conventions:
+    type: object
+    properties:
+      commit_format:
+        type: string
+        description: "Commit message format pattern"
+      branch_naming:
+        type: string
+        description: "Branch naming convention pattern"
+      immutability:
+        type: boolean
+        description: "Prefer immutable data patterns"
+      no_console_log:
+        type: boolean
+        description: "Disallow console.log in production code"

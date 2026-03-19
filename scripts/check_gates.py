@@ -1,0 +1,229 @@
+"""Check exit criteria (gates) for a given SDLC phase."""
+
+import argparse
+import sys
+from pathlib import Path
+
+import yaml
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+
+
+def load_yaml(path: Path) -> dict:
+    with open(path) as f:
+        return yaml.safe_load(f)
+
+
+def get_phase_registry() -> dict:
+    return load_yaml(PLUGIN_ROOT / "phases" / "phase-registry.yaml")
+
+
+def get_compliance_gates(profile: dict) -> list[dict]:
+    """Load compliance gates for the profile's frameworks."""
+    gates = []
+    frameworks = profile.get("compliance", {}).get("frameworks", [])
+    profile_id = profile["company"]["profile_id"]
+    profile_dir = PLUGIN_ROOT / "profiles" / profile_id / "compliance"
+
+    for fw in frameworks:
+        gate_file = profile_dir / f"{fw}-gates.yaml"
+        if gate_file.exists():
+            data = load_yaml(gate_file)
+            gates.extend(data.get("gates", []))
+    return gates
+
+
+def check_artifact_exists(artifacts_dir: Path, artifact: str) -> tuple[bool, str]:
+    path = artifacts_dir / artifact
+    if path.exists():
+        if path.is_dir():
+            children = list(path.iterdir())
+            if children:
+                return True, f"Directory '{artifact}' exists with {len(children)} item(s)"
+            return False, f"Directory '{artifact}' exists but is empty"
+        return True, f"File '{artifact}' exists"
+    return False, f"Missing: '{artifact}'"
+
+
+def check_artifact_not_empty(artifacts_dir: Path, artifact: str) -> tuple[bool, str]:
+    path = artifacts_dir / artifact
+    if not path.exists():
+        return False, f"Missing: '{artifact}'"
+    if path.is_dir():
+        return bool(list(path.iterdir())), f"Directory '{artifact}' emptiness check"
+    content = path.read_text(encoding="utf-8", errors="replace").strip()
+    if not content:
+        return False, f"File '{artifact}' is empty"
+    return True, f"File '{artifact}' has content ({len(content)} chars)"
+
+
+def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, str]:
+    """Check artifact exists, is non-empty, and has no placeholder content."""
+    exists, msg = check_artifact_not_empty(artifacts_dir, artifact)
+    if not exists:
+        return False, msg
+
+    path = artifacts_dir / artifact
+    if path.is_dir():
+        return True, msg
+
+    content = path.read_text(encoding="utf-8", errors="replace")
+    placeholders = ["TODO", "TBD", "${", "PLACEHOLDER", "[INSERT", "<!-- REQUIRED:"]
+    found = [p for p in placeholders if p in content]
+    if found:
+        return False, f"File '{artifact}' contains placeholder content: {found}"
+    return True, f"File '{artifact}' is complete"
+
+
+def check_phase_gates(
+    phase_id: int,
+    state: dict,
+    profile: dict,
+    artifacts_base: Path,
+) -> list[dict]:
+    """Run all gate checks for a phase. Returns list of results."""
+    registry = get_phase_registry()
+    results = []
+
+    # Find phase definition in registry
+    phase_def = None
+    for p in registry["phases"]:
+        if p["id"] == phase_id:
+            phase_def = p
+            break
+
+    if not phase_def:
+        return [{"gate": "registry", "passed": False, "message": f"Phase {phase_id} not found in registry"}]
+
+    artifacts_dir = artifacts_base / f"phase{phase_id:02d}"
+
+    # Gate 1: Artifact Integrity — required artifacts exist
+    for artifact in phase_def.get("artifacts", {}).get("required", []):
+        passed, message = check_artifact_exists(artifacts_dir, artifact)
+        results.append({
+            "gate": "G1-integrity",
+            "artifact": artifact,
+            "passed": passed,
+            "message": message,
+            "severity": "MUST",
+        })
+
+    # Gate 2: Completeness — required artifacts are complete
+    for artifact in phase_def.get("artifacts", {}).get("required", []):
+        passed, message = check_artifact_complete(artifacts_dir, artifact)
+        results.append({
+            "gate": "G2-completeness",
+            "artifact": artifact,
+            "passed": passed,
+            "message": message,
+            "severity": "MUST",
+        })
+
+    # Gate 3: Metrics — check profile quality thresholds (phases 5, 6)
+    if phase_id in [5, 6]:
+        quality = profile.get("quality", {})
+        results.append({
+            "gate": "G3-metrics",
+            "check": "coverage_minimum",
+            "passed": None,  # Requires external tool execution
+            "message": f"Coverage must be >= {quality.get('coverage_minimum', 80)}% (requires test execution)",
+            "severity": "MUST",
+        })
+
+    # Gate 4: Classification — compliance gates
+    compliance_gates = get_compliance_gates(profile)
+    phase_compliance = [g for g in compliance_gates if g["phase"] == phase_id]
+    for gate in phase_compliance:
+        if gate["check_type"] == "artifact_exists":
+            passed, message = check_artifact_exists(artifacts_dir, gate["artifact"])
+        elif gate["check_type"] == "artifact_content":
+            passed, message = check_artifact_complete(artifacts_dir, gate.get("artifact", ""))
+            # Additional content checks
+            if passed and "required_content" in gate:
+                path = artifacts_dir / gate["artifact"]
+                if path.exists() and path.is_file():
+                    content = path.read_text().lower()
+                    missing = [kw for kw in gate["required_content"] if kw.lower() not in content]
+                    if missing:
+                        passed = False
+                        message = f"Missing required content in '{gate['artifact']}': {missing}"
+        elif gate["check_type"] == "manual":
+            passed = None
+            message = f"Manual check required: {gate.get('description', gate['name'])}"
+        elif gate["check_type"] == "metric":
+            passed = None
+            message = f"Metric check: {gate.get('metric', 'unknown')} (requires execution)"
+        else:
+            passed = None
+            message = f"Unknown check type: {gate['check_type']}"
+
+        results.append({
+            "gate": f"G4-compliance-{gate['id']}",
+            "name": gate["name"],
+            "passed": passed,
+            "message": message,
+            "severity": gate.get("severity", "MUST"),
+        })
+
+    return results
+
+
+def format_results(results: list[dict], phase_id: int) -> str:
+    lines = [f"Gate Check Results — Phase {phase_id}", "=" * 40]
+    passed = sum(1 for r in results if r["passed"] is True)
+    failed = sum(1 for r in results if r["passed"] is False)
+    manual = sum(1 for r in results if r["passed"] is None)
+    total = len(results)
+
+    for r in results:
+        icon = "PASS" if r["passed"] is True else "FAIL" if r["passed"] is False else "MANUAL"
+        sev = r.get("severity", "")
+        lines.append(f"  [{icon}] [{sev}] {r['gate']}: {r['message']}")
+
+    lines.append("")
+    lines.append(f"Summary: {passed} passed, {failed} failed, {manual} manual — {total} total")
+
+    if failed > 0:
+        lines.append("BLOCKED — fix failures before advancing to next phase")
+    elif manual > 0:
+        lines.append("REVIEW — manual checks require human verification")
+    else:
+        lines.append("ALL GATES PASSED — ready to advance")
+
+    return "\n".join(lines)
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Check SDLC phase exit gates")
+    parser.add_argument("--state", required=True, help="Path to .sdlc/state.yaml")
+    parser.add_argument("--phase", type=int, default=None, help="Phase to check (default: current)")
+    args = parser.parse_args()
+
+    state_path = Path(args.state)
+    if not state_path.exists():
+        print(f"Error: State file not found: {state_path}")
+        sys.exit(1)
+
+    state = load_yaml(state_path)
+    sdlc_dir = state_path.parent
+    profile_path = sdlc_dir / "profile.yaml"
+
+    if not profile_path.exists():
+        print(f"Error: Profile not found: {profile_path}")
+        sys.exit(1)
+
+    profile = load_yaml(profile_path)
+    phase_id = args.phase if args.phase is not None else state["current_phase"]
+    artifacts_base = sdlc_dir / "artifacts"
+
+    results = check_phase_gates(phase_id, state, profile, artifacts_base)
+    output = format_results(results, phase_id)
+    print(output)
+
+    # Exit with error if any MUST gates failed
+    must_failures = [r for r in results if r["passed"] is False and r.get("severity") == "MUST"]
+    sys.exit(1 if must_failures else 0)
+
+
+if __name__ == "__main__":
+    main()

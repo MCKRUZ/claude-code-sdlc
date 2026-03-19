@@ -1,0 +1,52 @@
+{
+  "name": "claude-code-sdlc",
+  "version": "0.1.0",
+  "description": "SDLC orchestration plugin for Claude Code — configurable, company-profile-driven lifecycle management from discovery through monitoring.",
+  "author": {
+    "name": "Matt Kruczek",
+    "url": "https://github.com/MCKRUZ"
+  },
+  "homepage": "https://github.com/MCKRUZ/claude-code-sdlc",
+  "repository": "https://github.com/MCKRUZ/claude-code-sdlc",
+  "license": "MIT",
+  "category": "sdlc",
+  "skills": "SKILL.md",
+  "commands": "commands/",
+  "agents": "agents/",
+  "keywords": [
+    "sdlc",
+    "lifecycle",
+    "compliance",
+    "quality",
+    "orchestration",
+    "enterprise",
+    "azure",
+    "dotnet",
+    "angular"
+  ],
+  "profiles": {
+    "microsoft-enterprise": {
+      "description": "C#/.NET 8 + Angular 17 + Azure + SOC 2 compliance",
+      "source": "profiles/microsoft-enterprise",
+      "skills": [
+        "azure-entra-auth",
+        "azure-app-service",
+        "azure-sql",
+        "azure-key-vault",
+        "azure-app-insights"
+      ]
+    },
+    "starter": {
+      "description": "Minimal profile, no compliance, quick start for any stack",
+      "source": "profiles/starter"
+    }
+  },
+  "hooks": [
+    "hooks/sdlc-session-start.ps1",
+    "hooks/sdlc-phase-inject.ps1"
+  ],
+  "scripts": {
+    "runtime": "uv",
+    "root": "scripts/"
+  }
+}

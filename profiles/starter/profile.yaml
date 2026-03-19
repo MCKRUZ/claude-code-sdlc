@@ -1,0 +1,30 @@
+version: "1.0"
+
+company:
+  name: "My Project"
+  profile_id: "starter"
+
+stack:
+  backend:
+    language: typescript
+    framework: node
+
+quality:
+  coverage_minimum: 60
+  max_file_lines: 800
+  max_function_lines: 50
+  require_tdd: false
+  require_code_review: false
+  require_security_review: false
+
+compliance:
+  frameworks:
+    - none
+  audit_trail: false
+  change_approval: none
+
+conventions:
+  commit_format: "type: description"
+  branch_naming: "type/description"
+  immutability: false
+  no_console_log: false

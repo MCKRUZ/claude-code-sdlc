@@ -1,0 +1,343 @@
+# Phase Registry — SDLC Phase Orchestration
+# Defines all phases, their order, entry/exit gates, skill mapping, and artifacts.
+# Each phase produces stakeholder-reviewable artifacts + a handoff package for the next phase.
+
+version: "1.0"
+
+phases:
+  - id: 0
+    name: discovery
+    display: "Phase 0: Discovery"
+    description: "Understand the problem space, quantify impact, map stakeholders, and define scope before writing any requirements."
+    definition: "phases/00-discovery.md"
+    skills:
+      primary: ["/plan"]
+      secondary: []
+    entry_gate:
+      conditions:
+        - "Project initiated via /sdlc-setup"
+    exit_gate:
+      conditions:
+        - artifact: "constitution.md"
+          check: exists_and_complete
+        - artifact: "problem-statement.md"
+          check: exists_and_complete
+        - artifact: "success-criteria.md"
+          check: exists_and_complete
+        - artifact: "constraints.md"
+          check: exists_and_complete
+        - artifact: "phase1-handoff.md"
+          check: exists_and_complete
+      approval: manual
+    artifacts:
+      required:
+        - "constitution.md"
+        - "problem-statement.md"
+        - "success-criteria.md"
+        - "constraints.md"
+        - "phase1-handoff.md"
+      optional:
+        - "stakeholder-notes.md"
+        - "market-research.md"
+        - "phase0-report.html"
+
+  - id: 1
+    name: requirements
+    display: "Phase 1: Requirements"
+    description: "Decompose the problem into functional and non-functional requirements with user stories and acceptance criteria."
+    definition: "phases/01-requirements.md"
+    skills:
+      primary: ["/deep-project"]
+      secondary: ["/plan"]
+    entry_gate:
+      conditions:
+        - "Phase 0 exit gate passed"
+        - "phase1-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "requirements.md"
+          check: exists_and_complete
+        - artifact: "non-functional-requirements.md"
+          check: exists_and_complete
+        - artifact: "epics.md"
+          check: exists_and_complete
+        - artifact: "phase2-handoff.md"
+          check: exists_and_complete
+      approval: manual
+    artifacts:
+      required:
+        - "requirements.md"
+        - "non-functional-requirements.md"
+        - "epics.md"
+        - "phase2-handoff.md"
+      optional:
+        - "glossary.md"
+        - "phase1-report.html"
+
+  - id: 2
+    name: design
+    display: "Phase 2: Design"
+    description: "Create software architecture, API contracts, data models, and Architecture Decision Records."
+    definition: "phases/02-design.md"
+    skills:
+      primary: ["/deep-plan"]
+      secondary: ["/plan"]
+    entry_gate:
+      conditions:
+        - "Phase 1 exit gate passed"
+        - "phase2-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "design-doc.md"
+          check: exists_and_complete
+        - artifact: "api-contracts.md"
+          check: exists_and_complete
+        - artifact: "adrs/"
+          check: exists_and_complete
+        - artifact: "adr-registry.md"
+          check: exists_and_complete
+        - artifact: "phase3-handoff.md"
+          check: exists_and_complete
+      approval: manual
+    artifacts:
+      required:
+        - "design-doc.md"
+        - "api-contracts.md"
+        - "adrs/"
+        - "adr-registry.md"
+        - "phase3-handoff.md"
+      optional:
+        - "data-model.md"
+        - "sequence-diagrams.md"
+        - "phase2-report.html"
+
+  - id: 3
+    name: planning
+    display: "Phase 3: Planning"
+    description: "Break design into implementable sections with sprint plan, risk register, and implementation order."
+    definition: "phases/03-planning.md"
+    skills:
+      primary: ["/deep-plan"]
+      secondary: []
+    entry_gate:
+      conditions:
+        - "Phase 2 exit gate passed"
+        - "phase3-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "section-plans/"
+          check: exists_and_complete
+        - artifact: "sprint-plan.md"
+          check: exists_and_complete
+        - artifact: "risk-register.md"
+          check: exists_and_complete
+        - artifact: "phase4-handoff.md"
+          check: exists_and_complete
+      approval: manual
+    artifacts:
+      required:
+        - "section-plans/"
+        - "sprint-plan.md"
+        - "risk-register.md"
+        - "phase4-handoff.md"
+      optional:
+        - "dependency-map.md"
+        - "phase3-report.html"
+
+  - id: 4
+    name: implementation
+    display: "Phase 4: Implementation"
+    description: "Write code following section plans using TDD methodology. Log technical decisions and deviations."
+    definition: "phases/04-implementation.md"
+    skills:
+      primary: ["/deep-implement", "/tdd"]
+      secondary: ["/code-review"]
+    entry_gate:
+      conditions:
+        - "Phase 3 exit gate passed"
+        - "phase4-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "implementation-notes.md"
+          check: exists_and_complete
+        - artifact: "phase5-handoff.md"
+          check: exists_and_complete
+        - check: "All unit tests passing"
+        - check: "No compilation errors"
+      approval: automatic
+    artifacts:
+      required:
+        - "implementation-notes.md"
+        - "phase5-handoff.md"
+      optional:
+        - "technical-decisions.md"
+        - "phase4-report.html"
+
+  - id: 5
+    name: quality
+    display: "Phase 5: Quality"
+    description: "Code review, security review, and quality metrics validation against profile thresholds."
+    definition: "phases/05-quality.md"
+    skills:
+      primary: ["/code-review", "/security-review"]
+      secondary: []
+    entry_gate:
+      conditions:
+        - "Phase 4 exit gate passed"
+        - "phase5-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "code-review-report.md"
+          check: exists_and_complete
+        - artifact: "security-review-report.md"
+          check: exists_and_complete
+        - artifact: "quality-metrics.md"
+          check: exists_and_complete
+        - artifact: "phase6-handoff.md"
+          check: exists_and_complete
+        - check: "No CRITICAL issues in code review"
+        - check: "No HIGH issues in security review"
+      approval: manual
+    artifacts:
+      required:
+        - "code-review-report.md"
+        - "security-review-report.md"
+        - "quality-metrics.md"
+        - "phase6-handoff.md"
+      optional:
+        - "phase5-report.html"
+
+  - id: 6
+    name: testing
+    display: "Phase 6: Testing"
+    description: "Comprehensive testing — unit, integration, E2E — with coverage analysis and test plan execution."
+    definition: "phases/06-testing.md"
+    skills:
+      primary: ["/e2e", "/test-coverage"]
+      secondary: ["/tdd"]
+    entry_gate:
+      conditions:
+        - "Phase 5 exit gate passed"
+        - "phase6-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "test-plan.md"
+          check: exists_and_complete
+        - artifact: "test-results.md"
+          check: exists_and_complete
+        - artifact: "coverage-report.md"
+          check: exists_and_complete
+        - artifact: "phase7-handoff.md"
+          check: exists_and_complete
+        - check: "Code coverage >= coverage_minimum"
+        - check: "All E2E tests passing"
+      approval: automatic
+    artifacts:
+      required:
+        - "test-plan.md"
+        - "test-results.md"
+        - "coverage-report.md"
+        - "phase7-handoff.md"
+      optional:
+        - "e2e-artifacts/"
+        - "phase6-report.html"
+
+  - id: 7
+    name: documentation
+    display: "Phase 7: Documentation"
+    description: "Update README, API docs, runbook, and finalize ADRs. All documentation current before deployment."
+    definition: "phases/07-documentation.md"
+    skills:
+      primary: ["/update-docs"]
+      secondary: []
+    entry_gate:
+      conditions:
+        - "Phase 6 exit gate passed"
+        - "phase7-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "README.md"
+          check: exists_and_complete
+        - artifact: "api-docs.md"
+          check: exists_and_complete
+        - artifact: "RUNBOOK.md"
+          check: exists_and_complete
+        - artifact: "phase8-handoff.md"
+          check: exists_and_complete
+      approval: manual
+    artifacts:
+      required:
+        - "README.md"
+        - "api-docs.md"
+        - "RUNBOOK.md"
+        - "phase8-handoff.md"
+      optional:
+        - "CHANGELOG.md"
+        - "CONTRIBUTING.md"
+        - "phase7-report.html"
+
+  - id: 8
+    name: deployment
+    display: "Phase 8: Deployment"
+    description: "Deploy to staging, execute deployment checklist, run smoke tests, promote to production."
+    definition: "phases/08-deployment.md"
+    skills:
+      primary: []
+      secondary: []
+    entry_gate:
+      conditions:
+        - "Phase 7 exit gate passed"
+        - "phase8-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "release-notes.md"
+          check: exists_and_complete
+        - artifact: "deployment-checklist.md"
+          check: exists_and_complete
+        - artifact: "smoke-test-results.md"
+          check: exists_and_complete
+        - artifact: "phase9-handoff.md"
+          check: exists_and_complete
+        - check: "Smoke tests passing"
+      approval: manual
+    artifacts:
+      required:
+        - "release-notes.md"
+        - "deployment-checklist.md"
+        - "smoke-test-results.md"
+        - "phase9-handoff.md"
+      optional:
+        - "deployment-log.md"
+        - "phase8-report.html"
+
+  - id: 9
+    name: monitoring
+    display: "Phase 9: Monitoring"
+    description: "Configure production monitoring, define alerts, write incident response playbook, capture retrospective."
+    definition: "phases/09-monitoring.md"
+    skills:
+      primary: []
+      secondary: []
+    entry_gate:
+      conditions:
+        - "Phase 8 exit gate passed"
+        - "phase9-handoff.md reviewed"
+    exit_gate:
+      conditions:
+        - artifact: "monitoring-config.md"
+          check: exists_and_complete
+        - artifact: "alert-definitions.md"
+          check: exists_and_complete
+        - artifact: "incident-response.md"
+          check: exists_and_complete
+        - artifact: "project-retrospective.md"
+          check: exists_and_complete
+      approval: manual
+    artifacts:
+      required:
+        - "monitoring-config.md"
+        - "alert-definitions.md"
+        - "incident-response.md"
+        - "project-retrospective.md"
+      optional:
+        - "phase9-report.html"

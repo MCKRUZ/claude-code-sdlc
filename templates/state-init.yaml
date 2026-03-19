@@ -1,0 +1,85 @@
+# SDLC State Machine — Initial State
+# This file is copied to .sdlc/state.yaml during project setup.
+# It tracks the current phase, completed gates, and artifact status.
+
+version: "1.0"
+profile_id: "${PROFILE_ID}"
+project_name: "${PROJECT_NAME}"
+created_at: "${CREATED_AT}"
+
+current_phase: 0
+phase_name: "discovery"
+
+phases:
+  0:
+    name: discovery
+    status: active
+    entered_at: "${CREATED_AT}"
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  1:
+    name: requirements
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  2:
+    name: design
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  3:
+    name: planning
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  4:
+    name: implementation
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  5:
+    name: quality
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  6:
+    name: testing
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  7:
+    name: documentation
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  8:
+    name: deployment
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+  9:
+    name: monitoring
+    status: pending
+    entered_at: null
+    completed_at: null
+    gate_results: {}
+    artifacts: []
+
+history: []

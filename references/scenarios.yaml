@@ -1,0 +1,149 @@
+# Test Scenarios — SDLC Plugin Validation
+# Follows Microsoft Skills pattern: define acceptance criteria and test cases
+# that validate the plugin works correctly end-to-end.
+
+version: "1.0"
+
+scenarios:
+  - id: setup-wizard-fresh
+    name: "Setup wizard on fresh project"
+    description: "Run /sdlc-setup on an empty directory with microsoft-enterprise profile"
+    steps:
+      - action: "Create empty directory"
+      - action: "Run /sdlc-setup"
+      - action: "Select microsoft-enterprise profile"
+      - action: "Accept default project name"
+    acceptance_criteria:
+      - ".sdlc/ directory created"
+      - ".sdlc/state.yaml contains current_phase: 0"
+      - ".sdlc/profile.yaml matches microsoft-enterprise profile"
+      - ".sdlc/artifacts/ contains 10 phase directories (00-09)"
+      - ".sdlc/constitution.md created from template"
+      - "CLAUDE.md updated with SDLC section"
+
+  - id: setup-wizard-existing
+    name: "Setup wizard on project with existing .sdlc"
+    description: "Run /sdlc-setup when .sdlc/ already exists"
+    steps:
+      - action: "Run /sdlc-setup on initialized project"
+    acceptance_criteria:
+      - "Warning displayed about existing .sdlc/"
+      - "User prompted for action (view status or re-initialize)"
+      - "No data loss without explicit confirmation"
+
+  - id: phase-guidance
+    name: "Phase guidance display"
+    description: "Run /sdlc to see current phase guidance"
+    steps:
+      - action: "Initialize project"
+      - action: "Run /sdlc"
+    acceptance_criteria:
+      - "Shows Phase 0: Discovery"
+      - "Lists required artifacts with status"
+      - "Shows primary skills to use"
+      - "Shows exit criteria"
+      - "Includes quick command reference"
+
+  - id: gate-check-fail
+    name: "Gate check with missing artifacts"
+    description: "Run /sdlc-gate when required artifacts are missing"
+    steps:
+      - action: "Initialize project"
+      - action: "Run /sdlc-gate (no artifacts created)"
+    acceptance_criteria:
+      - "Reports FAIL for G1-integrity (missing problem-statement.md)"
+      - "Reports FAIL for G2-completeness"
+      - "Shows BLOCKED status"
+      - "Suggests creating missing artifacts"
+
+  - id: gate-check-pass
+    name: "Gate check with complete artifacts"
+    description: "Run /sdlc-gate after creating all required artifacts"
+    steps:
+      - action: "Initialize project"
+      - action: "Create problem-statement.md with complete content"
+      - action: "Run /sdlc-gate"
+    acceptance_criteria:
+      - "Reports PASS for all gates"
+      - "Shows ALL GATES PASSED"
+      - "Suggests running /sdlc-next"
+
+  - id: phase-advance
+    name: "Phase advance from 0 to 1"
+    description: "Run /sdlc-next to advance from Discovery to Requirements"
+    steps:
+      - action: "Initialize project"
+      - action: "Create problem-statement.md"
+      - action: "Run /sdlc-next"
+    acceptance_criteria:
+      - "Gate checks run and pass"
+      - "state.yaml current_phase updated to 1"
+      - "Phase 0 marked completed with timestamp"
+      - "Phase 1 marked active with timestamp"
+      - "History entry appended"
+      - "Next phase guidance displayed"
+
+  - id: status-dashboard
+    name: "Status dashboard display"
+    description: "Run /sdlc-status to view progress"
+    steps:
+      - action: "Initialize project"
+      - action: "Advance to Phase 1"
+      - action: "Run /sdlc-status"
+    acceptance_criteria:
+      - "Shows project name and profile"
+      - "Shows progress bar (10%)"
+      - "Phase 0 shows [x] completed"
+      - "Phase 1 shows [>] active"
+      - "Phases 2-9 show [ ] pending"
+      - "History shows Phase 0 → Phase 1 transition"
+
+  - id: compliance-gates-soc2
+    name: "SOC 2 compliance gates at Phase 1"
+    description: "Verify SOC 2 gates are enforced for microsoft-enterprise profile"
+    steps:
+      - action: "Initialize with microsoft-enterprise profile"
+      - action: "Create requirements.md WITHOUT auth/authz content"
+      - action: "Run /sdlc-gate for Phase 1"
+    acceptance_criteria:
+      - "SOC 2 CC6.1 gate fails (missing authentication/authorization content)"
+      - "Compliance gate listed with MUST severity"
+      - "Remediation suggests adding auth requirements"
+
+  - id: placeholder-detection
+    name: "Gate rejects placeholder content"
+    description: "Verify G2-completeness catches TODO/TBD/placeholder content"
+    steps:
+      - action: "Initialize project"
+      - action: "Create problem-statement.md with 'TODO: fill in details'"
+      - action: "Run /sdlc-gate"
+    acceptance_criteria:
+      - "G2-completeness FAIL reported"
+      - "Message mentions placeholder content"
+      - "Lists specific placeholder found (TODO)"
+
+  - id: full-lifecycle
+    name: "Complete SDLC lifecycle (smoke test)"
+    description: "Walk through all 10 phases with minimal artifacts"
+    steps:
+      - action: "Initialize project"
+      - action: "For each phase 0-9: create required artifacts, run /sdlc-next"
+    acceptance_criteria:
+      - "All 10 phases complete"
+      - "state.yaml shows current_phase: 9 with status completed"
+      - "History has 9 transition entries"
+      - "No errors during any transition"
+
+  - id: microsoft-azure-patterns
+    name: "Microsoft enterprise conventions enforced"
+    description: "Verify microsoft-enterprise profile enforces Azure patterns"
+    steps:
+      - action: "Initialize with microsoft-enterprise profile"
+      - action: "Check profile conventions"
+    acceptance_criteria:
+      - "Immutability convention set to true"
+      - "No console.log convention set to true"
+      - "TDD required"
+      - "Security review required"
+      - "SOC 2 compliance gates loaded"
+      - "Azure services referenced (App Service, Azure SQL, Key Vault, App Insights)"

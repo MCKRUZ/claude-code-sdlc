@@ -1,0 +1,95 @@
+# SOC 2 Gate Definitions for Microsoft Enterprise Profile
+# These gates are checked at phase transitions when compliance.frameworks includes "soc2"
+
+version: "1.0"
+framework: soc2
+
+gates:
+  - phase: 1
+    id: soc2-cc6.1-requirements
+    name: "Access Control Requirements"
+    criteria: "CC6.1 — Logical and physical access controls"
+    check_type: artifact_content
+    artifact: "requirements.md"
+    required_content:
+      - "authentication"
+      - "authorization"
+    severity: MUST
+
+  - phase: 2
+    id: soc2-cc6.6-boundaries
+    name: "System Boundaries"
+    criteria: "CC6.6 — System boundaries and trust zones"
+    check_type: artifact_content
+    artifact: "design-doc.md"
+    required_content:
+      - "trust boundary"
+      - "security"
+    severity: MUST
+
+  - phase: 2
+    id: soc2-cc7.1-change-mgmt
+    name: "Change Management"
+    criteria: "CC7.1 — Change management through ADRs"
+    check_type: artifact_exists
+    artifact: "adrs/"
+    severity: MUST
+
+  - phase: 4
+    id: soc2-cc6.1-implementation
+    name: "Access Controls Implemented"
+    criteria: "CC6.1 — Access control code present and tested"
+    check_type: manual
+    description: "Verify auth/authz code exists with unit tests"
+    severity: MUST
+
+  - phase: 5
+    id: soc2-cc7.2-vulnerability
+    name: "Vulnerability Management"
+    criteria: "CC7.2 — Security review completed"
+    check_type: artifact_exists
+    artifact: "review-reports/"
+    severity: MUST
+
+  - phase: 5
+    id: soc2-cc8.1-code-review
+    name: "Code Review"
+    criteria: "CC8.1 — Peer review documented"
+    check_type: artifact_exists
+    artifact: "review-reports/"
+    severity: MUST
+
+  - phase: 6
+    id: soc2-cc7.1-testing
+    name: "Testing Requirements"
+    criteria: "CC7.1 — Test coverage meets thresholds"
+    check_type: metric
+    metric: coverage
+    threshold_key: "quality.coverage_minimum"
+    severity: MUST
+
+  - phase: 7
+    id: soc2-cc2.1-documentation
+    name: "System Documentation"
+    criteria: "CC2.1 — Documentation is current"
+    check_type: manual
+    description: "Verify README and API docs reflect current system"
+    severity: MUST
+
+  - phase: 8
+    id: soc2-cc7.4-deployment
+    name: "Change Deployment"
+    criteria: "CC7.4 — Release notes with rollback plan"
+    check_type: artifact_content
+    artifact: "release-notes.md"
+    required_content:
+      - "rollback"
+    severity: MUST
+
+  - phase: 9
+    id: soc2-cc7.2-monitoring
+    name: "Monitoring & Detection"
+    criteria: "CC7.2 — Security monitoring configured"
+    check_type: manual
+    description: "Verify alerts configured for security events"
+    severity: MUST

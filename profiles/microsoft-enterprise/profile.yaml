@@ -1,0 +1,54 @@
+version: "1.0"
+
+company:
+  name: "Example Corp"
+  profile_id: "microsoft-enterprise"
+
+stack:
+  backend:
+    language: csharp
+    framework: dotnet-8
+    orm: ef-core
+    testing: xunit
+  frontend:
+    language: typescript
+    framework: angular-17
+    state: ngrx
+    e2e: playwright
+  database:
+    engine: sql-server
+    migrations: ef-core
+  cloud:
+    provider: azure
+    services:
+      - app-service
+      - azure-sql
+      - key-vault
+      - app-insights
+      - entra-id
+    auth_pattern: DefaultAzureCredential
+    secrets: azure-key-vault
+    monitoring: app-insights
+  ci_cd:
+    platform: github-actions
+
+quality:
+  coverage_minimum: 80
+  coverage_critical: 100
+  max_file_lines: 800
+  max_function_lines: 50
+  require_tdd: true
+  require_code_review: true
+  require_security_review: true
+
+compliance:
+  frameworks:
+    - soc2
+  audit_trail: true
+  change_approval: peer-review
+
+conventions:
+  commit_format: "type: description"
+  branch_naming: "type/ticket-description"
+  immutability: true
+  no_console_log: true

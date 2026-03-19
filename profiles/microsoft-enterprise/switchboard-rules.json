@@ -1,0 +1,91 @@
+{
+  "version": "1.0",
+  "profile_id": "microsoft-enterprise",
+  "description": "Skill switchboard rules for Microsoft Enterprise stack. Maps phase contexts to recommended skill invocations.",
+  "rules": [
+    {
+      "phase": 0,
+      "context": "discovery",
+      "when": "User describes a new project or problem",
+      "suggest": "/plan",
+      "reason": "Structure the discovery findings into a problem statement"
+    },
+    {
+      "phase": 1,
+      "context": "requirements",
+      "when": "Problem statement exists and is approved",
+      "suggest": "/deep-project",
+      "reason": "Decompose into well-scoped planning units"
+    },
+    {
+      "phase": 2,
+      "context": "design",
+      "when": "Requirements are decomposed and accepted",
+      "suggest": "/deep-plan",
+      "reason": "Create architecture and section plans"
+    },
+    {
+      "phase": 3,
+      "context": "planning",
+      "when": "Design is approved",
+      "suggest": "/deep-plan",
+      "reason": "Break design into implementable sections"
+    },
+    {
+      "phase": 4,
+      "context": "implementation",
+      "when": "Section plans exist",
+      "suggest": "/deep-implement",
+      "reason": "Execute section plans with TDD methodology"
+    },
+    {
+      "phase": 4,
+      "context": "implementation-tdd",
+      "when": "Writing new code and quality.require_tdd is true",
+      "suggest": "/tdd",
+      "reason": "Profile requires test-driven development"
+    },
+    {
+      "phase": 5,
+      "context": "quality-review",
+      "when": "Implementation complete, entering quality phase",
+      "suggest": "/code-review",
+      "reason": "Review code for quality and maintainability"
+    },
+    {
+      "phase": 5,
+      "context": "quality-security",
+      "when": "Code touches auth, payments, or sensitive data",
+      "suggest": "/security-review",
+      "reason": "Profile requires security review; SOC 2 CC7.2 compliance"
+    },
+    {
+      "phase": 6,
+      "context": "testing-e2e",
+      "when": "Quality review passed, testing critical user flows",
+      "suggest": "/e2e",
+      "reason": "Generate and run end-to-end tests with Playwright"
+    },
+    {
+      "phase": 6,
+      "context": "testing-coverage",
+      "when": "Checking coverage against thresholds",
+      "suggest": "/test-coverage",
+      "reason": "Verify coverage meets 80% minimum / 100% critical"
+    },
+    {
+      "phase": 7,
+      "context": "documentation",
+      "when": "Testing passed, syncing documentation",
+      "suggest": "/update-docs",
+      "reason": "Keep documentation current with code"
+    }
+  ],
+  "stack_hints": {
+    "backend_test_command": "dotnet test --collect:\"XPlat Code Coverage\"",
+    "frontend_test_command": "ng test --code-coverage --watch=false --browsers=ChromeHeadless",
+    "e2e_command": "npx playwright test",
+    "build_command": "dotnet build && ng build",
+    "lint_command": "dotnet format --verify-no-changes && ng lint"
+  }
+}
