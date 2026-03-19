@@ -95,7 +95,7 @@ def check_phase_gates(
     if not phase_def:
         return [{"gate": "registry", "passed": False, "message": f"Phase {phase_id} not found in registry"}]
 
-    artifacts_dir = artifacts_base / f"phase{phase_id:02d}"
+    artifacts_dir = artifacts_base / f"{phase_id:02d}-{phase_def['name']}"
 
     # Gate 1: Artifact Integrity — required artifacts exist
     for artifact in phase_def.get("artifacts", {}).get("required", []):
