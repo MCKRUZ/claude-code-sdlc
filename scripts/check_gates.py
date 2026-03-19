@@ -142,7 +142,7 @@ def check_phase_gates(
             if passed and "required_content" in gate:
                 path = artifacts_dir / gate["artifact"]
                 if path.exists() and path.is_file():
-                    content = path.read_text().lower()
+                    content = path.read_text(encoding="utf-8", errors="replace").lower()
                     missing = [kw for kw in gate["required_content"] if kw.lower() not in content]
                     if missing:
                         passed = False
