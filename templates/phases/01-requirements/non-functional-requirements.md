@@ -9,23 +9,24 @@ Non-functional requirements define *how* the system must behave, not what it doe
 
 ## Performance
 <!-- REQUIRED: At least NFR-P01 and NFR-P02 filled in with specific numeric thresholds and a measurement method — "TBD" is not acceptable -->
+<!-- REQUIRED: Measurement Basis column must be one of: "Measured: [source]" | "Industry standard: [ref]" | "Contractual: [doc]" | "[aspirational — validate Phase 6]" -->
 
-| NFR ID | Requirement | Threshold | Measurement Method | Priority |
-|--------|-------------|-----------|-------------------|---------|
-| NFR-P01 | Response time (p95) | < [X]ms | [How measured — load test, APM] | P0 |
-| NFR-P02 | Throughput | [X] req/sec sustained | [How measured] | P0 |
-| NFR-P03 | Response time under load (p99) | < [X]ms at [Y] concurrent users | [How measured] | P1 |
+| NFR ID | Requirement | Threshold | Measurement Method | Priority | Measurement Basis |
+|--------|-------------|-----------|-------------------|---------|------------------|
+| NFR-P01 | Response time (p95) | < [X]ms | [How measured — load test, APM] | P0 | [Measured: profiling / Industry standard / aspirational] |
+| NFR-P02 | Throughput | [X] req/sec sustained | [How measured] | P0 | [source] |
+| NFR-P03 | Response time under load (p99) | < [X]ms at [Y] concurrent users | [How measured] | P1 | [source] |
 
 ---
 
 ## Reliability & Availability
 
-| NFR ID | Requirement | Threshold | Measurement Method | Priority |
-|--------|-------------|-----------|-------------------|---------|
-| NFR-R01 | Uptime SLA | [X]% per month | Monitoring dashboard | P0 |
-| NFR-R02 | RTO (Recovery Time Objective) | < [X] minutes | DR drill | P0 |
-| NFR-R03 | RPO (Recovery Point Objective) | < [X] minutes of data loss | Backup validation | P0 |
-| NFR-R04 | MTBF (Mean Time Between Failures) | > [X] hours | Incident log | P1 |
+| NFR ID | Requirement | Threshold | Measurement Method | Priority | Measurement Basis |
+|--------|-------------|-----------|-------------------|---------|------------------|
+| NFR-R01 | Uptime SLA | [X]% per month | Monitoring dashboard | P0 | [Contractual: SLA doc / aspirational] |
+| NFR-R02 | RTO (Recovery Time Objective) | < [X] minutes | DR drill | P0 | [source] |
+| NFR-R03 | RPO (Recovery Point Objective) | < [X] minutes of data loss | Backup validation | P0 | [source] |
+| NFR-R04 | MTBF (Mean Time Between Failures) | > [X] hours | Incident log | P1 | [source] |
 
 ---
 

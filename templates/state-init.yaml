@@ -6,6 +6,7 @@ version: "1.0"
 profile_id: "${PROFILE_ID}"
 project_name: "${PROJECT_NAME}"
 created_at: "${CREATED_AT}"
+project_type: null  # Set during Phase 0: service | app | library | skill | cli
 
 current_phase: 0
 phase_name: "discovery"

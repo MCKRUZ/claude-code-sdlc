@@ -1,7 +1,17 @@
 # Phase 6: Testing
 
 ## Purpose
-Execute a comprehensive test strategy — unit, integration, and E2E — and produce coverage evidence that meets profile thresholds. Testing is verification: the system does what the requirements said it should.
+Execute a comprehensive test strategy and produce coverage evidence that meets profile thresholds. Testing is verification: the system does what the requirements said it should.
+
+## Project Type Adaptation
+
+**Before starting Phase 6, read `project_type` from `state.yaml`.**
+
+| project_type | Testing Approach |
+|--------------|-----------------|
+| `service` / `app` | Standard: unit tests, integration tests, E2E with Playwright, API contract tests. Use parallel agent launch (Step 2). |
+| `library` / `cli` | Focused: unit tests for public API surface, integration tests for key workflows. E2E = invocation tests. Skip `e2e-runner`; use `test-writer-fixer` + `api-tester` as appropriate. |
+| `skill` | Scenario-based: no compiled code to instrument. Replace the parallel agent launch with manual scenario execution against the requirement list. See Step 2 variant below. Coverage = % of requirements exercised by a passing scenario, not line coverage. |
 
 ## Entry Criteria
 - Phase 5 exit gate passed and `phase6-handoff.md` reviewed
@@ -17,7 +27,16 @@ Define the testing strategy before executing:
 - Test data strategy
 - Pass/fail criteria for advancing to Phase 7
 
-### Step 2: Parallel Test Agent Launch
+**Requirement Traceability (REQUIRED — all project types):** Before finalizing the test plan, build a coverage map: every test scenario must reference at least one requirement ID. Then audit the map for redundancy:
+- If two scenarios exercise exactly the same requirement in exactly the same way → consolidate them into one
+- If scenarios > requirements × 3 → you have redundancy; review and prune before proceeding
+- Mark each scenario's verification method: `runtime` (must be executed) or `static` (code/logic review is sufficient). Scenarios marked `static` do not count toward runtime coverage.
+
+This gate exists because AI tooling can generate 40 scenarios for a 10-requirement system in minutes, producing volume that looks like rigor but isn't. The traceability map makes coverage gaps and duplicate coverage visible before the test run, not after.
+
+### Step 2: Test Execution
+
+#### For project_type: service / app (standard)
 
 Determine which agents apply and spawn all of them in a **single message**:
 
@@ -39,6 +58,18 @@ Agent(performance-benchmarker, "Profile the system against NFR performance targe
 ```
 
 **On build or test compilation failure:** Spawn `build-error-resolver` immediately.
+
+#### For project_type: skill (scenario-based)
+
+There is no compiled code to instrument. Do not spawn `e2e-runner`, `api-tester`, or `test-writer-fixer` for coverage measurement — they will produce no useful output.
+
+Instead:
+1. For each scenario in the test plan (from the requirement traceability map in Step 1), execute the scenario manually: invoke the skill, observe the output, record pass/fail against the defined criteria.
+2. Coverage is measured as: (passing runtime scenarios / total requirements) × 100. Target: `coverage_minimum` from profile for P1 requirements; 100% for P0.
+3. For scenarios marked `static` in Step 1: perform a logic review of the instruction file and record the finding as `static-pass` or `static-fail`. These count toward coverage but not toward runtime pass rate.
+4. Spawn `performance-benchmarker` only if performance NFRs require instrumented measurement (e.g., token overhead, wall-clock timing).
+
+**Skill test setup tip:** Create scratch git repos in a temp directory to exercise edge cases (empty diff, binary file, rename, non-git directory). Clean up after each scenario.
 
 ### Step 3: Test Results Consolidation
 
@@ -68,7 +99,9 @@ Run `/sdlc-gate` to validate exit criteria and automatically generate the phase 
 ### `test-plan.md` (REQUIRED)
 Must contain ALL of:
 - **Test strategy** — approach, scope, exclusions with rationale
-- **Test types** — unit / integration / E2E with coverage targets per type
+- **Test types** — unit / integration / E2E with coverage targets per type (or scenario-based for skills)
+- **Requirement traceability map** — table: Scenario ID | Requirement ID(s) | Verification Method (runtime / static) | Pass Criteria
+- **Redundancy audit** — confirmation that scenario count ≤ requirements × 3, or justification if exceeded
 - **Test data strategy** — how test data is created, isolated, cleaned up
 - **Pass/fail criteria** — explicit threshold for advancing to Phase 7
 - **Schedule** — order of test execution and dependencies

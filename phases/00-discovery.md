@@ -11,7 +11,7 @@ Understand the problem space deeply enough that a stakeholder who has never hear
 
 ### Step 0: HITL Gate — Frame the Problem with the Human
 
-> **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? Use these answers to anchor the artifacts — do not invent the problem framing.
+> **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? (5) What type of system is this? Choose one: **service** (backend API / server process), **app** (user-facing application with UI), **library** (shared code package / SDK), **skill** (Claude Code skill / AI plugin / prompt-based tool), **cli** (command-line tool). Record the answer as `project_type` in `state.yaml` — it determines which Phase 6–9 templates apply. Use these answers to anchor the artifacts — do not invent the problem framing.
 
 ### Step 1: Problem Identification
 Conduct stakeholder interviews or document the problem statement. Dig until you have:
@@ -67,6 +67,7 @@ Run `/sdlc-gate` to validate exit criteria and automatically generate the phase 
 ### `constitution.md` (REQUIRED)
 Must contain ALL of:
 - **Project Identity** — name, profile, creation date
+- **Project Type** — one of: `service`, `app`, `library`, `skill`, `cli`. This field drives template selection in Phases 6–9.
 - **Mission Statement** — one paragraph, written for a non-technical audience
 - **Governing Principles** — 3–5 specific principles for this project (not copy-paste boilerplate)
 - **Decision Authority** — who approves what, at what level

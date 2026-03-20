@@ -3,6 +3,20 @@
 ## Purpose
 Establish production observability so the team knows about problems before users do. Configure dashboards, define alerts, write the incident response playbook, and capture a project retrospective so the next project starts smarter.
 
+## Project Type Adaptation
+
+**Before starting Phase 9, read `project_type` from `state.yaml`.**
+
+| project_type | Monitoring Approach |
+|--------------|-------------------|
+| `service` / `app` | Full infrastructure monitoring: dashboards (RED metrics), alerting rules, on-call rotation, incident response runbook. |
+| `library` / `cli` | Package health monitoring: download counts, open issues, version adoption. Alerts = GitHub issue triage criteria. No dashboards. |
+| `skill` | Qualitative monitoring only. No server, no metrics pipeline. Monitoring = GitHub Issues + user feedback. Replace all dashboard / alerting / infrastructure content with: issue triage criteria, user feedback channels, and qualitative quality signals. |
+
+**For `skill` / `library` projects:** The `monitoring-config.md`, `alert-definitions.md`, and `incident-response.md` artifacts should be reframed as: (1) feedback collection channels and issue triage criteria, (2) severity classification with response SLAs, and (3) escalation process. Do not spend time configuring Grafana dashboards or Prometheus rules that will never be used.
+
+**The `project-retrospective.md` applies to all project types without modification.** It is the most important Phase 9 artifact regardless of project type.
+
 ## Entry Criteria
 - Phase 8 exit gate passed and `phase9-handoff.md` reviewed
 - System live in production

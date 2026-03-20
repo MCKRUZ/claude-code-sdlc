@@ -30,6 +30,14 @@ Define measurable quality attributes — quantify every single one:
 
 "Fast" is not an NFR. "P95 < 200ms under 1000 concurrent users" is.
 
+**Measurement Basis (REQUIRED for every numeric threshold):** For each quantitative NFR, record WHERE the threshold number came from. Every threshold must be one of:
+- **Measured** — derived from profiling, benchmarks, or monitoring data. Cite the source.
+- **Industry standard** — a widely-accepted norm for this type of system. Cite the reference.
+- **Contractual** — required by a SLA, regulation, or stakeholder agreement. Cite the document.
+- **Aspirational** — a best-guess target with no data. Tag it `[aspirational — validate in Phase 6]`.
+
+A threshold tagged `[aspirational]` is not a failure — it is honest. What is not acceptable: a numeric threshold with no stated basis that gets treated as a validated requirement. Aspirational thresholds must be measured in Phase 6 and revised if the measurement shows they are unachievable.
+
 ### Step 3: Epics
 For each P0 and P1 requirement:
 - Format: "As a [persona], I want [capability] so that [benefit]"
@@ -41,7 +49,7 @@ Walk through with stakeholder before advancing:
 - Verify P0 completeness — nothing missing that blocks core value
 - Confirm P3 items are genuinely deferred
 - Resolve contradictions explicitly
-- Approve NFRs as achievable given constraints
+- **NFR threshold validation:** For each numeric NFR, confirm the measurement basis is recorded. For any threshold tagged `[aspirational]`, agree on the Phase 6 measurement method *now* — who will measure it, how, and what happens if the measured value exceeds the target. Do not leave this for Phase 6 to figure out.
 
 ### Step 5: Phase Handoff
 Document the architectural implications of NFRs — these drive Phase 2 design decisions.
@@ -61,8 +69,9 @@ Must contain ALL of:
 ### `non-functional-requirements.md` (REQUIRED)
 Must contain ALL of:
 - Performance, security, scalability, reliability, maintainability sections
-- Each NFR as a table row: ID | Requirement | Metric | Test Method | Priority
+- Each NFR as a table row: ID | Requirement | Metric | Test Method | Priority | Measurement Basis
 - No vague NFRs — every metric must be measurable and testable
+- **Measurement Basis column is mandatory for every numeric threshold.** Valid values: `Measured: [source]`, `Industry standard: [reference]`, `Contractual: [document]`, `[aspirational — validate Phase 6]`
 
 ### `epics.md` (REQUIRED)
 Must contain ALL of:
@@ -83,6 +92,8 @@ Must contain ALL of:
 ## Exit Criteria
 - [ ] All P0 requirements documented with source traceability
 - [ ] Every NFR quantified with a measurable metric
+- [ ] Every numeric NFR threshold has a Measurement Basis entry (measured / industry standard / contractual / aspirational)
+- [ ] Every `[aspirational]` NFR has an agreed Phase 6 measurement method documented
 - [ ] Epics exist for all P0 and P1 requirements
 - [ ] Each epic has happy path AND at least one error scenario
 - [ ] Stakeholder reviewed and approved (manual gate)
