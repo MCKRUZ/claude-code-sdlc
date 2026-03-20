@@ -121,10 +121,22 @@ class TestCheckPhaseGates:
         assert len(failures) > 0
 
     def test_phase_0_with_artifact(self, sdlc_dir, valid_profile, state_yaml):
-        # Create the required artifact
+        # Create all required Phase 0 artifacts
         discovery_dir = sdlc_dir / "artifacts" / "00-discovery"
         (discovery_dir / "problem-statement.md").write_text(
             "# Problem Statement\n\nWe need a better process.\n\n## Scope\nIn scope: everything."
+        )
+        (discovery_dir / "constitution.md").write_text(
+            "# Constitution\n\nCore principles and constraints for this project."
+        )
+        (discovery_dir / "success-criteria.md").write_text(
+            "# Success Criteria\n\nThe project succeeds when all users can log in."
+        )
+        (discovery_dir / "constraints.md").write_text(
+            "# Constraints\n\nMust use existing infrastructure."
+        )
+        (discovery_dir / "phase1-handoff.md").write_text(
+            "# Phase 1 Handoff\n\nReady for requirements phase."
         )
         state = yaml.safe_load(state_yaml.read_text())
         results = check_phase_gates(0, state, valid_profile, sdlc_dir / "artifacts")

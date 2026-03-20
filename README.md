@@ -9,8 +9,11 @@ No existing tool combines specification-driven development + quality enforcement
 ## Features
 
 - **10 SDLC phases** — Discovery through Monitoring, each with entry/exit gates
+- **Project type routing** — Phases 6–9 adapt automatically based on `project_type` (service, app, library, skill, cli)
 - **Company profiles** — YAML configs for stack, quality thresholds, compliance, conventions
 - **5-gate validation** — Integrity, completeness, metrics, classification, quality checks at every transition
+- **NFR measurement basis enforcement** — Every numeric threshold must declare its measurement source; aspirational thresholds require an agreed Phase 6 validation plan
+- **Test traceability** — Phase 6 requires scenario-to-requirement mapping and redundancy audit before test execution
 - **Compliance enforcement** — SOC 2, HIPAA, GDPR, PCI-DSS gate definitions
 - **Skill orchestration** — Maps phases to existing skills (`/deep-plan`, `/deep-implement`, `/tdd`, `/code-review`, `/security-review`, `/e2e`)
 - **State machine** — Tracks progress in `.sdlc/state.yaml` with full audit trail
@@ -91,20 +94,32 @@ uv run scripts/validate_profile.py profiles/my-profile/profile.yaml
 ```
 See `profiles/_schema.yaml` for the full schema.
 
+## Project Types
+
+Phase 0 captures `project_type`, which is stored in `state.yaml` and controls how Phases 6–9 execute:
+
+| Type | Description | Phase 6 | Phase 8 | Phase 9 |
+|------|-------------|---------|---------|---------|
+| `service` | Backend API / server process | Unit + integration + E2E + API contract tests | Staging server deploy + DB migrations | Full infrastructure monitoring + alerting |
+| `app` | User-facing application with UI | Same as service | Same as service | Same as service |
+| `library` | Shared code package / SDK | Unit tests for public API surface | Package registry publish | Download counts + issue triage |
+| `skill` | Claude Code skill / AI plugin | Scenario-based testing against requirement list | File distribution + install verification | Qualitative feedback channels + issue triage |
+| `cli` | Command-line tool | Unit + integration + invocation tests | Binary distribution | Same as library |
+
 ## SDLC Phases
 
 | # | Phase | Primary Skills | Key Artifacts |
 |---|-------|---------------|---------------|
-| 0 | Discovery | `/plan` | problem-statement.md |
-| 1 | Requirements | `/deep-project` | requirements.md, acceptance-criteria.md |
+| 0 | Discovery | `/plan` | problem-statement.md, constitution.md (incl. project_type) |
+| 1 | Requirements | `/deep-project` | requirements.md, non-functional-requirements.md (with Measurement Basis) |
 | 2 | Design | `/deep-plan` | design-doc.md, ADRs |
 | 3 | Planning | `/deep-plan` | section plans |
 | 4 | Implementation | `/deep-implement`, `/tdd` | source code, tests |
 | 5 | Quality | `/code-review`, `/security-review` | review reports |
-| 6 | Testing | `/e2e`, `/test-coverage` | coverage report |
+| 6 | Testing | `/e2e`, `/test-coverage` | test plan (with traceability map), coverage report |
 | 7 | Documentation | `/update-docs` | README, RUNBOOK |
-| 8 | Deployment | CI/CD | release notes |
-| 9 | Monitoring | Manual | monitoring config |
+| 8 | Deployment | CI/CD | release notes (approach varies by project_type) |
+| 9 | Monitoring | Manual | monitoring config (approach varies by project_type) |
 
 ## 5-Gate Validation System
 
