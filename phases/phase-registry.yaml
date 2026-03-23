@@ -110,6 +110,10 @@ phases:
         - "data-model.md"
         - "sequence-diagrams.md"
         - "phase2-report.html"
+        - "research-notes.md"
+        - "integration-notes.md"
+        - "external-reviews/"
+        - "deep-plan-checkpoint.yaml"
 
   - id: 3
     name: planning
@@ -142,6 +146,7 @@ phases:
         - "phase4-handoff.md"
       optional:
         - "dependency-map.md"
+        - "tdd-plan.md"
         - "phase3-report.html"
 
   - id: 4
@@ -282,7 +287,7 @@ phases:
     description: "Deploy to staging, execute deployment checklist, run smoke tests, promote to production."
     definition: "phases/08-deployment.md"
     skills:
-      primary: []
+      primary: ["/e2e"]
       secondary: []
     entry_gate:
       conditions:
@@ -317,7 +322,7 @@ phases:
     definition: "phases/09-monitoring.md"
     skills:
       primary: []
-      secondary: []
+      secondary: ["/session-insights"]
     entry_gate:
       conditions:
         - "Phase 8 exit gate passed"

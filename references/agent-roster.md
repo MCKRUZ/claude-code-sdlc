@@ -43,6 +43,8 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 
 **Parallel group `design-A`:** When the project has both backend and frontend, spawn `backend-architect` and `frontend-developer` in the same message.
 
+**`/deep-plan` orchestration (steps 1–15):** When `/deep-plan` is invoked in this phase, it manages its own subagents internally (Explore for codebase research, web-search-researcher for web research, opus-plan-reviewer or external LLMs for review). These do not need to be spawned separately — `/deep-plan` handles the orchestration. The agents listed above (`architect`, domain agents, `security-reviewer`) operate alongside `/deep-plan` for SDLC-native work like ADR generation and security review.
+
 ---
 
 ## Phase 3: Planning
@@ -54,6 +56,8 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 | Codebase exploration | `Explore` | Need to understand existing code structure | — | No |
 
 **Parallel group `plan-A`:** When multiple section plans have no dependency on each other, spawn one `deep-plan:section-writer` per independent section in a single message.
+
+**`/deep-plan` orchestration (steps 16–22):** `/deep-plan` resumes from the Phase 2 checkpoint and manages `deep-plan:section-writer` subagents internally (batch size up to 7 concurrent). After generation, run `scripts/map_deep_plan_artifacts.py --phase 3` to transform `/deep-plan`'s `sections/section-NN-*.md` files into SDLC's `section-plans/SECTION-NNN.md` format using the converged template. The `Plan` and `Explore` agents listed above are for supplementary work alongside `/deep-plan`.
 
 ---
 
@@ -88,10 +92,14 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 | Security review | `security-reviewer` | Always | review-A | No |
 | Dead code cleanup | `refactor-cleaner` | Always | — | Yes |
 | Root cause investigation | `Explore` | Gate check fails unexpectedly | — | No |
+| Backend remediation | `backend-architect` | CRITICAL/HIGH findings in backend code | — | No |
+| Frontend remediation | `frontend-developer` | CRITICAL/HIGH findings in frontend code | — | No |
 
 **Parallel group `review-A`:** ALWAYS spawn `code-reviewer` and `security-reviewer` in a single message. Never run them sequentially.
 
 **Mandatory:** If `security-reviewer` finds CRITICAL or HIGH issues, STOP all other work. Fix before advancing.
+
+**Remediation:** For CRITICAL/HIGH findings requiring code fixes, spawn the appropriate domain agent (`backend-architect` or `frontend-developer`). Security fixes are done inline, then re-run `security-reviewer` to confirm.
 
 ---
 
@@ -104,6 +112,8 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 | API contract tests | `api-tester` | Project has API endpoints | test-A | No |
 | Performance benchmarks | `performance-benchmarker` | NFRs include performance targets | — | No |
 | Build error resolution | `build-error-resolver` | Test compilation fails | — | No |
+| Backend defect fix | `backend-architect` | Defect in backend code | — | No |
+| Frontend defect fix | `frontend-developer` | Defect in frontend code | — | No |
 | Doc updates | `doc-updater` | Test results change public docs | — | Yes |
 
 **Parallel group `test-A`:** Spawn all applicable test agents in a single message. They operate on different test domains and do not conflict.
@@ -115,9 +125,14 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 | Role | Agent | Condition | Parallel Group | Background |
 |------|-------|-----------|----------------|------------|
 | Documentation updates | `doc-updater` | Always | doc-A | No |
-| API doc generation | `backend-architect` | API docs need updating | doc-A | No |
+| API doc generation | `backend-architect` | API docs need updating (`service`/`app`/`library`/`cli`) | doc-A | No |
+| ADR gap analysis | `Explore` | Always — search git history for undocumented decisions | — | No |
 
-**Parallel group `doc-A`:** API docs and user-facing docs can be generated simultaneously.
+**Parallel group `doc-A`:** Spawn `doc-updater` and `backend-architect` in a single message. They write different documents and do not conflict.
+
+**Conditional:** For `skill` projects, replace `backend-architect` with a second `doc-updater` spawn for SKILL.md refinement and example gallery.
+
+**Sequential:** After `doc-A` completes, spawn `Explore` for ADR gap analysis — it reads the outputs of the doc agents to avoid duplicate work.
 
 ---
 
@@ -125,9 +140,15 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 
 | Role | Agent | Condition | Parallel Group | Background |
 |------|-------|-----------|----------------|------------|
-| CI/CD configuration | `devops-automator` | Pipeline needs creation or updates | — | No |
-| Smoke test execution | `e2e-runner` | Smoke tests defined | — | No |
-| Build error resolution | `build-error-resolver` | Deployment build fails | — | No |
+| Staging deployment | `devops-automator` | Always | — | No |
+| Smoke test execution | `e2e-runner` | After staging deploy succeeds | — | No |
+| Build error resolution | `build-error-resolver` | Deployment build fails | — | No (immediate) |
+
+**Sequential flow:** `devops-automator` (staging) → `e2e-runner` (smoke tests) → production decision.
+
+**Mandatory:** If deployment build fails at any point, spawn `build-error-resolver` immediately. Do not attempt manual fixes.
+
+**Production:** Re-spawn `devops-automator` for production deployment, then re-spawn `e2e-runner` for production smoke tests.
 
 ---
 
@@ -135,9 +156,13 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 
 | Role | Agent | Condition | Parallel Group | Background |
 |------|-------|-----------|----------------|------------|
-| Performance baseline | `performance-benchmarker` | Production metrics available | — | No |
-| Feedback synthesis | `feedback-synthesizer` | User feedback exists post-launch | — | No |
-| Doc updates | `doc-updater` | Monitoring docs need writing | — | No |
+| Performance baseline | `performance-benchmarker` | Always (`service`/`app`); NFR-dependent for others | — | No |
+| Feedback synthesis | `feedback-synthesizer` | User feedback exists post-launch | — | Yes |
+| Monitoring doc updates | `doc-updater` | Always — writes monitoring-config.md | — | No |
+
+**Sequential:** `performance-benchmarker` runs first to establish baselines. `doc-updater` uses its output to write `monitoring-config.md`.
+
+**Background:** `feedback-synthesizer` runs in background during the retrospective — its output is incorporated when available but does not block the phase.
 
 ---
 

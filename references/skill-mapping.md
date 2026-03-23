@@ -14,8 +14,8 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 | 5 Quality | `/code-review`, `/security-review` | — | Review gates before testing |
 | 6 Testing | `/e2e`, `/test-coverage` | `/tdd` | Coverage enforcement |
 | 7 Documentation | `/update-docs` | — | Sync docs with code |
-| 8 Deployment | CI/CD pipeline | — | External automation |
-| 9 Monitoring | Manual | — | Alert/dashboard configuration |
+| 8 Deployment | `/e2e` | — | Smoke tests via `e2e-runner`; `devops-automator` agent for deployment execution |
+| 9 Monitoring | — | `/session-insights` | Retrospective analysis; `performance-benchmarker` agent for baseline |
 
 ## Skill Details
 
@@ -27,9 +27,17 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 
 ### /deep-plan
 - **Phases:** Design (2), Planning (3)
-- **Purpose:** Creates detailed, sectionized, TDD-oriented implementation plans
-- **Input:** Requirements, design constraints
-- **Output:** Section plans with implementation order
+- **Purpose:** Creates detailed, sectionized, TDD-oriented implementation plans through research, stakeholder interviews, multi-LLM review, and parallel section generation
+- **Phase 2 usage (steps 1–15):** Research → Interview → Spec synthesis → Plan generation → External review
+  - **Input:** `planning/spec.md` (synthesized from Phase 1 artifacts via `scripts/synthesize_spec.py`)
+  - **Output:** `planning/claude-plan.md`, `planning/claude-research.md`, `planning/claude-interview.md`, `planning/reviews/`
+  - **Maps to:** `design-doc.md`, `api-contracts.md`, `phase3-handoff.md` (via `scripts/map_deep_plan_artifacts.py --phase 2`)
+- **Phase 3 usage (steps 16–22):** TDD planning → Section index → Parallel section generation
+  - **Input:** `planning/claude-plan.md` (from Phase 2), human-approved section boundaries
+  - **Output:** `planning/claude-plan-tdd.md`, `planning/sections/index.md`, `planning/sections/section-NN-*.md`
+  - **Maps to:** `section-plans/SECTION-NNN.md`, `tdd-plan.md`, `dependency-map.md` (via `scripts/map_deep_plan_artifacts.py --phase 3`)
+- **Checkpoint:** Session continuity across phases via `.sdlc/artifacts/02-design/deep-plan-checkpoint.yaml`
+- **See also:** `references/deep-plan-integration.md` for full artifact mapping and troubleshooting
 
 ### /deep-implement
 - **Phase:** Implementation (4)

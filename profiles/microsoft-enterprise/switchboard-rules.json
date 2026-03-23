@@ -19,17 +19,38 @@
     },
     {
       "phase": 2,
-      "context": "design",
-      "when": "Requirements are decomposed and accepted",
-      "suggest": "/deep-plan",
-      "reason": "Create architecture and section plans"
+      "context": "design-spec-synthesis",
+      "when": "Phase 2 starts and planning/spec.md does not exist",
+      "suggest": "uv run scripts/synthesize_spec.py",
+      "reason": "Combine Phase 0-1 artifacts into /deep-plan input"
+    },
+    {
+      "phase": 2,
+      "context": "design-deep-plan",
+      "when": "planning/spec.md exists and planning/claude-plan.md does not",
+      "suggest": "/deep-plan @planning/spec.md",
+      "reason": "Run research, interview, plan generation, and external review (steps 1-15)"
+    },
+    {
+      "phase": 2,
+      "context": "design-artifact-mapping",
+      "when": "planning/claude-plan.md exists and design-doc.md does not",
+      "suggest": "uv run scripts/map_deep_plan_artifacts.py --phase 2",
+      "reason": "Transform /deep-plan outputs into SDLC Phase 2 artifacts"
     },
     {
       "phase": 3,
-      "context": "planning",
-      "when": "Design is approved",
-      "suggest": "/deep-plan",
-      "reason": "Break design into implementable sections"
+      "context": "planning-deep-plan-resume",
+      "when": "deep-plan-checkpoint.yaml exists and planning/sections/index.md does not",
+      "suggest": "/deep-plan (resume from checkpoint, steps 16-22)",
+      "reason": "Generate TDD plan and section files from approved plan"
+    },
+    {
+      "phase": 3,
+      "context": "planning-artifact-mapping",
+      "when": "planning/sections/ has section files and section-plans/ is empty",
+      "suggest": "uv run scripts/map_deep_plan_artifacts.py --phase 3",
+      "reason": "Transform /deep-plan sections into SDLC section plan format"
     },
     {
       "phase": 4,

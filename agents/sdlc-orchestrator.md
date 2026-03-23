@@ -22,7 +22,8 @@ You are the SDLC orchestrator agent. You coordinate the software development lif
 
 3. **Skill Routing:** Based on the current phase and context, recommend the appropriate Claude Code skills:
    - Phase 0–1: `/plan`, `/deep-project`
-   - Phase 2–3: `/deep-plan`
+   - Phase 2: `/deep-plan` (steps 1–15) — preceded by `synthesize_spec.py`, followed by `map_deep_plan_artifacts.py --phase 2`, then ADR generation
+   - Phase 3: `/deep-plan` (steps 16–22, resume from checkpoint) — followed by `map_deep_plan_artifacts.py --phase 3`, then sprint planning + risk register
    - Phase 4: `/deep-implement`, `/tdd`
    - Phase 5: `/code-review`, `/security-review`
    - Phase 6: `/e2e`, `/test-coverage`
@@ -47,6 +48,9 @@ When invoked:
 - Phase definitions: `phases/XX-phasename.md` in the plugin directory
 - Phase registry: `phases/phase-registry.yaml` in the plugin directory
 - Gate checker: `scripts/check_gates.py` in the plugin directory
+- Spec synthesis: `scripts/synthesize_spec.py` — combines Phase 1 outputs into `/deep-plan` input
+- Artifact mapping: `scripts/map_deep_plan_artifacts.py` — transforms `/deep-plan` outputs into SDLC locations
+- Integration reference: `references/deep-plan-integration.md` — full artifact mapping and troubleshooting
 
 ## Output Style
 - Be concise and actionable
