@@ -1,0 +1,69 @@
+version: "1.0"
+
+company:
+  name: "MCKRUZ"
+  profile_id: "creative-tooling"
+
+stack:
+  backend:
+    language: python
+    framework: uv-scripts
+    testing: pytest
+
+quality:
+  coverage_minimum: 80
+  max_file_lines: 400
+  max_function_lines: 50
+  require_tdd: true
+  require_code_review: true
+  require_security_review: true
+  evaluation_criteria:
+    - name: "Registry schema compliance"
+      description: >
+        All technique registry YAML files validate against registry/_schema.yaml.
+        Evaluator runs schema validation on every new/modified entry.
+      severity: fail
+    - name: "Profile schema compliance"
+      description: >
+        Character profile YAML files validate against profiles/_schema.yaml.
+        No unrecognized keys, all required fields present.
+      severity: fail
+    - name: "Skill prompt clarity"
+      description: >
+        Skill .md files use imperative instructions (MUST/SHOULD per RFC 2119),
+        no vague language ('maybe', 'consider', 'you could'), no debug artifacts,
+        no development remnants. Every decision point has an explicit default.
+      severity: fail
+    - name: "Inventory awareness"
+      description: >
+        Code resolves models, custom nodes, and ComfyUI endpoints via
+        inventory.resolve() — never hardcoded paths or string literals.
+        Greppable: all model references go through the inventory API.
+      severity: fail
+    - name: "Cross-reference integrity"
+      description: >
+        Technique requires.custom_nodes entries exist in inventory.
+        Profile lora_stack entries have corresponding registry technique entries.
+        Technique supersedes fields point to real technique IDs.
+        No dangling references across registry, inventory, and profiles.
+      severity: fail
+    - name: "Data freshness"
+      description: >
+        No technique in 'discovered' status older than 30 days without a test result.
+        No technique with tested date older than 90 days used in active character
+        profiles. Evaluator checks dates against current date.
+      severity: warn
+
+compliance:
+  frameworks:
+    - none
+  audit_trail: true
+  change_approval: none
+
+conventions:
+  commit_format: "type: description"
+  branch_naming: "type/description"
+  immutability: false
+  no_console_log: false
+  no_debug_in_skills: true
+  trust_boundary: validated
