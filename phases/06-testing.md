@@ -161,6 +161,26 @@ The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-
 
 To regenerate at any time: `/sdlc-phase-report`
 
+## Test Expansion Protocol
+
+After each QA run, actively expand the test suite:
+
+1. **Healer pattern:** When tests fail, diagnose the root cause before fixing. Is it a broken test (fix the test) or a real bug (fix the code)? Never blindly fix test assertions to match broken output.
+
+2. **Expander pattern:** After each successful test run, identify 3-5 untested edge cases and add tests for them. Focus on:
+   - Boundary conditions not yet covered
+   - Error paths that only have happy-path tests
+   - Concurrent/timing scenarios
+   - Data edge cases (empty, null, max-length, Unicode)
+
+3. **Bug-to-test pipeline:** When bugs are found (in this phase or later):
+   - Write the regression test FIRST (RED — test fails, proving the bug exists)
+   - Fix the bug (GREEN — test passes)
+   - Add the test to the permanent regression suite
+   - Never fix a bug without a test that would have caught it
+
+This ensures the test suite grows with every QA cycle and every bug fix, not just during initial test writing.
+
 ## Guidance
 - The test plan is written BEFORE test execution. If you can't write the plan, you don't know what you're testing.
 - Coverage percentage alone is not evidence. 95% coverage of the wrong things is worthless.

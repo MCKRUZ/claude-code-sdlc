@@ -140,6 +140,17 @@ The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-
 
 To regenerate at any time: `/sdlc-phase-report`
 
+## Parallel Review Resolution
+
+When code review and security review produce findings from multiple reviewers or agents:
+
+1. **Batch findings by file** — group all comments targeting the same file together
+2. **Resolve in parallel** — spawn domain agents (backend-architect, frontend-developer) simultaneously for independent files. Don't fix file A, then file B serially when they're unrelated.
+3. **Re-verify after fixes** — re-run the reviewer that flagged the issue to confirm the fix. Don't self-certify.
+4. **Update review report** — mark each finding as RESOLVED with a one-line description of the fix
+
+This pattern also applies when PR review comments come from external reviewers — batch and parallelize rather than addressing comments one at a time.
+
 ## Guidance
 - CRITICAL findings are blockers — no exceptions without documented stakeholder override.
 - Security review is not optional for any profile. "We'll do security later" means never.
