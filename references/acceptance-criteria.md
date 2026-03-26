@@ -22,8 +22,9 @@ Quality benchmarks for the claude-code-sdlc plugin, following Microsoft Skills c
 - Gate 1 (Integrity): Catches missing files and empty directories
 - Gate 2 (Completeness): Detects TODO, TBD, ${}, PLACEHOLDER, [INSERT] tokens
 - Gate 3 (Metrics): Reports coverage thresholds from profile
-- Gate 4 (Classification): Loads and checks compliance-specific gates
-- Gate 5 (Quality): Assessed during manual review
+- Gate 4 (Compliance): Loads and checks compliance-specific gates
+- Gate 5 (Consistency): Checks locked metrics against frozen layers from prior phases
+- Gate 6 (Quality): Assessed during manual review
 
 ## Compliance
 - SOC 2 gates fire at correct phases (1, 2, 4, 5, 6, 7, 8, 9)

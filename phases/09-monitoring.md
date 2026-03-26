@@ -161,3 +161,20 @@ To regenerate at any time: `/sdlc-phase-report`
 - Set alert thresholds from measured baselines, not intuition. "500ms feels like a good threshold" is not engineering — measure the p95 under normal load and alert at 2x.
 - The retrospective is for the team, not management — write honestly or it has no value. "Everything went great" is never true and never useful.
 - Technical debt logged now is managed; technical debt unlogged becomes a crisis.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no monitoring configured)
+- "What metrics matter most — latency, error rate, throughput, business KPIs?"
+- "What alert thresholds make sense? When should someone get paged?"
+- "What baseline measurements do you have from before this change?"
+
+### Progress Check (some monitoring in place)
+- "Monitoring configuration covers [X] metrics. Are there business-level metrics to add?"
+- "Alert routing is set up for [teams]. Is that the right escalation path?"
+
+### Ready Check (monitoring complete)
+- "Monitoring is configured with baselines. Want to do a dry-run alert test?"
+- "Is there a runbook for when alerts fire? Who's the first responder?"

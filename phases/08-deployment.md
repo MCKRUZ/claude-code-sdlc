@@ -148,3 +148,20 @@ To regenerate at any time: `/sdlc-phase-report`
 - Smoke tests in production should be non-destructive — read operations and harmless writes only. If your smoke test can corrupt data, it's not a smoke test.
 - The release notes are for people who didn't build the system. Write for that audience.
 - The HITL Gate on this phase is the most critical in the entire lifecycle. A bad commit can be reverted. A bad deployment can take down production.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no deployment artifacts)
+- "What's your deployment strategy — blue/green, canary, rolling?"
+- "Do you have a rollback plan if something goes wrong?"
+- "What environments need to be set up or updated?"
+
+### Progress Check (some artifacts ready)
+- "Release notes drafted. Does the changelog capture all user-facing changes?"
+- "Rollback plan covers [scenarios]. Are there others to consider?"
+
+### Ready Check (all artifacts ready)
+- "Deployment artifacts are ready. Have all stakeholders signed off?"
+- "Is there a smoke test plan for post-deployment verification?"

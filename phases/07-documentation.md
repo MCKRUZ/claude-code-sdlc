@@ -153,3 +153,20 @@ To regenerate at any time: `/sdlc-phase-report`
 - API docs written after the fact must be verified against the running system, not the design. Run actual requests and paste actual responses.
 - ADRs from implementation that were never recorded are debt — close them now or they become tribal knowledge that walks out the door.
 - Documentation is not a phase to rush through. The 30 minutes you save skipping docs costs the next developer 3 hours of reverse engineering.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no docs started)
+- "Who's the audience for this documentation — developers, operators, end users?"
+- "What documentation types do you need — API docs, user guide, operator manual?"
+- "Is there existing documentation that needs updating vs. creating from scratch?"
+
+### Progress Check (some docs written)
+- "API docs cover [X] of [Y] endpoints. Want me to generate the rest?"
+- "The user guide is drafted. Does the tone match your audience?"
+
+### Ready Check (all docs complete)
+- "Documentation suite is complete. Any areas that need more detail?"
+- "Have you had someone outside the team review the docs for clarity?"

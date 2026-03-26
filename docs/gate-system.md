@@ -10,7 +10,7 @@ Comprehensive reference for the gate validation system used by the claude-code-s
 2. [Gate 1: Artifact Integrity](#2-gate-1-artifact-integrity)
 3. [Gate 2: Completeness](#3-gate-2-completeness)
 4. [Gate 3: Metrics](#4-gate-3-metrics)
-5. [Gate 4: Classification](#5-gate-4-classification)
+5. [Gate 4: Compliance](#5-gate-4-classification)
 6. [Gate 5: Quality](#6-gate-5-quality)
 7. [Severity Levels Deep Dive](#7-severity-levels-deep-dive)
 8. [Gate Results Format](#8-gate-results-format)
@@ -48,7 +48,7 @@ check_gates.py --state .sdlc/state.yaml [--phase N]
   +-- Gate 1: Artifact Integrity   (file existence, non-empty)
   +-- Gate 2: Completeness         (no placeholder text, sections present)
   +-- Gate 3: Metrics              (coverage, file sizes — phases 5-6)
-  +-- Gate 4: Classification       (compliance gates from profile)
+  +-- Gate 4: Compliance       (compliance gates from profile)
   +-- Gate 5: Quality              (holistic review assessment)
   |
   v
@@ -60,7 +60,7 @@ Exit code 0 (all clear) or 1 (any MUST gate failed)
 
 **Gate application varies by phase.** Not every gate applies at every phase with the same severity:
 
-| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Classification | G5: Quality |
+| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Quality |
 |-------|:---:|:---:|:---:|:---:|:---:|
 | 0 Discovery | MUST | MUST | -- | -- | SHOULD |
 | 1 Requirements | MUST | MUST | -- | MUST | SHOULD |
@@ -228,7 +228,7 @@ Note the `passed: None` value. Metrics gates often require external tool executi
 
 ---
 
-## 5. Gate 4: Classification
+## 5. Gate 4: Compliance
 
 **Purpose:** Verify that artifacts are correctly categorized, labeled, and mapped to compliance requirements.
 
@@ -444,8 +444,8 @@ phases:
 | Gate 1: Integrity | SHOULD NOT | Missing artifacts indicate objective failures |
 | Gate 2: Completeness | SHOULD NOT | Incomplete artifacts cause downstream issues |
 | Gate 3: Metrics | SHOULD NOT | Quantitative thresholds are objective |
-| Gate 4: Classification | **NO** (compliance profiles) | Compliance-enabled profiles MUST NOT override classification failures |
-| Gate 4: Classification | SHOULD NOT (other profiles) | Still represents an objective categorization failure |
+| Gate 4: Compliance | **NO** (compliance profiles) | Compliance-enabled profiles MUST NOT override classification failures |
+| Gate 4: Compliance | SHOULD NOT (other profiles) | Still represents an objective categorization failure |
 | Gate 5: Quality | MAY | Quality is subjective; override with documented justification |
 
 ### Override Tracking
@@ -510,7 +510,7 @@ gates:
 
 ### Integration with Base Gates
 
-Compliance gates are injected into Gate 4 (Classification) results. They are filtered by phase number so only relevant compliance checks run for each phase:
+Compliance gates are injected into Gate 4 (Compliance) results. They are filtered by phase number so only relevant compliance checks run for each phase:
 
 ```python
 compliance_gates = get_compliance_gates(profile)

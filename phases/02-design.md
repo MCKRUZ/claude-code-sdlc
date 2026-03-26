@@ -204,3 +204,21 @@ To regenerate at any time: `/sdlc-phase-report`
 - Over-specified design is better than under-specified — wrong designs get caught in review.
 - `/deep-plan`'s external review (multi-LLM) adds independent architecture critique — review the findings in `external-reviews/` before finalizing.
 - The `planning/` directory is preserved alongside `.sdlc/artifacts/` for /deep-plan's internal session continuity and any future re-runs.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no artifacts yet)
+- "What are the key architectural drivers — what matters most: performance, maintainability, time-to-market?"
+- "What existing systems does this need to integrate with?"
+- "Where are the trust boundaries? What's inside your control vs. external?"
+- "What technology choices have already been made vs. what's still open?"
+
+### Progress Check (some artifacts exist)
+- "Your architecture covers the core flow. Have you considered the failure modes?"
+- "I see [N] ADRs. Are there any decisions you're still uncertain about?"
+
+### Ready Check (all artifacts present)
+- "Design looks comprehensive. Are the security boundaries clearly defined?"
+- "Any areas where the design feels over-engineered or under-specified?"

@@ -145,3 +145,20 @@ To regenerate at any time: `/sdlc-phase-report`
 - Security review is not optional for any profile. "We'll do security later" means never.
 - The quality report is evidence for the team, not a checkbox for the process.
 - Positive observations matter — the review is calibration, not just criticism.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no reviews started)
+- "What areas are you most concerned about? Where did you cut corners?"
+- "Any known technical debt we should surface in the review?"
+- "Are there security-sensitive areas that need extra attention?"
+
+### Progress Check (some reviews complete)
+- "Code review found [N] issues. Want to tackle the critical ones first?"
+- "Security review flagged [X]. This needs to be resolved before we proceed."
+
+### Ready Check (all reviews complete)
+- "All review findings addressed. Coverage is at [X]%. Ready for testing?"
+- "Any findings you disagree with? We can document the rationale."

@@ -52,7 +52,38 @@ if ($phaseMatch.Success) {
 
     # Output context for Claude
     Write-Output "[SDLC] Project: $projectName | Profile: $profileId | Phase $phaseId`: $displayName | Artifacts: $artifactCount"
-    Write-Output "[SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance)"
+    Write-Output "[SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance) | /sdlc-coach (coaching)"
+
+    # --- Tier 1: Foundation Context ---
+    $constitutionPath = Join-Path $sdlcDir "constitution.md"
+    if (Test-Path $constitutionPath) {
+        $constitutionContent = Get-Content $constitutionPath -Raw -ErrorAction SilentlyContinue
+        if ($constitutionContent) {
+            # Extract mission/principles (first ~375 words for ~500 token budget)
+            $words = ($constitutionContent -split '\s+') | Select-Object -First 375
+            $foundation = ($words -join ' ')
+            Write-Output "[SDLC-CONTEXT:FOUNDATION] $foundation"
+        }
+    }
+
+    # --- Tier 2: Frozen Layers (most recent 3) ---
+    $layersDir = Join-Path $sdlcDir "context" "layers"
+    if (Test-Path $layersDir) {
+        $layers = Get-ChildItem $layersDir -Filter "phase*.md" -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 3
+        if ($layers) {
+            # Reverse to load oldest first (chronological order)
+            [array]::Reverse($layers)
+            Write-Output "[SDLC-CONTEXT:LAYERS] Loading $($layers.Count) frozen layer(s)"
+            foreach ($layer in $layers) {
+                $layerContent = Get-Content $layer.FullName -Raw -ErrorAction SilentlyContinue
+                if ($layerContent) {
+                    Write-Output "[SDLC-CONTEXT:LAYER:$($layer.BaseName)]"
+                    Write-Output $layerContent
+                    Write-Output "[/SDLC-CONTEXT:LAYER]"
+                }
+            }
+        }
+    }
 
     # Check for session handoff file (Phase 4 continuity)
     if ([int]$phaseId -eq 4) {

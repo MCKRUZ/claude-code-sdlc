@@ -285,7 +285,7 @@ The `--project` flag ensures `uv` resolves dependencies from the scripts' `pypro
 | G1: Integrity | Required artifacts exist, are non-empty, parse correctly, no placeholder content (`TODO`, `TBD`, `${VAR}`) | MUST |
 | G2: Completeness | All required sections present, cross-references valid, no missing content areas | MUST |
 | G3: Metrics | Quantitative thresholds from profile (coverage >= `coverage_minimum`, file size <= `max_file_lines`, function length <= `max_function_lines`) | MUST or SHOULD (varies by phase) |
-| G4: Classification | Correct labeling -- requirement priorities, ADR statuses, compliance framework mappings, risk severities | MUST or SHOULD (varies by phase) |
+| G4: Compliance | Correct labeling -- requirement priorities, ADR statuses, compliance framework mappings, risk severities | MUST or SHOULD (varies by phase) |
 | G5: Quality | Holistic assessment -- clarity, accuracy, internal consistency, alignment with prior phase artifacts | MUST or SHOULD (varies by phase) |
 
 Gate severity varies by phase. For example, Phase 5 (Quality) requires all five gates at MUST level, while Phase 0 (Discovery) only requires G1 and G2 as MUST.

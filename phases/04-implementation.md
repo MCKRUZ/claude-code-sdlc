@@ -186,3 +186,20 @@ To regenerate at any time: `/sdlc-phase-report`
 - Rolling background reviews catch issues early. Review accumulated feedback before the next sprint.
 - The section-evaluator is a quality gate, not a suggestion. A FAIL verdict means the section has real problems — fix them before moving on.
 - Session handoff is insurance. The 60 seconds it takes to update saves 30 minutes of context reconstruction in the next session.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no sections started)
+- "Which section should we start with? I'd suggest [X] because [reason]."
+- "Are you using TDD? Your profile [requires/suggests] it."
+- "What's your preferred implementation approach — scaffold first, or feature by feature?"
+
+### Progress Check (some sections complete)
+- "Section [X] is complete. The evaluator gave it a [PASS/FAIL]. Next up is [Y]."
+- "I see a blocker on [X]. Can we work around it by [suggestion]?"
+
+### Ready Check (all sections complete)
+- "All sections implemented and evaluated. Ready for quality review?"
+- "Any areas where you took shortcuts that should be flagged for Phase 5?"

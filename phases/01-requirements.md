@@ -121,3 +121,21 @@ To regenerate at any time: `/sdlc-phase-report`
 - If you can't write an acceptance test for a requirement, it isn't specific enough.
 - Contradictions between stakeholders are normal — surface them explicitly, don't silently pick one.
 - P3 items should be documented, not ignored — they become Phase 2 scope inputs.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no artifacts yet)
+- "Who are the end users? Walk me through a typical day in their life."
+- "What are the absolute must-have features vs. nice-to-haves?"
+- "What are the non-functional requirements — performance, security, compliance?"
+- "How will we know this project succeeded? What's the measurable outcome?"
+
+### Progress Check (some artifacts exist)
+- "Your requirements cover functional needs well. Have you considered [gap from NFR checklist]?"
+- "These acceptance criteria need to be measurable. How would you test [criterion]?"
+
+### Ready Check (all artifacts present)
+- "Requirements are looking complete. Any features you're unsure about including?"
+- "Are the priority labels (P0-P3) accurate? Would stakeholders agree with the ranking?"

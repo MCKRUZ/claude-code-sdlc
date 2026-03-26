@@ -42,9 +42,9 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 
 **Severity:** MUST pass for phases that produce measurable outputs. SHOULD be tracked for other phases.
 
-## Gate 4: Classification
+## Gate 4: Compliance
 
-**Purpose:** Verify that artifacts are correctly categorized and labeled.
+**Purpose:** Verify that artifacts are correctly categorized, labeled, and meet compliance framework requirements.
 
 **Checks:**
 - Requirements have priority labels (P0–P3)
@@ -55,7 +55,21 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 
 **Severity:** MUST pass for compliance-enabled profiles. SHOULD pass for others.
 
-## Gate 5: Quality
+## Gate 5: Cross-Phase Consistency
+
+**Purpose:** Detect drift in locked metrics across phase transitions.
+
+**Checks:**
+- Read frozen layers from all prior completed phases
+- Identify "Locked Metrics" and "Constraints Carried Forward" sections
+- Flag for manual review: Claude compares locked values against current phase artifacts
+- Verify decision log exists if any locked metrics have changed
+
+**Locked Metrics:** Budget, timeline, scope boundaries, stakeholder roster, quality thresholds, compliance requirements. See `references/cross-phase-consistency.md` for the full list and change protocol.
+
+**Severity:** SHOULD pass. Consistency warnings surface drift for human review but do NOT block phase transitions. Legitimate scope changes are documented via decision log entries.
+
+## Gate 6: Quality
 
 **Purpose:** Holistic quality assessment of phase outputs.
 
@@ -69,18 +83,18 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 
 ## Gate Application by Phase
 
-| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Classification | G5: Quality |
-|-------|:---:|:---:|:---:|:---:|:---:|
-| 0 Discovery | MUST | MUST | — | — | SHOULD |
-| 1 Requirements | MUST | MUST | — | MUST | SHOULD |
-| 2 Design | MUST | MUST | — | MUST | MUST |
-| 3 Planning | MUST | MUST | — | — | SHOULD |
-| 4 Implementation | MUST | MUST | SHOULD | — | SHOULD |
-| 5 Quality | MUST | MUST | MUST | MUST | MUST |
-| 6 Testing | MUST | MUST | MUST | MUST | SHOULD |
-| 7 Documentation | MUST | MUST | — | — | MUST |
-| 8 Deployment | MUST | MUST | SHOULD | — | SHOULD |
-| 9 Monitoring | MUST | SHOULD | — | — | SHOULD |
+| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality |
+|-------|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 Discovery | MUST | MUST | — | — | — | SHOULD |
+| 1 Requirements | MUST | MUST | — | MUST | SHOULD | SHOULD |
+| 2 Design | MUST | MUST | — | MUST | SHOULD | MUST |
+| 3 Planning | MUST | MUST | — | — | SHOULD | SHOULD |
+| 4 Implementation | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
+| 5 Quality | MUST | MUST | MUST | MUST | SHOULD | MUST |
+| 6 Testing | MUST | MUST | MUST | MUST | SHOULD | SHOULD |
+| 7 Documentation | MUST | MUST | — | — | SHOULD | MUST |
+| 8 Deployment | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
+| 9 Monitoring | MUST | SHOULD | — | — | SHOULD | SHOULD |
 
 ## Override Protocol
 
@@ -90,6 +104,7 @@ When a gate fails but the team decides to proceed:
    - `override: true`
    - `justification: "reason for override"`
    - `approved_by: "person/role"`
-2. Compliance-enabled profiles MUST NOT override Gate 4 (Classification) failures
-3. Gate 5 (Quality) MAY be overridden with documented justification
-4. Gates 1–3 SHOULD NOT be overridden — they indicate objective failures
+2. Compliance-enabled profiles MUST NOT override Gate 4 (Compliance) failures
+3. Gate 5 (Consistency) findings SHOULD be reviewed but MAY proceed if drift is intentional
+4. Gate 6 (Quality) MAY be overridden with documented justification
+5. Gates 1–3 SHOULD NOT be overridden — they indicate objective failures

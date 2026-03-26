@@ -148,3 +148,21 @@ To regenerate at any time: `/sdlc-phase-report`
 - Sprint 1 should build the skeleton, not a feature — foundation first.
 - A handoff that says "you know what to do" is not a handoff.
 - The `planning/` directory is preserved alongside `.sdlc/artifacts/` for /deep-plan's internal session continuity. `/deep-implement` in Phase 4 reads from `.sdlc/artifacts/03-planning/section-plans/`.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no artifacts yet)
+- "Looking at the design, how would you break this into implementable sections?"
+- "Which sections have dependencies on each other?"
+- "Where do you see the most complexity or risk?"
+- "What's your implementation order preference — core-out or edge-in?"
+
+### Progress Check (some artifacts exist)
+- "Your section breakdown covers [N] sections. Do the complexity estimates feel right?"
+- "I see section [X] depends on [Y]. Is that dependency strict or could they parallelize?"
+
+### Ready Check (all artifacts present)
+- "Plans are in place. Are the sprint allocations realistic given your team capacity?"
+- "Any sections that feel under-scoped or likely to expand?"

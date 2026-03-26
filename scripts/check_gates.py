@@ -217,6 +217,77 @@ def check_phase_gates(
             "severity": gate.get("severity", "MUST"),
         })
 
+    # Gate 5: Cross-phase consistency
+    sdlc_dir = artifacts_base.parent
+    consistency_results = check_cross_phase_consistency(phase_id, sdlc_dir)
+    results.extend(consistency_results)
+
+    return results
+
+
+def check_cross_phase_consistency(
+    phase_id: int,
+    sdlc_dir: Path,
+) -> list[dict]:
+    """G5: Check locked metrics against frozen layers from prior phases."""
+    results = []
+    layers_dir = sdlc_dir / "context" / "layers"
+
+    if not layers_dir.exists() or phase_id < 1:
+        return results  # No prior phases to check
+
+    # Collect frozen layer content for prior phases
+    prior_layers = {}
+    for layer_file in sorted(layers_dir.glob("phase*.md")):
+        try:
+            layer_phase = int(layer_file.stem.split("-")[0].replace("phase", ""))
+        except (ValueError, IndexError):
+            continue
+        if layer_phase < phase_id:
+            prior_layers[layer_phase] = layer_file.read_text(
+                encoding="utf-8", errors="replace"
+            )
+
+    if not prior_layers:
+        return results
+
+    # Check for locked metrics or constraints in frozen layers
+    locked_metrics_found = False
+    for content in prior_layers.values():
+        if "## Locked Metrics" in content or "## Constraints Carried Forward" in content:
+            locked_metrics_found = True
+            break
+
+    if not locked_metrics_found:
+        return results
+
+    # Check for decision log in current phase
+    registry = get_phase_registry()
+    current_phase_def = None
+    for p in registry["phases"]:
+        if p["id"] == phase_id:
+            current_phase_def = p
+            break
+
+    if not current_phase_def:
+        return results
+
+    current_artifacts_dir = sdlc_dir / "artifacts" / f"{phase_id:02d}-{current_phase_def['name']}"
+    decision_log = current_artifacts_dir / "decision-log.md"
+
+    results.append({
+        "gate": "G5-consistency",
+        "passed": None,  # Manual check — Claude should compare values
+        "message": (
+            f"Cross-phase consistency: {len(prior_layers)} frozen layer(s) "
+            f"contain locked metrics. Verify current phase artifacts are "
+            f"consistent with prior constraints. "
+            f"Decision log {'exists' if decision_log.exists() else 'NOT FOUND — create one if any locked metrics changed'} "
+            f"at {decision_log.relative_to(sdlc_dir)}"
+        ),
+        "severity": "SHOULD",
+    })
+
     return results
 
 

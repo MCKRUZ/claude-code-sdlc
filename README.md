@@ -11,7 +11,11 @@ No existing tool combines specification-driven development + quality enforcement
 - **10 SDLC phases** — Discovery through Monitoring, each with entry/exit gates
 - **Project type routing** — Phases 6–9 adapt automatically based on `project_type` (service, app, library, skill, cli)
 - **Company profiles** — YAML configs for stack, quality thresholds, compliance, conventions
-- **5-gate validation** — Integrity, completeness, metrics, classification, quality checks at every transition
+- **6-gate validation** — Integrity, completeness, metrics, compliance, consistency, quality checks at every transition
+- **Frozen layers** — Token-efficient phase summaries enabling cross-phase context continuity
+- **3-tier context architecture** — Foundation (always), frozen layers (per-phase), references (on-demand)
+- **Narrative enhancement** — Optional stakeholder-friendly `.narrative.md` companions for technical artifacts
+- **Conversational coaching** — Adaptive dialogue mode for guided phase completion
 - **NFR measurement basis enforcement** — Every numeric threshold must declare its measurement source; aspirational thresholds require an agreed Phase 6 validation plan
 - **Test traceability** — Phase 6 requires scenario-to-requirement mapping and redundancy audit before test execution
 - **Compliance enforcement** — SOC 2, HIPAA, GDPR, PCI-DSS gate definitions
@@ -69,10 +73,10 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 |-------|-------------|
 | [Architecture](docs/architecture.md) | Plugin anatomy, component relationships, data flow diagrams, two-directory model, progressive disclosure strategy |
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 10 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
-| [Gate System](docs/gate-system.md) | 5-gate validation — integrity, completeness, metrics, classification, quality — severity levels, override protocol, compliance extensions |
+| [Gate System](docs/gate-system.md) | 6-gate validation — integrity, completeness, metrics, compliance, consistency, quality — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 7 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
-| [Agents](docs/agents.md) | 4 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
+| [Commands](docs/commands.md) | All 10 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Agents](docs/agents.md) | 5 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
 | [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, sections-progress.json |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
 | [Scripts](docs/scripts.md) | All 9 Python scripts — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
@@ -86,8 +90,12 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-setup` | Interactive setup wizard — select profile, initialize project |
 | `/sdlc` | Show current phase guidance, next action, required artifacts |
 | `/sdlc-status` | Progress dashboard with phase table and completion % |
-| `/sdlc-gate` | Run 5-gate exit criteria check (does not advance) |
+| `/sdlc-gate` | Run 6-gate exit criteria check (does not advance) |
 | `/sdlc-next` | Advance to next phase if all MUST gates pass |
+| `/sdlc-enhance` | Generate narrative companions for stakeholder review (optional) |
+| `/sdlc-coach` | Interactive coaching mode — adaptive dialogue for current phase |
+| `/sdlc-phase-report` | Generate phase HTML report with artifact inventory |
+| `/sdlc-audit` | Analyze gate effectiveness across completed phases |
 
 ## Profiles
 
@@ -139,15 +147,16 @@ Phase 0 captures `project_type`, which is stored in `state.yaml` and controls ho
 | 8 | Deployment | CI/CD | release notes (approach varies by project_type) |
 | 9 | Monitoring | Manual | monitoring config (approach varies by project_type) |
 
-## 5-Gate Validation System
+## 6-Gate Validation System
 
-Every phase transition runs through five gates:
+Every phase transition runs through six gates:
 
 1. **Integrity** — Required artifacts exist and are well-formed
 2. **Completeness** — Artifacts contain all required sections, no placeholders
 3. **Metrics** — Quantitative thresholds met (coverage, file size)
-4. **Classification** — Correct labeling (priorities, ADR status, compliance mapping)
-5. **Quality** — Holistic assessment (clarity, accuracy, consistency)
+4. **Compliance** — Correct labeling (priorities, ADR status, compliance mapping)
+5. **Consistency** — Locked metrics checked against frozen layers from prior phases
+6. **Quality** — Holistic assessment (clarity, accuracy, consistency)
 
 Gates have severity levels:
 - **MUST** — Blocks transition if failed
@@ -160,8 +169,8 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # /sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate
-├── agents/                  # orchestrator, requirements-analyst, compliance-checker
+├── commands/                # /sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-phase-report, /sdlc-audit
+├── agents/                  # orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer
 ├── profiles/                # Company/stack YAML profiles
 ├── phases/                  # Phase definitions (00–09)
 ├── references/              # Progressive disclosure docs

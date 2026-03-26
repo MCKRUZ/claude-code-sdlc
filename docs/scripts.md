@@ -301,7 +301,7 @@ Applies to phases 5 (Quality) and 6 (Testing). Checks quantitative thresholds fr
 
 **Severity:** MUST for phases 5-6, SHOULD for phase 4
 
-#### Gate 4: Classification (G4-classification)
+#### Gate 4: Compliance (G4-classification)
 
 Loads compliance-specific gates from the profile's compliance directory.
 

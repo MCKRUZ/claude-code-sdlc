@@ -7,6 +7,7 @@ Initialize SDLC lifecycle management for a project.
 ### Step 1: Check Existing Setup
 Look for `.sdlc/state.yaml` in the current directory.
 - If exists: warn the user that SDLC is already initialized. Ask if they want to view status (`/sdlc-status`) or re-initialize (destructive — requires confirmation).
+- If exists but missing `.sdlc/context/` directory: offer to upgrade the project structure by creating the missing `context/layers/` directory. This is non-destructive — it only adds new directories, doesn't modify existing state or artifacts. Run: `mkdir -p .sdlc/context/layers`
 - If not exists: proceed with setup.
 
 ### Step 2: Profile Selection
@@ -38,6 +39,8 @@ This creates:
 ├── state.yaml          # Phase tracking (Phase 0: Discovery active)
 ├── profile.yaml        # Frozen copy of selected profile
 ├── constitution.md     # Project constitution
+├── context/            # Cross-phase context (frozen layers)
+│   └── layers/         # Phase completion summaries
 └── artifacts/          # Per-phase artifact directories (00–09)
 ```
 

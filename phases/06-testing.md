@@ -167,3 +167,20 @@ To regenerate at any time: `/sdlc-phase-report`
 - E2E tests should read like user stories — what is the user trying to accomplish?
 - Defects found in testing are success, not failure — finding them here is the point.
 - Parallel test execution saves significant time. Unit, E2E, and API contract tests operate on different layers — always launch them simultaneously.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no tests written)
+- "What's your test strategy — unit-heavy, integration-heavy, or E2E-heavy?"
+- "What coverage target are you aiming for? Your profile requires [X]%."
+- "Which user journeys are most critical to test end-to-end?"
+
+### Progress Check (some tests passing)
+- "Unit tests are at [X]% coverage. Integration tests cover [Y] scenarios."
+- "E2E test [Z] is failing. Want to debug it together?"
+
+### Ready Check (test suite green)
+- "Test suite is green with [X]% coverage. Any edge cases you're worried about?"
+- "Are the E2E tests covering the critical user journeys identified in Phase 1?"

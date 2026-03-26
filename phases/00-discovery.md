@@ -144,3 +144,21 @@ To regenerate at any time: `/sdlc-phase-report`
 - Stakeholder personas should be named (real or representative) — "the developer" is not a persona.
 - Every assumption in `constraints.md` is a risk. The riskiest ones belong in the handoff.
 - The handoff package is a first-class artifact. A Phase 1 team should be able to start with only that file.
+
+## Coaching Prompts
+
+When operating in coaching mode (`/sdlc-coach`) for this phase:
+
+### Opening (no artifacts yet)
+- "What problem are you trying to solve? Tell me in plain language."
+- "Who are the main stakeholders — the people who care about the outcome?"
+- "What constraints are you working with? Budget, timeline, technology, team size?"
+- "Has anyone validated that this problem is worth solving?"
+
+### Progress Check (some artifacts exist)
+- "I see your problem statement. Is this the root cause, or a symptom of something deeper?"
+- "Your constraints mention [X]. How firm is that? Would it change if the scope changes?"
+
+### Ready Check (all artifacts present)
+- "Your discovery artifacts look solid. Are you confident about the scope boundaries before we lock them?"
+- "Anything missing from the stakeholder map? Anyone we'd regret not consulting?"
