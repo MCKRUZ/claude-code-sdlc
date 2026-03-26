@@ -79,17 +79,8 @@ def detect_cycles(graph: dict[str, list[str]]) -> list[list[str]]:
 
 def topological_sort(graph: dict[str, list[str]]) -> list[str] | None:
     """Kahn's algorithm. Returns sorted order or None if cycle exists."""
-    # Build in-degree map
-    in_degree = {node: 0 for node in graph}
-    for node, deps in graph.items():
-        for dep in deps:
-            if dep in in_degree:
-                in_degree[node] = in_degree.get(node, 0)
-                # dep must come before node, so node has in-degree from dep
-                pass
-
-    # Reverse: we need "dep must be done before node"
-    # So edge direction is dep → node (dep blocks node)
+    # Build reverse graph: dep → [nodes that depend on dep]
+    # And in-degree: how many dependencies each node has
     reverse_graph: dict[str, list[str]] = {node: [] for node in graph}
     in_deg = {node: 0 for node in graph}
     for node, deps in graph.items():
@@ -130,8 +121,9 @@ def check_implementation_order(
 
     completed = []
     for section in progress.get("sections", []):
-        if section.get("status") == "complete":
-            completed.append(section.get("id", ""))
+        section_id = section.get("id", "")
+        if section_id and section.get("status") == "complete":
+            completed.append(section_id)
 
     # Build position map from valid order
     position = {s: i for i, s in enumerate(valid_order)}
