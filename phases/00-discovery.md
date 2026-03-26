@@ -13,6 +13,24 @@ Understand the problem space deeply enough that a stakeholder who has never hear
 
 > **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? (5) What type of system is this? Choose one: **service** (backend API / server process), **app** (user-facing application with UI), **library** (shared code package / SDK), **skill** (Claude Code skill / AI plugin / prompt-based tool), **cli** (command-line tool). Record the answer as `project_type` in `state.yaml` — it determines which Phase 6–9 templates apply. Use these answers to anchor the artifacts — do not invent the problem framing.
 
+### Step 0b: Brownfield Detection (Conditional)
+
+If the project directory contains existing source code (not just `.sdlc/`), run a workspace scan before writing artifacts:
+
+1. **Detect existing codebase:** Check for `src/`, `lib/`, `app/`, `package.json`, `*.csproj`, `*.sln`, `Cargo.toml`, `go.mod`, or other language markers
+2. **If brownfield (existing code found):**
+   - Spawn an `Explore` agent to analyze the codebase
+   - Generate a brief workspace analysis in `.sdlc/artifacts/00-discovery/workspace-analysis.md`:
+     - **Tech stack:** Languages, frameworks, databases, cloud services detected
+     - **Architecture:** High-level structure (monolith, microservices, serverless, etc.)
+     - **Code metrics:** Approximate file count, line count, test coverage if detectable
+     - **Dependencies:** Key external dependencies and their versions
+     - **Entry points:** Main files, API routes, CLI commands
+   - This analysis feeds into Steps 1-4 — the problem statement and design should account for existing code
+3. **If greenfield (no existing code):** Skip this step entirely
+
+> CHECKPOINT: If workspace analysis was generated, confirm with the human: "I've analyzed the existing codebase. Does this summary look accurate? Any systems or patterns I missed?"
+
 ### Step 1: Problem Identification
 Conduct stakeholder interviews or document the problem statement. Dig until you have:
 - **Observable symptoms** — what people actually experience, not the inferred cause

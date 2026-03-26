@@ -450,26 +450,49 @@ def check_cross_phase_consistency(
 
 
 def format_results(results: list[dict], phase_id: int) -> str:
-    lines = [f"Gate Check Results — Phase {phase_id}", "=" * 40]
+    lines = [f"Gate Check Results — Phase {phase_id}", "=" * 50]
     passed = sum(1 for r in results if r["passed"] is True)
     failed = sum(1 for r in results if r["passed"] is False)
     manual = sum(1 for r in results if r["passed"] is None)
+    info = sum(1 for r in results if r.get("severity") == "INFO")
     total = len(results)
 
+    # Group results by gate for compliance-checklist style output
+    gate_groups: dict[str, list[dict]] = {}
     for r in results:
-        icon = "PASS" if r["passed"] is True else "FAIL" if r["passed"] is False else "MANUAL"
-        sev = r.get("severity", "")
-        lines.append(f"  [{icon}] [{sev}] {r['gate']}: {r['message']}")
+        gate = r["gate"]
+        gate_groups.setdefault(gate, []).append(r)
 
-    lines.append("")
-    lines.append(f"Summary: {passed} passed, {failed} failed, {manual} manual — {total} total")
+    for gate, gate_results in gate_groups.items():
+        lines.append(f"\n  [{gate}]")
+        for r in gate_results:
+            if r["passed"] is True:
+                status = "COMPLIANT"
+            elif r["passed"] is False:
+                status = "NON-COMPLIANT"
+            elif r.get("severity") == "INFO":
+                status = "INFO"
+            else:
+                status = "REVIEW"
+            sev = r.get("severity", "")
+            lines.append(f"    {status:<14} [{sev}] {r['message']}")
+
+    lines.append(f"\n{'=' * 50}")
+    lines.append(f"Summary: {passed} compliant, {failed} non-compliant, {manual} review, {info} info — {total} total")
 
     if failed > 0:
-        lines.append("BLOCKED — fix failures before advancing to next phase")
+        must_failures = sum(
+            1 for r in results
+            if r["passed"] is False and r.get("severity") == "MUST"
+        )
+        if must_failures:
+            lines.append(f"BLOCKED — {must_failures} MUST gate(s) non-compliant. Fix before advancing.")
+        else:
+            lines.append("WARNINGS — non-compliant items are SHOULD severity (advisory, not blocking)")
     elif manual > 0:
         lines.append("REVIEW — manual checks require human verification")
     else:
-        lines.append("ALL GATES PASSED — ready to advance")
+        lines.append("ALL GATES COMPLIANT — ready to advance")
 
     return "\n".join(lines)
 

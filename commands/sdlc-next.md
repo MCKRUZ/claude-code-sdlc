@@ -90,23 +90,38 @@ Run exit gate checks for the current phase and advance to the next phase if all 
 
    4. For each open question, you MUST propose a reasonable default answer based on everything you know about the project (state.yaml, previous handoffs, artifacts, profile). NEVER leave a question without a proposed default.
    5. **WAIT for the user to respond.** Do NOT continue to step 8. Do NOT begin writing any artifacts. Do NOT summarize next steps as if work can begin.
-   6. If the user confirms or provides answers, record the resolutions in the handoff document under a "Resolved Questions" section with timestamps.
-   7. Only after EVERY open question has a confirmed resolution may you proceed to step 8.
+   6. **Write questions to file for audit trail:** In addition to displaying questions in chat, write them to `.sdlc/artifacts/{NN}-{phase-name}/open-questions.md` with this format:
+      ```markdown
+      # Open Questions — Phase {N}: {Name}
+      Generated: {ISO timestamp}
+      Status: PENDING
 
-   **If there are no open questions** in the handoff document, explicitly state: "No open questions found in the handoff. Proceeding to phase guidance." Then continue to step 8.
+      | ID | Question | Needed by | Proposed Default | Answer |
+      |----|----------|-----------|------------------|--------|
+      | AQ-01 | [question] | [who] | [default] | |
+      | AQ-02 | [question] | [who] | [default] | |
+
+      Instructions: Fill in the Answer column, then confirm with Claude.
+      ```
+      This creates a durable audit trail of every decision. For team projects, others can review and fill answers asynchronously.
+   7. **WAIT for the user to respond.** Do NOT continue to step 8.
+   8. If the user confirms or provides answers, update `open-questions.md` with answers and set Status to RESOLVED. Also record in the handoff document under a "Resolved Questions" section with timestamps.
+   9. Only after EVERY open question has a confirmed resolution may you proceed to step 10.
+
+   **If there are no open questions** in the handoff document, explicitly state: "No open questions found in the handoff. Proceeding to phase guidance." Then continue to step 10.
 
    **NEVER skip this gate.** NEVER start Phase N artifacts while open questions remain unresolved. Violating this gate undermines the entire HITL workflow.
 
-8. **Show next phase guidance:** After advancing AND after the HITL gate in step 7 is fully resolved, display:
-   - New phase name and description
-   - Primary skills to use
-   - Required artifacts to produce
-   - Entry criteria (already met by advancing)
-   - Reference to phase definition file for full details
+10. **Show next phase guidance:** After advancing AND after the HITL gate in step 7 is fully resolved, display:
+    - New phase name and description
+    - Primary skills to use
+    - Required artifacts to produce
+    - Entry criteria (already met by advancing)
+    - Reference to phase definition file for full details
 
-   **Reminder: Do NOT begin writing any of these artifacts until the HITL gate (step 7) is fully resolved.** If you skipped step 7 or the user has not confirmed answers to all open questions, STOP and go back to step 7 now.
+    **Reminder: Do NOT begin writing any of these artifacts until the HITL gate (step 7) is fully resolved.** If you skipped step 7 or the user has not confirmed answers to all open questions, STOP and go back to step 7 now.
 
-9. **Edge case — Phase 9:** If already at Phase 9 (Monitoring) and gates pass, mark the project as complete. Congratulate the user and mention the post-SDLC re-entry points for future work.
+11. **Edge case — Phase 9:** If already at Phase 9 (Monitoring) and gates pass, mark the project as complete. Congratulate the user and mention the post-SDLC re-entry points for future work.
 
 ## Important
 - This command modifies state — it advances `current_phase` in state.yaml.
