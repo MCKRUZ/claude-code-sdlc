@@ -20,6 +20,13 @@ For each stakeholder pain from the problem statement, define what the system mus
 - Group by functional domain
 - Every P0 must trace to a Phase 0 pain point
 
+**Error Specification (REQUIRED for every P0/P1 requirement):** Each requirement must explicitly define:
+- **Accepts:** What valid inputs/preconditions does this requirement expect?
+- **Returns:** What is the expected output/postcondition on success?
+- **Errors:** What happens when inputs are invalid, services are unavailable, or preconditions aren't met? List each error case with the expected behavior.
+
+Vague error handling like "handle invalid input gracefully" is not acceptable. Specify: "If email format is invalid, return 400 with field-level error message identifying the invalid field."
+
 ### Step 2: Non-Functional Requirements
 Define measurable quality attributes — quantify every single one:
 - Performance: response time, throughput, load conditions

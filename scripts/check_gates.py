@@ -77,6 +77,51 @@ def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, s
     return True, f"File '{artifact}' is complete"
 
 
+def check_cross_references(artifacts_dir: Path) -> list[dict]:
+    """Check that file references within artifacts resolve to existing files."""
+    import re
+
+    results = []
+    if not artifacts_dir.exists():
+        return results
+
+    # Collect all artifact filenames in the sdlc directory tree
+    sdlc_dir = artifacts_dir.parent
+    existing_files = set()
+    for fp in sdlc_dir.rglob("*"):
+        if fp.is_file():
+            existing_files.add(fp.name)
+            existing_files.add(str(fp.relative_to(sdlc_dir)).replace("\\", "/"))
+
+    # Scan each markdown artifact for file references
+    for artifact_path in sorted(artifacts_dir.rglob("*.md")):
+        content = artifact_path.read_text(encoding="utf-8", errors="replace")
+        artifact_name = artifact_path.name
+
+        # Find markdown-style references and backtick references to .md/.yaml/.json files
+        refs = re.findall(
+            r'(?:`([^`]+\.(?:md|yaml|json|html))`'
+            r'|\[[^\]]*\]\(([^)]+\.(?:md|yaml|json|html))\))',
+            content,
+        )
+        for groups in refs:
+            ref = groups[0] or groups[1]
+            # Strip leading paths like .sdlc/ or artifacts/
+            ref_name = ref.split("/")[-1] if "/" in ref else ref
+            if ref_name not in existing_files and ref not in existing_files:
+                # Skip known external/template refs
+                if ref.startswith("http") or "${" in ref or ref.startswith("<"):
+                    continue
+                results.append({
+                    "gate": "cross-reference",
+                    "passed": False,
+                    "message": f"'{artifact_name}' references '{ref}' which was not found in .sdlc/",
+                    "severity": "SHOULD",
+                })
+
+    return results
+
+
 def compute_checksum(file_path: Path) -> str:
     """Compute SHA-256 hash of a file (first 16 hex chars)."""
     h = hashlib.sha256()
@@ -182,6 +227,10 @@ def check_phase_gates(
             "message": message,
             "severity": "MUST",
         })
+
+    # Cross-artifact reference validation
+    xref_results = check_cross_references(artifacts_dir)
+    results.extend(xref_results)
 
     # Phase 4 optional: sections-progress.json consistency check
     if phase_id == 4:

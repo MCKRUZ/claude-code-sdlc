@@ -58,6 +58,12 @@ Evaluate artifacts from 4 viewpoints. Each viewpoint produces 2-3 specific findi
 - Are there authentication/authorization gaps? Data exposure risks?
 - Does input validation cover all entry points?
 
+**Consistency & ambiguity audit** (always runs in council mode):
+- Are there contradictions between artifacts? (e.g., requirement says X, design says Y)
+- Are there ambiguous statements that could be interpreted multiple ways?
+- Do cross-artifact references resolve? (e.g., "see design-doc.md" — does it exist?)
+- Are locked metrics (budget, timeline, scope) consistent with frozen layers from prior phases?
+
 ## Output Format
 
 Write the review report to `.sdlc/artifacts/{NN}-{phase}/review-report.md`:
