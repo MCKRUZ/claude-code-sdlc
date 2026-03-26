@@ -129,9 +129,12 @@ def md_to_html(text: str) -> str:
 
     def flush_code():
         nonlocal in_code, code_buf, code_lang
-        lang_class = f' class="language-{html.escape(code_lang)}"' if code_lang else ""
-        body = html.escape("\n".join(code_buf))
-        output.append(f'<pre><code{lang_class}>{body}</code></pre>')
+        body_raw = "\n".join(code_buf)
+        if code_lang == "mermaid":
+            output.append(f'<pre class="mermaid">{html.escape(body_raw)}</pre>')
+        else:
+            lang_class = f' class="language-{html.escape(code_lang)}"' if code_lang else ""
+            output.append(f'<pre><code{lang_class}>{html.escape(body_raw)}</code></pre>')
         in_code = False
         code_buf = []
         code_lang = ""
@@ -647,6 +650,10 @@ const observer = new IntersectionObserver(entries => {{
   }});
 }}, {{ threshold: 0.3 }});
 sections.forEach(s => observer.observe(s));
+</script>
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({{ startOnLoad: true, theme: 'dark', themeVariables: {{ primaryColor: '#a78bfa', primaryTextColor: '#e2e8f0', lineColor: '#64748b', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }} }});
 </script>
 </body>
 </html>
@@ -1179,6 +1186,10 @@ body {{
   <span>{generated_at}</span>
 </div>
 
+<script type="module">
+import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+mermaid.initialize({{ startOnLoad: true, theme: 'dark', themeVariables: {{ primaryColor: '#a78bfa', primaryTextColor: '#e2e8f0', lineColor: '#64748b', secondaryColor: '#1e293b', tertiaryColor: '#0f172a' }} }});
+</script>
 </body>
 </html>
 """
