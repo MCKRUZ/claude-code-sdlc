@@ -26,6 +26,13 @@ No existing tool combines specification-driven development + quality enforcement
 - **Dependency graph enforcement** — Section dependency DAG validated in Phase 4; circular dependencies detected; implementation order enforced
 - **Multi-perspective review** — `/sdlc-review` with adversarial, edge-case, and council modes for thorough artifact review
 - **Brainstorming techniques** — SCAMPER, reverse brainstorming, constraint removal, and 3 more structured ideation methods with anti-bias protocol
+- **Brownfield detection** — Auto-detects existing codebases and generates workspace analysis before Discovery begins
+- **Structured error specs** — P0/P1 requirements must define Accepts/Returns/Errors explicitly
+- **Cross-artifact validation** — File-level reference checking between artifacts (SHOULD severity)
+- **Question-to-file audit trail** — Open questions written to persistent markdown files for team collaboration
+- **Test expansion protocol** — Healer (diagnose failures), Expander (add edge cases), bug-to-test pipeline (RED first)
+- **Parallel review resolution** — Batch review findings by file, resolve in parallel, re-verify after fix
+- **Advanced elicitation** — Constraint analysis, inverse thinking, pre-mortem, 5 whys, and more for coaching mode
 - **Phase-aware context** — Hooks inject current phase reminders and conventions
 
 ## Installation

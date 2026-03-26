@@ -31,6 +31,12 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 - **Smart repair** — `gate-repair` agent auto-fixes structural gate failures (missing templates, placeholders)
 - **Dependency enforcement** — `check_dependencies.py` validates section DAG and implementation order
 - **Multi-perspective review** — `/sdlc-review` with adversarial, edge-case, and council modes
+- **Brownfield detection** — Auto workspace scan in Phase 0 for existing codebases
+- **Structured error specs** — Accepts/Returns/Errors required for P0/P1 requirements
+- **Cross-artifact validation** — File reference checking between markdown artifacts
+- **Question-to-file** — HITL open questions persisted to `open-questions.md` for audit trail
+- **Test expansion** — Healer/Expander/bug-to-test patterns in Phase 6
+- **Parallel review resolution** — Batch review findings by file in Phase 5
 
 ## Testing
 ```bash
