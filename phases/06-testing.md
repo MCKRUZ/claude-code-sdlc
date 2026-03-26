@@ -21,7 +21,7 @@ Execute a comprehensive test strategy and produce coverage evidence that meets p
 
 ### Step 0: HITL Gate — Confirm Test Scope
 
-> **HITL GATE:** Before writing the test plan, read `phase6-handoff.md`. Present the following to the human: (1) Confirm test scope — what is in and what is out of testing? (2) Are the profile coverage targets (`coverage_minimum`, `coverage_critical`) acceptable for this project, or should they be adjusted? (3) Are there specific edge cases, user scenarios, or failure modes the human wants covered? (4) For `skill` projects: confirm the scenario list covers the full requirement set — present the requirement-to-scenario mapping for review. Do not write `test-plan.md` until the human confirms the test scope.
+> **HITL GATE:** Before writing the test plan, read `phase6-handoff.md`. Present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Confirm test scope — what is in and what is out of testing? (2) Are the profile coverage targets (`coverage_minimum`, `coverage_critical`) acceptable for this project, or should they be adjusted? (3) Are there specific edge cases, user scenarios, or failure modes the human wants covered? (4) For `skill` projects: confirm the scenario list covers the full requirement set — present the requirement-to-scenario mapping for review. Do not write `test-plan.md` until the human confirms the test scope.
 
 ### Step 1: Test Plan
 Define the testing strategy before executing:

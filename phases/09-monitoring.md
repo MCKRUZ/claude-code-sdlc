@@ -26,7 +26,7 @@ Establish production observability so the team knows about problems before users
 
 ### Step 0: HITL Gate — Monitoring Scope
 
-> **HITL GATE:** Before configuring any monitoring, read `phase9-handoff.md` and present the following to the human: (1) Top 3 things that could go wrong in production — what are the highest-risk failure modes? (2) Who gets paged, and at what threshold? (3) What existing monitoring infrastructure exists — are we adding to Grafana/Datadog/CloudWatch or starting from scratch? (4) For `skill`/`library` projects: confirm we are using the lightweight monitoring path (issue triage + feedback channels, not dashboards). Get explicit monitoring scope approval before proceeding to Step 1.
+> **HITL GATE:** Before configuring any monitoring, read `phase9-handoff.md` and present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Top 3 things that could go wrong in production — what are the highest-risk failure modes? (2) Who gets paged, and at what threshold? (3) What existing monitoring infrastructure exists — are we adding to Grafana/Datadog/CloudWatch or starting from scratch? (4) For `skill`/`library` projects: confirm we are using the lightweight monitoring path (issue triage + feedback channels, not dashboards). Get explicit monitoring scope approval before proceeding to Step 1.
 
 ### Step 1: Monitoring Configuration
 

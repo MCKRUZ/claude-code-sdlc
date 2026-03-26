@@ -12,7 +12,7 @@ Translate the design into a sequenced, estimated, dependency-mapped implementati
 
 ### Step 0: HITL Gate — Approve Section Boundaries Before Writing Plans
 
-> **HITL GATE:** Read `phase3-handoff.md`. Draft the proposed section breakdown (names, scope, rough order) as a short list. Present it to the human for approval **before** creating any SECTION-NNN.md files. The human may split sections, merge them, reorder them, or flag scope concerns. Section boundaries are hard to change once sprint plans are written around them.
+> **HITL GATE:** Read `phase3-handoff.md`. Draft the proposed section breakdown (names, scope, rough order) as a short list. Present it to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions — for approval **before** creating any SECTION-NNN.md files. The human may split sections, merge them, reorder them, or flag scope concerns. Section boundaries are hard to change once sprint plans are written around them.
 
 ### Step 1: Resume /deep-plan (Steps 16–22)
 

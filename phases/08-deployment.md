@@ -24,7 +24,7 @@ Deploy the system to production safely, with documented rollback capability, ver
 
 ### Step 0: HITL Gate — Deployment Go/No-Go
 
-> **HITL GATE (most critical gate in the lifecycle):** Before any deployment activity, read `phase8-handoff.md` and present the following to the human: (1) Deployment target and strategy — blue/green, rolling, canary, or direct replacement? (2) Rollback plan — what is the trigger condition, what is the exact procedure? (3) Who must be notified before, during, and after deployment? (4) Is this staging-only or staging + production? (5) Deployment window — when does it start, how long is the maintenance window? **Do NOT proceed to Step 1 without explicit human go/no-go.** A deployment without human approval is not a deployment — it is an incident.
+> **HITL GATE (most critical gate in the lifecycle):** Before any deployment activity, read `phase8-handoff.md` and present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Deployment target and strategy — blue/green, rolling, canary, or direct replacement? (2) Rollback plan — what is the trigger condition, what is the exact procedure? (3) Who must be notified before, during, and after deployment? (4) Is this staging-only or staging + production? (5) Deployment window — when does it start, how long is the maintenance window? **Do NOT proceed to Step 1 without explicit human go/no-go.** A deployment without human approval is not a deployment — it is an incident.
 
 ### Step 1: Pre-Deployment Checklist
 Verify all deployment prerequisites:

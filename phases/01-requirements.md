@@ -11,7 +11,7 @@ Decompose the problem statement into a complete, prioritized, and verifiable set
 
 ### Step 0: HITL Gate — Confirm Scope Before Writing Requirements
 
-> **HITL GATE:** Read `phase1-handoff.md`. Confirm with the human: (1) Are the open questions (Q-NN) from Discovery answered? (2) Is the prioritization (P0/P1/P2) clear? (3) Are there any requirements the human expects that weren't captured in Discovery? Do not begin writing requirements until the human confirms scope.
+> **HITL GATE:** Read `phase1-handoff.md`. Confirm with the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Are the open questions (Q-NN) from Discovery answered? (2) Is the prioritization (P0/P1/P2) clear? (3) Are there any requirements the human expects that weren't captured in Discovery? Do not begin writing requirements until the human confirms scope.
 
 ### Step 1: Functional Requirements
 For each stakeholder pain from the problem statement, define what the system must DO:

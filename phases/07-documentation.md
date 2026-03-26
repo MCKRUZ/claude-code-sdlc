@@ -23,7 +23,7 @@ Ensure all documentation reflects the system as built — not as planned. A new 
 
 ### Step 0: HITL Gate — Scope the Documentation
 
-> **HITL GATE:** Before writing any documentation, read `phase7-handoff.md` and review the current state of any existing docs. Present the following to the human: (1) Who is the primary audience for each document — developers, operators, end users? (2) Which docs already exist and need updating vs. which must be created from scratch? (3) Are there company-specific documentation standards or templates to follow? (4) For `library`/`skill` projects: confirm which artifacts are applicable and which should be skipped. Do not begin Step 1 until the human confirms the documentation scope.
+> **HITL GATE:** Before writing any documentation, read `phase7-handoff.md` and review the current state of any existing docs. Present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Who is the primary audience for each document — developers, operators, end users? (2) Which docs already exist and need updating vs. which must be created from scratch? (3) Are there company-specific documentation standards or templates to follow? (4) For `library`/`skill` projects: confirm which artifacts are applicable and which should be skipped. Do not begin Step 1 until the human confirms the documentation scope.
 
 ### Step 1: Parallel Documentation Launch
 

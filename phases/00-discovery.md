@@ -11,7 +11,7 @@ Understand the problem space deeply enough that a stakeholder who has never hear
 
 ### Step 0: HITL Gate — Frame the Problem with the Human
 
-> **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? (5) What type of system is this? Choose one: **service** (backend API / server process), **app** (user-facing application with UI), **library** (shared code package / SDK), **skill** (Claude Code skill / AI plugin / prompt-based tool), **cli** (command-line tool). Record the answer as `project_type` in `state.yaml` — it determines which Phase 6–9 templates apply. Use these answers to anchor the artifacts — do not invent the problem framing.
+> **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? (5) What type of system is this? Choose one: **service** (backend API / server process), **app** (user-facing application with UI), **library** (shared code package / SDK), **skill** (Claude Code skill / AI plugin / prompt-based tool), **cli** (command-line tool). Record the answer as `project_type` in `state.yaml` — it determines which Phase 6–9 templates apply. Use these answers to anchor the artifacts — do not invent the problem framing.
 
 ### Step 0b: Brownfield Detection (Conditional)
 

@@ -21,7 +21,7 @@ Systematically review the implementation for correctness, security, and maintain
 
 ### Step 0: HITL Gate — Scope the Review
 
-> **HITL GATE:** Before launching reviewers, read `phase5-handoff.md`. Present the following to the human: (1) Which areas of the implementation got the most deviation from the original plan? These deserve deeper review. (2) Are there any known risk areas from implementation — complex logic, concurrency, external integrations? (3) Are there compliance-specific checks needed beyond the standard code and security review? (4) For `skill` projects: confirm that the review will focus on instruction quality and prompt safety rather than traditional code metrics. Get human confirmation of the review scope before spawning agents.
+> **HITL GATE:** Before launching reviewers, read `phase5-handoff.md`. Present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Which areas of the implementation got the most deviation from the original plan? These deserve deeper review. (2) Are there any known risk areas from implementation — complex logic, concurrency, external integrations? (3) Are there compliance-specific checks needed beyond the standard code and security review? (4) For `skill` projects: confirm that the review will focus on instruction quality and prompt safety rather than traditional code metrics. Get human confirmation of the review scope before spawning agents.
 
 ### Step 1: Parallel Review Launch
 

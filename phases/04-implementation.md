@@ -56,7 +56,7 @@ If `session-handoff.json` exists in `.sdlc/artifacts/04-implementation/`, read i
 **0h. Initialize sections-progress.json.**
 If `sections-progress.json` does not exist in `.sdlc/artifacts/04-implementation/`, create it from the template, populating the `sections` array from section plans and the `sprints` array from `sprint-plan.md`. Update the `total_sections` count. If it already exists, verify it matches the current section plan set.
 
-> **HITL GATE:** Present the proposed agent execution plan (which agents, which sections, parallel groups, TDD enforcement) to the human. Get explicit approval before beginning implementation.
+> **HITL GATE:** Present the proposed agent execution plan (which agents, which sections, parallel groups, TDD enforcement) to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions. Get explicit approval before beginning implementation.
 
 ### Step 1: Per-Section Execution (repeat for each section)
 
