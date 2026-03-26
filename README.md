@@ -21,6 +21,11 @@ No existing tool combines specification-driven development + quality enforcement
 - **Compliance enforcement** — SOC 2, HIPAA, GDPR, PCI-DSS gate definitions
 - **Skill orchestration** — Maps phases to existing skills (`/deep-plan`, `/deep-implement`, `/tdd`, `/code-review`, `/security-review`, `/e2e`)
 - **State machine** — Tracks progress in `.sdlc/state.yaml` with full audit trail
+- **Artifact checksums + dirty tracking** — SHA-256 hashes detect changed artifacts; gate checks skip unchanged files for faster validation
+- **Smart repair** — Gate failures on structural issues (missing templates, placeholders) are auto-fixed before escalating to human
+- **Dependency graph enforcement** — Section dependency DAG validated in Phase 4; circular dependencies detected; implementation order enforced
+- **Multi-perspective review** — `/sdlc-review` with adversarial, edge-case, and council modes for thorough artifact review
+- **Brainstorming techniques** — SCAMPER, reverse brainstorming, constraint removal, and 3 more structured ideation methods with anti-bias protocol
 - **Phase-aware context** — Hooks inject current phase reminders and conventions
 
 ## Installation
@@ -75,11 +80,11 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 10 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
 | [Gate System](docs/gate-system.md) | 6-gate validation — integrity, completeness, metrics, compliance, consistency, quality — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 10 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
-| [Agents](docs/agents.md) | 5 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
+| [Commands](docs/commands.md) | All 11 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Agents](docs/agents.md) | 7 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
 | [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, sections-progress.json |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
-| [Scripts](docs/scripts.md) | All 9 Python scripts — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
+| [Scripts](docs/scripts.md) | All 12 Python scripts — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
 | [Integrations](docs/integrations.md) | How /deep-plan, /deep-implement, /tdd, /code-review map into SDLC phases, artifact transformation pipeline |
 | [Hooks](docs/hooks.md) | Session-start and phase-inject hooks — what they read, what they inject, session continuity, convention reminders |
 
@@ -95,6 +100,7 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-enhance` | Generate narrative companions for stakeholder review (optional) |
 | `/sdlc-coach` | Interactive coaching mode — adaptive dialogue for current phase |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory |
+| `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases |
 
 ## Profiles
@@ -169,8 +175,8 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # /sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-phase-report, /sdlc-audit
-├── agents/                  # orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer
+├── commands/                # 11 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-phase-report, /sdlc-audit)
+├── agents/                  # 7 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer)
 ├── profiles/                # Company/stack YAML profiles
 ├── phases/                  # Phase definitions (00–09)
 ├── references/              # Progressive disclosure docs
