@@ -8,7 +8,7 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 |-------|---------------|-----------------|-------|
 | 0 Discovery | `/plan` | — | Manual elicitation + structured planning |
 | 1 Requirements | `/deep-project` | `/plan` | Decompose into planning units |
-| 2 Design | `/deep-plan` | `/plan` | Architecture + ADRs via deep planning |
+| 2 Design | `/deep-plan` | `/plan`, `/visual-explainer` | Architecture + ADRs via deep planning. Visual diagrams via `/visual-explainer`. |
 | 3 Planning | `/deep-plan` | — | Section-level planning with TDD |
 | 4 Implementation | `/deep-implement`, `/tdd` | `/code-review` | TDD-driven implementation |
 | 5 Quality | `/code-review`, `/security-review` | — | Review gates before testing |
@@ -74,6 +74,14 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 - **Purpose:** Analyze and report test coverage
 - **Input:** Test suite
 - **Output:** Coverage report vs. profile thresholds
+
+### /visual-explainer
+- **Phase:** Design (2)
+- **Purpose:** Generate self-contained HTML pages with rendered architecture diagrams (Mermaid flowcharts, CSS layer diagrams, dependency DAGs, trust boundary models)
+- **Input:** Architecture details from `design-doc.md`, component lists, data flows, section dependencies, trust boundaries
+- **Output:** `.sdlc/reports/architecture-diagrams.html` — self-contained HTML with interactive Mermaid diagrams, zoom controls, and sticky TOC navigation
+- **Required diagrams:** Architecture layers, core flow, data flow, section dependencies, trust boundaries
+- **Fallback:** If `/visual-explainer` skill is not installed, generate equivalent HTML directly using Mermaid CDN. Never fall back to ASCII art.
 
 ### /update-docs
 - **Phase:** Documentation (7)

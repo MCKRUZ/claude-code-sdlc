@@ -3,11 +3,25 @@
 ## Purpose
 Systematically review the implementation for correctness, security, and maintainability. Every CRITICAL and HIGH finding must be resolved before testing begins. Phase 5 is a gate, not a formality.
 
+## Project Type Adaptation
+
+**Before starting Phase 5, read `project_type` from `state.yaml`.**
+
+| project_type | Quality Focus |
+|--------------|--------------|
+| `service` / `app` | Full OWASP scan, coverage instrumentation, file/function size metrics. All security categories apply. |
+| `library` / `cli` | Focus on public API surface, backwards compatibility, and dependency audit. Skip infrastructure security checks (CSRF, server config, etc.). |
+| `skill` | No compiled code to instrument for coverage. Quality = instruction clarity, edge case handling, prompt injection resistance. Replace code coverage metrics with requirement coverage review. Security review focuses on prompt safety (injection, jailbreak, data leakage), not OWASP infrastructure categories. |
+
 ## Entry Criteria
 - Phase 4 exit gate passed and `phase5-handoff.md` reviewed
 - All unit tests passing, no compilation errors
 
 ## Workflow
+
+### Step 0: HITL Gate — Scope the Review
+
+> **HITL GATE:** Before launching reviewers, read `phase5-handoff.md`. Present the following to the human: (1) Which areas of the implementation got the most deviation from the original plan? These deserve deeper review. (2) Are there any known risk areas from implementation — complex logic, concurrency, external integrations? (3) Are there compliance-specific checks needed beyond the standard code and security review? (4) For `skill` projects: confirm that the review will focus on instruction quality and prompt safety rather than traditional code metrics. Get human confirmation of the review scope before spawning agents.
 
 ### Step 1: Parallel Review Launch
 
@@ -67,7 +81,19 @@ Summarize findings, fixes applied, and anything testing should specifically vali
 
 Incorporate `refactor-cleaner` findings into the handoff — note which cleanup items were addressed and which are deferred.
 
-### Step 6: Generate Phase Report
+### Step 6: Generate Visual Report
+
+Generate an interactive HTML visual report at `.sdlc/reports/phase05-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+
+**Required visualizations for Phase 5 (Quality):**
+- Code review findings by severity (bar chart or table)
+- Security review findings (critical/high/medium/low)
+- Quality metrics vs profile thresholds
+- Remediation status tracker
+
+See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
+
+### Step 7: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase05-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications

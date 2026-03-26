@@ -59,7 +59,19 @@ Package everything Phase 1 needs:
 - Risks to carry forward
 - Recommended starting point for requirements
 
-### Step 7: Generate Phase Report
+### Step 7: Generate Visual Report
+
+Generate an interactive HTML visual report at `.sdlc/reports/phase00-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+
+**Required visualizations for Phase 0 (Discovery):**
+- Stakeholder persona cards with pain points
+- Current state flow diagram (ASCII → Mermaid)
+- Success criteria dashboard (baseline → target → stretch per dimension)
+- Scope boundaries (in-scope vs out-of-scope)
+
+See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
+
+### Step 8: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase00-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications

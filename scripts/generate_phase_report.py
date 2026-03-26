@@ -125,8 +125,7 @@ def md_to_html(text: str) -> str:
     code_lang = ""
     code_buf: list[str] = []
     in_table = False
-    in_list = False
-    list_depth = 0
+    list_stack: list[str] = []  # stack of "ul" or "ol" tags
 
     def flush_code():
         nonlocal in_code, code_buf, code_lang
@@ -138,10 +137,9 @@ def md_to_html(text: str) -> str:
         code_lang = ""
 
     def flush_list():
-        nonlocal in_list
-        if in_list:
-            output.append("</ul>")
-            in_list = False
+        while list_stack:
+            tag = list_stack.pop()
+            output.append(f"</{tag}>")
 
     def flush_table():
         nonlocal in_table
@@ -214,20 +212,36 @@ def md_to_html(text: str) -> str:
         m = re.match(r"^(\s*)[-*+]\s+(.*)", line)
         if m:
             flush_table()
-            if not in_list:
+            indent = len(m.group(1))
+            depth = indent // 2 + 1
+            while len(list_stack) > depth:
+                output.append(f"</{list_stack.pop()}>")
+            if len(list_stack) < depth:
                 output.append("<ul>")
-                in_list = True
-            output.append(f"<li>{inline(html.escape(m.group(2)))}</li>")
+                list_stack.append("ul")
+            elif list_stack and list_stack[-1] != "ul":
+                output.append(f"</{list_stack.pop()}>")
+                output.append("<ul>")
+                list_stack.append("ul")
+            output.append(f"<li>{inline(m.group(2))}</li>")
             continue
 
         # Numbered list
         m = re.match(r"^(\s*)\d+\.\s+(.*)", line)
         if m:
             flush_table()
-            if not in_list:
+            indent = len(m.group(1))
+            depth = indent // 2 + 1
+            while len(list_stack) > depth:
+                output.append(f"</{list_stack.pop()}>")
+            if len(list_stack) < depth:
                 output.append("<ol>")
-                in_list = True
-            output.append(f"<li>{inline(html.escape(m.group(2)))}</li>")
+                list_stack.append("ol")
+            elif list_stack and list_stack[-1] != "ol":
+                output.append(f"</{list_stack.pop()}>")
+                output.append("<ol>")
+                list_stack.append("ol")
+            output.append(f"<li>{inline(m.group(2))}</li>")
             continue
 
         # Blank line
@@ -688,12 +702,21 @@ def load_state(state_path: Path) -> dict:
 
 
 def find_artifact(project_root: Path, phase_num: int, filename: str) -> Path | None:
-    """Search for an artifact in .sdlc/artifacts/phaseNN/ or project root."""
+    """Search for an artifact in .sdlc/artifacts/ (multiple naming conventions) or project root."""
+    artifacts_dir = project_root / ".sdlc" / "artifacts"
     candidates = [
-        project_root / ".sdlc" / "artifacts" / f"phase{phase_num:02d}" / filename,
+        artifacts_dir / f"phase{phase_num:02d}" / filename,
+    ]
+    # Also match NN-* directories (e.g., 00-discovery, 01-requirements)
+    if artifacts_dir.exists():
+        prefix = f"{phase_num:02d}-"
+        for d in artifacts_dir.iterdir():
+            if d.is_dir() and d.name.startswith(prefix):
+                candidates.append(d / filename)
+    candidates.extend([
         project_root / filename,
         project_root / "docs" / filename,
-    ]
+    ])
     for p in candidates:
         if p.exists():
             return p

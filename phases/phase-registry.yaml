@@ -176,6 +176,8 @@ phases:
         - "phase5-handoff.md"
       optional:
         - "technical-decisions.md"
+        - "session-handoff.json"
+        - "sections-progress.json"
         - "phase4-report.html"
 
   - id: 5

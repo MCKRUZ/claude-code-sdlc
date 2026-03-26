@@ -98,6 +98,20 @@ def validate_profile(profile: dict, schema: dict) -> list[str]:
         for field in ["max_file_lines", "max_function_lines"]:
             if field in q:
                 errors.extend(validate_type(q[field], "integer", f"quality.{field}"))
+        if "evaluation_criteria" in q:
+            if not isinstance(q["evaluation_criteria"], list):
+                errors.append("quality.evaluation_criteria: expected array")
+            else:
+                for i, ec in enumerate(q["evaluation_criteria"]):
+                    ctx = f"quality.evaluation_criteria[{i}]"
+                    if not isinstance(ec, dict):
+                        errors.append(f"{ctx}: expected object")
+                        continue
+                    errors.extend(validate_required(ec, ["name", "description"], ctx))
+                    if "severity" in ec:
+                        errors.extend(
+                            validate_enum(ec["severity"], ["fail", "warn"], f"{ctx}.severity")
+                        )
 
     # Compliance
     if "compliance" in profile:

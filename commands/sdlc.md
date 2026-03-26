@@ -23,11 +23,15 @@ Show guidance for the current SDLC phase including what to do, which skills to u
    ### Purpose
    One-line description of this phase's goal.
 
+   ### Resolved Questions from Previous Phase
+   Check the previous phase's handoff document (e.g., `phase1-handoff.md` when in Phase 1) for a "Resolved Questions" section. If it exists, list the resolved questions as context — these are confirmed inputs that MUST inform the current phase's artifacts. If no resolved questions section exists, note that and move on.
+
    ### What to Do Next
-   Based on the phase workflow steps and current artifact state:
+   Based on the phase workflow steps, current artifact state, and resolved questions:
    - List the next actionable step
    - Reference the specific skill/command to use
-   - Example: "Run `/deep-project` to decompose your problem statement into requirements"
+   - Note which resolved questions feed into which artifacts
+   - Example: "Write `requirements.md` using resolved questions RQ-1 through RQ-3 as inputs"
 
    ### Required Artifacts
    List artifacts needed to pass exit gates, with status:

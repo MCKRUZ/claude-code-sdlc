@@ -110,6 +110,23 @@ properties:
       require_security_review:
         type: boolean
         description: "MUST have security review for sensitive code"
+      evaluation_criteria:
+        type: array
+        description: "Qualitative evaluation standards applied by the section-evaluator agent during Phase 4. Optional — teams define standards beyond numeric thresholds."
+        items:
+          type: object
+          required: [name, description]
+          properties:
+            name:
+              type: string
+              description: "Short name for the criterion (e.g., 'Result pattern', 'API documentation')"
+            description:
+              type: string
+              description: "What the evaluator checks for and what constitutes a pass"
+            severity:
+              type: string
+              enum: [fail, warn]
+              description: "Whether violation is blocking (fail) or advisory (warn). Default: warn"
 
   compliance:
     type: object

@@ -16,6 +16,7 @@ quality:
   require_tdd: false
   require_code_review: false
   require_security_review: false
+  # evaluation_criteria: []  # No qualitative criteria — starter profile uses numeric thresholds only
 
 compliance:
   frameworks:

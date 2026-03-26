@@ -31,8 +31,12 @@ Render all artifacts for the current (or specified) phase into a self-contained 
    Where `<plugin-root>` is the directory containing this plugin's files.
 
 4. **Handle output:**
-   - On success: inform the user of the output path (`.sdlc/reports/phaseNN-report.html`)
-   - Mention they can open it in any browser — it is fully self-contained (no external dependencies)
+   - On success: automatically open the report in the user's default browser:
+     ```bash
+     start .sdlc/reports/phaseNN-report.html   # Windows
+     open .sdlc/reports/phaseNN-report.html    # macOS
+     xdg-open .sdlc/reports/phaseNN-report.html # Linux
+     ```
    - On failure: display the error from the script and suggest checking that artifact files exist
 
 5. **Show artifact inventory:** After generating, list what was included:

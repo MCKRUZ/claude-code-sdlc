@@ -1,6 +1,7 @@
 """Check exit criteria (gates) for a given SDLC phase."""
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -118,6 +119,57 @@ def check_phase_gates(
             "message": message,
             "severity": "MUST",
         })
+
+    # Phase 4 optional: sections-progress.json consistency check
+    if phase_id == 4:
+        progress_path = artifacts_dir / "sections-progress.json"
+        if progress_path.exists():
+            try:
+                with open(progress_path) as f:
+                    progress = json.load(f)
+                total = progress.get("total_sections", 0)
+                completed = progress.get("completed_sections", 0)
+                sections = progress.get("sections", [])
+                actual_complete = sum(
+                    1 for s in sections if s.get("status") == "complete"
+                )
+                if actual_complete != completed:
+                    results.append({
+                        "gate": "G2-completeness",
+                        "artifact": "sections-progress.json",
+                        "passed": False,
+                        "message": f"sections-progress.json: completed_sections ({completed}) does not match actual complete count ({actual_complete})",
+                        "severity": "SHOULD",
+                    })
+                else:
+                    results.append({
+                        "gate": "G2-completeness",
+                        "artifact": "sections-progress.json",
+                        "passed": True,
+                        "message": f"sections-progress.json: {actual_complete}/{total} sections complete, counts consistent",
+                        "severity": "SHOULD",
+                    })
+                incomplete = [
+                    s.get("id", f"<index-{i}>")
+                    for i, s in enumerate(sections)
+                    if s.get("status") != "complete"
+                ]
+                if incomplete:
+                    results.append({
+                        "gate": "G2-completeness",
+                        "artifact": "sections-progress.json",
+                        "passed": False,
+                        "message": f"sections-progress.json: {len(incomplete)} section(s) not complete: {incomplete[:5]}",
+                        "severity": "SHOULD",
+                    })
+            except (json.JSONDecodeError, KeyError) as e:
+                results.append({
+                    "gate": "G2-completeness",
+                    "artifact": "sections-progress.json",
+                    "passed": False,
+                    "message": f"sections-progress.json: parse error — {e}",
+                    "severity": "SHOULD",
+                })
 
     # Gate 3: Metrics — check profile quality thresholds (phases 5, 6)
     if phase_id in [5, 6]:

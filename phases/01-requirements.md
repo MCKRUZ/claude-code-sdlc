@@ -54,7 +54,19 @@ Walk through with stakeholder before advancing:
 ### Step 5: Phase Handoff
 Document the architectural implications of NFRs — these drive Phase 2 design decisions.
 
-### Step 6: Generate Phase Report
+### Step 6: Generate Visual Report
+
+Generate an interactive HTML visual report at `.sdlc/reports/phase01-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+
+**Required visualizations for Phase 1 (Requirements):**
+- Requirements summary by domain and priority (stacked bar or table with badges)
+- Traceability matrix (requirements → Phase 0 personas)
+- Epic overview cards with acceptance criteria count
+- NFR measurement basis breakdown (measured vs aspirational)
+
+See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
+
+### Step 7: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase01-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications

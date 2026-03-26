@@ -63,3 +63,32 @@ What this section exposes to other sections:
 | Risk | Mitigation |
 |------|-----------|
 | [Section-specific risk] | [How to handle it] |
+
+## Verification Criteria
+<!-- How each exit criterion will be verified. Every criterion must be testable by an agent or human. -->
+
+| Criterion | Verification Method | Pass Condition |
+|-----------|-------------------|----------------|
+| [Exit criterion from above] | [Unit test / Integration test / Manual inspection / Static analysis] | [Specific measurable condition] |
+
+## Evaluator Contract
+<!-- Defines what the section evaluator agent checks after implementation completes.
+     This contract is the grading rubric — the evaluator reads it and grades against it. -->
+
+**Evaluation scope:** [What files/modules/APIs are in scope for this section]
+
+**Grading rubric:**
+1. **Functional completeness** — All exit criteria pass conditions met
+2. **Test quality** — Coverage target met, edge cases from Test Strategy covered
+3. **Interface compliance** — Exposed interfaces match the Interfaces table above
+4. **Code quality** — Functions within profile size limits, no deep nesting, immutability patterns followed
+5. **Deviation accountability** — Any deviation from Implementation Guidance is documented with rationale
+
+**Fail conditions (blocking):**
+- Any exit criterion pass condition not met
+- Test coverage below section target
+- Interface contract broken without documented ADR
+
+**Warn conditions (non-blocking):**
+- Code style deviations from profile conventions
+- Missing edge case tests (when not in critical path)

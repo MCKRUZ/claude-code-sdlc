@@ -69,6 +69,7 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 | Backend implementation | `backend-architect` | Section is Python/C#/server-side | impl-A | No |
 | Frontend implementation | `frontend-developer` | Section is HTML/CSS/Angular/React | impl-A | No |
 | Rapid prototyping | `rapid-prototyper` | Section is a spike or proof-of-concept | — | No |
+| Section evaluation | `section-evaluator` | After each section implementation completes | — | No (foreground, blocking) |
 | Code review (rolling) | `code-reviewer` | After each section completes | — | Yes |
 | Security review (rolling) | `security-reviewer` | Section touches auth/payments/secrets/PII | — | No (foreground) |
 | Build error resolution | `build-error-resolver` | Build or compilation fails | — | No (immediate) |
@@ -81,6 +82,9 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 - `build-error-resolver` on ANY build failure — do not attempt manual fixes first.
 - `security-reviewer` on ANY section that handles auth, payments, secrets, or PII.
 - `tdd-guide` BEFORE each section when the profile enables TDD.
+- `section-evaluator` after EACH completed section — foreground, blocking. The section is not marked complete until the evaluator produces a PASS or CONDITIONAL PASS verdict. On FAIL, the implementation agent must address blocking issues and the evaluator re-runs.
+
+**Session handoff:** At the end of each session (or when context window is nearing limits), the orchestrator MUST update `session-handoff.json` in `.sdlc/artifacts/04-implementation/`. At session start, it MUST read this file before beginning work. See `phases/04-implementation.md` Step 0g and Step 3b.
 
 ---
 

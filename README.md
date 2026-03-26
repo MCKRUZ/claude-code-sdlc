@@ -61,6 +61,24 @@ uv sync
 6. /sdlc-status         → View progress dashboard
 ```
 
+## Documentation
+
+For in-depth technical documentation, see the guides in [`docs/`](docs/):
+
+| Guide | Description |
+|-------|-------------|
+| [Architecture](docs/architecture.md) | Plugin anatomy, component relationships, data flow diagrams, two-directory model, progressive disclosure strategy |
+| [Phase Lifecycle](docs/phase-lifecycle.md) | All 10 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
+| [Gate System](docs/gate-system.md) | 5-gate validation — integrity, completeness, metrics, classification, quality — severity levels, override protocol, compliance extensions |
+| [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
+| [Commands](docs/commands.md) | All 7 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Agents](docs/agents.md) | 4 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
+| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, sections-progress.json |
+| [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
+| [Scripts](docs/scripts.md) | All 9 Python scripts — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
+| [Integrations](docs/integrations.md) | How /deep-plan, /deep-implement, /tdd, /code-review map into SDLC phases, artifact transformation pipeline |
+| [Hooks](docs/hooks.md) | Session-start and phase-inject hooks — what they read, what they inject, session continuity, convention reminders |
+
 ## Commands
 
 | Command | Purpose |

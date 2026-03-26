@@ -31,6 +31,7 @@ This plugin makes structured SDLC methodology executable in Claude Code. It prov
 | `/sdlc-status` | Progress dashboard with phase table and completion percentage |
 | `/sdlc-gate` | Run exit criteria checks for current phase (does not advance) |
 | `/sdlc-next` | Advance to next phase if all MUST gates pass |
+| `/sdlc-audit` | Analyze gate effectiveness across completed phases — identify always-pass and high-fail gates |
 
 ## Quick Start
 
@@ -50,6 +51,8 @@ The plugin maintains state in `.sdlc/state.yaml` in your project directory. Each
 
 Phase transitions are atomic — either all MUST gates pass and you advance, or none do and you get a blockers report.
 
+For long-running phases (especially Phase 4: Implementation), session continuity is maintained through `session-handoff.json` — a structured JSON file that tracks section progress, blockers, and next actions across sessions. The session start hook reads this file and displays a continuity summary.
+
 ## Profiles
 
 Profiles configure the plugin for your company/team:
@@ -64,7 +67,7 @@ Profiles define: technology stack, quality thresholds (coverage, file size limit
 |---|-------|------------|
 | 0 | Discovery | `/plan` |
 | 1 | Requirements | `/deep-project` |
-| 2 | Design | `/deep-plan` |
+| 2 | Design | `/deep-plan`, `/visual-explainer` |
 | 3 | Planning | `/deep-plan` |
 | 4 | Implementation | `/deep-implement`, `/tdd` |
 | 5 | Quality | `/code-review`, `/security-review` |
@@ -109,6 +112,53 @@ Do not call `advance_phase.py` immediately after gates pass. Present the phase s
 
 Phase definition files use `> HITL GATE:` blockquotes to mark mandatory pause points. When Claude encounters one, it MUST stop and interact with the human before proceeding.
 
+Phase definitions also use `> CHECKPOINT:` blockquotes to mark mandatory agent-enforced stopping points. The agent MUST complete all listed conditions before proceeding. Unlike HITL GATE, checkpoints do not require human interaction — they enforce workflow discipline within the agent's execution.
+
+## Visual Report Protocol
+
+**This protocol is mandatory for every phase.** Before requesting human sign-off to advance, Claude MUST generate an interactive HTML visual report summarizing the phase's artifacts, decisions, and key data. These reports replace ASCII art and inline markdown tables for stakeholder review.
+
+### When to Generate
+
+Generate a visual report as the **second-to-last step** of every phase, immediately before the "Generate Phase Report" step (which runs the gate check). The visual report is the stakeholder review artifact; the gate report is the automated validation artifact. Both are required.
+
+### What Each Phase Report Contains
+
+| Phase | Visual Report | Key Visualizations |
+|-------|--------------|-------------------|
+| 0 Discovery | Problem space overview | Persona cards, current state flow diagram, scope boundaries |
+| 1 Requirements | Requirements matrix | Requirements by domain/priority, traceability matrix, epic overview |
+| 2 Design | Architecture diagrams | Layer diagram, core flow, data flow, section dependencies, trust boundaries |
+| 3 Planning | Section review & sprint plan | Section breakdown table, sprint timeline, dependency DAG, risk cards |
+| 4 Implementation | Implementation progress | Section completion status, test coverage dashboard, code metrics |
+| 5 Quality | Review findings | Code review summary, security findings, severity distribution |
+| 6 Testing | Test results dashboard | Coverage heatmap, test pass/fail by category, scenario traceability |
+| 7 Documentation | Documentation audit | Docs completeness matrix, API coverage, README status |
+| 8 Deployment | Release checklist | Deployment readiness, environment status, rollback plan |
+| 9 Monitoring | Monitoring dashboard | Health checks, alert configuration, baseline metrics |
+
+### How to Generate
+
+1. **If `/visual-explainer` skill is available:** Invoke it with a detailed prompt describing the phase's data, the desired diagrams, and output path (`.sdlc/reports/phaseNN-visual.html`).
+2. **If not available:** Generate equivalent self-contained HTML directly using Mermaid.js CDN for flowcharts/DAGs, HTML `<table>` for data tables, and CSS Grid for card layouts.
+3. **Never fall back to ASCII art** in the final report. Inline text summaries are fine for chat, but the review artifact must be rendered HTML.
+
+### Visual Standards
+
+- Self-contained HTML (no external assets except CDN fonts and Mermaid)
+- Dark theme default matching SDLC reports (`#0f1117` bg, `#6c8ef7` accent, `#4ade80` green)
+- Sticky sidebar TOC for navigation between sections
+- Zoom controls on all Mermaid diagrams
+- Staggered fade-in animations (respect `prefers-reduced-motion`)
+- Both light and dark theme support via `prefers-color-scheme`
+- Responsive layout (sidebar collapses to horizontal bar on mobile)
+
+### Output Location
+
+All visual reports are written to `.sdlc/reports/`:
+- `phase00-visual.html`, `phase01-visual.html`, ..., `phase09-visual.html`
+- Additional named reports (e.g., `architecture-diagrams.html`, `phase03-section-review.html`) are encouraged alongside the numbered report
+
 ## Agent Orchestration Protocol
 
 Claude MUST use the Agent tool to spawn specialized subagents rather than doing all work inline. The Agent tool produces better results for non-trivial tasks: subagents have focused context, specialized instructions, and independent execution. This is not optional.
@@ -123,6 +173,7 @@ See `references/agent-roster.md` for the full phase-by-phase mapping with condit
 | Code touches auth, payments, secrets, or PII | `security-reviewer` | Foreground. STOP on CRITICAL/HIGH findings. |
 | Phase 4 + profile requires TDD | `tdd-guide` | Spawn BEFORE writing any code for the section. |
 | Phase 5 entry | `code-reviewer` + `security-reviewer` | Spawn both in a single message (parallel, foreground). |
+| Section implementation completes (Phase 4) | `section-evaluator` | Foreground, blocking. FAIL verdict = fix before proceeding. |
 | Phase 4 with independent sections | Domain-specific agents | Spawn in parallel (single message) for non-dependent sections. |
 | Gate check fails unexpectedly | `Explore` | Investigate root cause before attempting fixes. |
 
@@ -134,7 +185,7 @@ See `references/agent-roster.md` for the full phase-by-phase mapping with condit
 | 1 Requirements | — | `Explore`, `feedback-synthesizer` |
 | 2 Design | `architect` | `backend-architect`, `frontend-developer`, `security-reviewer` |
 | 3 Planning | `deep-plan:section-writer` | `Plan`, `Explore` |
-| 4 Implementation | Domain agents per section | `tdd-guide`, `build-error-resolver`, `security-reviewer` |
+| 4 Implementation | Domain agents per section | `tdd-guide`, `section-evaluator`, `build-error-resolver`, `security-reviewer` |
 | 5 Quality | `code-reviewer` + `security-reviewer` | `refactor-cleaner` (background) |
 | 6 Testing | `test-writer-fixer` | `e2e-runner`, `api-tester`, `performance-benchmarker` |
 | 7 Documentation | `doc-updater` | `backend-architect` (API docs) |

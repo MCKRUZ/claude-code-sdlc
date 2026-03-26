@@ -23,6 +23,8 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 - Required YAML fields populated
 - Cross-references between artifacts resolve (e.g., requirements referenced in design doc exist)
 - Acceptance criteria have measurable conditions (not vague statements)
+- Section plan files contain Verification Criteria and Evaluator Contract sections (Phase 3)
+- Phase 4 checkpoint protocol enforced: each section must be committed and evaluated before the next section begins (tracked via `sections-progress.json` when available)
 
 **Severity:** MUST pass. Incomplete artifacts lead to downstream failures.
 

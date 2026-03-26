@@ -87,7 +87,30 @@ Define the data structures:
 - Key fields and types
 - Persistence strategy
 
-### Step 7: Phase Handoff
+### Step 7: Generate Architecture Diagrams
+
+Generate visual architecture diagrams using the `/visual-explainer` skill (or equivalent HTML diagram generation). Replace all ASCII art in `design-doc.md` with proper rendered diagrams. Output a self-contained HTML file at `.sdlc/reports/architecture-diagrams.html`.
+
+**Required diagrams:**
+1. **Architecture Layer Diagram** — All system layers with components, color-coded by layer, showing trust boundaries to external systems.
+2. **Core Loop / Game Loop / Request Flow** — The primary data/control flow as a Mermaid flowchart showing the circular or sequential path through the system.
+3. **Data Flow** — Step-by-step resolution of the primary use case, from input through processing to output. Use Mermaid with color-coded nodes by layer.
+4. **Implementation Section Dependencies** — A DAG showing the implementation sections from `phase3-handoff.md` with their dependency relationships and parallelization opportunities.
+5. **Trust Boundary / Security Diagram** — Security model showing trusted process boundary, external systems, and data flow across trust boundaries.
+
+**Rendering approach:**
+- Use **Mermaid.js** (CDN) for flowcharts, data flows, dependency graphs, and security diagrams. Use `theme: 'base'` with `themeVariables` matching the project's visual style.
+- Use **CSS Grid cards** for architecture layer diagrams where card content (component lists, descriptions) matters more than connections.
+- Include **zoom controls** (+/−/reset) on every Mermaid diagram container.
+- Include a **sticky sidebar TOC** for navigation between diagrams.
+- Match the visual style to the SDLC phase reports (dark theme: `#0f1117` background, `#6c8ef7` accent blue, `#4ade80` green).
+- The HTML file must be **self-contained** — no external assets except CDN links for fonts and Mermaid.
+
+**If `/visual-explainer` skill is available:** Invoke it with a prompt describing all 5 diagrams, the project's architecture details from `design-doc.md`, and the desired output path. The skill handles aesthetic choices, Mermaid theming, and responsive layout.
+
+**If not available:** Generate the HTML directly using the Mermaid CDN patterns. The diagrams must still be proper rendered flowcharts — never fall back to ASCII art in the final artifacts.
+
+### Step 8: Phase Handoff
 Review and complete `phase3-handoff.md` (generated in Step 3). Ensure it contains:
 - Design summary and key decisions
 - Section breakdown for implementation (logical units of work)
@@ -96,7 +119,7 @@ Review and complete `phase3-handoff.md` (generated in Step 3). Ensure it contain
 - Open technical questions for implementation phase
 - Risks identified during design
 
-### Step 8: Generate Phase Report
+### Step 9: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase02-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
@@ -143,6 +166,16 @@ Must contain ALL of:
 - Open technical questions for implementation phase
 - Risks identified during design
 
+### `architecture-diagrams.html` (RECOMMENDED)
+A self-contained HTML page with rendered architecture diagrams (Mermaid + CSS). Must include:
+- Architecture layer diagram (components by layer)
+- Primary flow diagram (core loop or request path)
+- Data flow diagram (step-by-step processing)
+- Implementation section dependency graph (DAG)
+- Trust boundary / security model diagram
+
+Generated via `/visual-explainer` skill or equivalent HTML generation. Stored at `.sdlc/reports/architecture-diagrams.html`. Share with stakeholders as a visual companion to `design-doc.md`.
+
 ### Optional Artifacts (from /deep-plan)
 - `research-notes.md` — codebase and web research findings
 - `integration-notes.md` — cross-system integration concerns
@@ -154,6 +187,7 @@ Must contain ALL of:
 - [ ] At least one ADR exists for each significant technology/pattern decision
 - [ ] `adr-registry.md` lists all ADRs with correct statuses
 - [ ] `api-contracts.md` covers all system interfaces
+- [ ] Architecture diagrams generated as rendered HTML (not ASCII art) at `.sdlc/reports/architecture-diagrams.html`
 - [ ] Design reviewed and approved by stakeholder (manual gate)
 - [ ] Implementation sections are clearly defined in the handoff
 - [ ] `deep-plan-checkpoint.yaml` exists for Phase 3 resumption

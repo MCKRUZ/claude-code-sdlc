@@ -40,6 +40,19 @@ quality:
   require_tdd: true
   require_code_review: true
   require_security_review: true
+  evaluation_criteria:
+    - name: "Result pattern"
+      description: "Error-prone operations use Result<T> instead of throwing exceptions. Evaluator checks for try/catch blocks that could use Result<T>."
+      severity: warn
+    - name: "Immutable state"
+      description: "NgRx reducers return new state objects. No Array.push(), Object.assign() mutations, or direct property assignment on state."
+      severity: fail
+    - name: "API documentation"
+      description: "All public API endpoints have XML doc comments on the controller action and a corresponding entry in api-contracts.md."
+      severity: warn
+    - name: "FluentValidation"
+      description: "All DTOs received from external input have a corresponding FluentValidation validator class."
+      severity: fail
 
 compliance:
   frameworks:

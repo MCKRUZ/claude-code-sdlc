@@ -69,7 +69,19 @@ For each risk: probability (H/M/L) x impact (H/M/L) = priority.
 ### Step 5: Phase Handoff
 Produce a ready-to-implement checklist — everything a developer needs to start Sprint 1 immediately.
 
-### Step 6: Generate Phase Report
+### Step 6: Generate Visual Report
+
+Generate an interactive HTML visual report at `.sdlc/reports/phase03-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+
+**Required visualizations for Phase 3 (Planning):**
+- Section breakdown table with complexity badges and dependency chips
+- Sprint timeline (vertical timeline with color-coded phases)
+- Dependency DAG (Mermaid flowchart with color-coded section nodes)
+- Risk cards (top 5 with probability/impact ratings)
+
+See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
+
+### Step 7: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase03-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
@@ -89,6 +101,8 @@ Each must contain:
 - **Interfaces** — what this section exposes to other sections
 - **Test strategy** — coverage targets by test type, plus TDD test stubs from `claude-plan-tdd.md`
 - **Risk** — section-specific risks and mitigations
+- **Verification criteria** — how each exit criterion will be tested, with specific pass conditions
+- **Evaluator contract** — grading rubric the section evaluator agent uses after implementation (scope, rubric, fail/warn conditions)
 
 ### `sprint-plan.md` (REQUIRED)
 Must contain ALL of:

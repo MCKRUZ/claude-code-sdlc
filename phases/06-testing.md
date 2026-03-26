@@ -19,6 +19,10 @@ Execute a comprehensive test strategy and produce coverage evidence that meets p
 
 ## Workflow
 
+### Step 0: HITL Gate — Confirm Test Scope
+
+> **HITL GATE:** Before writing the test plan, read `phase6-handoff.md`. Present the following to the human: (1) Confirm test scope — what is in and what is out of testing? (2) Are the profile coverage targets (`coverage_minimum`, `coverage_critical`) acceptable for this project, or should they be adjusted? (3) Are there specific edge cases, user scenarios, or failure modes the human wants covered? (4) For `skill` projects: confirm the scenario list covers the full requirement set — present the requirement-to-scenario mapping for review. Do not write `test-plan.md` until the human confirms the test scope.
+
 ### Step 1: Test Plan
 Define the testing strategy before executing:
 - What will be tested (scope)
@@ -91,7 +95,19 @@ Spawn `doc-updater` in background if test results reveal documentation inaccurac
 ### Step 5: Phase Handoff
 Summarize test results, coverage evidence, and deployment readiness.
 
-### Step 6: Generate Phase Report
+### Step 6: Generate Visual Report
+
+Generate an interactive HTML visual report at `.sdlc/reports/phase06-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+
+**Required visualizations for Phase 6 (Testing):**
+- Test results by category (unit, integration, E2E) — pass/fail counts
+- Coverage heatmap by game system
+- Scenario-to-requirement traceability matrix
+- Performance benchmark results (if applicable)
+
+See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
+
+### Step 7: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase06-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications

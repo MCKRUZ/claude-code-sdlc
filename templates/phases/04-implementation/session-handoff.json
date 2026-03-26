@@ -1,0 +1,35 @@
+{
+  "$schema": "session-handoff-v1",
+  "phase": 4,
+  "last_updated": null,
+  "session_number": 1,
+  "overall_status": "in_progress",
+  "current_sprint": 1,
+  "sections": [
+    {
+      "id": "SECTION-001",
+      "name": "",
+      "status": "not_started",
+      "agent": null,
+      "started_at": null,
+      "completed_at": null,
+      "evaluator_result": null,
+      "notes": ""
+    }
+  ],
+  "completed_this_session": [],
+  "in_progress": [],
+  "blocked": [],
+  "next_actions": [
+    {
+      "action": "",
+      "section": "",
+      "priority": "P0",
+      "context": ""
+    }
+  ],
+  "blockers": [],
+  "decisions_this_session": [],
+  "deviations_this_session": [],
+  "context_for_next_session": ""
+}

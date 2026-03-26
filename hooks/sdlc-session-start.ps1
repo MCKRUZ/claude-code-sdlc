@@ -53,4 +53,41 @@ if ($phaseMatch.Success) {
     # Output context for Claude
     Write-Output "[SDLC] Project: $projectName | Profile: $profileId | Phase $phaseId`: $displayName | Artifacts: $artifactCount"
     Write-Output "[SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance)"
+
+    # Check for session handoff file (Phase 4 continuity)
+    if ([int]$phaseId -eq 4) {
+        $handoffFile = Join-Path $sdlcDir "artifacts" "04-implementation" "session-handoff.json"
+        if (Test-Path $handoffFile) {
+            try {
+                $handoff = Get-Content $handoffFile -Raw | ConvertFrom-Json
+            } catch {
+                Write-Output "[SDLC] WARNING: session-handoff.json is malformed - skipping handoff summary"
+                $handoff = $null
+            }
+            if ($handoff) {
+                $sections = @($handoff.sections)
+                $completedCount = @($sections | Where-Object { $_.status -eq "complete" }).Count
+                $totalCount = $sections.Count
+                $inProgress = @($sections | Where-Object { $_.status -eq "in_progress" }).Count
+                $blocked = @($sections | Where-Object { $_.status -eq "blocked" }).Count
+
+                Write-Output "[SDLC] Session Handoff: $completedCount/$totalCount sections complete, $inProgress in progress, $blocked blocked (session #$($handoff.session_number))"
+                if ($handoff.context_for_next_session) {
+                    Write-Output "[SDLC] Context: $($handoff.context_for_next_session)"
+                }
+                if ($handoff.next_actions -and @($handoff.next_actions).Count -gt 0) {
+                    $firstAction = @($handoff.next_actions)[0]
+                    if ($firstAction.action) {
+                        Write-Output "[SDLC] Next action: $($firstAction.action) ($($firstAction.section))"
+                    }
+                }
+                if ($handoff.blockers -and @($handoff.blockers).Count -gt 0) {
+                    $activeBlockers = @($handoff.blockers | Where-Object { -not $_.resolved }).Count
+                    if ($activeBlockers -gt 0) {
+                        Write-Output "[SDLC] WARNING: $activeBlockers active blocker(s)"
+                    }
+                }
+            }
+        }
+    }
 }

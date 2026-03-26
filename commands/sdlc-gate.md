@@ -25,7 +25,13 @@ Run the 5-gate validation system for the current (or specified) SDLC phase witho
    uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml --phase <phase-number>
    ```
-   Tell the user the report path (`.sdlc/reports/phaseNN-report.html`) so they can open it and share it for stakeholder review. This is the artifact stakeholders review before the manual gate sign-off.
+   After generating, automatically open the report in the user's default browser:
+   ```bash
+   start .sdlc/reports/phaseNN-report.html   # Windows
+   open .sdlc/reports/phaseNN-report.html    # macOS
+   xdg-open .sdlc/reports/phaseNN-report.html # Linux
+   ```
+   This is the artifact stakeholders review before the manual gate sign-off.
 
 6. **Summarize:** At the bottom:
    - Count of passed / failed / manual checks
