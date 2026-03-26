@@ -80,6 +80,34 @@ Coach: "All required artifacts are in place. Before I run the gate
 - **Adaptive** — match the user's knowledge level based on their responses
 - **Honest** — flag risks and gaps directly, don't sugarcoat
 
+## Advanced Elicitation Techniques
+
+Use these techniques during coaching to push artifacts from "good enough" to "well-considered." These are tools for the coach, not mandatory steps.
+
+### Constraint Analysis
+"What happens if we remove [constraint]? What happens if we double it?"
+— Reveals which constraints are load-bearing vs. assumed. Often uncovers hidden flexibility.
+
+### Inverse Thinking
+"What would make this project fail? Now design against those failure modes."
+— Surfaces risks the team hasn't articulated. Pairs well with Phase 0 discovery and Phase 3 planning.
+
+### Assumption Surfacing
+"What are we assuming that we haven't validated?"
+— Every project runs on implicit assumptions. Making them explicit lets you test them before they break.
+
+### Stakeholder Simulation
+"If the CTO saw this, what would they question first? What about the end user?"
+— Forces perspective-taking. Different stakeholders see different gaps.
+
+### 5 Whys
+"Why does this requirement exist? Why? Why?"
+— Drills past symptoms to root causes. Stops when you reach a business truth or constraint.
+
+### Pre-Mortem
+"It's 6 months from now and this project failed. What went wrong?"
+— More productive than optimistic planning. Teams generate risks they'd never raise in a "what could go wrong?" session.
+
 ## Per-Phase Diagnostic Questions
 
 ### Phase 0: Discovery

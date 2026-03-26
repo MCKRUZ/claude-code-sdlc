@@ -151,6 +151,7 @@ When operating in coaching mode (`/sdlc-coach`) for this phase:
 
 ### Opening (no artifacts yet)
 - "What problem are you trying to solve? Tell me in plain language."
+- For structured ideation, see `references/brainstorming-techniques.md` for techniques like SCAMPER, reverse brainstorming, and constraint removal.
 - "Who are the main stakeholders — the people who care about the outcome?"
 - "What constraints are you working with? Budget, timeline, technology, team size?"
 - "Has anyone validated that this problem is worth solving?"

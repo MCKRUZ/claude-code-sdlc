@@ -33,6 +33,7 @@ This plugin makes structured SDLC methodology executable in Claude Code. It prov
 | `/sdlc-next` | Advance to next phase if all MUST gates pass |
 | `/sdlc-enhance` | Generate narrative companions for stakeholder review (optional) |
 | `/sdlc-coach` | Interactive coaching mode — adaptive dialogue for current phase |
+| `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory and gate results |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases — identify always-pass and high-fail gates |
 
@@ -111,6 +112,15 @@ Every SDLC artifact can have a `.narrative.md` companion — a prose-rich, stake
 - Run `/sdlc-enhance` to generate narratives for the current phase's artifacts
 - The `narrative-enhancer` agent handles all generation
 - See `references/narrative-patterns.md` for transformation rules
+
+## Multi-Perspective Review
+
+Run `/sdlc-review` to evaluate phase artifacts from multiple angles before advancing. Three modes:
+- `--council` (default) — 4-viewpoint review: Architecture, Product, Quality, Security
+- `--adversarial` — Cynical QA: challenge assumptions, find quality issues
+- `--edge-cases` — Exhaustive path analysis: find unhandled conditions and boundaries
+
+Recommended before `/sdlc-gate` on design-heavy phases (2, 3) and quality phases (5). See `references/agent-roster.md` for phase-specific suggestions.
 
 ## Smart Repair
 

@@ -39,6 +39,7 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 | Backend API design | `backend-architect` | Project has a backend/API layer | design-A | No |
 | Frontend architecture | `frontend-developer` | Project has a frontend | design-A | No |
 | Security model review | `security-reviewer` | Auth, payments, or sensitive data in scope | — | No |
+| Multi-perspective review | `multi-reviewer` | Suggested before `/sdlc-gate`; use `--council` mode | — | No |
 | Codebase exploration | `Explore` | Existing codebase being extended | — | No |
 
 **Parallel group `design-A`:** When the project has both backend and frontend, spawn `backend-architect` and `frontend-developer` in the same message.
@@ -94,6 +95,7 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 |------|-------|-----------|----------------|------------|
 | Code review | `code-reviewer` | Always | review-A | No |
 | Security review | `security-reviewer` | Always | review-A | No |
+| Adversarial + edge-case review | `multi-reviewer` | Suggested; use `--adversarial` and `--edge-cases` | — | No |
 | Dead code cleanup | `refactor-cleaner` | Always | — | Yes |
 | Root cause investigation | `Explore` | Gate check fails unexpectedly | — | No |
 | Backend remediation | `backend-architect` | CRITICAL/HIGH findings in backend code | — | No |

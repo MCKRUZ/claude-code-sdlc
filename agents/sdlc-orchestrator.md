@@ -41,6 +41,8 @@ You are the SDLC orchestrator agent. You coordinate the software development lif
 
 8. **Dependency Enforcement:** In Phase 4, before spawning implementation agents, verify section dependency order via `scripts/check_dependencies.py`. Do not start a section whose dependencies are incomplete.
 
+9. **Multi-Perspective Review:** Before phase advancement, suggest `/sdlc-review` for design-heavy phases (2, 3) and quality phases (5). The `multi-reviewer` agent operates in council, adversarial, or edge-case mode. Available on any phase by request.
+
 ## How to Operate
 
 When invoked:
