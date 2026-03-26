@@ -33,13 +33,30 @@ Run the 5-gate validation system for the current (or specified) SDLC phase witho
    ```
    This is the artifact stakeholders review before the manual gate sign-off.
 
-6. **Summarize:** At the bottom:
+6. **Smart Repair (optional):** If MUST gates failed, offer the user: "Would you like me to attempt auto-repair on the fixable issues?"
+   - If yes: spawn the `gate-repair` agent with the failure list
+   - The agent classifies failures as repairable vs. not, fixes what it can, and reports changes
+   - Re-run gate checks on repaired artifacts
+   - Show the human what was repaired and what still needs manual attention
+   - See `references/smart-repair.md` for what's auto-repairable vs. not
+
+7. **Summarize:** At the bottom:
    - Count of passed / failed / manual checks
    - If any MUST gates failed: **BLOCKED** — list specific blockers with remediation suggestions
    - If only manual checks remain: **REVIEW NEEDED** — list what needs human verification. Remind the user to share the HTML report for stakeholder sign-off.
    - If all pass: **READY** — suggest running `/sdlc-next` to advance
 
-7. **Update state:** Record gate results in `.sdlc/state.yaml` under the current phase's `gate_results` field. Do NOT advance the phase — that's `/sdlc-next`'s job.
+8. **Update state:** Record gate results in `.sdlc/state.yaml` under the current phase's `gate_results` field. Do NOT advance the phase — that's `/sdlc-next`'s job.
+
+## Dirty Tracking
+
+Gate checks use artifact checksums to skip re-validation of unchanged files. The first run validates everything. After `advance_phase.py` snapshots checksums on phase completion, subsequent runs in the new phase only fully check new or modified artifacts — unchanged artifacts are reported as PASS (skipped).
+
+To manually snapshot checksums (create a baseline without advancing):
+```bash
+uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_artifacts.py \
+  --state .sdlc/state.yaml --snapshot
+```
 
 ## Arguments
 - No arguments: check current phase

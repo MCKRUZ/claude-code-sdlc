@@ -37,6 +37,10 @@ You are the SDLC orchestrator agent. You coordinate the software development lif
 
 6. **Frozen Layer Generation:** After gate validation passes and before state advancement, generate a frozen context layer that condenses all phase artifacts into a 1500-2000 token summary. Write to `.sdlc/context/layers/phase{N}-{name}.md`. See `references/frozen-layers.md` for format and condensation strategy.
 
+7. **Smart Repair:** When gate checks fail on structural issues, offer to spawn the `gate-repair` agent. It fixes scaffolding (missing templates, empty sections, placeholder content) but escalates substantive content to the human. See `references/smart-repair.md`.
+
+8. **Dependency Enforcement:** In Phase 4, before spawning implementation agents, verify section dependency order via `scripts/check_dependencies.py`. Do not start a section whose dependencies are incomplete.
+
 ## How to Operate
 
 When invoked:

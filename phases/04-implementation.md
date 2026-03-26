@@ -17,6 +17,15 @@ Before writing any code, analyze the sprint plan to determine the agent executio
 **0a. Read the sprint plan and section plans.**
 Identify which sections are in the current sprint and map their dependency graph.
 
+> CHECKPOINT: Run dependency validation before starting any section:
+> ```bash
+> uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_dependencies.py --state .sdlc/state.yaml
+> ```
+> Verify: no circular dependencies, valid topological order computed. Do NOT start a section whose dependencies are incomplete.
+
+**0a-2. Check for modified section plans.**
+If dirty tracking shows section plans were modified since Phase 3 completion, re-read the changed plans before proceeding. Modified plans may affect dependencies, scope, or implementation approach.
+
 **0b. Identify parallel execution groups.**
 Sections with no dependency on each other MUST be implemented in parallel. For each section, determine the primary domain: backend, frontend, infrastructure, or general.
 

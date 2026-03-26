@@ -1,6 +1,7 @@
 """Check exit criteria (gates) for a given SDLC phase."""
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -76,6 +77,41 @@ def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, s
     return True, f"File '{artifact}' is complete"
 
 
+def compute_checksum(file_path: Path) -> str:
+    """Compute SHA-256 hash of a file (first 16 hex chars)."""
+    h = hashlib.sha256()
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    return f"sha256:{h.hexdigest()[:16]}"
+
+
+def get_dirty_artifacts(
+    phase_id: int, state: dict, artifacts_dir: Path
+) -> dict[str, list[str]]:
+    """Compare stored checksums to current files. Returns categorized lists."""
+    stored = state.get("phases", {}).get(phase_id, {}).get("artifact_checksums", {})
+    if not stored or not artifacts_dir.exists():
+        return {"new": [], "modified": [], "unchanged": [], "deleted": []}
+
+    current = {}
+    for fp in sorted(artifacts_dir.rglob("*")):
+        if fp.is_file():
+            rel = str(fp.relative_to(artifacts_dir)).replace("\\", "/")
+            current[rel] = compute_checksum(fp)
+
+    stored_files = set(stored.keys())
+    current_files = set(current.keys())
+    common = stored_files & current_files
+
+    return {
+        "new": sorted(current_files - stored_files),
+        "modified": sorted(f for f in common if stored[f] != current[f]),
+        "unchanged": sorted(f for f in common if stored[f] == current[f]),
+        "deleted": sorted(stored_files - current_files),
+    }
+
+
 def check_phase_gates(
     phase_id: int,
     state: dict,
@@ -98,6 +134,24 @@ def check_phase_gates(
 
     artifacts_dir = artifacts_base / f"{phase_id:02d}-{phase_def['name']}"
 
+    # Dirty tracking — identify changed artifacts for incremental validation
+    dirty = get_dirty_artifacts(phase_id, state, artifacts_dir)
+    unchanged_set = set(dirty["unchanged"])
+    has_baseline = bool(
+        state.get("phases", {}).get(phase_id, {}).get("artifact_checksums")
+    )
+
+    if has_baseline:
+        n_new = len(dirty["new"])
+        n_mod = len(dirty["modified"])
+        n_unch = len(dirty["unchanged"])
+        results.append({
+            "gate": "dirty-tracking",
+            "passed": True,
+            "message": f"Artifacts: {n_new} new, {n_mod} modified, {n_unch} unchanged (skipping unchanged)",
+            "severity": "INFO",
+        })
+
     # Gate 1: Artifact Integrity — required artifacts exist
     for artifact in phase_def.get("artifacts", {}).get("required", []):
         passed, message = check_artifact_exists(artifacts_dir, artifact)
@@ -111,6 +165,15 @@ def check_phase_gates(
 
     # Gate 2: Completeness — required artifacts are complete
     for artifact in phase_def.get("artifacts", {}).get("required", []):
+        if has_baseline and artifact in unchanged_set:
+            results.append({
+                "gate": "G2-completeness",
+                "artifact": artifact,
+                "passed": True,
+                "message": f"File '{artifact}' unchanged since last check (skipped)",
+                "severity": "MUST",
+            })
+            continue
         passed, message = check_artifact_complete(artifacts_dir, artifact)
         results.append({
             "gate": "G2-completeness",
@@ -216,6 +279,52 @@ def check_phase_gates(
             "message": message,
             "severity": gate.get("severity", "MUST"),
         })
+
+    # Gate: Dependency order (Phase 4 only)
+    if phase_id == 4:
+        sdlc_dir_dep = artifacts_base.parent
+        section_plans = sdlc_dir_dep / "artifacts" / "03-planning" / "section-plans"
+        if section_plans.exists():
+            try:
+                sys.path.insert(0, str(Path(__file__).parent))
+                from check_dependencies import (
+                    parse_section_dependencies,
+                    detect_cycles,
+                    topological_sort,
+                    check_implementation_order,
+                )
+
+                graph = parse_section_dependencies(section_plans)
+                cycles = detect_cycles(graph)
+                if cycles:
+                    cycle_strs = [" → ".join(c) for c in cycles]
+                    results.append({
+                        "gate": "dependency-order",
+                        "passed": False,
+                        "message": f"Circular dependencies: {cycle_strs[0]}",
+                        "severity": "MUST",
+                    })
+                else:
+                    order = topological_sort(graph)
+                    if order:
+                        progress_path = artifacts_dir / "sections-progress.json"
+                        violations = check_implementation_order(order, progress_path)
+                        if violations:
+                            results.append({
+                                "gate": "dependency-order",
+                                "passed": False,
+                                "message": f"Order violations: {violations[:3]}",
+                                "severity": "SHOULD",
+                            })
+                        else:
+                            results.append({
+                                "gate": "dependency-order",
+                                "passed": True,
+                                "message": f"Dependency order valid ({len(graph)} sections)",
+                                "severity": "SHOULD",
+                            })
+            except ImportError:
+                pass  # check_dependencies.py not available
 
     # Gate 5: Cross-phase consistency
     sdlc_dir = artifacts_base.parent

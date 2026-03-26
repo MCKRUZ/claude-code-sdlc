@@ -112,6 +112,10 @@ Every SDLC artifact can have a `.narrative.md` companion — a prose-rich, stake
 - The `narrative-enhancer` agent handles all generation
 - See `references/narrative-patterns.md` for transformation rules
 
+## Smart Repair
+
+When gate checks fail on structural issues (missing templates, empty sections, placeholder content), the `gate-repair` agent can attempt automatic fixes before escalating to the human. Repair is conservative — it scaffolds structure but never generates substantive content. The human always reviews what was repaired. See `references/smart-repair.md` for the full repair classification.
+
 ## Conversational Coaching
 
 For users who prefer guided dialogue over step lists, `/sdlc-coach` provides an adaptive coaching mode. The coach assesses the current phase state (which artifacts exist, what's missing), asks diagnostic questions, and generates artifacts as the conversation progresses.

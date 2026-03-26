@@ -22,6 +22,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
    - Generate the phase HTML report anyway (shows what's missing): `uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py --state .sdlc/state.yaml --phase <phase-number>`
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
    - Suggest actions: create missing artifacts, fix incomplete content, etc.
+   - **Offer smart repair:** "Would you like me to attempt auto-repair on the fixable issues?" If yes, spawn the `gate-repair` agent, then re-run gates. See `references/smart-repair.md` for what's repairable.
 
    **If all MUST gates pass (SHOULD/MAY may still have warnings):**
    - Display success message

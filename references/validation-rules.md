@@ -96,6 +96,19 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 | 8 Deployment | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
 | 9 Monitoring | MUST | SHOULD | — | — | SHOULD | SHOULD |
 
+## Dirty Tracking (Incremental Validation)
+
+Gate checks support incremental validation via artifact checksums. When a checksum baseline exists in `state.yaml`, the gate checker compares current file hashes against stored hashes:
+
+- **New files** — full validation
+- **Modified files** — full validation
+- **Unchanged files** — skipped (reported as PASS)
+- **Deleted files** — flagged if they were required
+
+Checksums are snapshotted automatically by `advance_phase.py` on phase completion. To manually create a baseline, run `track_artifacts.py --snapshot`.
+
+The `dirty-tracking` result in gate output is severity `INFO` — it never blocks transitions. It reports the artifact change summary to help understand what was validated.
+
 ## Override Protocol
 
 When a gate fails but the team decides to proceed:

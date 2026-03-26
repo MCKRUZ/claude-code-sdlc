@@ -130,6 +130,10 @@ Must contain ALL of:
 - `tdd-plan.md` — prose test stubs mirroring plan structure
 - `dependency-map.md` — SECTION_MANIFEST and dependency graph from sections/index.md
 
+## Edit Tracking
+
+When Phase 3 completes and advances to Phase 4, artifact checksums are snapshotted in `state.yaml`. If section plans are edited after Phase 3 completion (scope changes, dependency updates, re-estimation), the dirty tracker will flag them during Phase 4 gate checks. This ensures implementation stays aligned with the latest plans.
+
 ## Exit Criteria
 - [ ] Every design section has a corresponding section plan
 - [ ] Sprint plan respects all documented dependencies

@@ -19,6 +19,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   1:
     name: requirements
     status: pending
@@ -26,6 +27,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   2:
     name: design
     status: pending
@@ -33,6 +35,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   3:
     name: planning
     status: pending
@@ -40,6 +43,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   4:
     name: implementation
     status: pending
@@ -47,6 +51,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   5:
     name: quality
     status: pending
@@ -54,6 +59,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   6:
     name: testing
     status: pending
@@ -61,6 +67,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   7:
     name: documentation
     status: pending
@@ -68,6 +75,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   8:
     name: deployment
     status: pending
@@ -75,6 +83,7 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
   9:
     name: monitoring
     status: pending
@@ -82,5 +91,6 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
+    artifact_checksums: {}
 
 history: []

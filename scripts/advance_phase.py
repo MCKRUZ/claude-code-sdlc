@@ -21,10 +21,11 @@ from pathlib import Path
 
 import yaml
 
-# Re-use gate checking logic from check_gates.py
+# Re-use gate checking and artifact tracking logic
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
 from check_gates import check_phase_gates, format_results
+from track_artifacts import scan_artifacts
 
 
 def load_yaml(path: Path) -> dict:
@@ -140,6 +141,11 @@ def advance(state_path: Path, confirmed: bool) -> int:
         "at": timestamp,
         "gate_results": gate_summary,
     })
+
+    # Snapshot artifact checksums for the completed phase (baseline for dirty tracking)
+    completed_artifacts_dir = artifacts_base / f"{current_phase_id:02d}-{current_def['name']}"
+    checksums = scan_artifacts(completed_artifacts_dir)
+    state["phases"][current_phase_id]["artifact_checksums"] = checksums
 
     save_yaml(state_path, state)
 
