@@ -63,7 +63,7 @@ If the project profile includes a `documentation` section, process external refe
    - Topic cluster keywords
    - Must fit within `index_budget_tokens`
 
-> CHECKPOINT: Verify all summaries exist in `.sdlc/context/intake/`, the registry is complete in artifacts, and the intake index fits within the token budget. If over budget, truncate topic clusters first, then trim 1-line descriptions.
+> CHECKPOINT: Verify all summaries exist in `.sdlc/context/intake/`, the registry is complete in artifacts, and the intake index fits within the token budget. If over budget, truncate topic clusters first, then trim 1-line descriptions. After verification, lock the catalog by setting `"locked": true` in `.sdlc/context/intake/catalog.json` — this prevents DOC-NNN ID reassignment on future rescans, protecting Phase 1 traceability references.
 
 If the profile does NOT include a `documentation` section, skip this step entirely.
 

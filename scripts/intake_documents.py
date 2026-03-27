@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -132,6 +133,7 @@ def catalog_documents(
     intake_path: Path,
     files: list[tuple[Path, str]],
     config: dict,
+    project_root: Path,
 ) -> dict:
     """Build the catalog.json structure."""
     documents = []
@@ -146,9 +148,7 @@ def catalog_documents(
             "doc_id": doc_id,
             "filename": fp.name,
             "type": file_type,
-            "source_path": str(fp.relative_to(intake_path.parent.parent)).replace(
-                "\\", "/"
-            ),
+            "source_path": os.path.relpath(fp, project_root).replace("\\", "/"),
             "size_bytes": fp.stat().st_size,
             "estimated_tokens": est_tokens,
             "estimation_method": method,
@@ -216,7 +216,20 @@ def main() -> None:
             f"  {catalog['total_documents']} documents, "
             f"~{catalog['total_estimated_tokens']:,} estimated tokens"
         )
+        if catalog.get("locked"):
+            print("  [LOCKED] DOC-NNN IDs are frozen. Use --rescan to override (will reassign IDs).")
         sys.exit(0)
+
+    # Warn if rescanning a locked catalog
+    if catalog_path.exists() and args.rescan:
+        existing = json.loads(catalog_path.read_text(encoding="utf-8"))
+        if existing.get("locked"):
+            print(
+                "WARNING: Catalog is locked (Phase 0 complete). "
+                "Rescanning will reassign DOC-NNN IDs. "
+                "Phase 1 traceability references may break.",
+                file=sys.stderr,
+            )
 
     # Scan and catalog
     types = doc_config.get("types", ["pdf", "markdown", "text"])
@@ -228,7 +241,7 @@ def main() -> None:
         print(f"  Scanned for types: {types}")
         sys.exit(2)
 
-    catalog = catalog_documents(intake_path, files, doc_config)
+    catalog = catalog_documents(intake_path, files, doc_config, project_root)
 
     # Write catalog
     catalog_path.parent.mkdir(parents=True, exist_ok=True)

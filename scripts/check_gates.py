@@ -233,6 +233,27 @@ def check_intake_consistency(sdlc_dir: Path) -> list[dict]:
             "severity": "SHOULD",
         })
 
+    # Check summary token budgets
+    summary_budget = catalog.get("summary_budget_tokens", 750)
+    oversized = []
+    for doc in docs:
+        doc_id = doc["doc_id"]
+        matches = list(intake_dir.glob(f"{doc_id}-*.md"))
+        for match in matches:
+            word_count = len(match.read_text(encoding="utf-8", errors="replace").split())
+            est_tokens = int(word_count * 1.3)
+            if est_tokens > summary_budget * 1.5:
+                oversized.append(f"{doc_id} ({est_tokens} tokens, budget {summary_budget})")
+
+    if oversized:
+        results.append({
+            "gate": "G6-quality",
+            "artifact": "document-summaries",
+            "passed": False,
+            "message": f"{len(oversized)} summary(s) exceed token budget by >50%: {oversized[:3]}",
+            "severity": "SHOULD",
+        })
+
     # Check index.md exists
     index_path = intake_dir / "index.md"
     if not index_path.exists():
