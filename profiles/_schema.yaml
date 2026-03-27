@@ -153,14 +153,14 @@ properties:
             description: "Minimum phase to activate health check (default: 4)"
       evaluation_criteria:
         type: array
-        description: "Qualitative evaluation standards applied by the section-evaluator agent during Phase 4. Optional — teams define standards beyond numeric thresholds."
+        description: "Qualitative evaluation standards applied during gate checks and section evaluation. Criteria without a 'phases' field default to Phase 4 only (backward compatible). Criteria with a 'phases' field are applied during gate checks for those specific phases."
         items:
           type: object
           required: [name, description]
           properties:
             name:
               type: string
-              description: "Short name for the criterion (e.g., 'Result pattern', 'API documentation')"
+              description: "Short name for the criterion (e.g., 'Result pattern', 'Requirement testability')"
             description:
               type: string
               description: "What the evaluator checks for and what constitutes a pass"
@@ -168,6 +168,13 @@ properties:
               type: string
               enum: [fail, warn]
               description: "Whether violation is blocking (fail) or advisory (warn). Default: warn"
+            phases:
+              type: array
+              items:
+                type: integer
+                minimum: 0
+                maximum: 9
+              description: "Which phases this criterion applies to. If omitted, defaults to [4] for backward compatibility. Example: [1, 2] applies to Requirements and Design phases."
 
   compliance:
     type: object

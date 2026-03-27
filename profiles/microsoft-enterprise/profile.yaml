@@ -49,6 +49,30 @@ quality:
     timeout_seconds: 120
     min_phase: 4
   evaluation_criteria:
+    # Phase 1: Requirements quality
+    - name: "Requirement testability"
+      phases: [1]
+      description: "Every requirement must have a concrete acceptance criterion that can be verified by a test or demonstration. Vague criteria like 'the system should be fast' fail; 'P95 response time < 200ms' passes."
+      severity: warn
+    - name: "Requirement traceability"
+      phases: [1]
+      description: "Every requirement must have a unique ID (REQ-NNN) and trace to at least one stakeholder need from Phase 0. Orphan requirements with no stakeholder justification fail."
+      severity: warn
+    # Phase 2: Design quality
+    - name: "ADR completeness"
+      phases: [2]
+      description: "Each ADR must state the problem, options considered (minimum 2), decision rationale, and consequences. Missing any of these sections is a fail."
+      severity: fail
+    - name: "Interface contract specificity"
+      phases: [2]
+      description: "API contracts must specify request/response schemas, error codes, and auth requirements. Contracts that say 'returns data' without specifying the shape fail."
+      severity: warn
+    # Phase 3: Planning quality
+    - name: "Section plan verifiability"
+      phases: [3]
+      description: "Each section plan must include verification criteria that the section-evaluator can check mechanically. Vague criteria like 'works correctly' fail; 'all endpoints return 200 for valid input and 400 for invalid input' passes."
+      severity: warn
+    # Phase 4: Code quality (existing, no phases field = defaults to [4])
     - name: "Result pattern"
       description: "Error-prone operations use Result<T> instead of throwing exceptions. Evaluator checks for try/catch blocks that could use Result<T>."
       severity: warn

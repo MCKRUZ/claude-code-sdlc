@@ -38,7 +38,8 @@ When invoked for a section:
 
 3. **Read profile evaluation criteria (if present):**
    - Load `.sdlc/profile.yaml` and check for `quality.evaluation_criteria`
-   - Apply any additional qualitative standards defined by the team
+   - Apply criteria where `phases` includes `4`, or where `phases` is omitted (defaults to Phase 4)
+   - Skip criteria scoped to other phases (e.g., a criterion with `phases: [1, 2]` does not apply here)
    - If a criterion's `severity` field is missing, treat it as `warn` (non-blocking)
 
 4. **Evaluate each criterion:**
@@ -55,7 +56,14 @@ When invoked for a section:
    - Code quality: Within profile size limits? Patterns followed?
    - Deviation accountability: All deviations documented?
 
-6. **Produce evaluation report.**
+6. **Log evaluation metrics:**
+   After reaching a verdict, append a JSONL entry to `.sdlc/metrics/evaluator-log.jsonl`:
+   ```json
+   {"timestamp": "ISO-8601", "section": "SECTION-NNN", "verdict": "PASS|FAIL|CONDITIONAL PASS", "blocking_issues": 0, "warnings": 0, "attempt": 1}
+   ```
+   Create the `metrics/` directory if it doesn't exist. This enables empirical tracking of how often evaluations catch real issues vs. always passing.
+
+7. **Produce evaluation report.**
 
 ## Output Format
 

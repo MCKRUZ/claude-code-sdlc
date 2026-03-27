@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -86,12 +87,37 @@ def check_cross_references(artifacts_dir: Path) -> list[dict]:
         return results
 
     # Collect all artifact filenames in the sdlc directory tree
-    sdlc_dir = artifacts_dir.parent
+    sdlc_dir = artifacts_dir.resolve().parent
     existing_files = set()
     for fp in sdlc_dir.rglob("*"):
         if fp.is_file():
             existing_files.add(fp.name)
             existing_files.add(str(fp.relative_to(sdlc_dir)).replace("\\", "/"))
+
+    # Also collect files from the project root (parent of .sdlc/)
+    # artifacts_dir is .sdlc/artifacts/NN-name, so project root is 3 levels up
+    # sdlc_dir (artifacts_dir.resolve().parent) = .sdlc/artifacts
+    # sdlc_dir.parent = .sdlc/
+    # sdlc_dir.parent.parent = project root
+    project_root = sdlc_dir.parent.parent
+    project_files = set()
+    for fp in project_root.rglob("*"):
+        if fp.is_file():
+            rel = str(fp.relative_to(project_root)).replace("\\", "/")
+            # Skip .sdlc/ files (already indexed above) and .git/
+            if rel.startswith(".sdlc/") or rel.startswith(".git/"):
+                continue
+            project_files.add(fp.name)
+            project_files.add(rel)
+
+    # rglob may skip dotfiles on some platforms — explicitly walk .claude/ if it exists
+    dot_claude = project_root / ".claude"
+    if dot_claude.exists():
+        for fp in dot_claude.rglob("*"):
+            if fp.is_file():
+                rel = str(fp.relative_to(project_root)).replace("\\", "/")
+                project_files.add(fp.name)
+                project_files.add(rel)
 
     # Scan each markdown artifact for file references
     for artifact_path in sorted(artifacts_dir.rglob("*.md")):
@@ -108,14 +134,16 @@ def check_cross_references(artifacts_dir: Path) -> list[dict]:
             ref = groups[0] or groups[1]
             # Strip leading paths like .sdlc/ or artifacts/
             ref_name = ref.split("/")[-1] if "/" in ref else ref
-            if ref_name not in existing_files and ref not in existing_files:
+            # Check in .sdlc/ tree, then in project root tree
+            if (ref_name not in existing_files and ref not in existing_files
+                    and ref_name not in project_files and ref not in project_files):
                 # Skip known external/template refs
                 if ref.startswith("http") or "${" in ref or ref.startswith("<"):
                     continue
                 results.append({
                     "gate": "cross-reference",
                     "passed": False,
-                    "message": f"'{artifact_name}' references '{ref}' which was not found in .sdlc/",
+                    "message": f"'{artifact_name}' references '{ref}' which was not found in project",
                     "severity": "SHOULD",
                 })
 
@@ -380,6 +408,24 @@ def check_phase_gates(
     consistency_results = check_cross_phase_consistency(phase_id, sdlc_dir)
     results.extend(consistency_results)
 
+    # Gate 6: Phase-scoped evaluation criteria
+    eval_criteria = profile.get("quality", {}).get("evaluation_criteria", [])
+    phase_criteria = [
+        c for c in eval_criteria
+        if phase_id in c.get("phases", [4])  # Default to [4] for backward compat
+    ]
+    if phase_criteria:
+        for criterion in phase_criteria:
+            # Evaluation criteria are checked by the agent (section-evaluator or gate reviewer),
+            # not mechanically. We record them as REVIEW items so the agent knows to check them.
+            results.append({
+                "gate": "G6-quality",
+                "check": criterion["name"],
+                "passed": None,  # Requires agent evaluation
+                "message": f"[{criterion.get('severity', 'warn').upper()}] {criterion['name']}: {criterion['description']}",
+                "severity": "MUST" if criterion.get("severity") == "fail" else "SHOULD",
+            })
+
     return results
 
 
@@ -447,6 +493,43 @@ def check_cross_phase_consistency(
     })
 
     return results
+
+
+def log_gate_metrics(results: list[dict], phase_id: int, sdlc_dir: Path) -> None:
+    """Append gate check results to .sdlc/metrics/gate-log.jsonl for empirical tracking."""
+    metrics_dir = sdlc_dir / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    log_path = metrics_dir / "gate-log.jsonl"
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    passed = sum(1 for r in results if r["passed"] is True)
+    failed = sum(1 for r in results if r["passed"] is False)
+    manual = sum(1 for r in results if r["passed"] is None)
+
+    # Log summary entry
+    entry = {
+        "timestamp": timestamp,
+        "phase": phase_id,
+        "passed": passed,
+        "failed": failed,
+        "manual": manual,
+        "blocked": any(
+            r["passed"] is False and r.get("severity") == "MUST"
+            for r in results
+        ),
+    }
+
+    # Log individual failures for analysis
+    failures = [
+        {"gate": r["gate"], "message": r["message"], "severity": r.get("severity", "")}
+        for r in results
+        if r["passed"] is False
+    ]
+    if failures:
+        entry["failures"] = failures
+
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 
 def format_results(results: list[dict], phase_id: int) -> str:
@@ -523,6 +606,9 @@ def main():
     results = check_phase_gates(phase_id, state, profile, artifacts_base)
     output = format_results(results, phase_id)
     print(output)
+
+    # Log metrics for empirical tracking (Issue #6)
+    log_gate_metrics(results, phase_id, sdlc_dir)
 
     # Exit with error if any MUST gates failed
     must_failures = [r for r in results if r["passed"] is False and r.get("severity") == "MUST"]

@@ -1,8 +1,10 @@
 """Validate a frozen layer file for structure, frontmatter, and token budget."""
 
 import argparse
+import json
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import yaml
@@ -163,6 +165,23 @@ def validate(state_path: Path, phase_id: int) -> int:
         errors.append(f"Unfilled template placeholders: {placeholders[:5]}")
 
     print_results(errors, warnings, layer_path)
+
+    # Log metrics for empirical tracking (Issue #6)
+    metrics_dir = sdlc_dir / "metrics"
+    metrics_dir.mkdir(parents=True, exist_ok=True)
+    log_path = metrics_dir / "frozen-layer-log.jsonl"
+    entry = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "phase": phase_id,
+        "valid": len(errors) == 0,
+        "errors": len(errors),
+        "warnings": len(warnings),
+        "estimated_tokens": estimated_tokens,
+        "error_details": errors[:5] if errors else [],
+    }
+    with open(log_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
+
     return 1 if errors else 0
 
 
