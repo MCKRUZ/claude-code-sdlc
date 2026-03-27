@@ -37,6 +37,11 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 - **Question-to-file** — HITL open questions persisted to `open-questions.md` for audit trail
 - **Test expansion** — Healer/Expander/bug-to-test patterns in Phase 6
 - **Parallel review resolution** — Batch review findings by file in Phase 5
+- **Session health check** — Opt-in pre-flight build verification in Phase 4 Step 0 (agent-executed, cross-platform)
+- **Visual regression testing** — Optional screenshot capture in Phase 6 with baseline comparison (requires orchestrator integration)
+- **Single-section guardrail** — Intentionally redundant constraints preventing concurrent section work in Phase 4
+- **Phase-scoped evaluation criteria** — `evaluation_criteria` with optional `phases` array for non-code artifact quality rubrics
+- **Empirical metrics** — JSONL logging in `check_gates.py`, `validate_frozen_layer.py`, and `section-evaluator` agent to `.sdlc/metrics/`
 
 ## Testing
 ```bash

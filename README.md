@@ -34,6 +34,11 @@ No existing tool combines specification-driven development + quality enforcement
 - **Parallel review resolution** — Batch review findings by file, resolve in parallel, re-verify after fix
 - **Advanced elicitation** — Constraint analysis, inverse thinking, pre-mortem, 5 whys, and more for coaching mode
 - **Phase-aware context** — Hooks inject current phase reminders and conventions
+- **Session health check** — Opt-in pre-flight build verification at session start (Phase 4+) catches broken builds before the agent compounds them with new work
+- **Visual regression testing** — Optional screenshot capture during Phase 6 E2E testing with baseline comparison (manual or pixel-diff)
+- **Single-section guardrail** — Explicit constraint preventing simultaneous work on multiple sections in Phase 4 unless explicitly parallelizable
+- **Phase-scoped evaluation criteria** — Quality rubrics that apply to non-code artifacts (requirements, design, planning) in addition to code
+- **Empirical metrics logging** — JSONL instrumentation in gates, frozen layer validation, and section evaluation for evidence-based harness optimization
 
 ## Installation
 
@@ -118,6 +123,9 @@ Full enterprise stack with compliance:
 - **Quality:** 80% coverage minimum, 100% critical paths, TDD required
 - **Compliance:** SOC 2 gates at every phase transition
 - **Conventions:** Conventional commits, immutable patterns, no console.log
+- **Health check:** `dotnet build --no-restore --verbosity quiet` at session start (Phase 4+)
+- **Visual verification:** Screenshot capture with manual baseline comparison
+- **Evaluation criteria:** Phase-scoped rubrics for requirements (testability, traceability), design (ADR completeness, interface specificity), planning (section plan verifiability), and code (Result pattern, immutable state, FluentValidation, API docs)
 
 ### starter
 Minimal profile for quick start:
@@ -169,7 +177,9 @@ Every phase transition runs through six gates:
 3. **Metrics** — Quantitative thresholds met (coverage, file size)
 4. **Compliance** — Correct labeling (priorities, ADR status, compliance mapping)
 5. **Consistency** — Locked metrics checked against frozen layers from prior phases
-6. **Quality** — Holistic assessment (clarity, accuracy, consistency)
+6. **Quality** — Phase-scoped evaluation criteria from profile (e.g., requirement testability in Phase 1, ADR completeness in Phase 2, code patterns in Phase 4)
+
+All gate results are logged to `.sdlc/metrics/gate-log.jsonl` for empirical tracking of gate effectiveness.
 
 Gates have severity levels:
 - **MUST** — Blocks transition if failed
