@@ -110,6 +110,47 @@ properties:
       require_security_review:
         type: boolean
         description: "MUST have security review for sensitive code"
+      visual_verification:
+        type: object
+        description: "Optional visual regression testing via screenshots during Phase 6. When enabled, the e2e-runner captures screenshots at key user flows and stores them as baseline evidence. Inspired by Anthropic's long-running agent harness research."
+        properties:
+          enabled:
+            type: boolean
+            description: "Enable visual regression screenshot capture (default: false)"
+          capture_points:
+            type: array
+            items:
+              type: string
+            description: "Named capture points (e.g., 'login-page', 'dashboard-loaded', 'form-submitted'). If omitted, e2e-runner captures at each P0 user story completion."
+          baseline_comparison:
+            type: string
+            enum: [manual, pixel-diff, none]
+            description: "How to compare against baseline: 'manual' (human reviews side-by-side), 'pixel-diff' (automated diff with threshold), 'none' (capture only). Default: manual"
+          diff_threshold_percent:
+            type: number
+            minimum: 0
+            maximum: 100
+            description: "Pixel diff tolerance percentage (only used when baseline_comparison is 'pixel-diff'). Default: 5"
+      session_health_check:
+        type: object
+        description: "Optional session-start health check. When enabled (Phase 4+), the session-start hook runs a smoke test before the agent begins new work. Inspired by Anthropic's long-running agent harness research."
+        properties:
+          enabled:
+            type: boolean
+            description: "Enable session-start health check (default: false)"
+          command:
+            type: string
+            description: "Shell command to run as smoke test (e.g., 'dotnet build', 'npm run build', 'uv run pytest -x --timeout=30'). MUST exit 0 on success."
+          timeout_seconds:
+            type: integer
+            minimum: 5
+            maximum: 300
+            description: "Maximum seconds to wait for the health check (default: 60)"
+          min_phase:
+            type: integer
+            minimum: 0
+            maximum: 9
+            description: "Minimum phase to activate health check (default: 4)"
       evaluation_criteria:
         type: array
         description: "Qualitative evaluation standards applied by the section-evaluator agent during Phase 4. Optional — teams define standards beyond numeric thresholds."

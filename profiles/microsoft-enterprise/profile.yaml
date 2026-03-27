@@ -40,6 +40,14 @@ quality:
   require_tdd: true
   require_code_review: true
   require_security_review: true
+  visual_verification:
+    enabled: true
+    baseline_comparison: manual
+  session_health_check:
+    enabled: true
+    command: "dotnet build --no-restore --verbosity quiet"
+    timeout_seconds: 120
+    min_phase: 4
   evaluation_criteria:
     - name: "Result pattern"
       description: "Error-prone operations use Result<T> instead of throwing exceptions. Evaluator checks for try/catch blocks that could use Result<T>."

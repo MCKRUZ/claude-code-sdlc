@@ -63,6 +63,20 @@ Agent(performance-benchmarker, "Profile the system against NFR performance targe
 
 **On build or test compilation failure:** Spawn `build-error-resolver` immediately.
 
+#### Visual Verification (optional — when `visual_verification.enabled` is true in profile)
+
+After E2E tests complete, run a visual regression pass. This catches UI bugs that are invisible from code alone — layout shifts, missing elements, broken styling, truncated text.
+
+1. The `e2e-runner` agent SHOULD capture full-page screenshots at each P0 user story completion (or at each named `capture_points` from the profile).
+2. Store screenshots in `.sdlc/artifacts/06-testing/screenshots/` with naming convention: `{scenario-id}_{capture-point}_{timestamp}.png`
+3. If a baseline exists (from a previous test run), compare using the profile's `baseline_comparison` method:
+   - **`manual`:** Generate a side-by-side HTML comparison page at `.sdlc/artifacts/06-testing/screenshots/visual-diff.html` for human review
+   - **`pixel-diff`:** Use Playwright's `toHaveScreenshot()` with the configured `diff_threshold_percent`. Report regressions as WARN-level findings in `test-results.md`
+   - **`none`:** Capture only, no comparison — screenshots serve as evidence artifacts
+4. If no baseline exists (first run), the captured screenshots become the baseline. Copy them to `.sdlc/artifacts/06-testing/screenshots/baseline/`
+
+> This step is a SHOULD gate, not a MUST gate. Visual verification failures produce warnings that inform the human review — they do not block phase advancement.
+
 #### For project_type: skill (scenario-based)
 
 There is no compiled code to instrument. Do not spawn `e2e-runner`, `api-tester`, or `test-writer-fixer` for coverage measurement — they will produce no useful output.
@@ -82,6 +96,7 @@ When all agents complete, consolidate results:
 - **E2E** (`e2e-runner`): each P0 user story must have a passing test; collect screenshots/videos as artifacts
 - **API contract** (`api-tester`): all endpoints must match their contracts; document any drift from `api-contracts.md`
 - **Performance** (`performance-benchmarker`): compare against NFR targets; flag regressions
+- **Visual** (if enabled): list screenshot captures, flag any visual regressions found, link to the comparison page
 
 ### Step 4: Defect Management
 Track and resolve defects found during testing:
@@ -104,6 +119,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase06-visual.html
 - Coverage heatmap by game system
 - Scenario-to-requirement traceability matrix
 - Performance benchmark results (if applicable)
+- Visual regression gallery (if enabled) — baseline vs current screenshots with diff highlights
 
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
@@ -132,6 +148,7 @@ Must contain ALL of:
 - **Regression notes** — any previously passing tests that now fail
 - **API contract compliance** — contract test results and any drift from Phase 2 design
 - **Performance results** — if benchmarked, results vs NFR targets
+- **Visual regression results** — if enabled: screenshot count, comparison method, regressions found, link to visual-diff.html
 
 ### `coverage-report.md` (REQUIRED)
 Must contain ALL of:

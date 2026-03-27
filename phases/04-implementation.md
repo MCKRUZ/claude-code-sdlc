@@ -10,6 +10,8 @@ Write production-quality code following section plans, using TDD methodology. Do
 
 ## Workflow
 
+> **CONSTRAINT:** You MUST complete and pass section evaluation for the current section before starting the next. Working on multiple sections simultaneously is ONLY permitted when they are explicitly marked as parallelizable (no mutual dependencies) in the section plan. Starting a new section while another is `in_progress` and not part of the same parallel group is prohibited. This constraint exists because partially-implemented sections compound complexity and leave the codebase in an unrecoverable state for the next session.
+
 ### Step 0: Agent Orchestration Setup
 
 Before writing any code, analyze the sprint plan to determine the agent execution strategy.
@@ -53,6 +55,8 @@ After each section completes, spawn `code-reviewer` in background (`run_in_backg
 **0g. Initialize session handoff.**
 If `session-handoff.json` exists in `.sdlc/artifacts/04-implementation/`, read it to restore context: which sections are done, which are in progress, what the blockers are, and what the previous session's next actions were. Present a summary to the human. If the file does not exist (first session), create it from the template, populating the `sections` array from the section plans in `.sdlc/artifacts/03-planning/section-plans/`.
 
+> CHECKPOINT: If `session-handoff.json` shows any section with status `in_progress`, that section MUST be completed (or explicitly abandoned with human approval) before starting a new section. Do NOT start fresh work while a previous section is half-finished — this is the #1 cause of compounding complexity across sessions.
+
 **0h. Initialize sections-progress.json.**
 If `sections-progress.json` does not exist in `.sdlc/artifacts/04-implementation/`, create it from the template, populating the `sections` array from section plans and the `sprints` array from `sprint-plan.md`. Update the `total_sections` count. If it already exists, verify it matches the current section plan set.
 
@@ -84,6 +88,8 @@ If `sections-progress.json` does not exist in `.sdlc/artifacts/04-implementation
 11. If section is security-sensitive: spawn `security-reviewer` (foreground, blocking)
 
 **On build failure at any point:** Immediately spawn `build-error-resolver`. Do not attempt manual fixes first.
+
+> **CHECKPOINT:** Before proceeding to the next section, verify: (1) the current section's evaluator returned PASS or CONDITIONAL PASS, (2) `sections-progress.json` shows the section as `complete`, (3) `session-handoff.json` is updated. If ANY of these are incomplete, finish them before starting new work. This is not a suggestion — it is a hard gate.
 
 ### Step 2: Integration Points
 At each integration between sections:
