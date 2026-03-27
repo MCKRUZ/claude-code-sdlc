@@ -86,45 +86,21 @@ if ($phaseMatch.Success) {
     }
 
     # --- Session Health Check (opt-in, Phase 4+) ---
-    # Reads profile.yaml for session_health_check config, runs a smoke test
-    # before the agent starts new work. Catches broken builds early.
+    # Detects if health check is configured and reminds the agent to run it.
+    # The actual check is executed by the agent in Phase 4 Step 0 (not in this hook)
+    # because: (1) the agent's Bash tool is cross-platform, (2) the agent can react
+    # to failures intelligently, (3) the user sees what's happening.
     $profileFile = Join-Path $sdlcDir "profile.yaml"
     if (Test-Path $profileFile) {
         $profileContent = Get-Content $profileFile -Raw -ErrorAction SilentlyContinue
         $healthEnabled = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?enabled:\s*(true|false)')
-        $healthCommand = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?command:\s*"([^"]+)"')
-        $healthTimeout = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?timeout_seconds:\s*(\d+)')
         $healthMinPhase = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?min_phase:\s*(\d+)')
 
         $isEnabled = $healthEnabled.Success -and $healthEnabled.Groups[1].Value -eq "true"
         $minPhase = if ($healthMinPhase.Success) { [int]$healthMinPhase.Groups[1].Value } else { 4 }
 
-        if ($isEnabled -and [int]$phaseId -ge $minPhase -and $healthCommand.Success) {
-            $cmd = $healthCommand.Groups[1].Value
-            $timeout = if ($healthTimeout.Success) { [int]$healthTimeout.Groups[1].Value } else { 60 }
-
-            Write-Output "[SDLC-HEALTH] Running session health check: $cmd (timeout: ${timeout}s)"
-            try {
-                $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c $cmd" -WorkingDirectory $PWD -NoNewWindow -PassThru -RedirectStandardOutput "$env:TEMP\sdlc-health-out.txt" -RedirectStandardError "$env:TEMP\sdlc-health-err.txt"
-                $exited = $process.WaitForExit($timeout * 1000)
-
-                if (-not $exited) {
-                    $process.Kill()
-                    Write-Output "[SDLC-HEALTH] TIMEOUT — health check exceeded ${timeout}s. The build may be hanging. Investigate before starting new work."
-                } elseif ($process.ExitCode -ne 0) {
-                    $errOutput = Get-Content "$env:TEMP\sdlc-health-err.txt" -Raw -ErrorAction SilentlyContinue
-                    $lastLines = if ($errOutput) { ($errOutput -split "`n" | Select-Object -Last 5) -join "`n" } else { "(no stderr)" }
-                    Write-Output "[SDLC-HEALTH] FAIL (exit code $($process.ExitCode)) — the project does not build cleanly. Fix this BEFORE starting new work."
-                    Write-Output "[SDLC-HEALTH] Last error output:`n$lastLines"
-                } else {
-                    Write-Output "[SDLC-HEALTH] PASS — project builds cleanly."
-                }
-            } catch {
-                Write-Output "[SDLC-HEALTH] ERROR — could not run health check: $($_.Exception.Message)"
-            } finally {
-                Remove-Item "$env:TEMP\sdlc-health-out.txt" -ErrorAction SilentlyContinue
-                Remove-Item "$env:TEMP\sdlc-health-err.txt" -ErrorAction SilentlyContinue
-            }
+        if ($isEnabled -and [int]$phaseId -ge $minPhase) {
+            Write-Output "[SDLC-HEALTH] Health check is enabled. Run the configured smoke test before starting new work (see Phase 4 Step 0, pre-flight check)."
         }
     }
 

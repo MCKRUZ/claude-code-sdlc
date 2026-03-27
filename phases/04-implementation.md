@@ -10,11 +10,22 @@ Write production-quality code following section plans, using TDD methodology. Do
 
 ## Workflow
 
+<!-- NOTE: The single-section constraint is stated three times in this file (here, Step 0g checkpoint, and post-Step-1 checkpoint).
+     This is INTENTIONAL redundancy for LLM compliance — repetition at different points in the workflow improves adherence.
+     Do not consolidate into a single location. -->
 > **CONSTRAINT:** You MUST complete and pass section evaluation for the current section before starting the next. Working on multiple sections simultaneously is ONLY permitted when they are explicitly marked as parallelizable (no mutual dependencies) in the section plan. Starting a new section while another is `in_progress` and not part of the same parallel group is prohibited. This constraint exists because partially-implemented sections compound complexity and leave the codebase in an unrecoverable state for the next session.
 
 ### Step 0: Agent Orchestration Setup
 
-Before writing any code, analyze the sprint plan to determine the agent execution strategy.
+Before writing any code, run the pre-flight check and analyze the sprint plan.
+
+**0-pre. Pre-flight health check (when `session_health_check.enabled` is true in profile).**
+Read `.sdlc/profile.yaml`. If `session_health_check` is configured and the current phase >= `min_phase` (default: 4), run the configured `command` using the Bash tool before doing anything else. This catches broken builds before you compound them with new work.
+- **On success (exit 0):** Report `[SDLC-HEALTH] PASS` and proceed.
+- **On failure (non-zero exit):** Report `[SDLC-HEALTH] FAIL` with the error output. Do NOT start new section work. Instead, diagnose and fix the build issue first — spawn `build-error-resolver` if needed.
+- **On timeout:** Report `[SDLC-HEALTH] TIMEOUT`. Investigate what's hanging before proceeding.
+
+This step runs inside the agent session (not the hook) so it works cross-platform and the user can see progress.
 
 **0a. Read the sprint plan and section plans.**
 Identify which sections are in the current sprint and map their dependency graph.

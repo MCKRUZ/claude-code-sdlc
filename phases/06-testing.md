@@ -65,7 +65,15 @@ Agent(performance-benchmarker, "Profile the system against NFR performance targe
 
 #### Visual Verification (optional — when `visual_verification.enabled` is true in profile)
 
+<!-- STATUS: PLANNED — requires orchestrator integration.
+     The instructions below describe the desired behavior, but the orchestrator must explicitly
+     include visual capture instructions in the e2e-runner agent's prompt for this to work.
+     The e2e-runner agent does not read this phase definition directly. Until the orchestrator
+     passes these instructions through, this section is a specification, not a working feature. -->
+
 After E2E tests complete, run a visual regression pass. This catches UI bugs that are invisible from code alone — layout shifts, missing elements, broken styling, truncated text.
+
+**Orchestrator responsibility:** When spawning the `e2e-runner` agent and `visual_verification.enabled` is true in the profile, the orchestrator MUST include screenshot capture instructions in the agent prompt. Example: `"After each P0 scenario passes, capture a full-page screenshot and save it to .sdlc/artifacts/06-testing/screenshots/{scenario-id}_{timestamp}.png"`
 
 1. The `e2e-runner` agent SHOULD capture full-page screenshots at each P0 user story completion (or at each named `capture_points` from the profile).
 2. Store screenshots in `.sdlc/artifacts/06-testing/screenshots/` with naming convention: `{scenario-id}_{capture-point}_{timestamp}.png`
