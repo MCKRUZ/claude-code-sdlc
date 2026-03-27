@@ -92,6 +92,13 @@ compliance:
   audit_trail: true
   change_approval: peer-review
 
+# documentation:
+#   intake_path: "docs/intake"
+#   types: [pdf, markdown, text]
+#   index_budget_tokens: 5000
+#   summary_budget_tokens: 750
+#   max_documents: 50
+
 conventions:
   commit_format: "type: description"
   branch_naming: "type/ticket-description"

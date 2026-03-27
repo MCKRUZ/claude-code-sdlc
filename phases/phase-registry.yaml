@@ -39,6 +39,7 @@ phases:
       optional:
         - "stakeholder-notes.md"
         - "market-research.md"
+        - "document-registry.md"  # Document intake index (opt-in via profile.documentation)
         - "phase0-report.html"
 
   - id: 1

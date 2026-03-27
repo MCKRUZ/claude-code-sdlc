@@ -11,7 +11,7 @@ Decompose the problem statement into a complete, prioritized, and verifiable set
 
 ### Step 0: HITL Gate — Confirm Scope Before Writing Requirements
 
-> **HITL GATE:** Read `phase1-handoff.md`. Confirm with the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Are the open questions (Q-NN) from Discovery answered? (2) Is the prioritization (P0/P1/P2) clear? (3) Are there any requirements the human expects that weren't captured in Discovery? Do not begin writing requirements until the human confirms scope.
+> **HITL GATE:** Read `phase1-handoff.md`. Confirm with the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Are the open questions (Q-NN) from Discovery answered? (2) Is the prioritization (P0/P1/P2) clear? (3) Are there any requirements the human expects that weren't captured in Discovery? (4) If document intake was performed in Phase 0, review the document registry — are there requirements implied by the source documents that aren't captured in the handoff? Do not begin writing requirements until the human confirms scope.
 
 ### Step 1: Functional Requirements
 For each stakeholder pain from the problem statement, define what the system must DO:
@@ -19,6 +19,7 @@ For each stakeholder pain from the problem statement, define what the system mus
 - Assign priority: P0 (launch blocker) / P1 (core value) / P2 (enhances) / P3 (future)
 - Group by functional domain
 - Every P0 must trace to a Phase 0 pain point
+- **Source Document traceability (when document intake was performed):** Link each requirement to its source document(s) using DOC-NNN IDs from the document registry. A single requirement MAY trace to multiple documents. Requirements not derived from external documents use "Discovery interview" or "Stakeholder input" as the source.
 
 **Error Specification (REQUIRED for every P0/P1 requirement):** Each requirement must explicitly define:
 - **Accepts:** What valid inputs/preconditions does this requirement expect?
@@ -81,9 +82,11 @@ Run `/sdlc-gate` to validate exit criteria and automatically generate the phase 
 ### `requirements.md` (REQUIRED)
 Must contain ALL of:
 - **Summary table** — requirement count by priority and domain
-- **Functional requirements** — table format: ID | Requirement | Priority | Domain | Source
+- **Functional requirements** — table format: ID | Requirement | Priority | Domain | Source | Source Document(s)
 - **Business rules** — behavioral constraints separate from functional requirements
 - **Traceability matrix** — every P0/P1 linked to a Phase 0 stakeholder pain
+
+The "Source Document(s)" column is REQUIRED when document intake was performed in Phase 0. Use DOC-NNN references (e.g., `DOC-003:Section 4.2`). Omit this column when no document intake was performed.
 
 ### `non-functional-requirements.md` (REQUIRED)
 Must contain ALL of:
@@ -117,6 +120,7 @@ Must contain ALL of:
 - [ ] Each epic has happy path AND at least one error scenario
 - [ ] Stakeholder reviewed and approved (manual gate)
 - [ ] No unresolved P0 conflicts or ambiguities
+- [ ] If document intake was performed: every P0 requirement sourced from an external document has a DOC-NNN reference in the Source Document(s) column
 
 ## HTML Report
 The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase01-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.

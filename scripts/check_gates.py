@@ -185,6 +185,68 @@ def get_dirty_artifacts(
     }
 
 
+def check_intake_consistency(sdlc_dir: Path) -> list[dict]:
+    """Verify document intake artifacts are consistent (Phase 0 only)."""
+    results = []
+    catalog_path = sdlc_dir / "context" / "intake" / "catalog.json"
+
+    if not catalog_path.exists():
+        return results  # No intake performed — skip entirely
+
+    try:
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        results.append({
+            "gate": "G2-completeness",
+            "artifact": "document-intake",
+            "passed": False,
+            "message": "catalog.json exists but is malformed",
+            "severity": "SHOULD",
+        })
+        return results
+
+    docs = catalog.get("documents", [])
+    intake_dir = sdlc_dir / "context" / "intake"
+
+    # Check each cataloged document has a summary
+    missing_summaries = []
+    for doc in docs:
+        doc_id = doc["doc_id"]
+        matches = list(intake_dir.glob(f"{doc_id}-*.md"))
+        if not matches:
+            missing_summaries.append(doc_id)
+
+    if missing_summaries:
+        results.append({
+            "gate": "G2-completeness",
+            "artifact": "document-intake",
+            "passed": False,
+            "message": f"Missing summaries for {len(missing_summaries)} document(s): {missing_summaries[:5]}",
+            "severity": "SHOULD",
+        })
+    else:
+        results.append({
+            "gate": "G2-completeness",
+            "artifact": "document-intake",
+            "passed": True,
+            "message": f"All {len(docs)} cataloged documents have summaries",
+            "severity": "SHOULD",
+        })
+
+    # Check index.md exists
+    index_path = intake_dir / "index.md"
+    if not index_path.exists():
+        results.append({
+            "gate": "G2-completeness",
+            "artifact": "intake-index",
+            "passed": False,
+            "message": "Intake index (.sdlc/context/intake/index.md) not found",
+            "severity": "SHOULD",
+        })
+
+    return results
+
+
 def check_phase_gates(
     phase_id: int,
     state: dict,
@@ -310,6 +372,11 @@ def check_phase_gates(
                     "message": f"sections-progress.json: parse error — {e}",
                     "severity": "SHOULD",
                 })
+
+    # Intake consistency (Phase 0 only)
+    if phase_id == 0:
+        intake_results = check_intake_consistency(artifacts_base.parent)
+        results.extend(intake_results)
 
     # Gate 3: Metrics — check profile quality thresholds (phases 5, 6)
     if phase_id in [5, 6]:

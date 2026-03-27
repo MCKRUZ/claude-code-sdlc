@@ -42,6 +42,7 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 - **Single-section guardrail** — Intentionally redundant constraints preventing concurrent section work in Phase 4
 - **Phase-scoped evaluation criteria** — `evaluation_criteria` with optional `phases` array for non-code artifact quality rubrics
 - **Empirical metrics** — JSONL logging in `check_gates.py`, `validate_frozen_layer.py`, and `section-evaluator` agent to `.sdlc/metrics/`
+- **Document intake** — Opt-in corpus analysis in Phase 0: scans external docs (RFPs, API specs, vendor docs), generates per-doc summaries with DOC-NNN IDs, creates token-budgeted intake index (Tier 1.5), enables Phase 1 requirement-to-source traceability
 
 ## Testing
 ```bash
@@ -51,4 +52,5 @@ uv run scripts/check_gates.py --state /tmp/test/.sdlc/state.yaml --phase 0
 uv run scripts/validate_frozen_layer.py --state /tmp/test/.sdlc/state.yaml --phase 0
 uv run scripts/track_artifacts.py --state /tmp/test/.sdlc/state.yaml --snapshot
 uv run scripts/check_dependencies.py --state /tmp/test/.sdlc/state.yaml
+uv run scripts/intake_documents.py --state /tmp/test/.sdlc/state.yaml
 ```

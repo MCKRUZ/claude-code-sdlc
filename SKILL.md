@@ -100,10 +100,11 @@ The plugin uses a 3-tier context system for token-efficient cross-phase continui
 | Tier | Content | When Loaded | Budget |
 |------|---------|-------------|--------|
 | 1 Foundation | Project identity, constitution extract | Always (session start) | ~500 tokens |
+| 1.5 Intake Index | Document corpus index with DOC-NNN IDs | Session start (when available) | ~5K tokens (configurable) |
 | 2 Frozen Layers | Phase summaries with locked metrics | Session start (recent 3) | ~2K per layer |
 | 3 Reference | Validation rules, compliance, guides | On-demand | Unbounded |
 
-The session-start hook automatically loads Tiers 1-2. Tier 3 docs in `references/` are loaded when Claude needs specific guidance. See `references/context-tiers.md` for details.
+The session-start hook automatically loads Tiers 1-2 (and 1.5 when document intake was performed). Tier 1.5 is opt-in — only loaded when `.sdlc/context/intake/index.md` exists. Tier 3 docs in `references/` are loaded when Claude needs specific guidance. See `references/context-tiers.md` for details.
 
 ## Narrative Enhancement
 
@@ -209,10 +210,32 @@ Generate a visual report as the **second-to-last step** of every phase, immediat
 - Both light and dark theme support via `prefers-color-scheme`
 - Responsive layout (sidebar collapses to horizontal bar on mobile)
 
+### Artifact Sub-Pages (MANDATORY)
+
+Every phase visual report MUST include linked sub-pages for each artifact. The main report is a summary; sub-pages contain full artifact detail.
+
+- **Main report:** `.sdlc/reports/phaseNN-visual.html` (or `phaseNN-discovery.html`, etc.) -- summary with highlights from each artifact
+- **Sub-pages:** `.sdlc/reports/phaseNN-<artifact-name>.html` -- full rendered content of each artifact (e.g., `phase00-problem-statement.html`, `phase00-constraints.html`)
+- **Linking:** The main report's artifact inventory section MUST link to each sub-page. Each sub-page MUST link back to the main report.
+- **Consistency:** Sub-pages use the same dark theme and styling as the main report.
+
+This ensures the summary stays scannable while full detail is always one click away for stakeholder review.
+
+### Project Index Page (MANDATORY)
+
+An index page at `.sdlc/reports/index.html` MUST exist. It serves as the single entry point for all project documentation.
+
+- **Auto-create:** Generate `index.html` when the first phase report is created (typically Phase 0).
+- **Auto-update:** Update `index.html` every time a phase report is generated or a phase advances. Update phase status badges, dates, and report links.
+- **Contents:** Project header (name, profile, type, start date, current phase), mission statement, link to constitution, and a timeline of all 10 phases showing status (active/completed/pending) with links to phase reports.
+- **End state:** By project completion, `index.html` is a complete navigable dashboard of the entire SDLC history.
+
 ### Output Location
 
-All visual reports are written to `.sdlc/reports/`:
-- `phase00-visual.html`, `phase01-visual.html`, ..., `phase09-visual.html`
+All reports are written to `.sdlc/reports/`:
+- `index.html` -- project dashboard (single entry point)
+- `phase00-visual.html`, `phase01-visual.html`, ..., `phase09-visual.html` -- phase summary reports
+- `phase00-<artifact>.html`, `phase01-<artifact>.html`, ... -- artifact sub-pages
 - Additional named reports (e.g., `architecture-diagrams.html`, `phase03-section-review.html`) are encouraged alongside the numbered report
 
 ## Agent Orchestration Protocol

@@ -85,6 +85,24 @@ if ($phaseMatch.Success) {
         }
     }
 
+    # --- Tier 1.5: Document Intake Index (opt-in) ---
+    $intakeIndexPath = Join-Path $sdlcDir "context" "intake" "index.md"
+    if (Test-Path $intakeIndexPath) {
+        $intakeContent = Get-Content $intakeIndexPath -Raw -ErrorAction SilentlyContinue
+        if ($intakeContent) {
+            # Respect token budget — truncate at ~3750 words (~5000 tokens)
+            $intakeWords = ($intakeContent -split '\s+')
+            if ($intakeWords.Count -gt 3750) {
+                $intakeContent = ($intakeWords | Select-Object -First 3750) -join ' '
+                $intakeContent += "`n[TRUNCATED — full index at .sdlc/context/intake/index.md]"
+            }
+            Write-Output "[SDLC-CONTEXT:INTAKE] Document intake index loaded ($($intakeWords.Count) words)"
+            Write-Output "[SDLC-CONTEXT:INTAKE-INDEX]"
+            Write-Output $intakeContent
+            Write-Output "[/SDLC-CONTEXT:INTAKE-INDEX]"
+        }
+    }
+
     # --- Session Health Check (opt-in, Phase 4+) ---
     # Detects if health check is configured and reminds the agent to run it.
     # The actual check is executed by the agent in Phase 4 Step 0 (not in this hook)

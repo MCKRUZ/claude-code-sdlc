@@ -55,10 +55,11 @@ Requirements are testable statements of what the system must do. Each requiremen
 
 ## Requirement Traceability
 
-| Req ID | Description | Priority | Source Persona | User Story | Status |
-|--------|-------------|----------|---------------|------------|--------|
-| FR-001 | [Short description] | P0 | [Persona] | [Story ID] | Draft |
-| FR-002 | | | | | |
+<!-- Include 'Source Document(s)' column only if document intake was performed in Phase 0 -->
+| Req ID | Description | Priority | Source Persona | User Story | Source Document(s) | Status |
+|--------|-------------|----------|---------------|------------|-------------------|--------|
+| FR-001 | [Short description] | P0 | [Persona] | [Story ID] | DOC-NNN:Section X | Draft |
+| FR-002 | | | | | | |
 
 ---
 

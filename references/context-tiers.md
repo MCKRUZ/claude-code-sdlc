@@ -7,6 +7,7 @@ The SDLC plugin uses a 3-tier context architecture to manage token budget across
 | Tier | Name | When Loaded | Token Budget | Source |
 |------|------|-------------|-------------|--------|
 | 1 | Foundation | Always (session start) | ~500 tokens | state.yaml + profile.yaml + constitution.md |
+| 1.5 | Intake Index | Session start (when available) | ~5K tokens (configurable) | `.sdlc/context/intake/index.md` |
 | 2 | Frozen Layers | Session start (recent 3) | ~2K per layer | `.sdlc/context/layers/` |
 | 3 | Reference | On-demand | Unbounded | `references/` directory in plugin |
 
@@ -24,6 +25,23 @@ The foundation provides enough context for Claude to orient itself in the projec
 - `.sdlc/state.yaml`
 - `.sdlc/profile.yaml`
 - `.sdlc/constitution.md`
+
+## Tier 1.5: Intake Index (Opt-In)
+
+Loaded automatically by the session-start hook when `.sdlc/context/intake/index.md` exists. Contains a condensed document corpus index generated during Phase 0 Document Intake.
+
+- **Document ID table:** DOC-NNN | filename | 1-line description
+- **Topic clusters:** Grouped keywords for quick relevance assessment
+- **Budget:** Configured via `documentation.index_budget_tokens` in profile (default 5000 tokens)
+
+This tier exists only when document intake was performed during Phase 0. Projects without external documentation never see this tier.
+
+**Per-document summaries** are NOT loaded at session start. They live in `.sdlc/context/intake/DOC-NNN-*.md` and are read on-demand when Claude needs detail about a specific source document.
+
+**Source files:**
+- `.sdlc/context/intake/index.md` (auto-loaded)
+- `.sdlc/context/intake/catalog.json` (metadata, not loaded)
+- `.sdlc/context/intake/DOC-NNN-*.md` (on-demand)
 
 ## Tier 2: Frozen Layers (Per-Phase)
 
@@ -51,13 +69,15 @@ This is the existing behavior — no change needed. The tier designation formali
 
 ```
 Session Start:
-  1. Foundation (always)        → ~500 tokens
-  2. Frozen Layers (recent 3)   → ~6K tokens max
-                                   ─────────────
-                                   ~6.5K total auto-loaded
+  1.  Foundation (always)           → ~500 tokens
+  1.5 Intake Index (if available)   → ~5K tokens (configurable)
+  2.  Frozen Layers (recent 3)      → ~6K tokens max
+                                      ─────────────
+                                      ~11.5K total auto-loaded (max with intake)
+                                      ~6.5K total auto-loaded (without intake)
 
 During Work:
-  3. References (on-demand)     → loaded as needed
+  3. References (on-demand)         → loaded as needed
 ```
 
 ## Hook Implementation

@@ -192,6 +192,35 @@ properties:
         type: string
         enum: [peer-review, manager-approval, change-board, none]
 
+  documentation:
+    type: object
+    description: "Optional document intake configuration. When present, Phase 0 scans the intake_path for external reference documents (RFPs, API specs, vendor docs) and generates a searchable index with per-document summaries."
+    properties:
+      intake_path:
+        type: string
+        description: "Relative path from project root to the folder containing external documents. The folder MUST exist before Phase 0 runs. Example: 'docs/intake' or 'references/external'"
+      types:
+        type: array
+        items:
+          type: string
+          enum: [pdf, markdown, text, docx, html]
+        description: "File types to scan. Default: [pdf, markdown, text]"
+      index_budget_tokens:
+        type: integer
+        minimum: 1000
+        maximum: 20000
+        description: "Maximum token budget for the session-start intake index. Default: 5000"
+      summary_budget_tokens:
+        type: integer
+        minimum: 200
+        maximum: 2000
+        description: "Token budget per document summary. Default: 750"
+      max_documents:
+        type: integer
+        minimum: 1
+        maximum: 500
+        description: "Maximum number of documents to process. Default: 50"
+
   conventions:
     type: object
     properties:

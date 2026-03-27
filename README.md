@@ -39,6 +39,7 @@ No existing tool combines specification-driven development + quality enforcement
 - **Single-section guardrail** — Explicit constraint preventing simultaneous work on multiple sections in Phase 4 unless explicitly parallelizable
 - **Phase-scoped evaluation criteria** — Quality rubrics that apply to non-code artifacts (requirements, design, planning) in addition to code
 - **Empirical metrics logging** — JSONL instrumentation in gates, frozen layer validation, and section evaluation for evidence-based harness optimization
+- **Document intake** — Opt-in Phase 0 corpus analysis for external reference materials (RFPs, API specs, vendor docs, compliance handbooks) with per-document summaries, DOC-NNN traceability IDs, token-budgeted session-start index (Tier 1.5), and Phase 1 requirement-to-source linking
 
 ## Installation
 

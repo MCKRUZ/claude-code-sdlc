@@ -11,7 +11,7 @@ Understand the problem space deeply enough that a stakeholder who has never hear
 
 ### Step 0: HITL Gate — Frame the Problem with the Human
 
-> **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? (5) What type of system is this? Choose one: **service** (backend API / server process), **app** (user-facing application with UI), **library** (shared code package / SDK), **skill** (Claude Code skill / AI plugin / prompt-based tool), **cli** (command-line tool). Record the answer as `project_type` in `state.yaml` — it determines which Phase 6–9 templates apply. Use these answers to anchor the artifacts — do not invent the problem framing.
+> **HITL GATE:** Before writing any artifact, conduct a brief scoping conversation. Ask the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) What is the problem in one sentence? (2) Who is most affected? (3) What does success look like? (4) What constraints are non-negotiable? (5) What type of system is this? Choose one: **service** (backend API / server process), **app** (user-facing application with UI), **library** (shared code package / SDK), **skill** (Claude Code skill / AI plugin / prompt-based tool), **cli** (command-line tool). Record the answer as `project_type` in `state.yaml` — it determines which Phase 6–9 templates apply. Use these answers to anchor the artifacts — do not invent the problem framing. **CRITICAL: Never fabricate stakeholder personas.** Only create persona cards for people the human actually identifies. If the human says "just me," there is one stakeholder. Do not add hypothetical reviewers, end users, or other personas unless the human names them.
 
 ### Step 0b: Brownfield Detection (Conditional)
 
@@ -30,6 +30,42 @@ If the project directory contains existing source code (not just `.sdlc/`), run 
 3. **If greenfield (no existing code):** Skip this step entirely
 
 > CHECKPOINT: If workspace analysis was generated, confirm with the human: "I've analyzed the existing codebase. Does this summary look accurate? Any systems or patterns I missed?"
+
+### Step 0c: Document Intake (Conditional)
+
+If the project profile includes a `documentation` section, process external reference documents before writing discovery artifacts:
+
+1. **Scan the intake folder:** Run the intake cataloger:
+   ```bash
+   uv run --project <plugin-root>/scripts <plugin-root>/scripts/intake_documents.py --state .sdlc/state.yaml
+   ```
+   This produces `.sdlc/context/intake/catalog.json` with document metadata (IDs, types, token estimates, checksums).
+
+2. **Review the catalog with the human:**
+
+> **HITL GATE:** Present the document catalog to the human using the `AskUserQuestion` tool: "I found N documents in [intake_path] totaling ~X estimated tokens. Here's the list: [table of DOC-NNN | filename | type | est. tokens]. (1) Are all relevant documents present, or should any be added/removed? (2) Which documents are highest priority for understanding the project? (3) Any documents I should skip?" Adjust the catalog based on human feedback before proceeding.
+
+3. **Generate per-document summaries:** For each document in the catalog (respecting `max_documents` limit), ordered by human-indicated priority:
+   - Read the document content (for PDFs, use extracted text from catalog or read directly)
+   - Generate a summary following the `document-summary.md` template in `templates/phases/00-discovery/`
+   - Write to `.sdlc/context/intake/DOC-NNN-{slug}.md`
+   - Target `summary_budget_tokens` per summary (default 750 tokens)
+   - **Token management for large documents:** If a single document exceeds 100K tokens, process it in chunks — read the first and last 10% plus section headers, and summarize from that.
+
+4. **Generate the document registry:** After all summaries are written:
+   - Create `.sdlc/artifacts/00-discovery/document-registry.md` following the template
+   - Include all documents with their DOC-NNN IDs, key topics, and summary file paths
+   - Generate topic clusters by grouping related documents
+   - Ensure the registry fits within `index_budget_tokens` (default 5000 tokens)
+
+5. **Generate the intake index:** Create `.sdlc/context/intake/index.md` — a condensed version of the registry optimized for session-start loading (Tier 1.5 context):
+   - Document ID table (DOC-NNN | filename | 1-line description)
+   - Topic cluster keywords
+   - Must fit within `index_budget_tokens`
+
+> CHECKPOINT: Verify all summaries exist in `.sdlc/context/intake/`, the registry is complete in artifacts, and the intake index fits within the token budget. If over budget, truncate topic clusters first, then trim 1-line descriptions.
+
+If the profile does NOT include a `documentation` section, skip this step entirely.
 
 ### Step 1: Problem Identification
 Conduct stakeholder interviews or document the problem statement. Dig until you have:
@@ -86,6 +122,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase00-visual.html
 - Current state flow diagram (ASCII → Mermaid)
 - Success criteria dashboard (baseline → target → stretch per dimension)
 - Scope boundaries (in-scope vs out-of-scope)
+- Document corpus overview (when document intake was performed): document type distribution, token budget utilization, topic cluster map
 
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
@@ -159,7 +196,7 @@ To regenerate at any time: `/sdlc-phase-report`
 ## Guidance
 - Resist the urge to jump to solutions. A proposed solution in a problem statement is a scope assumption.
 - If you can't quantify the impact, dig harder — the number exists somewhere.
-- Stakeholder personas should be named (real or representative) — "the developer" is not a persona.
+- Stakeholder personas must come from the HITL interview — never fabricate them. If the human identifies one stakeholder, there is one persona card. Do not pad the list with hypothetical users.
 - Every assumption in `constraints.md` is a risk. The riskiest ones belong in the handoff.
 - The handoff package is a first-class artifact. A Phase 1 team should be able to start with only that file.
 
@@ -181,3 +218,9 @@ When operating in coaching mode (`/sdlc-coach`) for this phase:
 ### Ready Check (all artifacts present)
 - "Your discovery artifacts look solid. Are you confident about the scope boundaries before we lock them?"
 - "Anything missing from the stakeholder map? Anyone we'd regret not consulting?"
+
+### Document Intake (when configured)
+- "I see N documents in your intake folder. Which ones are most critical for understanding the project scope?"
+- "The RFP mentions [X] — does that align with your understanding of the core problem?"
+- "Several documents reference [compliance requirement]. Should this be a non-negotiable constraint?"
+- "Documents DOC-003 and DOC-007 seem to contradict each other on [topic]. Which takes precedence?"

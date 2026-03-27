@@ -53,10 +53,11 @@ def create_sdlc_dir(target: Path, profile: dict, project_name: str) -> None:
     for phase_dir in PHASE_DIRS:
         (artifacts_dir / phase_dir).mkdir()
 
-    # Create context directory for frozen layers
+    # Create context directory for frozen layers and document intake
     context_dir = sdlc_dir / "context"
     context_dir.mkdir()
     (context_dir / "layers").mkdir()
+    (context_dir / "intake").mkdir()  # For document intake summaries (opt-in via profile.documentation)
 
     # Write state.yaml
     state_content = init_state(profile, project_name)
@@ -75,7 +76,7 @@ def create_sdlc_dir(target: Path, profile: dict, project_name: str) -> None:
     print(f"Created .sdlc/ in {target}")
     print(f"  Profile: {profile['company']['profile_id']}")
     print(f"  Artifacts: {len(PHASE_DIRS)} phase directories")
-    print(f"  Context: frozen layers directory")
+    print(f"  Context: frozen layers + intake directories")
     print(f"  State: Phase 0 (Discovery) active")
 
 
