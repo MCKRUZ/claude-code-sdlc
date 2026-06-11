@@ -17,8 +17,11 @@ Maps each SDLC phase to the Claude subagents that MUST or SHOULD be spawned via 
 |------|-------|-----------|----------------|------------|
 | Codebase exploration | `Explore` | Existing codebase to analyze | — | No |
 | Feedback analysis | `feedback-synthesizer` | User feedback data available | — | No |
+| Cross-document analysis | `discovery-analyst` | Step 0d: document intake ran AND a stakeholder workshop is planned | — | No |
 
 **Notes:** Phase 0 is primarily human-driven. Agent use is minimal — mostly exploratory reads.
+The `discovery-analyst` produces `contradiction-list.md` and `question-list.md` for the
+workshop brief (`/sdlc-brief`); its outputs are questions for humans, never answers.
 
 ---
 

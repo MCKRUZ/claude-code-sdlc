@@ -8,19 +8,23 @@ Run the 5-gate validation system for the current (or specified) SDLC phase witho
 
 2. **Read state:** Load `.sdlc/state.yaml` to determine the current phase.
 
-3. **Run gate checks:** Execute the gate checker:
+3. **Check visual report exists:** Before running gates, verify that the phase visual report exists at `.sdlc/reports/phaseNN-visual.html` (or equivalent named report like `phaseNN-discovery.html`). Also verify that artifact sub-pages exist and are linked from the main report.
+   - If the visual report is **missing**: STOP. Tell the user: "The phase visual report has not been generated yet. The visual report is the primary stakeholder review artifact and must exist before running gate checks. Generate it now?" If yes, generate the visual report with artifact sub-pages first, then proceed with gates.
+   - If sub-pages are **missing**: WARN but proceed. Note which artifacts lack sub-pages in the gate output.
+
+4. **Run gate checks:** Execute the gate checker:
    ```bash
    uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_gates.py --state .sdlc/state.yaml
    ```
    Optionally specify a phase: `--phase <N>`
 
-4. **Display results:** Show each gate result with:
+5. **Display results:** Show each gate result with:
    - Gate name (G1-integrity, G2-completeness, G3-metrics, G4-compliance, G5-consistency, G6-quality)
    - PASS / FAIL / MANUAL status
    - Severity (MUST / SHOULD / MAY)
    - Details on what passed or failed
 
-5. **Generate phase report:** Always generate the HTML report after running gates, regardless of pass/fail status:
+6. **Generate phase report:** Always generate the HTML report after running gates, regardless of pass/fail status:
    ```bash
    uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml --phase <phase-number>
@@ -33,20 +37,22 @@ Run the 5-gate validation system for the current (or specified) SDLC phase witho
    ```
    This is the artifact stakeholders review before the manual gate sign-off.
 
-6. **Smart Repair (optional):** If MUST gates failed, offer the user: "Would you like me to attempt auto-repair on the fixable issues?"
+7. **Update index:** After generating the phase report, update `.sdlc/reports/index.html` with the current phase status and report link. If `index.html` does not exist, create it.
+
+8. **Smart Repair (optional):** If MUST gates failed, offer the user: "Would you like me to attempt auto-repair on the fixable issues?"
    - If yes: spawn the `gate-repair` agent with the failure list
    - The agent classifies failures as repairable vs. not, fixes what it can, and reports changes
    - Re-run gate checks on repaired artifacts
    - Show the human what was repaired and what still needs manual attention
    - See `references/smart-repair.md` for what's auto-repairable vs. not
 
-7. **Summarize:** At the bottom:
+9. **Summarize:** At the bottom:
    - Count of passed / failed / manual checks
    - If any MUST gates failed: **BLOCKED** — list specific blockers with remediation suggestions
    - If only manual checks remain: **REVIEW NEEDED** — list what needs human verification. Remind the user to share the HTML report for stakeholder sign-off.
    - If all pass: **READY** — suggest running `/sdlc-next` to advance
 
-8. **Update state:** Record gate results in `.sdlc/state.yaml` under the current phase's `gate_results` field. Do NOT advance the phase — that's `/sdlc-next`'s job.
+10. **Update state:** Record gate results in `.sdlc/state.yaml` under the current phase's `gate_results` field. Do NOT advance the phase — that's `/sdlc-next`'s job.
 
 ## Dirty Tracking
 

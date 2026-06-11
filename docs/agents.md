@@ -30,7 +30,7 @@ There are two categories of agents:
 
 | Category | Defined In | Count | Examples |
 |----------|-----------|-------|---------|
-| Custom SDLC agents | `agents/*.md` | 4 | sdlc-orchestrator, compliance-checker, requirements-analyst, section-evaluator |
+| Custom SDLC agents | `agents/*.md` | 8 | sdlc-orchestrator, compliance-checker, requirements-analyst, section-evaluator, gate-repair, multi-reviewer, narrative-enhancer, discovery-analyst |
 | Built-in Claude Code subagents | Claude Code runtime | 13+ | code-reviewer, security-reviewer, backend-architect, Explore |
 
 Custom agents carry SDLC-specific system prompts, tool permissions, and output format contracts. Built-in subagents are standard Claude Code agents referenced by name in phase workflows; they bring their own capabilities but are directed by the SDLC orchestration layer.
@@ -195,6 +195,62 @@ The section evaluator is the "discriminator" in a generator-evaluator loop. It a
 - Quality thresholds (coverage, file size, function size) come from `.sdlc/profile.yaml`, not from assumptions.
 
 **When spawned:** Phase 4, after each section implementation completes. Foreground, blocking -- the section is not marked complete until the evaluator produces a PASS or CONDITIONAL PASS.
+
+---
+
+### 2.5 gate-repair
+
+Fixes simple, structural gate failures automatically before escalating to the human. Spawned by the orchestrator after `/sdlc-gate` or `/sdlc-next` finds failures.
+
+**Repairable (will fix):** missing artifacts that have a template (copies and fills obvious fields), missing required H2 sections (adds header with a structured TODO), missing frontmatter fields (infers from state/profile), unambiguous `${VARIABLE}` placeholders, empty required files (scaffolds from template).
+
+**Not repairable (escalates):** missing substantive content (requirements, design decisions, acceptance criteria), code quality issues, security findings, compliance gaps, anything requiring domain knowledge, ambiguous placeholders.
+
+**Principles:** minimal fixes only (structure, never content), transparent (reports every change for human review), conservative (when in doubt, escalate), idempotent. See `references/smart-repair.md` for the full repair classification.
+
+**When spawned:** any phase, after a gate check fails on structural issues. Foreground; the human reviews the repair report before re-running gates.
+
+---
+
+### 2.6 multi-reviewer
+
+Reviews phase artifacts from multiple perspectives. Spawned by `/sdlc-review` with one of three modes:
+
+| Mode | Stance | Focus |
+|------|--------|-------|
+| `--council` (default) | Four viewpoints: Architecture, Product, Quality, Security — 2-3 findings each, plus a consistency and ambiguity audit (cross-artifact contradictions, unresolved references, locked-metric drift) | Balanced coverage before a gate |
+| `--adversarial` | Cynical QA: challenge every assumption, decision, estimate, and justification | Weak reasoning, untested assumptions, scope creep |
+| `--edge-cases` | Walk every branch, boundary, and state transition | Missing paths, boundary conditions, race conditions, data edge cases |
+
+Writes `review-report.md` into the phase's artifact directory with findings rated CRITICAL/HIGH/MEDIUM/LOW, each with a specific artifact reference and an actionable recommendation. Findings are advisory — they do not block gates, but CRITICAL/HIGH findings usually predict gate failures.
+
+**When spawned:** `/sdlc-review`, recommended before gates on phases 2, 3, and 5.
+
+---
+
+### 2.7 narrative-enhancer
+
+Transforms technical artifacts into prose-rich `.narrative.md` companions for non-technical stakeholders (PMs, executives, business analysts). Spawned in parallel by `/sdlc-enhance` — one agent per artifact.
+
+Output structure (per `references/narrative-patterns.md`): executive summary, 500-1000 word detailed narrative (tables become contextualized prose, metrics get interpreted, technical terms get business language), key decisions in business terms, impact assessment.
+
+**Principles:** the technical artifact remains the source of truth; no information invention — every claim traces to the source; simplify vocabulary, never meaning. Narratives are optional for gates but recommended before stakeholder reviews.
+
+**When spawned:** `/sdlc-enhance`, typically before phase transitions and steering reviews.
+
+---
+
+### 2.8 discovery-analyst
+
+Cross-document analysis for discovery: finds where the intake corpus disagrees with itself and what no document answers. Spawned in Phase 0 Step 0d (workshop prep) or standalone via `/sdlc-brief --docs <path>`.
+
+**Produces** (templates in `templates/phases/00-discovery/`):
+- `contradiction-list.md` — CON-NN entries, each with two verbatim citations (`DOC-NNN:section`), a type (fact / scope / assumption / terminology), a severity (blocks-outcome / shapes-design / minor), and the question that resolves it
+- `question-list.md` — Q-NN entries grouped by workshop agenda block, each routed `workshop` / `pre-workshop` / `interview`; Q-NN IDs persist into `phase1-handoff.md` open questions
+
+**Principles:** questions only — never proposes outcomes, metrics, or solutions; attributes everything (a claim with one citation is a question, not a contradiction); flags disagreements rather than reconciling them; routes cheap questions out of the workshop.
+
+**When spawned:** Phase 0, when document intake has run and a stakeholder workshop is planned. Foreground.
 
 ---
 

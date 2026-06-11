@@ -14,6 +14,11 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 - [/sdlc-next -- Advance to Next Phase](#sdlc-next----advance-to-next-phase)
 - [/sdlc-phase-report -- Generate Phase HTML Report](#sdlc-phase-report----generate-phase-html-report)
 - [/sdlc-audit -- Gate Effectiveness Analysis](#sdlc-audit----gate-effectiveness-analysis)
+- [/sdlc-enhance -- Narrative Companions](#sdlc-enhance----narrative-companions)
+- [/sdlc-coach -- Interactive Phase Coaching](#sdlc-coach----interactive-phase-coaching)
+- [/sdlc-review -- Multi-Perspective Review](#sdlc-review----multi-perspective-review)
+- [/sdlc-intake -- Document Corpus Intake](#sdlc-intake----document-corpus-intake)
+- [/sdlc-brief -- Discovery Workshop Brief](#sdlc-brief----discovery-workshop-brief)
 - [Command Interaction Flow](#command-interaction-flow)
 - [Python Script Invocation](#python-script-invocation)
 - [Cross-References](#cross-references)
@@ -31,6 +36,11 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-next` | Run gates + advance phase | Yes -- advances `current_phase` | When ready to move to the next phase |
 | `/sdlc-phase-report` | Generate HTML report | No | Stakeholder reviews, documentation |
 | `/sdlc-audit` | Analyze gate effectiveness | No | After 3-4+ completed phases |
+| `/sdlc-enhance` | Generate stakeholder narrative companions | No | Before stakeholder reviews and phase transitions |
+| `/sdlc-coach` | Adaptive coaching dialogue for the current phase | No | When you want guided conversation instead of the step list |
+| `/sdlc-review` | Multi-perspective artifact review (council / adversarial / edge-cases) | No | Before `/sdlc-gate` on design-heavy phases (2, 3, 5) |
+| `/sdlc-intake` | Catalog + summarize the document corpus | Writes intake summaries/registry | Phase 0 Step 0c, when the profile has a `documentation` section; also runs standalone via `--docs` |
+| `/sdlc-brief` | Analyze intake corpus + draft workshop brief | No | Phase 0 Step 0d, before a stakeholder workshop; also runs standalone via `--docs` |
 
 ---
 
@@ -546,6 +556,122 @@ None. This command is purely analytical and never modifies state.
 | Script | Purpose |
 |--------|---------|
 | `audit_gates.py` | Reads gate history from `state.yaml` and produces the effectiveness report |
+
+---
+
+## /sdlc-enhance -- Narrative Companions
+
+### What It Does
+
+Generates stakeholder-friendly `.narrative.md` companions for the current phase's technical artifacts. Spawns `narrative-enhancer` agents in parallel (one per artifact); each writes `{artifact-name}.narrative.md` alongside its source following `references/narrative-patterns.md` (executive summary, detailed prose, key decisions in business terms, impact assessment).
+
+### Arguments
+
+- No arguments: enhance all artifacts in the current phase
+- `[path]`: enhance a specific artifact
+- `--force`: regenerate even if narratives exist
+- `--all-phases`: enhance across all completed phases
+
+### State Changes
+
+None. Narratives are optional — `/sdlc-gate` does not require them. The technical artifact remains the source of truth.
+
+### When to Use
+
+Before stakeholder reviews, steering meetings, and phase transitions.
+
+---
+
+## /sdlc-coach -- Interactive Phase Coaching
+
+### What It Does
+
+Starts or continues an adaptive coaching dialogue for the current phase instead of the rigid step list. Assesses artifact state (none / partial / complete), then opens in the matching mode: diagnostic questions to begin, gap-targeted questions mid-phase, or a ready-check that points to `/sdlc-gate`. After each significant exchange it updates the relevant artifact so progress survives the session — the conversation is ephemeral, the artifacts are the record.
+
+### Arguments
+
+None. Mode is derived from artifact state. Coaching patterns come from `references/conversational-coaching.md`.
+
+### State Changes
+
+None directly; artifacts in `.sdlc/artifacts/{NN}-{phase-name}/` are created or updated through the dialogue. Coaching never bypasses gates — it helps users get through them.
+
+### When to Use
+
+When the user prefers guided conversation, is new to the methodology, or is stuck mid-phase. For the step list, use `/sdlc`.
+
+---
+
+## /sdlc-review -- Multi-Perspective Review
+
+### What It Does
+
+Spawns the `multi-reviewer` agent against the current phase's artifacts in one of three modes: `--council` (default; Architecture / Product / Quality / Security viewpoints plus a consistency-and-ambiguity audit), `--adversarial` (challenge every assumption and estimate), or `--edge-cases` (walk every branch and boundary). Writes `review-report.md` into the phase's artifact directory with CRITICAL/HIGH/MEDIUM/LOW findings, each citing a specific artifact and carrying an actionable recommendation.
+
+### Arguments
+
+- No arguments: `--council` on the current phase
+- `--adversarial` | `--edge-cases` | `--council` | `--all` (all three, combined report)
+- `<phase-number>`: review a specific phase
+
+### State Changes
+
+None. Findings are advisory and do not block gates, but CRITICAL/HIGH findings usually predict gate failures — address them before `/sdlc-gate`.
+
+### When to Use
+
+Phase 2 with `--council`, Phase 3 with `--edge-cases`, Phase 5 with `--adversarial`; any phase before its gate.
+
+---
+
+## /sdlc-intake -- Document Corpus Intake
+
+### What It Does
+
+Wraps the entire Phase 0 Step 0c document-intake workflow as one command, so no one runs the
+cataloger script by hand. It runs `intake_documents.py` to catalog the corpus (DOC-NNN IDs),
+presents a HITL gate for the human to prioritize and prune, writes a token-budgeted summary per
+document, generates the human-readable registry and the condensed session-start index, and
+locks the catalog so DOC-NNN IDs stay stable for Phase 1 traceability.
+
+### Arguments
+
+- No arguments: workflow mode against the profile's `documentation.intake_path`
+- `--docs <path>`: catalog a folder directly (standalone; IDs provisional until locked)
+- `--rescan`: re-catalog after documents were added or removed (existing IDs preserved)
+
+### State Changes
+
+Writes `.sdlc/context/intake/` (catalog, summaries, index) and
+`.sdlc/artifacts/00-discovery/document-registry.md`. Locks the catalog.
+
+### When to Use
+
+Phase 0 Step 0c, when the profile has a `documentation` section and the client provided
+external documents. Prerequisite for `/sdlc-brief`.
+
+---
+
+## /sdlc-brief -- Discovery Workshop Brief
+
+### What It Does
+
+Prepares a stakeholder discovery workshop from the intake corpus. Spawns the `discovery-analyst` agent to produce `contradiction-list.md` (CON-NN: where documents disagree, two citations each, the resolving question) and `question-list.md` (Q-NN: what no document answers, grouped by agenda block, routed workshop / pre-workshop / interview), then drafts the one-page `workshop-brief.md` through a HITL curation gate — the human chooses which contradictions and questions make the page, the decisions the room must leave with, and logistics. The command drafts; the human edits and distributes. The brief contains questions only — it never proposes outcomes, metrics, or solutions.
+
+### Arguments
+
+- No arguments: workflow mode against the current project's locked intake catalog (requires Phase 0 Step 0c to have run)
+- `--docs <path>`: standalone mode against any folder of documents (no `.sdlc/` required; DOC-NNN IDs are provisional)
+- `--refresh`: re-run the analysis even if artifacts exist
+- `--output <path>`: override the brief's output location
+
+### State Changes
+
+None. Outputs are optional for gate purposes, but every `blocks-outcome` contradiction must be resolved or accepted as a risk before Phase 0 exit, and Q-NN IDs persist into `phase1-handoff.md` open questions.
+
+### When to Use
+
+Phase 0 Step 0d, after document intake, before a multi-stakeholder workshop. Standalone: any time a folder of documents needs contradiction and gap analysis.
 
 ---
 

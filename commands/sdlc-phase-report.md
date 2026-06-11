@@ -39,7 +39,12 @@ Render all artifacts for the current (or specified) phase into a self-contained 
      ```
    - On failure: display the error from the script and suggest checking that artifact files exist
 
-5. **Show artifact inventory:** After generating, list what was included:
+5. **Update project index:** After generating the phase report, create or update `.sdlc/reports/index.html`:
+   - If `index.html` does not exist: create it with project header, mission, constitution link, and all 10 phases showing current status
+   - If `index.html` exists: update the phase status badges, dates, and report links to reflect current state
+   - The index is the single entry point for all project documentation
+
+6. **Show artifact inventory:** After generating, list what was included:
    - Which required artifacts were found and rendered
    - Which required artifacts were missing (shown as placeholder sections in the report)
    - Exit gate status (pass/fail/incomplete)

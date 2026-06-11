@@ -6,8 +6,8 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 ## Architecture
 - `plugin.json` — Plugin manifest (entry point for Claude Code)
 - `SKILL.md` — Main skill definition (loaded when plugin activates)
-- `commands/` — 11 slash commands (`/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`, `/sdlc-enhance`, `/sdlc-coach`, `/sdlc-review`, `/sdlc-phase-report`, `/sdlc-audit`)
-- `agents/` — 7 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer)
+- `commands/` — 12 slash commands (`/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`, `/sdlc-enhance`, `/sdlc-coach`, `/sdlc-review`, `/sdlc-intake`, `/sdlc-brief`, `/sdlc-phase-report`, `/sdlc-audit`)
+- `agents/` — 8 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst)
 - `profiles/` — Company/stack YAML configs with compliance gates
 - `phases/` — Phase definitions (10 phases, 0–9)
 - `references/` — Progressive disclosure docs (loaded on-demand)
@@ -20,6 +20,14 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 - Phase definitions use RFC 2119 keywords (MUST/SHOULD/MAY)
 - Scripts use Python 3.12+ via uv
 - State tracked in target project's `.sdlc/state.yaml`
+
+## Design Rule: Standalone or Workflow
+Every agent and command is a library part, not just a pipeline stage. Each one MUST be runnable
+two ways: (1) composed into the phase workflow (reading `.sdlc/state.yaml` and the intake
+catalog), and (2) standalone, pointed at arbitrary inputs with no `.sdlc/` present (degrade
+gracefully: provisional IDs, explicit output paths, note the missing context in output headers).
+When adding a new agent or command, document both modes in its file. `discovery-analyst` /
+`/sdlc-brief --docs <path>` is the reference implementation of this pattern.
 
 ## Key Features
 - **Frozen layers** — Token-efficient phase summaries in `.sdlc/context/layers/` for cross-phase continuity

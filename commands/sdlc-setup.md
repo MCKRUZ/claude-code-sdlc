@@ -59,10 +59,9 @@ Phase: 0 — Discovery (active)
 Artifacts: .sdlc/artifacts/00-discovery/
 
 Next steps:
-1. Run /sdlc to see Phase 0 guidance
-2. Create your problem statement in .sdlc/artifacts/00-discovery/problem-statement.md
-3. Run /sdlc-gate when ready to check exit criteria
-4. Run /sdlc-next to advance to Phase 1
+1. Run /sdlc to start the Phase 0 discovery interview
+2. Run /sdlc-gate when ready to check exit criteria
+3. Run /sdlc-next to advance to Phase 1
 ```
 
 ### Step 7: Validate

@@ -33,39 +33,56 @@ If the project directory contains existing source code (not just `.sdlc/`), run 
 
 ### Step 0c: Document Intake (Conditional)
 
-If the project profile includes a `documentation` section, process external reference documents before writing discovery artifacts:
+If the project profile includes a `documentation` section, process external reference documents
+before writing discovery artifacts.
 
-1. **Scan the intake folder:** Run the intake cataloger:
-   ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/intake_documents.py --state .sdlc/state.yaml
-   ```
-   This produces `.sdlc/context/intake/catalog.json` with document metadata (IDs, types, token estimates, checksums).
-
-2. **Review the catalog with the human:**
-
-> **HITL GATE:** Present the document catalog to the human using the `AskUserQuestion` tool: "I found N documents in [intake_path] totaling ~X estimated tokens. Here's the list: [table of DOC-NNN | filename | type | est. tokens]. (1) Are all relevant documents present, or should any be added/removed? (2) Which documents are highest priority for understanding the project? (3) Any documents I should skip?" Adjust the catalog based on human feedback before proceeding.
-
-3. **Generate per-document summaries:** For each document in the catalog (respecting `max_documents` limit), ordered by human-indicated priority:
-   - Read the document content (for PDFs, use extracted text from catalog or read directly)
-   - Generate a summary following the `document-summary.md` template in `templates/phases/00-discovery/`
-   - Write to `.sdlc/context/intake/DOC-NNN-{slug}.md`
-   - Target `summary_budget_tokens` per summary (default 750 tokens)
-   - **Token management for large documents:** If a single document exceeds 100K tokens, process it in chunks — read the first and last 10% plus section headers, and summarize from that.
-
-4. **Generate the document registry:** After all summaries are written:
-   - Create `.sdlc/artifacts/00-discovery/document-registry.md` following the template
-   - Include all documents with their DOC-NNN IDs, key topics, and summary file paths
-   - Generate topic clusters by grouping related documents
-   - Ensure the registry fits within `index_budget_tokens` (default 5000 tokens)
-
-5. **Generate the intake index:** Create `.sdlc/context/intake/index.md` — a condensed version of the registry optimized for session-start loading (Tier 1.5 context):
-   - Document ID table (DOC-NNN | filename | 1-line description)
-   - Topic cluster keywords
-   - Must fit within `index_budget_tokens`
-
-> CHECKPOINT: Verify all summaries exist in `.sdlc/context/intake/`, the registry is complete in artifacts, and the intake index fits within the token budget. If over budget, truncate topic clusters first, then trim 1-line descriptions. After verification, lock the catalog by setting `"locked": true` in `.sdlc/context/intake/catalog.json` — this prevents DOC-NNN ID reassignment on future rescans, protecting Phase 1 traceability references.
+**Run `/sdlc-intake`.** The command owns the whole workflow: it runs the cataloger
+(`intake_documents.py`), presents the HITL prioritization gate, writes a token-budgeted summary
+per document (DOC-NNN IDs), generates the registry and the session-start index, and locks the
+catalog so DOC-NNN IDs stay stable for Phase 1 traceability. Do not run the cataloger script by
+hand — `/sdlc-intake` is the entry point. See `commands/sdlc-intake.md` for the full step list,
+arguments (`--docs`, `--rescan`), and budgets.
 
 If the profile does NOT include a `documentation` section, skip this step entirely.
+
+### Step 0d: Discovery Workshop Prep (Conditional)
+
+When discovery involves a stakeholder workshop — multiple stakeholders, a client engagement, or
+anyone beyond the single human running this session — prepare the workshop from the intake
+corpus instead of walking into the room cold. Ask the human at the Step 0 scoping conversation:
+"Will discovery involve a stakeholder workshop, or is this a solo/internal discovery?" Skip this
+step entirely for solo discovery.
+
+Requires Step 0c (document intake) to have run. If there is no document corpus, the analysis
+has nothing to read — proceed with the question list only, sourced from the scoping conversation.
+
+1. **Cross-document analysis:** Spawn the `discovery-analyst` agent to compare the corpus and
+   produce two artifacts in `.sdlc/artifacts/00-discovery/` (templates in
+   `templates/phases/00-discovery/`):
+   - `contradiction-list.md` — where the documents disagree (CON-NN entries, each with two
+     verbatim citations and the question that resolves it)
+   - `question-list.md` — what no document answers (Q-NN entries, grouped by workshop agenda
+     block, routed `workshop` / `pre-workshop` / `interview`)
+
+2. **Send the cheap questions now:** Questions routed `pre-workshop` are answerable by email —
+   send them before the workshop so room time is spent only on what the room can uniquely answer.
+
+3. **Draft the brief:** Run `/sdlc-brief` (or follow its steps inline). The human curates what
+   makes the page — which contradictions, which questions, the decisions the room must leave
+   with, logistics.
+
+> **HITL GATE:** The workshop brief is curated, not generated. The human chooses its contents
+> via the `/sdlc-brief` curation gate, edits the draft, and distributes it themselves. The brief
+> contains questions only — never draft outcomes, metrics, or solutions into it; the workshop
+> exists to produce those in the stakeholders' words.
+
+4. **After the workshop:** Record answers in the `question-list.md` and `contradiction-list.md`
+   answer/resolution logs (who answered, what, when). Resolved content feeds Steps 1-5;
+   questions still open at phase exit carry into `phase1-handoff.md` under the SAME Q-NN IDs.
+
+These artifacts are optional for gate purposes (`/sdlc-gate` does not require them), but every
+`blocks-outcome` contradiction must be resolved or explicitly accepted as a risk before Phase 0
+exit.
 
 ### Step 1: Problem Identification
 Conduct stakeholder interviews or document the problem statement. Dig until you have:
