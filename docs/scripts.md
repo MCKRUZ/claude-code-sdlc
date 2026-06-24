@@ -18,6 +18,7 @@ Detailed documentation for all Python automation scripts in the `scripts/` direc
   - [audit_gates.py](#audit_gatespy)
   - [synthesize_spec.py](#synthesize_specpy)
   - [map_deep_plan_artifacts.py](#map_deep_plan_artifactspy)
+  - [generate_handoff_report.py](#generate_handoff_reportpy)
 - [4. Dependencies](#4-dependencies)
 - [5. Error Handling](#5-error-handling)
 - [6. Cross-References](#6-cross-references)
@@ -795,6 +796,51 @@ The output uses `SECTION-template-deep-plan.md` which preserves both systems' re
 ```
 
 **Exit codes:** `0` (success), `1` (state file or planning directory not found)
+
+---
+
+### generate_handoff_report.py
+
+**Purpose:** Draft the Phase C (Close & Transfer) `final-handoff-report.md` from the engagement's own records — the deterministic first pass of close.md Step 4 ("Hand over the record"), run before the Explore agent enriches the narrative. It fills the existing handoff-report template's mechanical sections from real data and marks the judgment sections with `[Fill: ...]` slots.
+
+**CLI:**
+
+```bash
+# Workflow mode
+uv run scripts/generate_handoff_report.py --state .sdlc/state.yaml
+
+# Standalone mode (no .sdlc/ — notes the missing context in the report header)
+uv run scripts/generate_handoff_report.py --repo <path>
+
+# Custom output / regenerate over a prior draft
+uv run scripts/generate_handoff_report.py --state .sdlc/state.yaml --output handoff.md --force
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` | One of `--state`/`--repo` | Path to `.sdlc/state.yaml` (workflow mode) |
+| `--repo` | One of `--state`/`--repo` | Repo root containing `.sdlc/` (standalone; defaults to cwd) |
+| `--output` | No | Output path (defaults to `.sdlc/artifacts/close/final-handoff-report.md`) |
+| `--force` | No | Overwrite an existing report (refuses by default, to protect human edits) |
+
+**Sections filled from records:**
+
+| Section | Source |
+|---------|--------|
+| Phase report index | `phase_model.all_phases()` + presence of `<slug>-report.html` in `.sdlc/reports/` |
+| Engagement record | per-phase gate status, completion date, and approver from `state.yaml` `phases[]` |
+| Metrics history | `scorecard.compute_scorecard()` over `.sdlc/metrics/loop-events.jsonl` |
+| Spec backlog | `track_specs.summarize(scan_specs())` over `specs/` |
+
+**Sections left as `[Fill: ...]` slots (judgment, not data):** outcomes against the Phase 0 statement, the technical debt log, open items with owners/dates, and the outcomes-dashboard handover.
+
+**Honest by design:** missing metrics read "no data", never a fabricated zero (inherited from `scorecard.py`). A standalone run with no `state.yaml` adds a "Standalone draft" banner noting the engagement context is absent.
+
+**Exit codes:** `0` (drafted), `1` (state file not found, or the report exists and `--force` was not given)
+
+> **Note:** This reference does not yet carry full entries for `new_spec.py`, `check_spec.py`, `risk_model.py`, `track_specs.py`, and `scorecard.py` (added in earlier chunks). That backfill is tracked separately.
 
 ---
 

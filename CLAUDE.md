@@ -55,6 +55,7 @@ When adding a new agent or command, document both modes in its file. `discovery-
 - **Risk tier drives gate depth** — `risk_model.py` is the single source of truth for the risk taxonomy and the checking ladder (every tier blocks on CI + grader + correctness + non-author approval; HIGH adds a security pass and named sign-off; a gated path forces the security pass regardless of tier). `check_spec.py` enforces a spec's Checking Plan depth against its risk tier, so the tier sets the climb mechanically rather than as a label
 - **Spec-backlog tracking (specs are the Build unit)** — the Build loop is spec-driven (one spec = one branch = one PR); `track_specs.py` derives backlog progress (status/risk breakdown, in-flight list, WIP-cap breaches) straight from spec frontmatter, so there is no separate tracker to drift. The section-plan/`sections-progress.json` model was retired from the Build loop; `check_dependencies.py` + `/deep-plan` sections are now Phase-2 *design* aids that feed the spec backlog
 - **Steering scorecard (outcomes, not activity)** — `scorecard.py` records loop outcomes to `.sdlc/metrics/loop-events.jsonl` and reports the standard's numbers (accepted-as-is, review-wait median, rework/revert, bounce-back, escaped bugs, the DORA four; security-review wait on its own line). Reads "no data" rather than a fabricated zero, and *refuses* to record the forbidden activity metrics (velocity, story points, PR count, LOC). `steering-scorecard.md` is the client-facing artifact
+- **Close handoff-report generation** — Phase C Step 4 ("Hand over the record") is a two-pass draft: `generate_handoff_report.py` does the deterministic assembly first — phase report index, per-phase gate/sign-off table (from `state.yaml`), metrics history (reusing `scorecard.py`), spec backlog (reusing `track_specs.py`) — filling the existing `final-handoff-report.md` template and marking the judgment sections (outcomes vs the Phase 0 statement, debt log, open items, dashboard handover) with `[Fill: ...]` slots for the Explore agent to enrich. Honest by design (missing data reads "no data", never a fabricated zero) and refuses to clobber a human-edited report without `--force`. Runs standalone (`--repo`) or in-workflow (`--state`)
 
 ## Testing
 ```bash
@@ -70,5 +71,6 @@ uv run scripts/check_spec.py --spec /tmp/test/specs/0001-duplicate-claim-409.md
 uv run scripts/track_specs.py --state /tmp/test/.sdlc/state.yaml
 uv run scripts/scorecard.py record --state /tmp/test/.sdlc/state.yaml --type spec_merged --field accepted_as_is=true
 uv run scripts/scorecard.py report --state /tmp/test/.sdlc/state.yaml --window-days 14
+uv run scripts/generate_handoff_report.py --state /tmp/test/.sdlc/state.yaml
 uv run --project scripts --extra test python -m pytest scripts/tests/ -q
 ```
