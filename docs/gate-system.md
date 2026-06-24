@@ -172,15 +172,15 @@ def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, s
 | `[INSERT` | Content insertion point | Template instructions (e.g., `[INSERT diagram here]`) |
 | `<!-- REQUIRED:` | HTML comment marking a required section | Template enforcement markers |
 
-**Build Loop checkpoint handling -- `sections-progress.json`:**
+**Build Loop spec-backlog summary:**
 
-Within the Build Loop, the gate system performs an additional consistency check on the optional `sections-progress.json` file if it exists. This file tracks per-spec section checkpointing as each change moves through the Intent → Delegate → Discern beats. The checks include:
+Within the Build Loop, the spec is the unit of work (one spec = one branch = one PR) and the durable source of truth. The gate system does not track sections; instead it reports a backlog summary derived directly from the spec files' own frontmatter. The gate runs `track_specs.py`, which scans `<repo>/specs/*.md`, reads each spec's `status` (draft → ready → in-flight → merged) and `risk` (HIGH/MEDIUM/LOW), and prints an `INFO`-level breakdown:
 
-1. **Count consistency:** The `completed_sections` field must match the actual count of sections with `"status": "complete"`.
-2. **Incomplete sections:** Any section not marked `"complete"` generates a `SHOULD`-severity warning listing the incomplete section IDs.
-3. **Parse errors:** If the JSON is malformed, the gate fails with a `SHOULD` severity.
+1. **Status breakdown:** counts by status (merged / in-flight / ready / draft).
+2. **Risk breakdown:** counts by risk tier.
+3. **In-flight list:** the specs currently on a branch awaiting merge.
 
-This enforces the per-change checkpoint protocol of the Build Loop: each section must be committed and proven against its spec before the next section begins. Checking happens per change, not in a batch phase.
+This is informational, not a blocking consistency check — progress is read from reality (the spec frontmatter) rather than from a separately maintained tracker that can drift. The per-change checkpoint protocol (each spec committed and proven against its spec in the Discern beat before the next begins) is enforced by the Build loop itself, not by a section-count gate.
 
 **Severity:** `MUST` for all phases except Monitoring (9), where completeness is `SHOULD`.
 
@@ -357,7 +357,6 @@ A strong recommendation. The transition proceeds, but the issue is flagged in th
 
 **Examples:**
 - Placeholder text found in an optional section of a required artifact
-- `sections-progress.json` shows incomplete sections in the Build Loop
 - Metrics thresholds not fully verified in the Build Loop or Deployment (8)
 - Cross-phase consistency check flags drift in a locked metric (Gate 5)
 - Quality assessment identifies minor inconsistencies

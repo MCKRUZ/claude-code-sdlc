@@ -24,7 +24,7 @@ Adapted from the AI-SDLC methodology. Every gated phase transition runs artifact
 - Cross-references between artifacts resolve (e.g., requirements referenced in design doc exist)
 - Acceptance criteria have measurable conditions (not vague statements)
 - Section plan files contain Verification Criteria and Evaluator Contract sections (Phase 3 Foundation)
-- Build loop checkpoint protocol enforced: each change must be committed and evaluated (Discern beat) before the next change begins (tracked via `sections-progress.json` when available)
+- Build loop checkpoint protocol enforced: each change must be committed and evaluated (Discern beat) before the next change begins (progress derived from each spec's frontmatter `status` via `track_specs.py`; the spec is the unit of work, one spec = one branch = one PR)
 
 **Severity:** MUST pass. Incomplete artifacts lead to downstream failures.
 

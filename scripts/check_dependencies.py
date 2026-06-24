@@ -1,7 +1,13 @@
-"""Validate section dependency graph and enforcement order in Phase 4."""
+"""Validate the section dependency graph for a /deep-plan design (Phase 2 design aid).
+
+Scope note: this is a PHASE-2 DESIGN tool. In the delivery-standard model the Build loop is
+spec-driven (one spec = one branch = one PR; progress tracked by scripts/track_specs.py from the
+specs themselves), so section-plan dependency ordering is NOT enforced in the Build loop. This
+script validates the SECTION-NNN DAG that /deep-plan produces during design: it detects cycles
+and computes a valid topological order. It no longer reads Build-loop progress.
+"""
 
 import argparse
-import json
 import re
 import sys
 from pathlib import Path
@@ -105,45 +111,6 @@ def topological_sort(graph: dict[str, list[str]]) -> list[str] | None:
     return result
 
 
-def check_implementation_order(
-    valid_order: list[str], progress_path: Path
-) -> list[str]:
-    """Check if completed sections respect dependency order."""
-    violations = []
-    if not progress_path.exists():
-        return violations
-
-    try:
-        with open(progress_path) as f:
-            progress = json.load(f)
-    except (json.JSONDecodeError, KeyError):
-        return violations
-
-    completed = []
-    for section in progress.get("sections", []):
-        section_id = section.get("id", "")
-        if section_id and section.get("status") == "complete":
-            completed.append(section_id)
-
-    # Build position map from valid order
-    position = {s: i for i, s in enumerate(valid_order)}
-
-    # Check: for each completed section, verify all its predecessors
-    # in the valid order that should be done before it ARE done
-    completed_set = set(completed)
-    for section in completed:
-        if section not in position:
-            continue
-        pos = position[section]
-        for earlier in valid_order[:pos]:
-            if earlier not in completed_set:
-                violations.append(
-                    f"{section} completed before dependency {earlier}"
-                )
-
-    return violations
-
-
 def check(state_path: Path) -> int:
     """Validate dependency graph. Returns 0=valid, 1=violations, 2=error."""
     if not state_path.exists():
@@ -188,21 +155,11 @@ def check(state_path: Path) -> int:
         print("\n  [FAIL] Could not compute valid order (cycle exists)")
         return 1
 
-    print(f"\n  Valid implementation order:")
+    print(f"\n  Valid section order (design-time guidance for /deep-plan):")
     for i, section in enumerate(order, 1):
         print(f"    {i}. {section}")
 
-    # Check implementation progress (during the Build loop)
-    progress_path = sdlc_dir / "artifacts" / "build" / "sections-progress.json"
-    violations = check_implementation_order(order, progress_path)
-
-    if violations:
-        print(f"\n  [WARN] Order violations in implementation:")
-        for v in violations:
-            print(f"    - {v}")
-        return 1
-
-    print(f"\n  [OK] No dependency violations")
+    print(f"\n  [OK] No circular dependencies; a valid order exists")
     return 0
 
 

@@ -15,7 +15,7 @@ Comprehensive reference for the SDLC plugin's state management system. All proje
 7. [Gate System Integration](#7-gate-system-integration)
 8. [History Tracking](#8-history-tracking)
 9. [session-handoff.json (Build Loop Continuity)](#9-session-handoffjson-build-loop-continuity)
-10. [sections-progress.json (Build Loop Tracking)](#10-sections-progressjson-build-loop-tracking)
+10. [Spec Backlog (Build Loop Tracking)](#10-spec-backlog-build-loop-tracking)
 11. [State Diagram](#11-state-diagram)
 12. [Cross-References](#12-cross-references)
 
@@ -43,7 +43,7 @@ The SDLC plugin uses a file-based state machine to track a project's progress th
     01-requirements/   # Phase 1 artifacts
     02-design/         # Phase 2 artifacts
     03-foundation/     # Phase 3 artifacts
-    build/             # Build loop artifacts (includes session-handoff.json, sections-progress.json)
+    build/             # Build loop artifacts (includes session-handoff.json, build-summary.md)
     07-documentation/  # Phase 7 artifacts
     08-deployment/     # Phase 8 artifacts
     09-monitoring/     # Phase 9 artifacts
@@ -337,7 +337,7 @@ severity: "MUST"              # MUST | SHOULD | MAY
 
 ### Phase-Specific Gate Behavior
 
-- **Build loop**: the same SHOULD-level `sections-progress.json` consistency check applies per-spec -- verifying that `completed_sections` count matches the actual number of sections with `status: "complete"`.
+- **Build loop**: the gate prints an INFO-level spec-backlog summary from `track_specs.py` -- counts by status (merged / in-flight / ready / draft) and risk tier, plus the in-flight list. It reads the spec frontmatter directly and does not block.
 - **Build loop**: G3-metrics checks profile quality thresholds such as `coverage_minimum` per-change.
 - **Compliance phases**: G4-compliance loads framework-specific gates from `profiles/<id>/compliance/<framework>-gates.yaml`.
 
@@ -489,87 +489,41 @@ This gives the agent immediate context without needing to read the full handoff 
 
 ---
 
-## 10. sections-progress.json (Build Loop Tracking)
+## 10. Spec Backlog (Build Loop Tracking)
 
-Located at: `.sdlc/artifacts/build/sections-progress.json`
+In the delivery-standard Build loop, the **spec is the unit of work** (one spec = one branch = one PR) and the durable source of truth. Build-loop progress is therefore derived directly from the spec files' own frontmatter -- not from a separate hand-maintained tracker that can drift from reality. The retired `sections-progress.json` model has been removed from the Build loop.
 
-Machine-readable build progress tracker. While `session-handoff.json` is optimized for session continuity, `sections-progress.json` is optimized for gate validation and progress reporting.
+### Where Specs Live
 
-### Complete Schema
+Specs live in `<repo>/specs/NNNN-name.md` -- in version control, alongside the code, **not** under `.sdlc/`. Each spec carries YAML frontmatter:
 
-```json
-{
-  "$schema": "sections-progress-v1",
-  "phase": "build",
-  "total_sections": 8,
-  "completed_sections": 3,
-  "last_updated": "2026-03-26T15:00:00Z",
-  "sections": [
-    {
-      "id": "SECTION-001",
-      "name": "Authentication Service",
-      "sprint": 1,
-      "status": "complete",
-      "agent_assigned": "deep-implement",
-      "tdd_enforced": true,
-      "tests_passing": true,
-      "evaluator_passed": true,
-      "started_at": "2026-03-25T10:00:00Z",
-      "completed_at": "2026-03-25T14:30:00Z",
-      "deviations": 0,
-      "decisions": 2
-    },
-    {
-      "id": "SECTION-004",
-      "name": "API Gateway",
-      "sprint": 2,
-      "status": "in_progress",
-      "agent_assigned": "deep-implement",
-      "tdd_enforced": true,
-      "tests_passing": null,
-      "evaluator_passed": null,
-      "started_at": "2026-03-26T09:00:00Z",
-      "completed_at": null,
-      "deviations": 1,
-      "decisions": 0
-    }
-  ],
-  "sprints": [
-    {
-      "number": 1,
-      "goal": "Core infrastructure and auth",
-      "sections": ["SECTION-001", "SECTION-002"],
-      "status": "complete"
-    },
-    {
-      "number": 2,
-      "goal": "API layer and data access",
-      "sections": ["SECTION-003", "SECTION-004", "SECTION-005"],
-      "status": "in_progress"
-    }
-  ]
-}
+```yaml
+---
+spec: "0007"
+name: "Authentication Service"
+status: in-flight     # draft -> ready -> in-flight -> merged
+risk: HIGH            # HIGH / MEDIUM / LOW
+---
 ```
 
-### Section Status Values
+### Status Values
 
 | Status | Meaning |
 |--------|---------|
-| `not_started` | Section has not been begun |
-| `in_progress` | Section is actively being implemented |
-| `complete` | Section implementation and evaluation finished |
-| `blocked` | Section cannot proceed due to a dependency or blocker |
+| `draft` | Spec is being written; not yet ready to build |
+| `ready` | Spec is approved and queued in the backlog |
+| `in-flight` | Spec is on a branch, being implemented or awaiting merge |
+| `merged` | Spec's PR has merged; the change is done |
 
-### Gate Validation
+### Progress Tracking via track_specs.py
 
-In the Build loop, `check_gates.py` performs a consistency check on this file:
+`scripts/track_specs.py` derives the backlog state by scanning the spec files:
 
-1. Reads `total_sections` and `completed_sections` from the top-level fields.
-2. Counts sections where `status == "complete"` in the `sections` array.
-3. If the count does not match `completed_sections`, a **SHOULD**-severity gate failure is reported.
-4. If any sections have `status != "complete"`, a **SHOULD**-severity warning lists the incomplete section IDs.
+1. Scans `<repo>/specs/*.md` and reads each spec's frontmatter `status` and `risk`.
+2. Reports totals, a status breakdown (merged / in-flight / ready / draft), a risk breakdown (HIGH / MEDIUM / LOW), and the in-flight list.
+3. Can flag a WIP-cap breach with `--wip-cap N` (exits non-zero) when more specs are in-flight than the cap allows.
 
-These are SHOULD-level (not MUST) because there may be valid reasons to advance with incomplete sections (e.g., deferred to a future iteration).
+It runs standalone (`--repo <path>`) or in-workflow (`--state .sdlc/state.yaml`, where the repo root is the directory containing `.sdlc/`). In the Build loop, `check_gates.py` prints this summary as **INFO** -- it reads progress from reality and does not block.
 
 ---
 

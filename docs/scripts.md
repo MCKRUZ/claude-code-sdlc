@@ -282,13 +282,15 @@ Scans artifact content for placeholder patterns that indicate incomplete work.
 
 For each artifact, the script reads the file content and checks against these patterns. If any match is found, the artifact fails the completeness gate.
 
-**Build loop:** the same `sections-progress.json` consistency check applies per-spec. If `sections-progress.json` exists, the script performs a consistency check:
-- Reads `total_sections`, `completed_sections`, and the `sections` array
-- Counts sections with `status == "complete"` in the array
-- Compares the actual count against the declared `completed_sections` counter
-- If they disagree, reports a `SHOULD`-severity failure (not blocking, but flagged)
+**Build loop:** the gate prints a spec-backlog summary via `track_specs.py` instead of a section consistency check. It scans `<repo>/specs/*.md`, reads each spec's frontmatter `status` (`draft`/`ready`/`in-flight`/`merged`) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports as `INFO`:
+- Total specs
+- Status breakdown (merged / in-flight / ready / draft)
+- Risk breakdown (HIGH / MEDIUM / LOW)
+- The in-flight list
 
-**Severity:** MUST
+This is informational and does not block — progress is read directly from the spec files (the unit of work: one spec = one branch = one PR), so it cannot drift from a separately maintained tracker.
+
+**Severity:** MUST (the completeness gate itself); the spec-backlog summary is INFO
 
 #### Gate 3: Metrics (G3-metrics)
 

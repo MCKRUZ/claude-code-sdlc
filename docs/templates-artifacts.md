@@ -47,7 +47,7 @@ gate system checks that it does.
 | Type | Description | Example |
 |------|-------------|---------|
 | **Markdown artifacts** | Structured documents with sections, tables, and placeholder content | `constitution.md`, `requirements.md` |
-| **JSON tracking files** | Machine-readable state for implementation progress | `sections-progress.json`, `session-handoff.json` |
+| **JSON tracking files** | Machine-readable state for session continuity | `session-handoff.json` |
 | **YAML state** | Project state machine definition | `state-init.yaml` |
 | **Handoff documents** | Phase transition records with open questions and risk summaries | `phase1-handoff.md`, `phase2-handoff.md`, `phase3-handoff.md`, `build-handoff.md`, `phase7-handoff.md`, `phase8-handoff.md`, `phase9-handoff.md`, `close-handoff.md` (the chain jumps 3 → `build-handoff` → 7 — there is no phase4/5/6-handoff) |
 
@@ -117,7 +117,6 @@ templates/
     ├── build/
     │   ├── phase7-handoff.md                # Feature-complete declaration; exits into Documentation
     │   ├── build-summary.md                 # Rolling merged-work summary
-    │   ├── sections-progress.json           # Machine-readable section progress
     │   └── session-handoff.json             # Session continuity state
     ├── 07-documentation/
     │   ├── api-docs.md                      # API documentation
@@ -568,61 +567,38 @@ under the template tree.
 
 A continuously updated summary of work merged through the Build loop -- what has shipped, what is
 in flight, and the current state of the backlog. It is the human-readable counterpart to the
-JSON trackers below.
+spec backlog described below.
 
-### sections-progress.json -- Machine-Readable Progress Tracker
+### Spec Backlog -- Progress Derived from Spec Frontmatter
 
-JSON file tracking section and sprint progress for automated tooling and dashboards.
+The Build loop tracks progress from the spec files themselves, not from a separate JSON tracker.
+Each spec (`specs/NNNN-name.md`, in version control) carries a `status` in its frontmatter, and
+`scripts/track_specs.py` derives the backlog state by scanning those files. The spec is the unit
+of work: one spec = one branch = one PR.
 
-**Schema version:** `sections-progress-v1`
+**Spec frontmatter (relevant fields):**
 
-```json
-{
-  "$schema": "sections-progress-v1",
-  "phase": "build",
-  "total_sections": 0,
-  "completed_sections": 0,
-  "last_updated": null,
-  "sections": [
-    {
-      "id": "SECTION-001",
-      "name": "",
-      "sprint": 1,
-      "status": "not_started",
-      "agent_assigned": null,
-      "tdd_enforced": false,
-      "tests_passing": null,
-      "evaluator_passed": null,
-      "started_at": null,
-      "completed_at": null,
-      "deviations": 0,
-      "decisions": 0
-    }
-  ],
-  "sprints": [
-    {
-      "number": 1,
-      "goal": "",
-      "sections": ["SECTION-001"],
-      "status": "not_started"
-    }
-  ]
-}
+```yaml
+---
+spec: "0007"
+name: "Authentication Service"
+status: in-flight     # draft -> ready -> in-flight -> merged
+risk: HIGH            # HIGH / MEDIUM / LOW
+---
 ```
 
-**Field reference:**
+**`track_specs.py` reports:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `sections[].id` | string | Section identifier (SECTION-NNN) |
-| `sections[].status` | string | `not_started`, `in_progress`, `complete`, `blocked` |
-| `sections[].agent_assigned` | string/null | Which agent is working on this section |
-| `sections[].tdd_enforced` | boolean | Whether TDD workflow is required |
-| `sections[].tests_passing` | boolean/null | Current test status (null = not yet run) |
-| `sections[].evaluator_passed` | boolean/null | Whether section evaluator approved (null = not yet evaluated) |
-| `sections[].deviations` | integer | Count of deviations from design documented |
-| `sections[].decisions` | integer | Count of implementation decisions made |
-| `sprints[].status` | string | `not_started`, `in_progress`, `complete` |
+| Output | Description |
+|--------|-------------|
+| Total specs | Count of `specs/*.md` with parseable frontmatter |
+| Status breakdown | Counts by `status` (`draft`, `ready`, `in-flight`, `merged`) |
+| Risk breakdown | Counts by `risk` tier (`HIGH`, `MEDIUM`, `LOW`) |
+| In-flight list | The specs currently on a branch awaiting merge |
+| WIP-cap breach | With `--wip-cap N`, flags (and exits non-zero) when in-flight specs exceed `N` |
+
+It runs standalone (`--repo <path>`) or in-workflow (`--state .sdlc/state.yaml`). See
+[specs/](#specs--per-change-specifications) above for the spec format.
 
 ### session-handoff.json -- Session Continuity State
 

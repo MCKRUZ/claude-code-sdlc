@@ -8,6 +8,11 @@ build/
 .venv/
 venv/
 
+# The plugin ships a phase-templates directory literally named "build/" (the Build loop).
+# The Python `build/` rule above must not swallow it.
+!templates/phases/build/
+!templates/phases/build/**
+
 # uv
 .uv/
 

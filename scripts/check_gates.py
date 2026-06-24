@@ -12,6 +12,7 @@ import yaml
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
 import phase_model as pm
+import track_specs
 
 
 def load_yaml(path: Path) -> dict:
@@ -341,56 +342,25 @@ def check_phase_gates(
     xref_results = check_cross_references(artifacts_dir)
     results.extend(xref_results)
 
-    # Build loop optional: sections-progress.json consistency check
+    # Build loop: spec-backlog summary (the spec is the unit of work; progress derives from
+    # spec frontmatter, not a separate tracker). Informational — the loop has no batch gate.
     if phase_id == "build":
-        progress_path = artifacts_dir / "sections-progress.json"
-        if progress_path.exists():
-            try:
-                with open(progress_path) as f:
-                    progress = json.load(f)
-                total = progress.get("total_sections", 0)
-                completed = progress.get("completed_sections", 0)
-                sections = progress.get("sections", [])
-                actual_complete = sum(
-                    1 for s in sections if s.get("status") == "complete"
-                )
-                if actual_complete != completed:
-                    results.append({
-                        "gate": "G2-completeness",
-                        "artifact": "sections-progress.json",
-                        "passed": False,
-                        "message": f"sections-progress.json: completed_sections ({completed}) does not match actual complete count ({actual_complete})",
-                        "severity": "SHOULD",
-                    })
-                else:
-                    results.append({
-                        "gate": "G2-completeness",
-                        "artifact": "sections-progress.json",
-                        "passed": True,
-                        "message": f"sections-progress.json: {actual_complete}/{total} sections complete, counts consistent",
-                        "severity": "SHOULD",
-                    })
-                incomplete = [
-                    s.get("id", f"<index-{i}>")
-                    for i, s in enumerate(sections)
-                    if s.get("status") != "complete"
-                ]
-                if incomplete:
-                    results.append({
-                        "gate": "G2-completeness",
-                        "artifact": "sections-progress.json",
-                        "passed": False,
-                        "message": f"sections-progress.json: {len(incomplete)} section(s) not complete: {incomplete[:5]}",
-                        "severity": "SHOULD",
-                    })
-            except (json.JSONDecodeError, KeyError) as e:
-                results.append({
-                    "gate": "G2-completeness",
-                    "artifact": "sections-progress.json",
-                    "passed": False,
-                    "message": f"sections-progress.json: parse error — {e}",
-                    "severity": "SHOULD",
-                })
+        repo_root = artifacts_dir.resolve().parent.parent.parent  # .sdlc/artifacts/build -> repo root
+        specs = track_specs.scan_specs(repo_root / "specs")
+        summary = track_specs.summarize(specs)
+        by_status = summary["by_status"]
+        results.append({
+            "gate": "G2-completeness",
+            "artifact": "specs/",
+            "passed": None,
+            "message": (
+                f"Spec backlog: {summary['total']} spec(s) — "
+                f"{by_status.get('merged', 0)} merged, {by_status.get('in-flight', 0)} in-flight, "
+                f"{by_status.get('ready', 0)} ready, {by_status.get('draft', 0)} draft. "
+                f"Build is feature-complete by human declaration, not by this count."
+            ),
+            "severity": "INFO",
+        })
 
     # Intake consistency (Discovery only)
     if phase_id == "0":
@@ -443,50 +413,8 @@ def check_phase_gates(
             "severity": gate.get("severity", "MUST"),
         })
 
-    # Gate: Dependency order (Build loop, when section plans were produced in Foundation)
-    if phase_id == "build":
-        section_plans = artifacts_base / pm.artifact_dirname("3") / "section-plans"
-        if section_plans.exists():
-            try:
-                sys.path.insert(0, str(Path(__file__).parent))
-                from check_dependencies import (
-                    parse_section_dependencies,
-                    detect_cycles,
-                    topological_sort,
-                    check_implementation_order,
-                )
-
-                graph = parse_section_dependencies(section_plans)
-                cycles = detect_cycles(graph)
-                if cycles:
-                    cycle_strs = [" → ".join(c) for c in cycles]
-                    results.append({
-                        "gate": "dependency-order",
-                        "passed": False,
-                        "message": f"Circular dependencies: {cycle_strs[0]}",
-                        "severity": "MUST",
-                    })
-                else:
-                    order = topological_sort(graph)
-                    if order:
-                        progress_path = artifacts_dir / "sections-progress.json"
-                        violations = check_implementation_order(order, progress_path)
-                        if violations:
-                            results.append({
-                                "gate": "dependency-order",
-                                "passed": False,
-                                "message": f"Order violations: {violations[:3]}",
-                                "severity": "SHOULD",
-                            })
-                        else:
-                            results.append({
-                                "gate": "dependency-order",
-                                "passed": True,
-                                "message": f"Dependency order valid ({len(graph)} sections)",
-                                "severity": "SHOULD",
-                            })
-            except ImportError:
-                pass  # check_dependencies.py not available
+    # (The Build loop is spec-driven — one spec = one branch = one PR. Section-plan dependency-DAG
+    # enforcement was retired from the Build gate; check_dependencies.py is now a Phase-2 design aid.)
 
     # Gate 5: Cross-phase consistency
     sdlc_dir = artifacts_base.parent
