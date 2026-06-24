@@ -781,9 +781,10 @@ Every artifact follows a predictable lifecycle from template to validated delive
 ### Lifecycle Stages
 
 ```
-1. TEMPLATE          Templates exist in plugin's templates/ directory
+1. TEMPLATE          Templates exist in plugin's templates/ directory (references)
        |
-2. COPIED            /sdlc-setup copies templates to .sdlc/artifacts/{phase}/
+2. AUTHORED          Phase work creates the artifact in .sdlc/artifacts/{phase}/,
+                     using the template as a reference (init_project does NOT seed it)
        |
 3. IN PROGRESS       Phase work replaces placeholders with real content
        |
