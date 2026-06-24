@@ -15,36 +15,39 @@ if (-not (Test-Path $stateFile)) {
 # Read state.yaml (basic YAML parsing for key fields)
 $content = Get-Content $stateFile -Raw
 
-# Extract current phase
-$phaseMatch = [regex]::Match($content, 'current_phase:\s*(\d+)')
+# Extract current phase (ids may be non-numeric: build, close)
+$phaseMatch = [regex]::Match($content, 'current_phase:\s*"?([^"\r\n]+)"?')
 $phaseNameMatch = [regex]::Match($content, 'phase_name:\s*"?([^"\r\n]+)"?')
 $profileMatch = [regex]::Match($content, 'profile_id:\s*"?([^"\r\n]+)"?')
 $projectMatch = [regex]::Match($content, 'project_name:\s*"?([^"\r\n]+)"?')
 
 if ($phaseMatch.Success) {
-    $phaseId = $phaseMatch.Groups[1].Value
+    $phaseId = $phaseMatch.Groups[1].Value.Trim()
     $phaseName = if ($phaseNameMatch.Success) { $phaseNameMatch.Groups[1].Value } else { "unknown" }
     $profileId = if ($profileMatch.Success) { $profileMatch.Groups[1].Value } else { "unknown" }
     $projectName = if ($projectMatch.Success) { $projectMatch.Groups[1].Value } else { "unknown" }
 
     $phaseNames = @{
-        "0" = "Discovery"
-        "1" = "Requirements"
-        "2" = "Design"
-        "3" = "Planning"
-        "4" = "Implementation"
-        "5" = "Quality"
-        "6" = "Testing"
-        "7" = "Documentation"
-        "8" = "Deployment"
-        "9" = "Monitoring"
+        "0"     = "Discovery"
+        "1"     = "Requirements"
+        "2"     = "Design"
+        "3"     = "Foundation"
+        "build" = "Build Loop"
+        "7"     = "Documentation"
+        "8"     = "Deployment"
+        "9"     = "Monitoring"
+        "close" = "Close & Transfer"
     }
+
+    # Lifecycle order — used to sort frozen layers and gate the health check
+    $phaseOrder = @{ "0"=0; "1"=1; "2"=2; "3"=3; "build"=4; "7"=5; "8"=6; "9"=7; "close"=8 }
 
     $displayName = $phaseNames[$phaseId]
     if (-not $displayName) { $displayName = $phaseName }
 
-    # Count artifacts in current phase directory
-    $artifactDir = Join-Path $sdlcDir "artifacts" ("{0:D2}-{1}" -f [int]$phaseId, $phaseName)
+    # Count artifacts in current phase directory (slug = NN-name for numbered phases, bare for build/close)
+    $artifactSlug = if ($phaseId -match '^\d+$') { "{0:D2}-{1}" -f [int]$phaseId, $phaseName } else { $phaseId }
+    $artifactDir = Join-Path $sdlcDir "artifacts" $artifactSlug
     $artifactCount = 0
     if (Test-Path $artifactDir) {
         $artifactCount = (Get-ChildItem $artifactDir -File -Recurse -ErrorAction SilentlyContinue | Measure-Object).Count
@@ -69,7 +72,9 @@ if ($phaseMatch.Success) {
     # --- Tier 2: Frozen Layers (most recent 3) ---
     $layersDir = Join-Path $sdlcDir "context" "layers"
     if (Test-Path $layersDir) {
-        $layers = Get-ChildItem $layersDir -Filter "phase*.md" -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 3
+        $layers = Get-ChildItem $layersDir -Filter "phase*.md" -ErrorAction SilentlyContinue |
+            Sort-Object { $idPart = (($_.BaseName -replace '^phase','') -replace '-.*$',''); if ($phaseOrder.ContainsKey($idPart)) { $phaseOrder[$idPart] } else { 999 } } -Descending |
+            Select-Object -First 3
         if ($layers) {
             # Reverse to load oldest first (chronological order)
             [array]::Reverse($layers)
@@ -112,19 +117,21 @@ if ($phaseMatch.Success) {
     if (Test-Path $profileFile) {
         $profileContent = Get-Content $profileFile -Raw -ErrorAction SilentlyContinue
         $healthEnabled = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?enabled:\s*(true|false)')
-        $healthMinPhase = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?min_phase:\s*(\d+)')
+        $healthMinPhase = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?min_phase:\s*"?([^"\s\r\n]+)"?')
 
         $isEnabled = $healthEnabled.Success -and $healthEnabled.Groups[1].Value -eq "true"
-        $minPhase = if ($healthMinPhase.Success) { [int]$healthMinPhase.Groups[1].Value } else { 4 }
+        $minPhaseId = if ($healthMinPhase.Success) { $healthMinPhase.Groups[1].Value.Trim() } else { "build" }
+        $curOrder = if ($phaseOrder.ContainsKey($phaseId)) { $phaseOrder[$phaseId] } else { -1 }
+        $minOrder = if ($phaseOrder.ContainsKey($minPhaseId)) { $phaseOrder[$minPhaseId] } else { 4 }
 
-        if ($isEnabled -and [int]$phaseId -ge $minPhase) {
-            Write-Output "[SDLC-HEALTH] Health check is enabled. Run the configured smoke test before starting new work (see Phase 4 Step 0, pre-flight check)."
+        if ($isEnabled -and $curOrder -ge $minOrder) {
+            Write-Output "[SDLC-HEALTH] Health check is enabled. Run the configured smoke test before starting new work (Build loop pre-flight check)."
         }
     }
 
-    # Check for session handoff file (Phase 4 continuity)
-    if ([int]$phaseId -eq 4) {
-        $handoffFile = Join-Path $sdlcDir "artifacts" "04-implementation" "session-handoff.json"
+    # Check for session handoff file (Build loop continuity)
+    if ($phaseId -eq "build") {
+        $handoffFile = Join-Path $sdlcDir "artifacts" "build" "session-handoff.json"
         if (Test-Path $handoffFile) {
             try {
                 $handoff = Get-Content $handoffFile -Raw | ConvertFrom-Json

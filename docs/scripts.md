@@ -168,7 +168,7 @@ FAIL -- 3 validation error(s):
 
 ### init_project.py
 
-**Purpose:** Initialize the `.sdlc/` directory structure in a target project. This is the bootstrapping script that creates the entire SDLC workspace, including artifact directories for all 10 phases, the initial state file, and a frozen copy of the selected profile.
+**Purpose:** Initialize the `.sdlc/` directory structure in a target project. This is the bootstrapping script that creates the entire SDLC workspace, including artifact directories for all 9 phases, the initial state file, and a frozen copy of the selected profile.
 
 **CLI:**
 
@@ -195,13 +195,12 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
        00-discovery/
        01-requirements/
        02-design/
-       03-planning/
-       04-implementation/
-       05-quality/
-       06-testing/
+       03-foundation/
+       build/
        07-documentation/
        08-deployment/
        09-monitoring/
+       close/
      state.yaml
      profile.yaml
    ```
@@ -216,7 +215,7 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
 
 - `PLUGIN_ROOT` -- Resolved plugin directory (`Path(__file__).resolve().parent.parent`)
 - `TEMPLATES_DIR` -- `<plugin-root>/templates`
-- `PHASE_DIRS` -- Ordered list of 10 phase directory names (`00-discovery` through `09-monitoring`)
+- `PHASE_DIRS` -- Ordered list of 9 phase directory names (the phase slugs from `phase-registry.yaml`; not derived by zero-padding ints -- `build` and `close` are non-numeric)
 
 **Output on success:**
 
@@ -224,7 +223,7 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
 Initialized .sdlc/ in /path/to/project
   Profile: microsoft-enterprise
   Project: my-app
-  Phases: 10 directories created
+  Phases: 9 directories created
 ```
 
 **Exit codes:** `0` (success), `1` (profile not found or load error)
@@ -233,7 +232,7 @@ Initialized .sdlc/ in /path/to/project
 
 ### check_gates.py
 
-**Purpose:** Run the 5-gate validation system against a specific SDLC phase. This is the most complex script (~11KB) and serves as the quality enforcement engine. It reads the phase registry to determine which artifacts are required, then runs each gate check against the artifacts directory.
+**Purpose:** Run the 6-gate validation system against a specific SDLC phase. This is the most complex script (~11KB) and serves as the quality enforcement engine. It reads the phase registry to determine which artifacts are required, then runs each gate check against the artifacts directory.
 
 **CLI:**
 
@@ -246,7 +245,7 @@ uv run scripts/check_gates.py --state <state.yaml> --phase <N>
 | Argument | Required | Description |
 |----------|----------|-------------|
 | `--state` | Yes | Path to `.sdlc/state.yaml` |
-| `--phase` | Yes | Phase number (0-9) to check |
+| `--phase` | Yes | Phase id (`0`, `1`, `2`, `3`, `build`, `7`, `8`, `9`, `close` -- may be a string) to check |
 
 **Key Functions:**
 
@@ -283,7 +282,7 @@ Scans artifact content for placeholder patterns that indicate incomplete work.
 
 For each artifact, the script reads the file content and checks against these patterns. If any match is found, the artifact fails the completeness gate.
 
-**Phase 4 special handling:** If `sections-progress.json` exists, the script performs a consistency check:
+**Build loop:** the same `sections-progress.json` consistency check applies per-spec. If `sections-progress.json` exists, the script performs a consistency check:
 - Reads `total_sections`, `completed_sections`, and the `sections` array
 - Counts sections with `status == "complete"` in the array
 - Compares the actual count against the declared `completed_sections` counter
@@ -293,15 +292,15 @@ For each artifact, the script reads the file content and checks against these pa
 
 #### Gate 3: Metrics (G3-metrics)
 
-Applies to phases 5 (Quality) and 6 (Testing). Checks quantitative thresholds from the profile.
+Enforced per-change in the Build loop (coverage, file/function line counts). Checks quantitative thresholds from the profile.
 
 - **Coverage minimum:** `quality.coverage_minimum` from profile (0-100 range)
 - **File line limits:** `quality.max_file_lines` from profile
 - **Function line limits:** `quality.max_function_lines` from profile
 
-**Severity:** MUST for phases 5-6, SHOULD for phase 4
+**Severity:** applied per change inside the Build loop
 
-#### Gate 4: Compliance (G4-classification)
+#### Gate 4: Compliance (G4-compliance)
 
 Loads compliance-specific gates from the profile's compliance directory.
 
@@ -312,7 +311,17 @@ Loads compliance-specific gates from the profile's compliance directory.
 
 **Severity:** MUST for compliance-enabled profiles, SHOULD for others
 
-#### Gate 5: Quality (G5-quality)
+#### Gate 5: Cross-Phase Consistency (G5-consistency)
+
+Detects drift in locked metrics across phase transitions (budget, timeline, scope, stakeholder roster, quality thresholds, compliance requirements).
+
+- Compares locked values between successive phases for unexplained changes
+- Warns rather than blocks -- divergence is surfaced, not fatal
+- Discrepancies are documented via the decision log
+
+**Severity:** SHOULD (warns, does not block)
+
+#### Gate 6: Quality (G6-quality)
 
 Checks review status and traceability.
 
@@ -346,18 +355,17 @@ Results are returned as a list of dictionaries:
 
 **Gate Application by Phase:**
 
-| Phase | G1 | G2 | G3 | G4 | G5 |
-|-------|:--:|:--:|:--:|:--:|:--:|
-| 0 Discovery | MUST | MUST | -- | -- | SHOULD |
-| 1 Requirements | MUST | MUST | -- | MUST | SHOULD |
-| 2 Design | MUST | MUST | -- | MUST | MUST |
-| 3 Planning | MUST | MUST | -- | -- | SHOULD |
-| 4 Implementation | MUST | MUST | SHOULD | -- | SHOULD |
-| 5 Quality | MUST | MUST | MUST | MUST | MUST |
-| 6 Testing | MUST | MUST | MUST | MUST | SHOULD |
-| 7 Documentation | MUST | MUST | -- | -- | SHOULD |
-| 8 Deployment | MUST | MUST | -- | MUST | SHOULD |
-| 9 Monitoring | MUST | MUST | -- | -- | SHOULD |
+| Phase | G1 | G2 | G3 | G4 | G5 Consistency | G6 Quality |
+|-------|:--:|:--:|:--:|:--:|:--:|:--:|
+| 0 Discovery | MUST | MUST | -- | -- | -- | SHOULD |
+| 1 Requirements | MUST | MUST | -- | MUST | SHOULD | SHOULD |
+| 2 Design | MUST | MUST | -- | MUST | SHOULD | MUST |
+| 3 Foundation | MUST | MUST | -- | -- | SHOULD | SHOULD |
+| build (Build Loop) | MUST | MUST | SHOULD | SHOULD | SHOULD | SHOULD |
+| 7 Documentation | MUST | MUST | -- | -- | SHOULD | SHOULD |
+| 8 Deployment | MUST | MUST | -- | MUST | SHOULD | SHOULD |
+| 9 Monitoring | MUST | MUST | -- | -- | SHOULD | SHOULD |
+| close (Close & Transfer) | MUST | MUST | -- | -- | SHOULD | MUST |
 
 **Exit codes:** `0` (all MUST gates pass), `1` (any MUST gate fails)
 
@@ -387,7 +395,7 @@ uv run scripts/advance_phase.py --state .sdlc/state.yaml --confirmed
 **Process:**
 
 1. **Load state and profile** from `.sdlc/state.yaml` and `.sdlc/profile.yaml`
-2. **Check phase boundary** -- if already at Phase 9 (Monitoring), reports completion and exits
+2. **Check phase boundary** -- if the current phase is terminal (`close`), reports completion and exits
 3. **Run all gate checks** for the current phase via `check_phase_gates()`
 4. **Print gate results** using `format_results()` (always shown, even in confirmed mode)
 5. **If any MUST gate fails:** exit with code `1`, print blockers
@@ -395,7 +403,7 @@ uv run scripts/advance_phase.py --state .sdlc/state.yaml --confirmed
 7. **If confirmed and all gates pass:** update `state.yaml` atomically:
    - Set current phase status to `completed` with `completed_at` timestamp
    - Set next phase status to `active` with `entered_at` timestamp
-   - Increment `current_phase` counter
+   - Set `current_phase` to the next phase by registry `order` (via `phase_model.py` -- not `id+1`; ids may be strings)
    - Update `phase_name` string
    - Append transition record to `history` array:
      ```yaml
@@ -449,6 +457,8 @@ Phase definition:   phases/01-requirements.md
 
 Run /sdlc to see full phase guidance.
 ```
+
+(Artifact directories use the phase `slug` from the registry -- e.g. `03-foundation/`, `build/`, `close/` -- never a zero-padded id.)
 
 **Exit codes:** `0` (success or dry-run pass), `1` (gate failure), `2` (configuration error)
 
@@ -554,7 +564,7 @@ uv run scripts/generate_status.py --state .sdlc/state.yaml --output status.md
 1. **Load state** and extract project metadata (`project_name`, `profile_id`, `current_phase`)
 2. **Calculate progress** -- count completed phases, compute percentage
 3. **Generate ASCII progress bar** -- 20-character bar with `#` (filled) and `-` (empty)
-4. **Build phase table** -- iterate all 10 phases, show status icon, name, artifact count, and timestamps
+4. **Build phase table** -- iterate all 9 phases, show status icon, name, artifact count, and timestamps
 5. **Count artifacts** per phase by scanning `.sdlc/artifacts/<phase-dir>/`
 
 **Status Icons:**
@@ -574,7 +584,7 @@ uv run scripts/generate_status.py --state .sdlc/state.yaml --output status.md
 **Profile:** microsoft-enterprise
 **Current Phase:** 2 -- Design
 
-**Progress:** [####------------] 20% (2/10 phases)
+**Progress:** [####------------] 20% (2/9 phases)
 
 ## Phases
 | # | Phase          | Status | Artifacts | Entered    | Completed  |
@@ -582,8 +592,10 @@ uv run scripts/generate_status.py --state .sdlc/state.yaml --output status.md
 | 0 | Discovery      | [x]    | 3         | 2026-03-01 | 2026-03-05 |
 | 1 | Requirements   | [x]    | 5         | 2026-03-05 | 2026-03-15 |
 | 2 | Design         | [>]    | 2         | 2026-03-15 | --         |
-| 3 | Planning       | [ ]    | 0         | --         | --         |
+| 3 | Foundation     | [ ]    | 0         | --         | --         |
+| build | Build Loop | [ ]    | 0         | --         | --         |
 ...
+| close | Close & Transfer | [ ] | 0       | --         | --         |
 ```
 
 **Exit codes:** `0` (success), `1` (state file not found)
@@ -717,7 +729,7 @@ uv run scripts/synthesize_spec.py --state .sdlc/state.yaml [--output <path>]
 
 ### map_deep_plan_artifacts.py
 
-**Purpose:** Transform `/deep-plan` section outputs into SDLC-formatted phase artifacts. This is the bridge between the `/deep-plan` planning system and the SDLC artifact structure. Supports both Phase 2 (Design) and Phase 3 (Planning) mapping modes. The script is idempotent and safe to re-run.
+**Purpose:** Transform `/deep-plan` section outputs into SDLC-formatted phase artifacts. This is the bridge between the `/deep-plan` planning system and the SDLC artifact structure. Supports both Phase 2 (Design) and Phase 3 (Foundation) mapping modes. The script is idempotent and safe to re-run.
 
 **CLI:**
 
@@ -755,10 +767,10 @@ uv run scripts/map_deep_plan_artifacts.py --state .sdlc/state.yaml --phase 3 --p
 4. **For each section in manifest:**
    - Locate the corresponding `/deep-plan` file at `planning/sections/<section-name>.md`
    - Transform to SDLC format via `transform_section_to_sdlc()`
-   - Write to `.sdlc/artifacts/03-planning/section-plans/SECTION-NNN.md` (zero-padded 3-digit number)
+   - Write to `.sdlc/artifacts/03-foundation/section-plans/SECTION-NNN.md` (zero-padded 3-digit number)
 5. **Copy supplementary files:**
-   - `claude-plan-tdd.md` -> `.sdlc/artifacts/03-planning/tdd-plan.md`
-   - `sections/index.md` -> `.sdlc/artifacts/03-planning/dependency-map.md`
+   - `claude-plan-tdd.md` -> `.sdlc/artifacts/03-foundation/tdd-plan.md`
+   - `sections/index.md` -> `.sdlc/artifacts/03-foundation/dependency-map.md`
 
 **Converged Template Format:**
 
@@ -770,7 +782,7 @@ The output uses `SECTION-template-deep-plan.md` which preserves both systems' re
 **Output Structure:**
 
 ```
-.sdlc/artifacts/03-planning/
+.sdlc/artifacts/03-foundation/
   section-plans/
     SECTION-001.md
     SECTION-002.md
@@ -850,6 +862,7 @@ All scripts follow consistent error handling conventions:
 | [architecture.md](architecture.md) | Overall plugin architecture and data flow |
 | [profiles.md](profiles.md) | Profile YAML structure and schema reference |
 | `phases/phase-registry.yaml` | Phase definitions consumed by `check_gates.py` and `advance_phase.py` |
+| `scripts/phase_model.py` | Single source of truth for phase ids, order, and slugs (reads `phase-registry.yaml`) |
 | `profiles/_schema.yaml` | Schema consumed by `validate_profile.py` |
 | `templates/state-init.yaml` | State template consumed by `init_project.py` |
-| `templates/phases/03-planning/section-plans/SECTION-template-deep-plan.md` | Converged template consumed by `map_deep_plan_artifacts.py` |
+| `templates/phases/03-foundation/section-plans/SECTION-template-deep-plan.md` | Converged template consumed by `map_deep_plan_artifacts.py` |

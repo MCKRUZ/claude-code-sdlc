@@ -102,14 +102,18 @@ class TestCreateSdlcDir:
 
 
 class TestPhaseDirs:
-    def test_has_10_phases(self):
-        assert len(PHASE_DIRS) == 10
+    def test_matches_registry_order(self):
+        import phase_model as pm
+        assert PHASE_DIRS == [p["slug"] for p in pm.all_phases()]
 
-    def test_zero_padded(self):
+    def test_includes_build_and_close(self):
+        assert "build" in PHASE_DIRS
+        assert "close" in PHASE_DIRS
+
+    def test_numbered_phases_zero_padded(self):
+        # Numbered phases use NN-name slugs; the continuous/terminal phases are bare slugs.
         for d in PHASE_DIRS:
+            if d in ("build", "close"):
+                continue
             assert d[:2].isdigit(), f"{d} doesn't start with two digits"
             assert d[2] == "-", f"{d} missing hyphen after number"
-
-    def test_sequential(self):
-        for i, d in enumerate(PHASE_DIRS):
-            assert d.startswith(f"{i:02d}-"), f"{d} not in order"

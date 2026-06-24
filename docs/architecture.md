@@ -1,6 +1,6 @@
 # System Architecture
 
-Comprehensive architectural documentation for `claude-code-sdlc` -- a Claude Code plugin that orchestrates a full 10-phase Software Development Lifecycle with company-configurable profiles, compliance gates, and quality enforcement.
+Comprehensive architectural documentation for `claude-code-sdlc` -- a Claude Code plugin that orchestrates a full 9-phase Software Development Lifecycle with company-configurable profiles, compliance gates, and quality enforcement.
 
 ---
 
@@ -106,7 +106,7 @@ When Claude Code activates the plugin, it loads components in this order:
    | Hook File | Trigger | Behavior |
    |----------|---------|----------|
    | `sdlc-session-start.ps1` | Session start | Reads `.sdlc/state.yaml`, outputs current phase context banner, displays session handoff summary for long-running phases |
-   | `sdlc-phase-inject.ps1` | PreToolUse (file edits) | Injects phase-aware reminders when Claude edits files (e.g., "Phase 4: Follow section plans. Write tests first.") |
+   | `sdlc-phase-inject.ps1` | PreToolUse (file edits) | Injects phase-aware reminders when Claude edits files (e.g., "Build Loop: write the spec first, build from an approved plan, prove against the spec before merge.") |
 
 ---
 
@@ -146,18 +146,18 @@ When Claude Code activates the plugin, it loads components in this order:
 |        |           |                                  |            |
 |  +-----v----+ +----v-----------+                      |            |
 |  | phases/   | | profiles/     |                      |            |
-|  | (10 phase | | (_schema.yaml |                      |            |
+|  | (9 phase  | | (_schema.yaml |                      |            |
 |  |  defs +   | | + company     |                      |            |
 |  |  registry)| |   configs)    |                      |            |
 |  +----------+  +------+--------+                      |            |
 |                       |                               |            |
-|  +--------------------+----+                          |            |
-|  |     templates/          |                          |            |
-|  | state-init.yaml         |                          |            |
-|  | phases/00-09 templates  |                          |            |
-|  | constitution.md         |                          |            |
-|  | design-doc.md           |                          |            |
-|  +-------------------------+                          |            |
+|  +--------------------+--------+                      |            |
+|  |     templates/              |                      |            |
+|  | state-init.yaml             |                      |            |
+|  | phases per-slug templates   |                      |            |
+|  | constitution.md             |                      |            |
+|  | design-doc.md               |                      |            |
+|  +-----------------------------+                      |            |
 +-----|------------------------------|------------------+            |
       |  copied at init             |  read/write at runtime        |
       v                             v                               |
@@ -171,17 +171,19 @@ When Claude Code activates the plugin, it loads components in this order:
 |  |  constitution.md                                        |
 |  |  reports/  (generated HTML reports)                     |
 |  |                                                         |
-|  |  artifacts/                                             |
+|  |  artifacts/  (one dir per phase slug)                   |
 |  |  +-- 00-discovery/    (problem-statement.md, etc.)      |
 |  |  +-- 01-requirements/ (requirements.md, epics.md, etc.) |
 |  |  +-- 02-design/       (design-doc.md, adrs/, etc.)      |
-|  |  +-- 03-planning/     (section-plans/, sprint-plan.md)  |
-|  |  +-- 04-implementation/ (implementation-notes.md, etc.) |
-|  |  +-- 05-quality/      (code-review-report.md, etc.)     |
-|  |  +-- 06-testing/      (test-plan.md, coverage, etc.)    |
+|  |  +-- 03-foundation/   (foundation-report.md,           |
+|  |  |                     risk-tier-map.md, walking skel.) |
+|  |  +-- build/           (specs/, build-summary.md,        |
+|  |  |                     per-change work)                 |
 |  |  +-- 07-documentation/ (README.md, api-docs.md, etc.)   |
 |  |  +-- 08-deployment/   (release-notes.md, etc.)          |
 |  |  +-- 09-monitoring/   (monitoring-config.md, etc.)      |
+|  |  +-- close/           (final-handoff-report.md,         |
+|  |  |                     harness-audit.md)                |
 |  +--------------------------------------------------------+      |
 +-------------------------------------------------------------------+
 ```
@@ -204,7 +206,7 @@ The `--project` flag ensures `uv` resolves dependencies from the scripts' `pypro
 
 **Profiles are frozen at init time.** During `/sdlc-setup`, the selected profile is copied from the plugin's `profiles/` directory into `.sdlc/profile.yaml` in the target project. This frozen copy is what scripts and hooks read at runtime -- the plugin's source profiles are never referenced after initialization.
 
-**Phase definitions are referenced by `phase-registry.yaml`.** The registry maps phase IDs to definition files (`phases/00-discovery.md` through `phases/09-monitoring.md`), along with entry/exit gate conditions, skill mappings, and required artifacts.
+**Phase definitions are referenced by `phase-registry.yaml`.** The registry maps phase ids to definition files (`phases/00-discovery.md`, `01-requirements.md`, `02-design.md`, `03-foundation.md`, `build-loop.md`, `07-documentation.md`, `08-deployment.md`, `09-monitoring.md`, `close.md`), along with entry/exit gate conditions, skill mappings, and required artifacts. Phase ids are strings (`build` and `close` are non-numeric), and the registry `order` field drives sequence -- not the id.
 
 **Templates are copied to `.sdlc/artifacts/` during init.** The `init_project.py` script creates the full artifact directory structure and copies the constitution template. Phase-specific templates serve as scaffolds for artifact creation.
 
@@ -229,7 +231,7 @@ The `--project` flag ensures `uv` resolves dependencies from the scripts' `pypro
    |                       |  validate_profile.py --->|                       |
    |                       |  init_project.py ------->|-----> state.yaml      |
    |                       |                          |-----> profile.yaml    |
-   |                       |                          |-----> artifacts/00-09 |
+   |                       |                          |-----> artifacts/<slug> |
    |                       |                          |-----> constitution.md |
    |                       |                          |                       |
    |  (phase work)         |                          |                       |
@@ -273,22 +275,23 @@ The `--project` flag ensures `uv` resolves dependencies from the scripts' `pypro
    - Reads `templates/state-init.yaml` and substitutes `${PROFILE_ID}`, `${PROJECT_NAME}`, and `${CREATED_AT}` with actual values
    - Writes `state.yaml` with Phase 0 (Discovery) set as active
    - Copies the profile as a frozen `profile.yaml`
-   - Creates 10 artifact subdirectories (`00-discovery` through `09-monitoring`)
+   - Creates 9 artifact subdirectories, one per phase slug (`00-discovery`, `01-requirements`, `02-design`, `03-foundation`, `build`, `07-documentation`, `08-deployment`, `09-monitoring`, `close`)
    - Copies the constitution template
 
-**Step 3: Phase Work.** During each phase, Claude guides the user through the phase definition's workflow. Artifacts are written to `.sdlc/artifacts/NN-phasename/`. Each phase has required and optional artifacts defined in `phase-registry.yaml`. For Phase 4 (Implementation), session continuity is maintained through `session-handoff.json` -- a structured JSON file tracking section progress, blockers, and next actions across sessions.
+**Step 3: Phase Work.** During each phase, Claude guides the user through the phase definition's workflow. Artifacts are written to `.sdlc/artifacts/<slug>/`, where the directory name is the phase's `slug` field -- not a zero-padded integer (`build` and `close` are non-numeric). Each phase has required and optional artifacts defined in `phase-registry.yaml`. Within the Build Loop, session continuity is maintained per-spec through `session-handoff.json` -- a structured JSON file tracking spec/section progress, blockers, and next actions across sessions.
 
-**Step 4: Gate Checking (`/sdlc-gate`).** The `check_gates.py` script reads `state.yaml` to determine the current phase, then validates artifacts against the 5-gate system:
+**Step 4: Gate Checking (`/sdlc-gate`).** The `check_gates.py` script reads `state.yaml` to determine the current phase, then validates artifacts against the 6-gate system:
 
 | Gate | What It Checks | Severity |
 |------|---------------|----------|
 | G1: Integrity | Required artifacts exist, are non-empty, parse correctly, no placeholder content (`TODO`, `TBD`, `${VAR}`) | MUST |
 | G2: Completeness | All required sections present, cross-references valid, no missing content areas | MUST |
-| G3: Metrics | Quantitative thresholds from profile (coverage >= `coverage_minimum`, file size <= `max_file_lines`, function length <= `max_function_lines`) | MUST or SHOULD (varies by phase) |
+| G3: Metrics | Quantitative thresholds from profile (coverage >= `coverage_minimum`, file size <= `max_file_lines`, function length <= `max_function_lines`); checked per-change inside the Build Loop, not in a batch phase | MUST or SHOULD (varies by phase) |
 | G4: Compliance | Correct labeling -- requirement priorities, ADR statuses, compliance framework mappings, risk severities | MUST or SHOULD (varies by phase) |
-| G5: Quality | Holistic assessment -- clarity, accuracy, internal consistency, alignment with prior phase artifacts | MUST or SHOULD (varies by phase) |
+| G5: Cross-Phase Consistency | Detects drift in locked metrics across phase transitions (budget, timeline, scope, stakeholder roster, quality thresholds, compliance reqs); warns via decision log, does not block | SHOULD |
+| G6: Quality | Holistic assessment -- clarity, accuracy, internal consistency, alignment with prior phase artifacts | MUST or SHOULD (varies by phase) |
 
-Gate severity varies by phase. For example, Phase 5 (Quality) requires all five gates at MUST level, while Phase 0 (Discovery) only requires G1 and G2 as MUST.
+Gate severity varies by phase. Phase 2 (Design) and the Build Loop apply the gates most strictly, while Phase 0 (Discovery) only requires G1 and G2 as MUST.
 
 **Step 5: Phase Advancement (`/sdlc-next`).** The `advance_phase.py` script:
 1. Runs `check_gates.py` internally to verify all MUST gates pass
@@ -297,24 +300,23 @@ Gate severity varies by phase. For example, Phase 5 (Quality) requires all five 
    - Sets current phase status to `completed` with `completed_at` timestamp
    - Records gate results in the phase's `gate_results` field
    - Appends a transition record to `history`
-   - Sets the next phase to `active` with `entered_at` timestamp
+   - Sets the next phase to `active` with `entered_at` timestamp (next phase = the registry entry with `order` + 1, not id + 1)
    - Updates `current_phase` and `phase_name` at the top level
 4. Outputs guidance for the next phase (skills, required artifacts, phase definition path)
 
-Phase transitions require human confirmation for phases where `approval: manual` is set in the registry. Only Phase 4 (Implementation) and Phase 6 (Testing) use `approval: automatic`.
+All phases use `approval: manual` in the registry, so advancement is always manual -- every phase transition requires human confirmation. There is no auto-advance.
 
 **Step 6: Session Start Hook.** On every new Claude Code session, `sdlc-session-start.ps1`:
 1. Checks if `.sdlc/state.yaml` exists in the current directory
 2. Parses the current phase number and name
 3. Outputs a context banner: `[SDLC] Phase N: PhaseName -- description`
-4. For Phase 4, reads `session-handoff.json` and displays a continuity summary with active section, blockers, and next steps
+4. During the Build Loop, reads `session-handoff.json` and displays a continuity summary with active spec/section, blockers, and next steps
 
 **Step 7: Phase-Inject Hook.** On every file edit operation, `sdlc-phase-inject.ps1`:
 1. Reads current phase from `state.yaml`
 2. Outputs a phase-specific reminder:
    - Phase 0: "Focus on understanding the problem, not writing code."
-   - Phase 4: "Follow section plans. Write tests first (TDD)."
-   - Phase 5: "Focus on review findings. No new features."
+   - Build Loop: "Write the spec first. Build from an approved plan. Prove against the spec before merge."
 3. Reads `profile.yaml` for convention reminders (commit format, naming, immutability rules)
 
 ---
@@ -345,18 +347,17 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |   |-- compliance-checker.md              Compliance validation agent
 |   +-- section-evaluator.md               Implementation quality evaluator agent
 |
-|-- phases/                                10 phase definitions + registry
+|-- phases/                                9 phase definitions + registry
 |   |-- phase-registry.yaml                Master registry -- all phases, gates, artifacts
 |   |-- 00-discovery.md                    Phase 0 definition
 |   |-- 01-requirements.md                 Phase 1 definition
 |   |-- 02-design.md                       Phase 2 definition
-|   |-- 03-planning.md                     Phase 3 definition
-|   |-- 04-implementation.md               Phase 4 definition
-|   |-- 05-quality.md                      Phase 5 definition
-|   |-- 06-testing.md                      Phase 6 definition
+|   |-- 03-foundation.md                   Phase 3 definition
+|   |-- build-loop.md                      Build Loop definition
 |   |-- 07-documentation.md                Phase 7 definition
 |   |-- 08-deployment.md                   Phase 8 definition
-|   +-- 09-monitoring.md                   Phase 9 definition
+|   |-- 09-monitoring.md                   Phase 9 definition
+|   +-- close.md                           Phase C: Close & Transfer
 |
 |-- profiles/                              Company/stack configurations
 |   |-- _schema.yaml                       Profile validation schema (RFC 2119)
@@ -371,7 +372,7 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |
 |-- references/                            Progressive disclosure documents
 |   |-- state-machine.md                   State format and transition rules
-|   |-- validation-rules.md                5-gate validation system details
+|   |-- validation-rules.md                6-gate validation system details
 |   |-- skill-mapping.md                   Phase-to-skill mapping
 |   |-- agent-roster.md                    Phase-to-agent mapping with parallel groups
 |   |-- compliance-frameworks.md           SOC 2, HIPAA, GDPR, PCI-DSS gates
@@ -391,20 +392,19 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |       |-- 00-discovery/                  constitution.md, problem-statement.md, ...
 |       |-- 01-requirements/               requirements.md, epics.md, user-stories.md, ...
 |       |-- 02-design/                     design-doc.md, api-contracts.md, adrs/, ...
-|       |-- 03-planning/                   sprint-plan.md, risk-register.md, section-plans/
-|       |-- 04-implementation/             implementation-notes.md, session-handoff.json, ...
-|       |-- 05-quality/                    code-review-report.md, ...
-|       |-- 06-testing/                    test-plan.md, ...
+|       |-- 03-foundation/                 foundation-report.md, risk-tier-map.md, ...
+|       |-- build/                          specs/, session-handoff.json, build-summary.md, ...
 |       |-- 07-documentation/              (uses target project docs)
 |       |-- 08-deployment/                 deployment-checklist.md, ...
-|       +-- 09-monitoring/                 monitoring-config.md, ...
+|       |-- 09-monitoring/                 monitoring-config.md, ...
+|       +-- close/                         final-handoff-report.md, harness-audit.md, ...
 |
 |-- scripts/                               Python automation (uv runtime)
 |   |-- pyproject.toml                     Python project config (dependencies: pyyaml)
 |   |-- uv.lock                            Locked dependency versions
 |   |-- validate_profile.py                Validate profile YAML against schema
 |   |-- init_project.py                    Initialize .sdlc/ in target project
-|   |-- check_gates.py                     Run 5-gate validation for current phase
+|   |-- check_gates.py                     Run 6-gate validation for current phase
 |   |-- advance_phase.py                   Advance to next phase (atomic state update)
 |   |-- generate_status.py                 Generate progress dashboard data
 |   |-- generate_phase_report.py           Generate self-contained HTML report
@@ -432,7 +432,7 @@ target-project/                            User's project (where code lives)
     |   |-- phase0-report.html
     |   |-- phase1-report.html
     |   +-- ...
-    +-- artifacts/                          Phase work products
+    +-- artifacts/                          Phase work products (one dir per phase slug)
         |-- 00-discovery/
         |   |-- constitution.md
         |   |-- problem-statement.md
@@ -450,25 +450,14 @@ target-project/                            User's project (where code lives)
         |   |-- adr-registry.md
         |   |-- adrs/
         |   +-- phase3-handoff.md
-        |-- 03-planning/
-        |   |-- section-plans/
-        |   |-- sprint-plan.md
-        |   |-- risk-register.md
-        |   +-- phase4-handoff.md
-        |-- 04-implementation/
-        |   |-- implementation-notes.md
-        |   |-- session-handoff.json
-        |   |-- sections-progress.json
-        |   +-- phase5-handoff.md
-        |-- 05-quality/
-        |   |-- code-review-report.md
-        |   |-- security-review-report.md
-        |   |-- quality-metrics.md
-        |   +-- phase6-handoff.md
-        |-- 06-testing/
-        |   |-- test-plan.md
-        |   |-- test-results.md
-        |   |-- coverage-report.md
+        |-- 03-foundation/
+        |   |-- foundation-report.md
+        |   |-- risk-tier-map.md
+        |   |-- cadence-plan.md
+        |   +-- build-handoff.md
+        |-- build/
+        |   |-- specs/                       (optional, per-change specs)
+        |   |-- build-summary.md             (optional)
         |   +-- phase7-handoff.md
         |-- 07-documentation/
         |   |-- README.md
@@ -480,11 +469,17 @@ target-project/                            User's project (where code lives)
         |   |-- deployment-checklist.md
         |   |-- smoke-test-results.md
         |   +-- phase9-handoff.md
-        +-- 09-monitoring/
-            |-- monitoring-config.md
-            |-- alert-definitions.md
-            |-- incident-response.md
-            +-- project-retrospective.md
+        |-- 09-monitoring/
+        |   |-- monitoring-config.md
+        |   |-- alert-definitions.md
+        |   |-- incident-response.md
+        |   |-- project-retrospective.md
+        |   +-- close-handoff.md
+        +-- close/
+            |-- final-handoff-report.md
+            |-- harness-audit.md
+            |-- close-gate-evidence.md
+            +-- access-revocation-checklist.md
 ```
 
 ### 4.3 State Machine (`state.yaml`)
@@ -516,7 +511,8 @@ phases:
     completed_at: null
     gate_results: {}
     artifacts: []
-  # ... phases 2-9 follow the same structure
+  # ... remaining phase keys are strings: 2, 3, "build", 7, 8, 9, "close" --
+  # each follows the same structure
 
 history: []                 # Append-only log of phase transitions
 ```
@@ -534,7 +530,7 @@ The plugin is designed to minimize context window consumption. Claude's context 
 **`SKILL.md`** (~4KB) is the only document loaded automatically when the plugin activates. It contains:
 - Plugin purpose and trigger phrases
 - Command table (7 commands, one-line descriptions each)
-- Phase overview table (10 phases with key skills)
+- Phase overview table (9 phases with key skills)
 - Human-in-the-loop protocol (when to stop and ask)
 - Visual report protocol (when and how to generate reports)
 - Agent orchestration protocol (mandatory spawns, parallel rules)
@@ -544,7 +540,7 @@ This single document gives Claude enough context to handle any SDLC-related requ
 
 ### 5.2 Layer 2: Loaded on Phase Entry
 
-**Phase definitions** (`phases/NN-phasename.md`) are loaded only when the user enters that phase. Each definition contains:
+**Phase definitions** (`phases/<slug>.md`, slug-named -- e.g. the Build Loop is `build-loop.md`) are loaded only when the user enters that phase. Each definition contains:
 - Purpose statement
 - Entry criteria
 - Detailed workflow with numbered steps
@@ -665,10 +661,10 @@ This document covers the system architecture at a high level. For detailed docum
 | Document | Contents |
 |----------|----------|
 | `references/state-machine.md` | State format, field definitions, transition rules, history schema |
-| `references/validation-rules.md` | 5-gate validation system, per-gate checks, severity matrix by phase |
+| `references/validation-rules.md` | 6-gate validation system, per-gate checks, severity matrix by phase |
 | `references/skill-mapping.md` | Phase-to-skill mapping, when to invoke each Claude Code skill |
 | `references/agent-roster.md` | Phase-to-agent mapping, parallel execution groups, spawn conditions |
 | `references/compliance-frameworks.md` | SOC 2, HIPAA, GDPR, PCI-DSS gate definitions and artifact requirements |
 | `references/deep-plan-integration.md` | How `/deep-plan` integrates with Phases 2-3, checkpoint/resume flow |
-| `phases/phase-registry.yaml` | Master registry of all 10 phases with entry/exit gates and artifact lists |
+| `phases/phase-registry.yaml` | Master registry of all 9 phases with entry/exit gates and artifact lists |
 | `profiles/_schema.yaml` | Profile validation schema with required fields and value constraints |

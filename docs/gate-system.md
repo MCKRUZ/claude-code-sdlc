@@ -1,6 +1,6 @@
-# 5-Gate Validation System
+# 6-Gate Validation System
 
-Comprehensive reference for the gate validation system used by the claude-code-sdlc plugin. Every phase transition in the 10-phase SDLC lifecycle is guarded by five sequential validation gates that ensure artifact quality, completeness, and compliance before work advances.
+Comprehensive reference for the gate validation system used by the claude-code-sdlc plugin. Every phase transition in the 9-phase SDLC lifecycle is guarded by six sequential validation gates that ensure artifact quality, completeness, consistency, and compliance before work advances.
 
 ---
 
@@ -10,20 +10,23 @@ Comprehensive reference for the gate validation system used by the claude-code-s
 2. [Gate 1: Artifact Integrity](#2-gate-1-artifact-integrity)
 3. [Gate 2: Completeness](#3-gate-2-completeness)
 4. [Gate 3: Metrics](#4-gate-3-metrics)
-5. [Gate 4: Compliance](#5-gate-4-classification)
-6. [Gate 5: Quality](#6-gate-5-quality)
-7. [Severity Levels Deep Dive](#7-severity-levels-deep-dive)
-8. [Gate Results Format](#8-gate-results-format)
-9. [Override Protocol](#9-override-protocol)
-10. [Compliance Gate Extensions](#10-compliance-gate-extensions)
-11. [Gate Auditing](#11-gate-auditing)
-12. [Cross-References](#12-cross-references)
+5. [Gate 4: Compliance](#5-gate-4-compliance)
+6. [Gate 5: Cross-Phase Consistency](#6-gate-5-cross-phase-consistency)
+7. [Gate 6: Quality](#7-gate-6-quality)
+8. [Severity Levels Deep Dive](#8-severity-levels-deep-dive)
+9. [Gate Results Format](#9-gate-results-format)
+10. [Override Protocol](#10-override-protocol)
+11. [Compliance Gate Extensions](#11-compliance-gate-extensions)
+12. [Gate Auditing](#12-gate-auditing)
+13. [Cross-References](#13-cross-references)
 
 ---
 
 ## 1. Gate System Overview
 
-When a user invokes `/sdlc-gate` or `/sdlc-next`, the system runs every artifact produced during the current phase through five ordered validation gates. The gates are evaluated by `scripts/check_gates.py`, which reads the phase definition from `phases/phase-registry.yaml`, loads the active profile, and iterates through each gate in sequence.
+When a user invokes `/sdlc-gate` or `/sdlc-next`, the system runs every artifact produced during the current phase through six ordered validation gates. The gates are evaluated by `scripts/check_gates.py`, which reads the phase definition from `phases/phase-registry.yaml`, loads the active profile, and iterates through each gate in sequence.
+
+Phase ids are strings (`0`–`9`, plus `build` and `close`), and phases are ordered but non-sequential — the system resolves "next phase" by the registry `order` field, never by incrementing the id. Advancement is always manual; no phase auto-advances.
 
 **Core rules:**
 
@@ -39,17 +42,18 @@ When a user invokes `/sdlc-gate` or `/sdlc-next`, the system runs every artifact
 /sdlc-gate (or /sdlc-next)
   |
   v
-check_gates.py --state .sdlc/state.yaml [--phase N]
+check_gates.py --state .sdlc/state.yaml [--phase ID]
   |
   +-- Load phase-registry.yaml (find phase definition)
   +-- Load .sdlc/profile.yaml (quality thresholds, compliance config)
-  +-- Resolve artifacts_dir: .sdlc/artifacts/NN-phasename/
+  +-- Resolve artifacts_dir: .sdlc/artifacts/{slug}/  (slug from registry, e.g. 03-foundation, build, close)
   |
-  +-- Gate 1: Artifact Integrity   (file existence, non-empty)
-  +-- Gate 2: Completeness         (no placeholder text, sections present)
-  +-- Gate 3: Metrics              (coverage, file sizes — phases 5-6)
-  +-- Gate 4: Compliance       (compliance gates from profile)
-  +-- Gate 5: Quality              (holistic review assessment)
+  +-- Gate 1: Artifact Integrity      (file existence, non-empty)
+  +-- Gate 2: Completeness            (no placeholder text, sections present)
+  +-- Gate 3: Metrics                 (coverage, file sizes — checked per-change in the Build Loop)
+  +-- Gate 4: Compliance              (compliance gates from profile)
+  +-- Gate 5: Cross-Phase Consistency (locked-metric drift across phase transitions)
+  +-- Gate 6: Quality                 (holistic review assessment)
   |
   v
 Results: PASS / FAIL / MANUAL per check
@@ -58,22 +62,21 @@ Results: PASS / FAIL / MANUAL per check
 Exit code 0 (all clear) or 1 (any MUST gate failed)
 ```
 
-**Gate application varies by phase.** Not every gate applies at every phase with the same severity:
+**Gate application varies by phase.** Not every gate applies at every phase with the same severity. The rows below are the nine registry phases (ordered by `order`, not by id):
 
-| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Quality |
-|-------|:---:|:---:|:---:|:---:|:---:|
-| 0 Discovery | MUST | MUST | -- | -- | SHOULD |
-| 1 Requirements | MUST | MUST | -- | MUST | SHOULD |
-| 2 Design | MUST | MUST | -- | MUST | MUST |
-| 3 Planning | MUST | MUST | -- | -- | SHOULD |
-| 4 Implementation | MUST | MUST | SHOULD | -- | SHOULD |
-| 5 Quality | MUST | MUST | MUST | MUST | MUST |
-| 6 Testing | MUST | MUST | MUST | MUST | SHOULD |
-| 7 Documentation | MUST | MUST | -- | -- | MUST |
-| 8 Deployment | MUST | MUST | SHOULD | -- | SHOULD |
-| 9 Monitoring | MUST | SHOULD | -- | -- | SHOULD |
+| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality |
+|-------|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 Discovery | MUST | MUST | -- | -- | -- | SHOULD |
+| 1 Requirements | MUST | MUST | -- | MUST | SHOULD | SHOULD |
+| 2 Design | MUST | MUST | -- | MUST | SHOULD | MUST |
+| 3 Foundation | MUST | MUST | -- | -- | SHOULD | SHOULD |
+| build (Build Loop) | MUST | MUST | SHOULD | SHOULD | SHOULD | SHOULD |
+| 7 Documentation | MUST | MUST | -- | -- | SHOULD | MUST |
+| 8 Deployment | MUST | MUST | SHOULD | -- | SHOULD | SHOULD |
+| 9 Monitoring | MUST | SHOULD | -- | -- | SHOULD | SHOULD |
+| close (Close & Transfer) | MUST | MUST | -- | -- | SHOULD | MUST |
 
-A dash (--) means the gate is not evaluated for that phase.
+A dash (--) means the gate is not evaluated for that phase. For the **Build Loop**, the metrics, compliance, consistency, and quality gates are checked **per change** (each spec'd change is proven against its spec before merge) — there is no batch exit gate.
 
 ---
 
@@ -169,17 +172,17 @@ def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, s
 | `[INSERT` | Content insertion point | Template instructions (e.g., `[INSERT diagram here]`) |
 | `<!-- REQUIRED:` | HTML comment marking a required section | Template enforcement markers |
 
-**Phase 4 special handling -- `sections-progress.json`:**
+**Build Loop checkpoint handling -- `sections-progress.json`:**
 
-When checking Phase 4 (Implementation), the gate system performs an additional consistency check on the optional `sections-progress.json` file if it exists. This file tracks per-section implementation progress under the checkpoint protocol. The checks include:
+Within the Build Loop, the gate system performs an additional consistency check on the optional `sections-progress.json` file if it exists. This file tracks per-spec section checkpointing as each change moves through the Intent → Delegate → Discern beats. The checks include:
 
 1. **Count consistency:** The `completed_sections` field must match the actual count of sections with `"status": "complete"`.
 2. **Incomplete sections:** Any section not marked `"complete"` generates a `SHOULD`-severity warning listing the incomplete section IDs.
 3. **Parse errors:** If the JSON is malformed, the gate fails with a `SHOULD` severity.
 
-This ensures the implementation checkpoint protocol is being followed: each section must be committed and evaluated before the next section begins.
+This enforces the per-change checkpoint protocol of the Build Loop: each section must be committed and proven against its spec before the next section begins. Checking happens per change, not in a batch phase.
 
-**Severity:** `MUST` for phases 0-8. `SHOULD` for Phase 9 (Monitoring).
+**Severity:** `MUST` for all phases except Monitoring (9), where completeness is `SHOULD`.
 
 ---
 
@@ -187,44 +190,44 @@ This ensures the implementation checkpoint protocol is being followed: each sect
 
 **Purpose:** Verify that quantitative thresholds defined in the project profile are met.
 
-**When it applies:** Primarily active during Phase 5 (Quality) and Phase 6 (Testing), where measurable outputs exist. Phases 4 and 8 track metrics at `SHOULD` severity.
+**When it applies:** These metrics are enforced **per change inside the Build Loop**, where each spec'd change produces measurable outputs that must be proven against the spec before merge. There is no batch quality/testing phase — coverage, line counts, issue counts, and E2E results are checked continuously as changes flow through the loop. Deployment (8) also tracks metrics at `SHOULD` severity.
 
 **Checks performed:**
 
 | Metric | Source | Threshold | Phase |
 |--------|--------|-----------|-------|
-| Code coverage | Test runner output | `>= quality.coverage_minimum` (default 80%) | 5, 6 |
-| Critical path coverage | Test runner output | `>= quality.coverage_critical` | 6 |
-| File line count | Static analysis | `<= quality.max_file_lines` | 5 |
-| Function line count | Static analysis | `<= quality.max_function_lines` | 5 |
-| CRITICAL/HIGH issues | Review reports | Must be zero | 5 |
-| E2E test pass rate | E2E runner output | 100% pass | 6 |
+| Code coverage | Test runner output | `>= quality.coverage_minimum` (default 80%) | Build Loop (per change) |
+| Critical path coverage | Test runner output | `>= quality.coverage_critical` | Build Loop (per change) |
+| File line count | Static analysis | `<= quality.max_file_lines` | Build Loop (per change) |
+| Function line count | Static analysis | `<= quality.max_function_lines` | Build Loop (per change) |
+| CRITICAL/HIGH issues | Review reports | Must be zero | Build Loop (per change) |
+| E2E test pass rate | E2E runner output | 100% pass | Build Loop (per change) |
 
 **Implementation in `check_gates.py`:**
 
-The metrics gate reads thresholds from the loaded `profile.yaml`:
+The metrics gate reads thresholds from the loaded `profile.yaml`. Because phase ids are strings, the gate keys off the build phase id rather than a numeric range:
 
 ```python
-if phase_id in [5, 6]:
+if phase_id == "build":
     quality = profile.get("quality", {})
     results.append({
         "gate": "G3-metrics",
         "check": "coverage_minimum",
         "passed": None,  # Requires external tool execution
         "message": f"Coverage must be >= {quality.get('coverage_minimum', 80)}% (requires test execution)",
-        "severity": "MUST",
+        "severity": "SHOULD",
     })
 ```
 
-Note the `passed: None` value. Metrics gates often require external tool execution (running the test suite, collecting coverage data) that cannot be performed by the gate checker alone. A `None` result means **manual verification is required** -- the gate system flags the check but a human or CI pipeline must confirm the result.
+Note the `passed: None` value. Metrics gates often require external tool execution (running the test suite, collecting coverage data) that cannot be performed by the gate checker alone. A `None` result means **manual verification is required** -- the gate system flags the check but a human or CI pipeline must confirm the result. In the Build Loop the real gating key is the `build` phase id, and the checks run per change rather than at a single batch transition.
 
 **How external tools feed metrics:**
 
-1. The test runner writes results to `.sdlc/artifacts/06-testing/test-results.md` and `.sdlc/artifacts/06-testing/coverage-report.md`.
-2. Static analysis tools write findings to `.sdlc/artifacts/05-quality/quality-metrics.md`.
+1. The test runner writes results (test results and coverage reports) under the Build Loop artifact directory `.sdlc/artifacts/build/`.
+2. Static analysis tools write findings under `.sdlc/artifacts/build/` alongside each change's spec.
 3. The gate system verifies these artifact files exist (Gate 1) and are complete (Gate 2), while flagging the numeric thresholds for manual/CI confirmation (Gate 3).
 
-**Severity:** `MUST` for phases 5 and 6. `SHOULD` for phases 4 and 8.
+**Severity:** `SHOULD`, applied per change in the Build Loop. Deployment (8) tracks metrics at `SHOULD` as well.
 
 ---
 
@@ -236,11 +239,11 @@ Note the `passed: None` value. Metrics gates often require external tool executi
 
 | Check | Description | Applicable Phases |
 |-------|-------------|-------------------|
-| Requirement priorities | All requirements labeled P0-P3 | 1, 5, 6 |
-| ADR statuses | Each ADR has status: proposed/accepted/deprecated/superseded | 2, 5 |
-| Test-to-requirement mapping | Traceability matrix links tests to requirements | 5, 6 |
-| Security threat coverage | Security review covers all identified threat vectors | 5 |
-| Compliance control mapping | Controls mapped to framework requirements | 1, 2, 5, 6 |
+| Requirement priorities | All requirements labeled P0-P3 | 1, Build Loop |
+| ADR statuses | Each ADR has status: proposed/accepted/deprecated/superseded | 2, Build Loop |
+| Test-to-requirement mapping | Traceability matrix links tests to requirements | Build Loop |
+| Security threat coverage | Security review covers all identified threat vectors | Build Loop |
+| Compliance control mapping | Controls mapped to framework requirements | 1, 2, Build Loop |
 
 **Compliance gate extensions:**
 
@@ -276,7 +279,24 @@ Each compliance gate specifies a `check_type` that determines how it is evaluate
 
 ---
 
-## 6. Gate 5: Quality
+## 6. Gate 5: Cross-Phase Consistency
+
+**Purpose:** Detect drift in locked metrics across phase transitions.
+
+**Checks performed:**
+
+- Read frozen layers from all prior completed phases.
+- Identify "Locked Metrics" and "Constraints Carried Forward" sections.
+- Flag for manual review: Claude compares locked values against current phase artifacts.
+- Verify a decision log exists if any locked metrics have changed.
+
+**Locked Metrics:** Budget, timeline, scope boundaries, stakeholder roster, quality thresholds, compliance requirements. See `references/cross-phase-consistency.md` for the full list and change protocol.
+
+**Severity:** `SHOULD`. Consistency warnings surface drift for human review but do **not** block phase transitions. Legitimate scope changes are documented via decision log entries rather than suppressed.
+
+---
+
+## 7. Gate 6: Quality
 
 **Purpose:** Holistic assessment of clarity, accuracy, consistency, and traceability across all phase outputs.
 
@@ -288,7 +308,7 @@ Each compliance gate specifies a `check_type` that determines how it is evaluate
 | **Technical accuracy** | Architecture decisions are sound; patterns appropriate for the target stack |
 | **Consistency** | Naming conventions match profile; coding style aligns with project conventions |
 | **Completeness of thought** | Edge cases considered; error handling defined; rollback plans present |
-| **Review status** | Code review findings addressed (Phase 5); security review clean (Phase 5) |
+| **Review status** | Code review findings addressed (Build Loop); security review clean (Build Loop) |
 | **Traceability** | Requirements trace to design decisions, design traces to tests, tests trace to code |
 
 **Phase-dependent quality criteria:**
@@ -298,19 +318,18 @@ Each compliance gate specifies a `check_type` that determines how it is evaluate
 | 0 Discovery | Problem statement is specific and measurable; success criteria are quantifiable |
 | 1 Requirements | Acceptance criteria are testable; no vague language |
 | 2 Design | Architecture decisions justified via ADRs; API contracts complete |
-| 3 Planning | Section plans have verification criteria and evaluator contracts |
-| 4 Implementation | Code follows section plans; deviations documented |
-| 5 Quality | All review findings resolved; no CRITICAL/HIGH issues remaining |
-| 6 Testing | Coverage thresholds met; test plan fully executed |
-| 7 Documentation | All docs current; no stale references to pre-implementation design |
+| 3 Foundation | Harness installed, rails proven, walking skeleton deployed; section plans have verification criteria and evaluator contracts |
+| build (Build Loop) | Every change spec'd, built from an approved plan, and proven against spec by a non-author before merge; no batch checking |
+| 7 Documentation | All docs current; no stale references to pre-implementation design; verified by cold use |
 | 8 Deployment | Rollback plan tested; smoke tests comprehensive |
 | 9 Monitoring | Alert thresholds justified; incident response playbook actionable |
+| close (Close & Transfer) | Client ran one real spec end-to-end unassisted; harness audited; access revoked |
 
-**Severity:** `MUST` for phases 2, 5, and 7 (where quality failures have cascading downstream effects). `SHOULD` for all other phases. Quality gate failures can be overridden with documented justification.
+**Severity:** `MUST` for Phase 2 (Design), Phase 7 (Documentation), and Close & Transfer (where quality failures have cascading downstream effects). `SHOULD` for all other phases, including the Build Loop where quality is assessed per change. Quality gate failures can be overridden with documented justification.
 
 ---
 
-## 7. Severity Levels Deep Dive
+## 8. Severity Levels Deep Dive
 
 The gate system uses three severity levels drawn from RFC 2119 terminology.
 
@@ -321,7 +340,7 @@ An absolute requirement. If any gate check at `MUST` severity fails, the phase t
 **Examples:**
 - A required artifact file does not exist (Gate 1)
 - A required artifact contains `TODO` placeholder text (Gate 2)
-- Code coverage is below the profile's `coverage_minimum` (Gate 3, Phase 6)
+- Code coverage is below the profile's `coverage_minimum` (Gate 3, Build Loop per change)
 - A compliance framework requires an artifact that is missing (Gate 4)
 
 **Aggregation rule:** ALL `MUST` gates must pass. Even a single `MUST` failure blocks the transition.
@@ -338,8 +357,9 @@ A strong recommendation. The transition proceeds, but the issue is flagged in th
 
 **Examples:**
 - Placeholder text found in an optional section of a required artifact
-- `sections-progress.json` shows incomplete sections in Phase 4
-- Metrics thresholds not fully verified in Phase 4 or Phase 8
+- `sections-progress.json` shows incomplete sections in the Build Loop
+- Metrics thresholds not fully verified in the Build Loop or Deployment (8)
+- Cross-phase consistency check flags drift in a locked metric (Gate 5)
 - Quality assessment identifies minor inconsistencies
 
 ### MAY (Informational)
@@ -353,7 +373,7 @@ An optional observation. No impact on the transition. Used for suggestions and o
 
 ---
 
-## 8. Gate Results Format
+## 9. Gate Results Format
 
 The `check_phase_gates()` function in `check_gates.py` returns a list of result dictionaries. Each result represents one check within one gate.
 
@@ -362,7 +382,8 @@ The `check_phase_gates()` function in `check_gates.py` returns a list of result 
 ```python
 {
     "gate": str,        # Gate identifier (e.g., "G1-integrity", "G2-completeness",
-                        #   "G3-metrics", "G4-compliance-{id}", "G5-quality")
+                        #   "G3-metrics", "G4-compliance-{id}", "G5-consistency",
+                        #   "G6-quality")
     "artifact": str,    # Artifact being checked (when applicable)
     "name": str,        # Human-readable check name (compliance gates)
     "check": str,       # Metric name (metrics gates, e.g., "coverage_minimum")
@@ -414,7 +435,7 @@ The final summary line reports all three categories and provides a clear verdict
 
 ---
 
-## 9. Override Protocol
+## 10. Override Protocol
 
 When a gate fails but the team decides to proceed anyway, the override must be formally recorded.
 
@@ -446,7 +467,8 @@ phases:
 | Gate 3: Metrics | SHOULD NOT | Quantitative thresholds are objective |
 | Gate 4: Compliance | **NO** (compliance profiles) | Compliance-enabled profiles MUST NOT override classification failures |
 | Gate 4: Compliance | SHOULD NOT (other profiles) | Still represents an objective categorization failure |
-| Gate 5: Quality | MAY | Quality is subjective; override with documented justification |
+| Gate 5: Consistency | SHOULD review, MAY proceed | Drift surfaces for review; intentional changes documented via decision log |
+| Gate 6: Quality | MAY | Quality is subjective; override with documented justification |
 
 ### Override Tracking
 
@@ -454,9 +476,9 @@ The `audit_gates.py` script tracks override frequency across all completed phase
 
 ---
 
-## 10. Compliance Gate Extensions
+## 11. Compliance Gate Extensions
 
-Compliance frameworks add extra checks to the base 5-gate system. These are loaded dynamically from profile-specific YAML files.
+Compliance frameworks add extra checks to the base 6-gate system. These are loaded dynamically from profile-specific YAML files.
 
 ### Supported Frameworks
 
@@ -485,14 +507,14 @@ gates:
 
   - id: "soc2-audit-logging"
     name: "SOC 2 Audit Logging"
-    phase: 4
+    phase: build
     check_type: artifact_exists
     artifact: "audit-logging-spec.md"
     severity: MUST
 
   - id: "soc2-change-management"
     name: "SOC 2 Change Management Review"
-    phase: 5
+    phase: build
     check_type: manual
     description: "Verify change management procedures followed for all code changes"
     severity: MUST
@@ -526,7 +548,7 @@ Compliance gate results appear in the output with gate identifiers prefixed by `
 
 ---
 
-## 11. Gate Auditing
+## 12. Gate Auditing
 
 The `scripts/audit_gates.py` script analyzes gate effectiveness across completed phases to identify process calibration issues.
 
@@ -582,7 +604,7 @@ If fewer than 3 phases have been completed, the audit prints a warning that resu
 
 ---
 
-## 12. Cross-References
+## 13. Cross-References
 
 | Topic | Document | Description |
 |-------|----------|-------------|
@@ -592,6 +614,7 @@ If fewer than 3 phases have been completed, the audit prints a warning that resu
 | `check_gates.py` | `scripts/check_gates.py` | Gate evaluation implementation |
 | `audit_gates.py` | `scripts/audit_gates.py` | Gate effectiveness analysis implementation |
 | Phase registry | `phases/phase-registry.yaml` | Phase definitions including required/optional artifacts and exit gate conditions |
-| Validation rules | `references/validation-rules.md` | Concise reference for the 5-gate system and override protocol |
+| Validation rules | `references/validation-rules.md` | Concise reference for the 6-gate system and override protocol |
+| Cross-phase consistency | `references/cross-phase-consistency.md` | Locked-metric list and change protocol for Gate 5 |
 | State machine | `docs/state-machine.md` | How gate results are stored in `.sdlc/state.yaml` and drive phase transitions |
-| Phase definitions | `phases/00-discovery.md` through `phases/09-monitoring.md` | Individual phase requirements and artifact specifications |
+| Phase definitions | `phases/00-discovery.md`, `01-requirements.md`, `02-design.md`, `03-foundation.md`, `build-loop.md`, `07-documentation.md`, `08-deployment.md`, `09-monitoring.md`, `close.md` | Individual phase requirements and artifact specifications |

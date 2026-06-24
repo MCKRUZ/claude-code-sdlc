@@ -3,7 +3,7 @@ generate_phase_report.py — Render SDLC phase artifacts as a self-contained HTM
 
 Usage:
     uv run generate_phase_report.py --state .sdlc/state.yaml --phase 0
-    uv run generate_phase_report.py --state .sdlc/state.yaml --phase 0 --output .sdlc/reports/phase00-report.html
+    uv run generate_phase_report.py --state .sdlc/state.yaml --phase build --output .sdlc/reports/build-report.html
     uv run generate_phase_report.py --state .sdlc/state.yaml --all
 """
 
@@ -18,101 +18,96 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).parent))
+import phase_model as pm
+
 
 # ── Phase metadata ────────────────────────────────────────────────────────────
+#
+# Phase identity, ordering, slugs, names, displays, and descriptions are owned by
+# phase_model (phases/phase-registry.yaml). This module derives presentation from
+# the registry and only hardcodes the artifact label map below (filename -> human
+# label) plus the purely presentational colour/icon scheme.
 
-PHASES = {
-    0: {
-        "name": "Discovery",
-        "artifacts": [
-            ("constitution.md", "Project Constitution"),
-            ("problem-statement.md", "Problem Statement"),
-            ("success-criteria.md", "Success Criteria"),
-            ("constraints.md", "Constraints"),
-            ("phase1-handoff.md", "Phase 1 Handoff"),
-        ],
-    },
-    1: {
-        "name": "Requirements",
-        "artifacts": [
-            ("requirements.md", "Requirements"),
-            ("non-functional-requirements.md", "Non-Functional Requirements"),
-            ("epics.md", "Epics"),
-            ("phase2-handoff.md", "Phase 2 Handoff"),
-        ],
-    },
-    2: {
-        "name": "Design",
-        "artifacts": [
-            ("design-doc.md", "Design Document"),
-            ("api-contracts.md", "API Contracts"),
-            ("adrs/", "Architecture Decision Records"),
-            ("adr-registry.md", "ADR Registry"),
-            ("phase3-handoff.md", "Phase 3 Handoff"),
-        ],
-    },
-    3: {
-        "name": "Planning",
-        "artifacts": [
-            ("section-plans/", "Section Plans"),
-            ("sprint-plan.md", "Sprint Plan"),
-            ("risk-register.md", "Risk Register"),
-            ("phase4-handoff.md", "Phase 4 Handoff"),
-        ],
-    },
-    4: {
-        "name": "Implementation",
-        "artifacts": [
-            ("implementation-notes.md", "Implementation Notes"),
-            ("phase5-handoff.md", "Phase 5 Handoff"),
-        ],
-    },
-    5: {
-        "name": "Quality",
-        "artifacts": [
-            ("code-review-report.md", "Code Review Report"),
-            ("security-review-report.md", "Security Review Report"),
-            ("quality-metrics.md", "Quality Metrics"),
-            ("phase6-handoff.md", "Phase 6 Handoff"),
-        ],
-    },
-    6: {
-        "name": "Testing",
-        "artifacts": [
-            ("test-plan.md", "Test Plan"),
-            ("test-results.md", "Test Results"),
-            ("coverage-report.md", "Coverage Report"),
-            ("phase7-handoff.md", "Phase 7 Handoff"),
-        ],
-    },
-    7: {
-        "name": "Documentation",
-        "artifacts": [
-            ("README.md", "README"),
-            ("api-docs.md", "API Documentation"),
-            ("RUNBOOK.md", "Runbook"),
-            ("phase8-handoff.md", "Phase 8 Handoff"),
-        ],
-    },
-    8: {
-        "name": "Deployment",
-        "artifacts": [
-            ("release-notes.md", "Release Notes"),
-            ("deployment-checklist.md", "Deployment Checklist"),
-            ("smoke-test-results.md", "Smoke Test Results"),
-            ("phase9-handoff.md", "Phase 9 Handoff"),
-        ],
-    },
-    9: {
-        "name": "Monitoring",
-        "artifacts": [
-            ("monitoring-config.md", "Monitoring Configuration"),
-            ("alert-definitions.md", "Alert Definitions"),
-            ("incident-response.md", "Incident Response"),
-            ("project-retrospective.md", "Project Retrospective"),
-        ],
-    },
+# Human-friendly labels for known artifact filenames. Falls back to a derived
+# title for anything not listed.
+ARTIFACT_LABELS = {
+    "constitution.md": "Project Constitution",
+    "problem-statement.md": "Problem Statement",
+    "success-criteria.md": "Success Criteria",
+    "constraints.md": "Constraints",
+    "requirements.md": "Requirements",
+    "non-functional-requirements.md": "Non-Functional Requirements",
+    "epics.md": "Epics",
+    "design-doc.md": "Design Document",
+    "api-contracts.md": "API Contracts",
+    "adrs/": "Architecture Decision Records",
+    "adr-registry.md": "ADR Registry",
+    "foundation-report.md": "Foundation Report",
+    "risk-tier-map.md": "Risk Tier Map",
+    "cadence-plan.md": "Cadence Plan",
+    "build-handoff.md": "Build Loop Handoff",
+    "README.md": "README",
+    "api-docs.md": "API Documentation",
+    "RUNBOOK.md": "Runbook",
+    "release-notes.md": "Release Notes",
+    "deployment-checklist.md": "Deployment Checklist",
+    "smoke-test-results.md": "Smoke Test Results",
+    "monitoring-config.md": "Monitoring Configuration",
+    "alert-definitions.md": "Alert Definitions",
+    "incident-response.md": "Incident Response",
+    "project-retrospective.md": "Project Retrospective",
+    "final-handoff-report.md": "Final Handoff Report",
+    "harness-audit.md": "Harness Audit",
+    "close-gate-evidence.md": "Close Gate Evidence",
+    "access-revocation-checklist.md": "Access Revocation Checklist",
 }
+
+
+def _artifact_label(filename: str) -> str:
+    """Human label for an artifact filename, deriving a title when not mapped."""
+    if filename in ARTIFACT_LABELS:
+        return ARTIFACT_LABELS[filename]
+    stem = filename.rstrip("/").rsplit(".", 1)[0]
+    return stem.replace("-", " ").replace("_", " ").title()
+
+
+def phase_artifacts(phase_id) -> list[tuple[str, str]]:
+    """(filename, label) pairs for a phase's required artifacts, registry-driven.
+
+    Handoff artifacts and report HTML are exit-gate required entries in the
+    registry; the report HTML is excluded since it is this script's own output.
+    """
+    meta = pm.get_phase(phase_id)
+    if meta is None:
+        return []
+    required = meta.get("artifacts", {}).get("required", [])
+    return [
+        (fn, _artifact_label(fn))
+        for fn in required
+        if not fn.endswith("-report.html")
+    ]
+
+
+# Presentational scheme keyed by canonical string phase id. Purely cosmetic
+# (icon + accent colour); identity/ordering never read from here.
+PHASE_PRESENTATION = {
+    "0": {"icon": "🔍", "color": "#6c8ef7"},
+    "1": {"icon": "📋", "color": "#818cf8"},
+    "2": {"icon": "📐", "color": "#a78bfa"},
+    "3": {"icon": "🏗", "color": "#c084fc"},
+    "build": {"icon": "🔁", "color": "#22d3ee"},
+    "7": {"icon": "📚", "color": "#34d399"},
+    "8": {"icon": "🚀", "color": "#fb923c"},
+    "9": {"icon": "📊", "color": "#facc15"},
+    "close": {"icon": "🏁", "color": "#f472b6"},
+}
+
+
+def phase_title(phase_id) -> str:
+    """Capitalised human name for headings (registry name is lowercase)."""
+    name = pm.phase_name(phase_id) or pm.normalize_id(phase_id) or ""
+    return name.title()
 
 
 # ── Markdown → HTML (minimal, safe) ──────────────────────────────────────────
@@ -596,7 +591,7 @@ body {{
 
 <nav id="sidebar">
   <div class="sidebar-header">
-    <div class="phase-badge">Phase {phase_num}</div>
+    <div class="phase-badge">{phase_badge}</div>
     <h2>{phase_name}</h2>
     <div class="project-name">{project_name}</div>
   </div>
@@ -614,9 +609,9 @@ body {{
     <div class="meta">
       <span>🗓 Generated: {generated_at}</span>
       <span>📁 Profile: {profile_id}</span>
-      <span>📍 Phase {phase_num} of 9</span>
+      <span>📍 {phase_badge} of {phase_count}</span>
     </div>
-    <h1>Phase {phase_num}: {phase_name}</h1>
+    <h1>{phase_heading}</h1>
     <p class="subtitle">{phase_purpose}</p>
     <div class="artifact-count">
       <div class="count-chip">
@@ -633,7 +628,7 @@ body {{
   {artifact_sections}
 
   <div class="report-footer">
-    <span>claude-code-sdlc — Phase {phase_num} Report</span>
+    <span>claude-code-sdlc — {phase_badge} Report</span>
     <span>{generated_at}</span>
   </div>
 </main>
@@ -659,18 +654,11 @@ mermaid.initialize({{ startOnLoad: true, theme: 'dark', themeVariables: {{ prima
 </html>
 """
 
-PHASE_PURPOSES = {
-    0: "Establish shared understanding of the problem, define measurable success, and surface constraints before any solution work begins.",
-    1: "Translate problem understanding into explicit, testable requirements that developers can implement and stakeholders can validate.",
-    2: "Define system architecture, data flows, and interface contracts — the blueprint that guides implementation.",
-    3: "Break design into deliverable sections, estimate effort, assign ownership, and identify risks before the first line of code is written.",
-    4: "Execute the implementation plan, tracking progress against section plans and resolving blockers as they arise.",
-    5: "Systematically review the implementation for correctness, security, and maintainability. Every CRITICAL and HIGH finding must be resolved before testing begins.",
-    6: "Execute a comprehensive test strategy — unit, integration, and E2E — and produce coverage evidence that meets profile thresholds.",
-    7: "Ensure all documentation reflects the system as built — not as planned. A new team member should be able to understand, run, and operate the system using only the documentation produced in this phase.",
-    8: "Deploy the system to production safely, with documented rollback capability, verified smoke tests, and a release artifact that stakeholders can distribute.",
-    9: "Establish production observability so the team knows about problems before users do. Configure dashboards, define alerts, write the incident response playbook, and capture a project retrospective.",
-}
+def phase_purpose(phase_id) -> str:
+    """Phase purpose/subtitle text, sourced from the registry description."""
+    meta = pm.get_phase(phase_id)
+    return meta.get("description", "") if meta else ""
+
 
 ARTIFACT_ICONS = {
     "handoff": "🤝",
@@ -708,18 +696,13 @@ def load_state(state_path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def find_artifact(project_root: Path, phase_num: int, filename: str) -> Path | None:
-    """Search for an artifact in .sdlc/artifacts/ (multiple naming conventions) or project root."""
+def find_artifact(project_root: Path, phase_id, filename: str) -> Path | None:
+    """Search for an artifact in .sdlc/artifacts/<slug>/ or project root."""
     artifacts_dir = project_root / ".sdlc" / "artifacts"
-    candidates = [
-        artifacts_dir / f"phase{phase_num:02d}" / filename,
-    ]
-    # Also match NN-* directories (e.g., 00-discovery, 01-requirements)
-    if artifacts_dir.exists():
-        prefix = f"{phase_num:02d}-"
-        for d in artifacts_dir.iterdir():
-            if d.is_dir() and d.name.startswith(prefix):
-                candidates.append(d / filename)
+    slug = pm.artifact_dirname(phase_id)
+    candidates = []
+    if slug:
+        candidates.append(artifacts_dir / slug / filename)
     candidates.extend([
         project_root / filename,
         project_root / "docs" / filename,
@@ -808,22 +791,30 @@ def build_artifact_section(
 </div>"""
 
 
+def _phase_badge(phase_id: str) -> str:
+    """Short badge label: 'Phase 0' for numeric ids, registry display otherwise."""
+    if phase_id.isdigit():
+        return f"Phase {phase_id}"
+    return pm.phase_display(phase_id) or phase_title(phase_id)
+
+
 def generate_report(
     state_path: Path,
-    phase_num: int,
+    phase_id,
     output_path: Path,
 ) -> dict:
     state = load_state(state_path)
     project_root = state_path.parent.parent
 
-    phase_meta = PHASES[phase_num]
-    phase_name = phase_meta["name"]
-    artifacts = phase_meta["artifacts"]
+    phase_id = pm.normalize_id(phase_id)
+    phase_name = phase_title(phase_id)
+    phase_heading = pm.phase_display(phase_id) or f"{_phase_badge(phase_id)}: {phase_name}"
+    artifacts = phase_artifacts(phase_id)
 
     found_set: set[str] = set()
     artifact_paths: dict[str, Path | None] = {}
     for filename, _ in artifacts:
-        p = find_artifact(project_root, phase_num, filename)
+        p = find_artifact(project_root, phase_id, filename)
         artifact_paths[filename] = p
         if p:
             found_set.add(filename)
@@ -844,16 +835,18 @@ def generate_report(
     project_name = state.get("project_name", project_root.name)
     profile_id = state.get("profile_id", "unknown")
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    title = f"Phase {phase_num}: {phase_name} — {project_name}"
+    title = f"{phase_heading} — {project_name}"
 
     report_html = HTML_TEMPLATE.format(
         title=title,
-        phase_num=phase_num,
-        phase_name=phase_name,
+        phase_badge=html.escape(_phase_badge(phase_id)),
+        phase_heading=html.escape(phase_heading),
+        phase_count=pm.phase_count(),
+        phase_name=html.escape(phase_name),
         project_name=html.escape(project_name),
         profile_id=html.escape(profile_id),
         generated_at=generated_at,
-        phase_purpose=html.escape(PHASE_PURPOSES.get(phase_num, "")),
+        phase_purpose=html.escape(phase_purpose(phase_id)),
         found_count=found_count,
         missing_count=missing_count,
         found_plural="s" if found_count != 1 else "",
@@ -867,7 +860,7 @@ def generate_report(
     output_path.write_text(report_html, encoding="utf-8")
 
     return {
-        "phase": phase_num,
+        "phase": phase_id,
         "phase_name": phase_name,
         "output": str(output_path),
         "found": found_count,
@@ -1159,7 +1152,7 @@ body {{
   <div class="progress-bar-wrap">
     <div class="progress-bar-fill" style="width:{progress_pct}%"></div>
   </div>
-  <div class="progress-label">{completed_count} of 10 phases completed ({progress_pct}%)</div>
+  <div class="progress-label">{completed_count} of {phase_count} phases completed ({progress_pct}%)</div>
 </div>
 
 <div class="timeline-section">
@@ -1195,19 +1188,24 @@ mermaid.initialize({{ startOnLoad: true, theme: 'dark', themeVariables: {{ prima
 """
 
 
-def _phase_entered_date(history: list[dict], phase_num: int) -> str | None:
+def _phase_entered_date(history: list[dict], phase_id) -> str | None:
     """Return the ISO timestamp when a phase was entered, or None."""
+    pid = pm.normalize_id(phase_id)
     for entry in history:
-        if entry.get("to") == phase_num or entry.get("phase") == phase_num:
+        to = pm.normalize_id(entry.get("to"))
+        ph = pm.normalize_id(entry.get("phase"))
+        if to == pid or ph == pid:
             return entry.get("at") or entry.get("timestamp") or entry.get("date")
     return None
 
 
-def _phase_status(phase_num: int, current_phase: int) -> str:
-    if phase_num < current_phase:
-        return "completed"
-    if phase_num == current_phase:
+def _phase_status(phase_id, current_phase) -> str:
+    pid = pm.normalize_id(phase_id)
+    cur = pm.normalize_id(current_phase)
+    if pid == cur:
         return "active"
+    if pm.is_before(pid, cur):
+        return "completed"
     return "pending"
 
 
@@ -1220,16 +1218,17 @@ def _generate_index(
     state = load_state(state_path)
     project_name = html.escape(state.get("project_name", state_path.parent.parent.name))
     profile_id = html.escape(state.get("profile_id", "unknown"))
-    current_phase: int = state.get("current_phase", 0)
+    current_phase = pm.normalize_id(state.get("current_phase", "0"))
     history: list[dict] = state.get("history", [])
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    phase_count = pm.phase_count()
 
     # Completed count: phases strictly before current_phase with full artifacts
     completed_count = sum(
         1 for r in phase_results
         if _phase_status(r["phase"], current_phase) == "completed"
     )
-    progress_pct = round(completed_count / 10 * 100)
+    progress_pct = round(completed_count / phase_count * 100) if phase_count else 0
 
     # ── Phase cards ─────────────────────────────────────────────────────────────
     cards: list[str] = []
@@ -1252,12 +1251,13 @@ def _generate_index(
         if entered_raw:
             entered_str = f'<span>Entered: {html.escape(str(entered_raw))}</span>'
 
-        report_filename = f"phase{pnum:02d}-report.html"
+        report_filename = f"{pm.artifact_dirname(pnum)}-report.html"
+        card_badge = html.escape(_phase_badge(pnum).upper())
 
         cards.append(f"""\
 <a class="phase-card status-{status}" href="{report_filename}">
   <div class="phase-card-header">
-    <span class="phase-num">PHASE {pnum}</span>
+    <span class="phase-num">{card_badge}</span>
     <span class="phase-status-dot {status}"></span>
   </div>
   <div class="phase-card-name">{pname}</div>
@@ -1299,16 +1299,18 @@ def _generate_index(
     for result in phase_results:
         pnum = result["phase"]
         pname = html.escape(result["phase_name"])
-        filename = f"phase{pnum:02d}-report.html"
-        links.append(f'<a class="report-link" href="{filename}">Phase {pnum}: {pname}</a>')
+        filename = f"{pm.artifact_dirname(pnum)}-report.html"
+        badge = html.escape(_phase_badge(pnum))
+        links.append(f'<a class="report-link" href="{filename}">{badge}: {pname}</a>')
 
     index_html = INDEX_TEMPLATE.format(
         title=f"{project_name} — SDLC Project Index",
         project_name=project_name,
         profile_id=profile_id,
-        current_phase=current_phase,
+        current_phase=html.escape(_phase_badge(current_phase)),
         generated_at=generated_at,
         completed_count=completed_count,
+        phase_count=phase_count,
         progress_pct=progress_pct,
         phase_cards="\n    ".join(cards),
         history_content=history_content,
@@ -1324,9 +1326,9 @@ def _generate_index(
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate SDLC phase HTML report")
     parser.add_argument("--state", required=True, type=Path, help="Path to .sdlc/state.yaml")
-    parser.add_argument("--phase", type=int, help="Phase number (0–9). Defaults to current phase.")
+    parser.add_argument("--phase", type=str, help="Phase id (e.g. 0, 1, build, 7, close). Defaults to current phase.")
     parser.add_argument("--output", type=Path, help="Output HTML file path.")
-    parser.add_argument("--all", action="store_true", dest="all_phases", help="Generate reports for all phases (0–9) and write an index.html summary.")
+    parser.add_argument("--all", action="store_true", dest="all_phases", help="Generate reports for all phases and write an index.html summary.")
     args = parser.parse_args()
 
     if not args.state.exists():
@@ -1337,12 +1339,13 @@ def main() -> int:
 
     if args.all_phases:
         results = []
-        for phase_num in range(10):
-            default_output = args.state.parent / "reports" / f"phase{phase_num:02d}-report.html"
-            result = generate_report(args.state, phase_num, default_output)
+        for phase in pm.all_phases():
+            phase_id = pm.normalize_id(phase["id"])
+            default_output = args.state.parent / "reports" / f"{pm.artifact_dirname(phase_id)}-report.html"
+            result = generate_report(args.state, phase_id, default_output)
             results.append(result)
             status = "[ok]" if result["missing"] == 0 else f"[!!] {result['missing']} missing"
-            print(f"  Phase {phase_num}: {result['phase_name']} - {status} -> {result['output']}")
+            print(f"  {_phase_badge(phase_id)}: {result['phase_name']} - {status} -> {result['output']}")
         print(f"\n{len(results)} reports generated.")
 
         # Generate index.html
@@ -1352,21 +1355,22 @@ def main() -> int:
         return 0
 
     # Single phase
-    phase_num = args.phase
-    if phase_num is None:
-        phase_num = state.get("current_phase", 0)
+    phase_id = pm.normalize_id(args.phase)
+    if phase_id is None:
+        phase_id = pm.normalize_id(state.get("current_phase", "0"))
 
-    if phase_num not in PHASES:
-        print(f"ERROR: invalid phase number {phase_num}. Must be 0–9.", file=sys.stderr)
+    if pm.get_phase(phase_id) is None:
+        valid = ", ".join(pm.all_phase_ids())
+        print(f"ERROR: invalid phase id {phase_id!r}. Valid ids: {valid}.", file=sys.stderr)
         return 1
 
     output_path = args.output or (
-        args.state.parent / "reports" / f"phase{phase_num:02d}-report.html"
+        args.state.parent / "reports" / f"{pm.artifact_dirname(phase_id)}-report.html"
     )
 
-    result = generate_report(args.state, phase_num, output_path)
+    result = generate_report(args.state, phase_id, output_path)
 
-    print(f"\nPhase {result['phase']}: {result['phase_name']} Report")
+    print(f"\n{_phase_badge(phase_id)}: {result['phase_name']} Report")
     print("-" * 50)
     for filename, found in result["artifacts"].items():
         icon = "[ok]" if found else "[--]"

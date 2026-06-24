@@ -23,12 +23,12 @@
 |----------|:---------:|:-------:|:-------:|:--------:|
 | Phase Structure | 1 | 0 | 0 | 1 |
 | Context System | 0 | 1 | 2 | 0 |
-| Quality Gates | 1 | 0 | 1 | 0 |
+| Quality Gates | 2 | 0 | 0 | 0 |
 | Output System | 0 | 0 | 2 | 0 |
 | Agent/Skill Model | 0 | 1 | 2 | 0 |
 | Compliance | 1 | 0 | 0 | 0 |
 | Tooling | 1 | 1 | 0 | 0 |
-| **Totals** | **4** | **3** | **7** | **1** |
+| **Totals** | **5** | **3** | **6** | **1** |
 
 ---
 
@@ -38,10 +38,10 @@
 
 | Feature | AI-SDLC | claude-code-sdlc | Status |
 |---------|---------|------------------|--------|
-| Phase definitions with exit criteria | 4 phases (Discovery → Specification → Planning → Implementation) | 10 phases (Discovery → Monitoring) | 🔀 Diverged |
+| Phase definitions with exit criteria | 4 phases (Discovery → Specification → Planning → Implementation) | 9 phases (Discovery → Close & Transfer), non-sequential — opening (0 Discovery, 1 Requirements, 2 Design, 3 Foundation), the continuous Build Loop, then 7 Documentation, 8 Deployment, 9 Monitoring, and Close & Transfer | 🔀 Diverged |
 | Phase activities & artifacts | Per-phase agent with 5-7 skills each | Per-phase markdown with activities + artifact lists | ✅ At Parity |
 
-**Notes:** claude-code-sdlc has *more* granular phases (10 vs 4), covering the full lifecycle through deployment and monitoring. AI-SDLC packs more detail into fewer phases via discrete skill definitions. Both approaches are valid — the 10-phase model is arguably better for a plugin guiding users through a complete lifecycle.
+**Notes:** claude-code-sdlc has *more* granular phases (9 vs 4), covering the full lifecycle through deployment and monitoring. AI-SDLC packs more detail into fewer phases via discrete skill definitions. The middle is a continuous Build Loop (per-change Intent/Delegate/Discern beats) rather than batch Implementation/Quality/Testing phases, and a terminal Close & Transfer phase ends the engagement by handing the system to the client. Both approaches are valid — the 9-phase model is arguably better for a plugin guiding users through a complete lifecycle.
 
 ---
 
@@ -63,10 +63,10 @@
 
 | Feature | AI-SDLC | claude-code-sdlc | Status | Priority |
 |---------|---------|------------------|--------|----------|
-| 5-gate validation system | Gates 0-4 (Integrity, Completeness, Arithmetic, Compliance, Quality) | Gates 1-5 (Integrity, Completeness, Metrics, Compliance, Quality) | ✅ At Parity |  |
-| **Cross-phase locked metrics** — certain values (budget, timeline, scope) can't change without decision log entry | Formal rules in `cross-phase-consistency.reference.md` with change protocol | Not implemented; gates validate within a phase but don't enforce cross-phase metric locks | ❌ Missing | **MEDIUM** |
+| 6-gate validation system | Gates 0-4 (Integrity, Completeness, Arithmetic, Compliance, Quality) | Gates 1-6 (Integrity, Completeness, Metrics, Compliance, Cross-Phase Consistency, Quality) | ✅ At Parity |  |
+| **Cross-phase locked metrics** — certain values (budget, timeline, scope) can't change without decision log entry | Formal rules in `cross-phase-consistency.reference.md` with change protocol | Implemented as Gate 5 (Cross-Phase Consistency) — flags drift in locked metrics across phase transitions; references/cross-phase-consistency.md defines the change protocol. | ✅ At Parity |  |
 
-**Recommendation:** Add a `references/cross-phase-consistency.md` doc defining locked metrics and change protocol. Update `check_gates.py` to read prior phase frozen layers and flag metric drift.
+**Recommendation:** Done — `references/cross-phase-consistency.md` defines locked metrics and the change protocol, and `check_gates.py` reads prior phase frozen layers and flags metric drift via Gate 5.
 
 ---
 
@@ -101,7 +101,7 @@
 
 | Feature | AI-SDLC | claude-code-sdlc | Status |
 |---------|---------|------------------|--------|
-| SOC2 compliance gates | Defined in methodology | 10 gates mapped to phases 1-9 in profile YAML | ✅ At Parity |
+| SOC2 compliance gates | Defined in methodology | 10 gates mapped across the phases (1, 2, Build Loop, 7, 8, 9) in profile YAML | ✅ At Parity |
 | HIPAA/GDPR/PCI-DSS frameworks | Referenced | Referenced in `references/compliance-frameworks.md` | ✅ At Parity |
 | Compliance audit command | Via validation skills | `/sdlc-audit` command + `audit_gates.py` script | ✅ At Parity |
 
@@ -128,7 +128,7 @@ These are areas where the plugin has gone *beyond* the methodology repo:
 
 | Feature | Description |
 |---------|-------------|
-| **10-phase lifecycle** | Covers deployment, monitoring — AI-SDLC stops at implementation |
+| **9-phase lifecycle** | Covers Foundation, a continuous Build Loop, deployment, monitoring, and Close & Transfer — AI-SDLC stops at implementation |
 | **Native Claude Code integration** | Plugin manifest, hooks, slash commands |
 | **Python automation scripts** | 9 scripts for validation, reporting, initialization |
 | **Section evaluator agent** | Grades implementation against rubric |

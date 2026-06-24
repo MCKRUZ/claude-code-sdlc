@@ -12,9 +12,9 @@ definitions that drive every phase of the SDLC lifecycle.
 3. [Phase 0: Discovery Artifacts](#3-phase-0-discovery-artifacts)
 4. [Phase 1: Requirements Artifacts](#4-phase-1-requirements-artifacts)
 5. [Phase 2: Design Artifacts](#5-phase-2-design-artifacts)
-6. [Phase 3: Planning Artifacts](#6-phase-3-planning-artifacts)
-7. [Phase 4: Implementation Artifacts](#7-phase-4-implementation-artifacts)
-8. [Phases 5-9: Later Phase Artifacts](#8-phases-5-9-later-phase-artifacts)
+6. [Phase 3: Foundation Artifacts](#6-phase-3-foundation-artifacts)
+7. [Build Loop Artifacts](#7-build-loop-artifacts)
+8. [Later Phase Artifacts (Documentation, Deployment, Monitoring, Close)](#8-later-phase-artifacts-documentation-deployment-monitoring-close)
 9. [Handoff Document Protocol](#9-handoff-document-protocol)
 10. [Artifact Lifecycle](#10-artifact-lifecycle)
 11. [Cross-References](#11-cross-references)
@@ -38,8 +38,9 @@ gate system checks that it does.
 - **Gate validation depends on templates.** Gate 1 (Existence) checks that every required
   artifact file exists. Gate 2 (Completeness) scans for unfilled placeholders -- any remaining
   `[bracket text]`, `TODO`, or `TBD` markers cause the gate to fail.
-- **Phase-specific organization.** Each phase (0-9) has its own template subdirectory containing
-  the artifacts required for that phase.
+- **Phase-specific organization.** Each phase has its own template subdirectory, named by its
+  phase slug (`00-discovery`, `03-foundation`, `build`, `close`, ...), containing the artifacts
+  required for that phase.
 
 ### Template Types
 
@@ -48,7 +49,7 @@ gate system checks that it does.
 | **Markdown artifacts** | Structured documents with sections, tables, and placeholder content | `constitution.md`, `requirements.md` |
 | **JSON tracking files** | Machine-readable state for implementation progress | `sections-progress.json`, `session-handoff.json` |
 | **YAML state** | Project state machine definition | `state-init.yaml` |
-| **Handoff documents** | Phase transition records with open questions and risk summaries | `phase1-handoff.md` through `phase9-handoff.md` |
+| **Handoff documents** | Phase transition records with open questions and risk summaries | `phase1-handoff.md`, `phase2-handoff.md`, `phase3-handoff.md`, `build-handoff.md`, `phase7-handoff.md`, `phase8-handoff.md`, `phase9-handoff.md`, `close-handoff.md` (the chain jumps 3 → `build-handoff` → 7 — there is no phase4/5/6-handoff) |
 
 ### Root-Level Quick-Start Templates
 
@@ -86,6 +87,11 @@ templates/
     │   ├── problem-statement.md             # Why this project exists
     │   ├── success-criteria.md              # Measurable outcomes with Pass/Partial/Fail
     │   ├── constraints.md                   # Non-negotiable boundaries (tech/business/legal)
+    │   ├── contradiction-list.md            # Detected conflicts across discovery inputs
+    │   ├── document-registry.md             # Index of intake documents (DOC-NNN)
+    │   ├── document-summary.md              # Per-document corpus summaries
+    │   ├── question-list.md                 # Open discovery questions
+    │   ├── workshop-brief.md                # Discovery workshop preparation brief
     │   └── phase1-handoff.md                # Handoff to Requirements phase
     ├── 01-requirements/
     │   ├── requirements.md                  # Functional requirements (FR-NNN format)
@@ -99,29 +105,20 @@ templates/
     │   ├── adrs/
     │   │   └── ADR-template.md              # Architecture Decision Record template
     │   ├── adr-registry.md                  # Index of all ADRs with status tracking
-    │   └── phase3-handoff.md                # Handoff to Planning phase
-    ├── 03-planning/
-    │   ├── sprint-plan.md                   # Sprint schedule with section assignments
-    │   ├── risk-register.md                 # Risk matrix with likelihood x impact scoring
-    │   ├── section-plans/
-    │   │   ├── SECTION-template.md          # Pure SDLC section plan format
-    │   │   └── SECTION-template-deep-plan.md # Hybrid SDLC + /deep-plan format
-    │   └── phase4-handoff.md                # Handoff to Implementation phase
-    ├── 04-implementation/
-    │   ├── implementation-notes.md          # Decision log, deviations, tech debt tracker
-    │   ├── sections-progress.json           # Machine-readable section/sprint progress
-    │   ├── session-handoff.json             # Session continuity state
-    │   └── phase5-handoff.md                # Handoff to Quality phase
-    ├── 05-quality/
-    │   ├── code-review-report.md            # Code review findings
-    │   ├── quality-metrics.md               # Quality measurement results
-    │   ├── security-review-report.md        # Security analysis findings
-    │   └── phase6-handoff.md                # Handoff to Testing phase
-    ├── 06-testing/
-    │   ├── test-plan.md                     # Test strategy and scope
-    │   ├── test-results.md                  # Execution results by suite
-    │   ├── coverage-report.md               # Coverage percentages by module
-    │   └── phase7-handoff.md                # Handoff to Documentation phase
+    │   └── phase3-handoff.md                # Handoff to Foundation phase
+    ├── 03-foundation/
+    │   ├── foundation-report.md             # Walking-skeleton + harness/rails stand-up report
+    │   ├── risk-tier-map.md                 # HIGH/MEDIUM/LOW risk tiers + registered security gates
+    │   ├── cadence-plan.md                  # Cadence calendar, WIP cap, review-wait tripwire
+    │   ├── build-handoff.md                 # Ordered spec backlog; handoff into the Build loop
+    │   └── section-plans/
+    │       ├── SECTION-template.md          # Pure SDLC section plan format
+    │       └── SECTION-template-deep-plan.md # Hybrid SDLC + /deep-plan format
+    ├── build/
+    │   ├── phase7-handoff.md                # Feature-complete declaration; exits into Documentation
+    │   ├── build-summary.md                 # Rolling merged-work summary
+    │   ├── sections-progress.json           # Machine-readable section progress
+    │   └── session-handoff.json             # Session continuity state
     ├── 07-documentation/
     │   ├── api-docs.md                      # API documentation
     │   ├── RUNBOOK.md                       # Operational runbook
@@ -131,12 +128,20 @@ templates/
     │   ├── release-notes.md                 # Version changelog
     │   ├── smoke-test-results.md            # Post-deployment smoke tests
     │   └── phase9-handoff.md                # Handoff to Monitoring phase
-    └── 09-monitoring/
-        ├── alert-definitions.md             # Alert rules and thresholds
-        ├── incident-response.md             # Incident classification and procedures
-        ├── monitoring-config.md             # Dashboard and metrics configuration
-        └── project-retrospective.md         # Final project retrospective
+    ├── 09-monitoring/
+    │   ├── alert-definitions.md             # Alert rules and thresholds
+    │   ├── incident-response.md             # Incident classification and procedures
+    │   ├── monitoring-config.md             # Dashboard and metrics configuration
+    │   └── project-retrospective.md         # Final project retrospective
+    └── close/
+        ├── final-handoff-report.md          # Closing handoff to the client
+        ├── harness-audit.md                 # Audit of the delivered harness
+        ├── close-gate-evidence.md           # Evidence the client ran a real spec unassisted
+        └── access-revocation-checklist.md   # Pod access teardown checklist
 ```
+
+> Note: `close-handoff.md` (Monitoring → Close) lives under `09-monitoring/` as that phase's
+> handoff artifact; the `close/` directory holds the terminal Close & Transfer deliverables.
 
 ---
 
@@ -395,7 +400,7 @@ Tracks all ADRs across the project in a single lookup table.
 **Sections:** Active ADRs, Superseded ADRs, Proposed (Under Review). Each entry records the ADR
 number, title, date, and current status.
 
-### phase3-handoff.md -- Handoff to Planning
+### phase3-handoff.md -- Handoff to Foundation
 
 **Phase-specific content:**
 
@@ -404,53 +409,81 @@ number, title, date, and current status.
 - **Natural Section Boundaries:** How the design breaks into implementable sections
 - **P0 Stories and Their Technical Requirements:** Story-to-component mapping with complexity
 - **Integration Points Requiring Coordination:** Cross-section dependencies
-- **Technical Risks for Planning:** Risk table with recommended spikes
-- **Open Design Questions:** AQ-NN items that planning should be aware of
+- **Technical Risks for Foundation:** Risk table with recommended spikes
+- **Open Design Questions:** AQ-NN items that Foundation should be aware of
 
 ---
 
-## 6. Phase 3: Planning Artifacts
+## 6. Phase 3: Foundation Artifacts
 
-Planning breaks the design into implementable sections, schedules sprints, and identifies risks.
+Foundation is the hinge where documents stop and software starts. It builds the factory --
+installs/adapts the harness, stands up the CI/CD rails, gates, and dev infrastructure -- and
+deploys a thin "walking skeleton" end-to-end into the dev environment. Its required artifacts are
+`foundation-report.md`, `risk-tier-map.md`, `cadence-plan.md`, and `build-handoff.md`. The
+`section-plans/` sub-directory holds the per-change planning templates that the Build loop draws
+from.
 
-### sprint-plan.md -- Sprint Schedule
+### foundation-report.md -- Walking Skeleton and Rails Report
 
-Organizes sections into sprints with capacity planning and dependency mapping.
-
-**Required sections:**
-
-| Section | Purpose | What Must Be Filled In |
-|---------|---------|----------------------|
-| **Overview** | Plan summary | Total sections, total sprints, methodology notes |
-| **Section Plans** (per section) | Section assignments | Goal, owner, sprint assignment, effort estimate, P0 stories covered, entry/exit criteria, implementation notes |
-| **Sprint Schedule** (per sprint) | Time-boxed work blocks | Sprint theme/goal, sections included, story point capacity, key milestones, demo scope |
-| **Dependency Map** | Ordering constraints | Table showing section-to-section dependencies |
-| **Velocity and Capacity Summary** | Resource planning | Available capacity per sprint, velocity assumptions |
-| **P0 Story Coverage** | Traceability check | Matrix confirming every P0 story is assigned to a section and sprint |
-
-### risk-register.md -- Risk Matrix
-
-Formal risk management with likelihood-impact scoring.
+Records that the factory is real: the harness is installed/adapted, the CI/CD pipeline and gates
+are live, dev infrastructure is provisioned, and a thin end-to-end walking skeleton is deployed
+into dev.
 
 **Required sections:**
 
 | Section | Purpose | What Must Be Filled In |
 |---------|---------|----------------------|
-| **Overview** | Risk management approach | Scoring methodology (Likelihood x Impact), review cadence |
-| **Active Risks** (RISK-NNN) | Individual risk records | Category, description, trigger, likelihood (1-3), impact (1-3), risk score, owner, mitigation plan, contingency plan, status, last review date |
-| **Risk Matrix** | Visual risk map | 3x3 grid plotting risks by likelihood vs. impact |
-| **Assumptions Register** | Stated assumptions | Each assumption with validation method and owner |
-| **Risk Review Log** | Audit trail | Dates when risks were reviewed and any status changes |
+| **Overview** | Foundation summary | What was stood up, where the walking skeleton is deployed |
+| **Harness Setup** | The installed factory | Which harness/profile was installed or adapted, and how |
+| **CI/CD Rails and Gates** | Pipeline state | Pipeline stages, the gates wired in, where they run |
+| **Dev Infrastructure** | Provisioned environment | Environments, services, and access stood up for the build loop |
+| **Walking Skeleton** | Thin end-to-end slice | The minimal end-to-end path proven deployed into dev |
 
-**Risk categories:** Technical, Schedule, Resource, External, Security.
+### risk-tier-map.md -- Risk Tier Map
 
-**Scoring:** Likelihood (1=Low, 2=Medium, 3=High) multiplied by Impact (1=Low, 2=Medium,
-3=High). Scores of 6-9 are high priority, 3-4 are medium, 1-2 are low.
+Tiers project risks and registers the security gates that guard the higher tiers.
 
-### section-plans/ -- Implementation Section Plans
+**Required sections:**
 
-Section plans are the atomic unit of implementation work. Each section gets its own file
-(`SECTION-NNN.md`) based on one of two templates.
+| Section | Purpose | What Must Be Filled In |
+|---------|---------|----------------------|
+| **HIGH tier** | Highest-risk areas | Areas demanding the strictest checking, with rationale |
+| **MEDIUM tier** | Moderate-risk areas | Areas with standard checking |
+| **LOW tier** | Lowest-risk areas | Areas with lightweight checking |
+| **Registered Security Gates** | Gate registry | Which security gates apply to which tier and where they fire |
+
+### cadence-plan.md -- Cadence Plan
+
+Sets the rhythm of the Build loop: when work happens, how much is in flight, and the tripwire
+that flags stalled review.
+
+**Required sections:**
+
+| Section | Purpose | What Must Be Filled In |
+|---------|---------|----------------------|
+| **Cadence Calendar** | When work happens | The recurring rhythm of build/review beats |
+| **WIP Cap** | Concurrency limit | Maximum changes allowed in flight at once |
+| **Review-Wait Tripwire** | Stall detector | The threshold at which a change waiting on review raises a flag |
+
+### build-handoff.md -- Handoff into the Build Loop
+
+The ordered spec backlog that the Build loop consumes -- the bridge from Foundation into
+continuous build.
+
+**Required sections:**
+
+| Section | Purpose | What Must Be Filled In |
+|---------|---------|----------------------|
+| **Ordered Spec Backlog** | The build queue | Specs in implementation order, with dependencies |
+| **Build Start Conditions** | Readiness checklist | Rails live, gates wired, walking skeleton deployed, owners assigned |
+| **Constraints** | Build-loop ground rules | Coding standards, branching strategy, review requirements |
+| **Key Risks Entering Build** | Carried-forward risks | Risks with active mitigations from the risk-tier map |
+
+### section-plans/ -- Per-Change Section Plans
+
+Section plans are the atomic unit of build work. They live under `03-foundation/section-plans/`,
+and the Build loop draws from them per change. Each section gets its own file (`SECTION-NNN.md`)
+based on one of two templates.
 
 #### SECTION-template.md -- Pure SDLC Format
 
@@ -509,41 +542,33 @@ broken without documented ADR.
 **Warn conditions (non-blocking):** code style deviations, missing edge case tests outside
 critical path.
 
-### phase4-handoff.md -- Handoff to Implementation
-
-**Phase-specific content:**
-
-- **Planning Summary:** Total sections, sprints, story points, P0 coverage confirmation
-- **Implementation Start Conditions:** 5-item checklist (dev environment, repo structure, P0 story owners, section dependencies, risk mitigations active)
-- **Section Execution Order:** Ordered list with dependencies and sprint assignments
-- **Implementation Constraints:** Coding standards, branching strategy, review requirements
-- **First Sprint Starting Point:** Which section to begin with and why
-- **Unresolved Items (Non-blocking):** Items that can be resolved during implementation
-- **Key Risks Entering Implementation:** Carried-forward risks with active mitigations
-
 ---
 
-## 7. Phase 4: Implementation Artifacts
+## 7. Build Loop Artifacts
 
-Implementation produces both the actual code and structured tracking artifacts that enable
-session continuity and progress visibility.
+The Build loop is the continuous middle of the SDLC. It replaces the old batch
+Implementation/Quality/Testing phases: every change runs three beats -- **Intent** (decide and
+write a spec), **Delegate** (bound and build from an approved plan), and **Discern** (prove the
+change against its spec, by someone other than the author, then merge). There is no artifact exit
+gate -- checking happens per change inside the loop, and a human declares the backlog
+feature-complete to leave.
 
-### implementation-notes.md -- Implementation Journal
+The loop's durable per-change record is `specs/` (the spec files in the repo). Under the `build/`
+template directory it tracks rolling state in `build-summary.md` and the two JSON continuity
+trackers, and emits `phase7-handoff.md` when the human declares the work feature-complete.
 
-A running log of decisions, deviations, and observations made during implementation.
+### specs/ -- Per-Change Specifications
 
-**Required sections:**
+Each change gets a spec file in the repo (`specs/NNNN-name.md`), written during the Intent beat.
+The spec is the contract the change is built against and the artifact the Discern beat proves
+against. Specs are the Build loop's durable per-change record; they live in the repository, not
+under the template tree.
 
-| Section | Purpose | What Must Be Filled In |
-|---------|---------|----------------------|
-| **Overview** | Implementation status | Start date, current sprint, overall completion percentage |
-| **Section Progress** | Per-section status | Table tracking each section's status, completion date, notes |
-| **Decision Log** (IMPL-DEC-NNN) | Runtime decisions | Decisions made during implementation with context, alternatives, and rationale |
-| **Deviations from Design** | Where reality diverged | What changed, why, which ADR or justification documents it, who approved |
-| **Technical Debt Incurred** | Debt tracking | Each debt item with description, location, priority, and payoff plan |
-| **Blockers and Resolutions** | Issue tracking | What blocked progress, how it was resolved, time lost |
-| **Observations for Quality Review** | Phase 5 preparation | Areas that need extra attention during quality review |
-| **Sprint Summary** (per sprint) | Sprint retrospective | What was completed, what carried over, key learnings |
+### build-summary.md -- Rolling Merged-Work Summary
+
+A continuously updated summary of work merged through the Build loop -- what has shipped, what is
+in flight, and the current state of the backlog. It is the human-readable counterpart to the
+JSON trackers below.
 
 ### sections-progress.json -- Machine-Readable Progress Tracker
 
@@ -554,7 +579,7 @@ JSON file tracking section and sprint progress for automated tooling and dashboa
 ```json
 {
   "$schema": "sections-progress-v1",
-  "phase": 4,
+  "phase": "build",
   "total_sections": 0,
   "completed_sections": 0,
   "last_updated": null,
@@ -601,7 +626,7 @@ JSON file tracking section and sprint progress for automated tooling and dashboa
 
 ### session-handoff.json -- Session Continuity State
 
-JSON file enabling implementation continuity across Claude Code sessions. Updated at the end of
+JSON file enabling Build-loop continuity across Claude Code sessions. Updated at the end of
 each session to provide context for the next session.
 
 **Schema version:** `session-handoff-v1`
@@ -609,7 +634,7 @@ each session to provide context for the next session.
 ```json
 {
   "$schema": "session-handoff-v1",
-  "phase": 4,
+  "phase": "build",
   "last_updated": null,
   "session_number": 1,
   "overall_status": "in_progress",
@@ -659,41 +684,23 @@ each session to provide context for the next session.
 The `context_for_next_session` field is a free-text summary that provides the next session with
 everything it needs to continue work without re-reading all artifacts.
 
-### phase5-handoff.md -- Handoff to Quality
+### phase7-handoff.md -- Exits the Build Loop into Documentation
+
+The Build loop has no batch exit gate. It ends when a human declares the backlog
+feature-complete; that declaration is `phase7-handoff.md`, which carries the work directly into
+Documentation.
 
 **Phase-specific content:**
 
-- **Implementation Summary:** Section count, sprint count, completion dates
-- **Completed Stories:** P0 story checklist with acceptance criteria self-assessment
-- **Deferred Stories:** Stories not implemented with justification
-- **Technical Debt Incurred:** Debt items carried into quality review
-- **Deviations from Design:** Summary of all design divergences
-- **Quality Review Focus Areas:** Specific areas needing extra scrutiny
-- **Security Areas of Concern:** Security-relevant implementation details
-- **Build Status:** CI/CD pipeline status, test results summary
-- **Pre-Quality Checklist:** Verification items (no FIXMEs in production paths, no hardcoded secrets, migrations tested, branch merged)
+- **What Was Built:** The capabilities that now exist, mapped to the specs that delivered them
+- **System State:** Current state of the deployed system and its build/test status
+- **Open Questions:** Q-NN items the Documentation phase must address
+- **Deferred Items:** Work consciously left out, with justification
+- **Documentation Focus:** Areas Documentation should prioritize for the cold-use verification
 
 ---
 
-## 8. Phases 5-9: Later Phase Artifacts
-
-### Phase 5: Quality (3 artifacts + handoff)
-
-| Artifact | Purpose |
-|----------|---------|
-| `code-review-report.md` | Structured code review findings with severity ratings |
-| `quality-metrics.md` | Quantified quality measurements against NFR targets |
-| `security-review-report.md` | Security-specific analysis findings and recommendations |
-| `phase6-handoff.md` | Handoff to Testing with quality findings summary |
-
-### Phase 6: Testing (3 artifacts + handoff)
-
-| Artifact | Purpose |
-|----------|---------|
-| `test-plan.md` | Test strategy defining scope, approach, environments, and entry/exit criteria |
-| `test-results.md` | Execution results organized by test suite with pass/fail/skip counts |
-| `coverage-report.md` | Code coverage percentages by module with line/branch/function breakdown |
-| `phase7-handoff.md` | Handoff to Documentation with test summary and deployment readiness |
+## 8. Later Phase Artifacts (Documentation, Deployment, Monitoring, Close)
 
 ### Phase 7: Documentation (2 artifacts + handoff)
 
@@ -712,7 +719,7 @@ everything it needs to continue work without re-reading all artifacts.
 | `smoke-test-results.md` | Post-deployment smoke test results per environment |
 | `phase9-handoff.md` | Handoff to Monitoring with deployment summary |
 
-### Phase 9: Monitoring (4 artifacts, no handoff)
+### Phase 9: Monitoring (4 artifacts + handoff)
 
 | Artifact | Purpose |
 |----------|---------|
@@ -720,9 +727,23 @@ everything it needs to continue work without re-reading all artifacts.
 | `incident-response.md` | Incident classification levels and response procedures |
 | `monitoring-config.md` | Dashboard inventory and metrics configuration |
 | `project-retrospective.md` | Final project retrospective covering the entire SDLC cycle |
+| `close-handoff.md` | Handoff to Close & Transfer with monitoring baseline summary |
 
-Phase 9 is the terminal phase -- there is no phase 10 handoff. The `project-retrospective.md`
-serves as the project's closing document.
+### Phase C: Close & Transfer (4 artifacts, terminal)
+
+The terminal phase. It proves the client can run everything without the pod -- shadow-flip,
+harness audit, the close gate (the client runs one real spec end-to-end unassisted), and access
+revocation.
+
+| Artifact | Purpose |
+|----------|---------|
+| `final-handoff-report.md` | The closing handoff report to the client |
+| `harness-audit.md` | Audit of the delivered harness against the delivery standard |
+| `close-gate-evidence.md` | Evidence the client ran a real spec end-to-end unassisted |
+| `access-revocation-checklist.md` | Pod access teardown checklist |
+
+Phase 9 hands off to Phase C (Close & Transfer) via `close-handoff.md`. Phase C is terminal;
+`final-handoff-report.md` is the project's closing document.
 
 ---
 
@@ -733,7 +754,10 @@ and serve as the primary communication channel between phases.
 
 ### Standard Handoff Structure
 
-All handoff documents (phase1-handoff.md through phase9-handoff.md) follow this structure:
+All handoff documents follow this structure. The chain is `phase1-handoff.md`,
+`phase2-handoff.md`, `phase3-handoff.md`, `build-handoff.md`, `phase7-handoff.md`,
+`phase8-handoff.md`, `phase9-handoff.md`, `close-handoff.md` -- note the 3 → `build-handoff` → 7
+jump, since the Build loop replaces the old phase 4/5/6 (there is no phase4/5/6-handoff):
 
 1. **Phase Summary** -- compressed summary of work done in the completing phase
 2. **Decisions Made** -- D-NN formatted decision table with rationale and approver
@@ -791,7 +815,7 @@ Every artifact follows a predictable lifecycle from template to validated delive
        |
 5. GATE 2: COMPLETE  Gate scans for unfilled placeholders ([brackets], TODO, TBD)
        |
-6. GATE 5: QUALITY   Gate evaluates content quality (profile-specific criteria)
+6. GATE 6: QUALITY   Gate evaluates content quality (profile-specific criteria)
        |
 7. RECORDED          Artifact path added to state.yaml phase artifacts list
 ```
@@ -810,7 +834,7 @@ file is a hard gate failure.
 Any remaining placeholder causes a gate failure. The gate reports which specific placeholders
 remain unfilled so the author knows exactly what to complete.
 
-**Gate 5 -- Quality Check:** Profile-specific quality evaluation. Different profiles may set
+**Gate 6 -- Quality Check:** Profile-specific quality evaluation. Different profiles may set
 different quality thresholds. For example, the `microsoft-enterprise` profile may require
 security review sign-off, while the `starter` profile may skip it.
 
@@ -849,7 +873,7 @@ Templates use these placeholder patterns consistently:
 
 | Document | Relationship to Templates |
 |----------|--------------------------|
-| [gate-system.md](gate-system.md) | Gates 1, 2, and 5 validate artifact existence, completeness, and quality |
+| [gate-system.md](gate-system.md) | Gates 1, 2, and 6 validate artifact existence, completeness, and quality |
 | [state-machine.md](state-machine.md) | `state-init.yaml` template initializes the state machine; completed artifacts are recorded in state |
 | [integrations.md](integrations.md) | `/deep-plan` integration maps to `SECTION-template-deep-plan.md`; `/deep-implement` reads the Implementation Guidance section |
 | [phase-lifecycle.md](phase-lifecycle.md) | Phase definitions in `phases/` reference which templates are required for each phase |

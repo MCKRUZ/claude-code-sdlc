@@ -126,9 +126,9 @@ Note: The `microsoft-enterprise` profile also uses non-schema fields `auth_patte
 | `coverage_critical` | integer | MAY | 0--100 | Coverage required for critical paths (auth, payments, identity). |
 | `max_file_lines` | integer | MAY | >= 100 | Maximum lines per file. Checked during quality reviews. |
 | `max_function_lines` | integer | MAY | >= 10 | Maximum lines per function. Checked during quality reviews. |
-| `require_tdd` | boolean | MAY | -- | When `true`, Phase 4 (Implementation) MUST use test-driven development workflow. |
-| `require_code_review` | boolean | MAY | -- | When `true`, Phase 5 (Quality) MUST include code review before merge. |
-| `require_security_review` | boolean | MAY | -- | When `true`, Phase 5 (Quality) MUST include security review for sensitive code. |
+| `require_tdd` | boolean | MAY | -- | When `true`, the Build Loop MUST use test-driven development per change. |
+| `require_code_review` | boolean | MAY | -- | When `true`, every change in the Build Loop MUST pass code review before merge. |
+| `require_security_review` | boolean | MAY | -- | When `true`, the Build Loop MUST include a security review on sensitive (HIGH-risk) changes. |
 | `evaluation_criteria` | array | MAY | -- | Qualitative evaluation standards for the section-evaluator agent. See [Section 8](#8-evaluation-criteria-system). |
 
 #### `quality.evaluation_criteria[]` items
@@ -145,7 +145,7 @@ Note: The `microsoft-enterprise` profile also uses non-schema fields `auth_patte
 |-------|------|----------|-------------|-------------|
 | `frameworks` | array of strings | MAY | Each item enum: `soc2`, `hipaa`, `gdpr`, `pci-dss`, `iso27001`, `none` | Compliance frameworks to enforce. Each adds framework-specific gate checks at phase transitions. |
 | `audit_trail` | boolean | MAY | -- | When `true`, MUST maintain an audit trail of all changes and decisions. |
-| `change_approval` | string | MAY | Enum: `peer-review`, `manager-approval`, `change-board`, `none` | Required approval level for changes. Affects Phase 5 (Quality) and Phase 8 (Deployment) workflows. |
+| `change_approval` | string | MAY | Enum: `peer-review`, `manager-approval`, `change-board`, `none` | Required approval level for changes. Affects the Build Loop (per-change review) and Phase 8 (Deployment) workflows. |
 
 ### `conventions` (optional)
 
@@ -310,8 +310,8 @@ Gate results are categorized as PASS, FAIL, or MANUAL. Any FAIL on a MUST-severi
 
 ### Phase Behavior
 
-- **Phase 4 (Implementation)** -- When `quality.require_tdd` is `true`, the implementation workflow MUST follow test-driven development: write failing tests first, then implement to make them pass, then refactor. The section-evaluator agent verifies TDD compliance.
-- **Phase 5 (Quality)** -- When `quality.require_code_review` is `true`, a code review MUST be completed and documented before the phase can advance. When `quality.require_security_review` is `true`, a security review MUST be performed on sensitive code (authentication, authorization, payments, identity).
+- **Build Loop** -- When `quality.require_tdd` is `true`, every change MUST follow TDD (red-green-refactor) per spec: write failing tests first, then implement to make them pass, then refactor. The section-evaluator/grader verifies it per change.
+- **Build Loop** -- code review (non-author Checker) and, for HIGH-risk changes, security review are enforced at the per-change merge bar. When `quality.require_code_review` is `true`, a code review MUST be completed and documented before merge. When `quality.require_security_review` is `true`, a security review MUST be performed on sensitive code (authentication, authorization, payments, identity).
 - **Phase 8 (Deployment)** -- The `compliance.change_approval` setting determines what approval is required before deployment:
   - `peer-review` -- At least one peer must review and approve.
   - `manager-approval` -- A manager or team lead must approve.
@@ -328,9 +328,9 @@ The session-start hook (`hooks/sdlc-session-start.ps1`) reads `.sdlc/state.yaml`
 
 ### Agent Behavior
 
-The **section-evaluator agent** (`agents/section-evaluator.md`) reads `.sdlc/profile.yaml` during Phase 4 to apply profile-defined evaluation criteria. For each completed section:
+The **section-evaluator agent** (`agents/section-evaluator.md`) reads `.sdlc/profile.yaml` during the Build Loop (per completed spec/section) to apply profile-defined evaluation criteria. For each completed section:
 
-1. The agent loads the section plan from `.sdlc/artifacts/03-planning/section-plans/`.
+1. The agent loads the section plan from `.sdlc/artifacts/03-foundation/section-plans/`.
 2. It reads the profile's `quality.evaluation_criteria` array.
 3. Each criterion is evaluated against the implementation. If a criterion's `severity` is `fail`, a violation blocks section completion. If `warn`, the violation is reported but does not block.
 4. Results appear in the evaluation report under a "Profile Evaluation Criteria" table.
@@ -570,10 +570,10 @@ The `microsoft-enterprise` profile ships with a complete SOC 2 gates file (`prof
 | 1 (Requirements) | `soc2-cc6.1-requirements` | CC6.1 -- Access Controls | `artifact_content` | `requirements.md` mentions "authentication" and "authorization" |
 | 2 (Design) | `soc2-cc6.6-boundaries` | CC6.6 -- System Boundaries | `artifact_content` | `design-doc.md` mentions "trust boundary" and "security" |
 | 2 (Design) | `soc2-cc7.1-change-mgmt` | CC7.1 -- Change Management | `artifact_exists` | `adrs/` directory exists with at least one ADR |
-| 4 (Implementation) | `soc2-cc6.1-implementation` | CC6.1 -- Access Controls | `manual` | Verify auth/authz code exists with unit tests |
-| 5 (Quality) | `soc2-cc7.2-vulnerability` | CC7.2 -- Vulnerability Mgmt | `artifact_exists` | `review-reports/` directory exists |
-| 5 (Quality) | `soc2-cc8.1-code-review` | CC8.1 -- Code Review | `artifact_exists` | `review-reports/` directory exists |
-| 6 (Testing) | `soc2-cc7.1-testing` | CC7.1 -- Testing | `metric` | Coverage meets `quality.coverage_minimum` |
+| build (Build Loop) | `soc2-cc6.1-implementation` | CC6.1 -- Access Controls | `manual` | Verify auth/authz code exists with unit tests |
+| build (Build Loop) | `soc2-cc7.2-vulnerability` | CC7.2 -- Vulnerability Mgmt | `artifact_exists` | `review-reports/` directory exists |
+| build (Build Loop) | `soc2-cc8.1-code-review` | CC8.1 -- Code Review | `artifact_exists` | `review-reports/` directory exists |
+| build (Build Loop) | `soc2-cc7.1-testing` | CC7.1 -- Testing | `metric` | Coverage meets `quality.coverage_minimum` |
 | 7 (Documentation) | `soc2-cc2.1-documentation` | CC2.1 -- Documentation | `manual` | README and API docs reflect current system |
 | 8 (Deployment) | `soc2-cc7.4-deployment` | CC7.4 -- Change Deployment | `artifact_content` | `release-notes.md` mentions "rollback" |
 | 9 (Monitoring) | `soc2-cc7.2-monitoring` | CC7.2 -- Monitoring | `manual` | Security monitoring alerts are configured |
@@ -600,7 +600,7 @@ The same pattern applies to GDPR (data protection, consent management, right to 
 
 The `compliance.change_approval` setting controls the approval workflow:
 
-- **`peer-review`** -- At Phase 5 (Quality), at least one peer review must be documented in `review-reports/`. At Phase 8 (Deployment), the release must have a peer-reviewed approval.
+- **`peer-review`** -- Every change in the Build Loop requires a documented non-author review (the Checker). At Phase 8 (Deployment), the release must have a peer-reviewed approval.
 - **`manager-approval`** -- Same as peer-review, but the reviewer must have manager-level authority. This is enforced via manual checks.
 - **`change-board`** -- A formal Change Advisory Board review is required before deployment. This typically maps to an external approval process and is flagged as a manual gate check.
 - **`none`** -- No approval gates are added beyond what the compliance frameworks already require.
@@ -615,7 +615,7 @@ When `compliance.audit_trail` is `true`, the SDLC system expects all phase trans
 
 ### Overview
 
-Evaluation criteria are profile-defined qualitative standards that go beyond numeric thresholds (coverage, line counts). They are applied by the **section-evaluator agent** during Phase 4 (Implementation) as each section of the implementation plan is completed.
+Evaluation criteria are profile-defined qualitative standards that go beyond numeric thresholds (coverage, line counts). They are applied by the **section-evaluator agent** in the Build Loop, as each spec/section is completed (per change, not batched).
 
 Unlike numeric checks that can be automated, evaluation criteria require semantic analysis of the code -- the agent reads the implementation and judges whether the criterion is satisfied.
 
@@ -687,11 +687,11 @@ When writing evaluation criteria for your custom profile:
 
 | Topic | Location | Description |
 |-------|----------|-------------|
-| Gate system | `docs/gate-system.md` | How gates work, gate categories (G1--G4), phase transitions |
+| Gate system | `docs/gate-system.md` | How gates work, gate categories (G1--G6), phase transitions |
 | Commands | `docs/commands.md` | `/sdlc-setup` (profile selection and initialization) |
 | Scripts | `docs/scripts.md` | `validate_profile.py`, `check_gates.py`, `generate_phase_report.py` |
 | Agents | `docs/agents.md` | `section-evaluator` agent behavior and evaluation workflow |
-| Phase definitions | `phases/00-discovery.md` through `phases/09-monitoring.md` | Per-phase requirements and artifacts |
+| Phase definitions | `phases/00-discovery.md`, `01-requirements.md`, `02-design.md`, `03-foundation.md`, `build-loop.md`, `07-documentation.md`, `08-deployment.md`, `09-monitoring.md`, `close.md` | Per-phase requirements and artifacts |
 | Phase registry | `phases/phase-registry.yaml` | Phase metadata and gate definitions |
 | Schema file | `profiles/_schema.yaml` | The validation schema itself |
 | SOC 2 gates | `profiles/microsoft-enterprise/compliance/soc2-gates.yaml` | SOC 2 gate definitions |

@@ -19,7 +19,7 @@ CONVERGED_TEMPLATE = (
     PLUGIN_ROOT
     / "templates"
     / "phases"
-    / "03-planning"
+    / "03-foundation"
     / "section-plans"
     / "SECTION-template-deep-plan.md"
 )
@@ -419,8 +419,8 @@ def transform_section_to_sdlc(
 
 
 def map_phase_3(planning_dir: Path, artifacts_dir: Path) -> None:
-    """Map /deep-plan Phase 3 outputs to SDLC artifacts."""
-    dest = artifacts_dir / "03-planning"
+    """Map /deep-plan Phase 3 outputs to SDLC artifacts (Foundation)."""
+    dest = artifacts_dir / "03-foundation"
     section_plans_dir = dest / "section-plans"
     section_plans_dir.mkdir(parents=True, exist_ok=True)
 
@@ -474,7 +474,7 @@ def main():
     )
     parser.add_argument(
         "--phase", required=True, type=int, choices=[2, 3],
-        help="SDLC phase to map artifacts for (2=Design, 3=Planning)",
+        help="SDLC phase to map artifacts for (2=Design, 3=Foundation)",
     )
     parser.add_argument(
         "--planning-dir", required=True,

@@ -1,13 +1,13 @@
-# 5-Gate Validation System
+# 6-Gate Validation System
 
-Adapted from the AI-SDLC methodology. Every phase transition runs artifacts through five validation gates in order. A gate failure blocks the transition.
+Adapted from the AI-SDLC methodology. Every gated phase transition runs artifacts through six validation gates in order. A gate failure blocks the transition. The **Build loop** (`build`) has no batch artifact gate — these checks run per change in its Discern beat instead of at a phase boundary.
 
 ## Gate 1: Artifact Integrity
 
 **Purpose:** Verify that required artifacts exist and are well-formed.
 
 **Checks:**
-- All required files for the phase exist in `.sdlc/artifacts/XX-phasename/`
+- All required files for the phase exist in `.sdlc/artifacts/<slug>/` (the registry `slug`, e.g. `00-discovery`, `03-foundation`, `build`, `close`)
 - Files are non-empty (> 0 bytes)
 - Files use expected format (markdown headers present, YAML parses, etc.)
 - No placeholder content remaining (e.g., `TODO`, `TBD`, `${VARIABLE}`)
@@ -23,8 +23,8 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 - Required YAML fields populated
 - Cross-references between artifacts resolve (e.g., requirements referenced in design doc exist)
 - Acceptance criteria have measurable conditions (not vague statements)
-- Section plan files contain Verification Criteria and Evaluator Contract sections (Phase 3)
-- Phase 4 checkpoint protocol enforced: each section must be committed and evaluated before the next section begins (tracked via `sections-progress.json` when available)
+- Section plan files contain Verification Criteria and Evaluator Contract sections (Phase 3 Foundation)
+- Build loop checkpoint protocol enforced: each change must be committed and evaluated (Discern beat) before the next change begins (tracked via `sections-progress.json` when available)
 
 **Severity:** MUST pass. Incomplete artifacts lead to downstream failures.
 
@@ -33,14 +33,14 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 **Purpose:** Verify quantitative thresholds from the profile.
 
 **Checks:**
-- Code coverage >= `quality.coverage_minimum` (Phase 6)
-- Critical path coverage >= `quality.coverage_critical` (Phase 6)
-- File line counts <= `quality.max_file_lines` (Phase 5)
-- Function line counts <= `quality.max_function_lines` (Phase 5)
-- No CRITICAL or HIGH severity issues in review reports (Phase 5)
-- All E2E tests passing (Phase 6)
+- Code coverage >= `quality.coverage_minimum` (Build loop, per change)
+- Critical path coverage >= `quality.coverage_critical` (Build loop, per change)
+- File line counts <= `quality.max_file_lines` (Build loop, per change)
+- Function line counts <= `quality.max_function_lines` (Build loop, per change)
+- No CRITICAL or HIGH severity issues in review reports (Build loop, per change)
+- All E2E tests passing (Build loop, per change)
 
-**Severity:** MUST pass for phases that produce measurable outputs. SHOULD be tracked for other phases.
+**Severity:** MUST pass for phases that produce measurable outputs. In the Build loop these thresholds are enforced per change in the Discern beat (not as a batch gate). SHOULD be tracked for other phases.
 
 ## Gate 4: Compliance
 
@@ -83,18 +83,19 @@ Adapted from the AI-SDLC methodology. Every phase transition runs artifacts thro
 
 ## Gate Application by Phase
 
+Gates apply at the exit of each **gated** phase. The Build loop (`build`) is omitted from the table on purpose — it has no batch artifact gate; the same checks (G1–G3, G6) run per change in its Discern beat.
+
 | Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality |
 |-------|:---:|:---:|:---:|:---:|:---:|:---:|
 | 0 Discovery | MUST | MUST | — | — | — | SHOULD |
 | 1 Requirements | MUST | MUST | — | MUST | SHOULD | SHOULD |
 | 2 Design | MUST | MUST | — | MUST | SHOULD | MUST |
-| 3 Planning | MUST | MUST | — | — | SHOULD | SHOULD |
-| 4 Implementation | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
-| 5 Quality | MUST | MUST | MUST | MUST | SHOULD | MUST |
-| 6 Testing | MUST | MUST | MUST | MUST | SHOULD | SHOULD |
+| 3 Foundation | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
+| build Build Loop | per change | per change | per change | — | SHOULD | per change |
 | 7 Documentation | MUST | MUST | — | — | SHOULD | MUST |
 | 8 Deployment | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
 | 9 Monitoring | MUST | SHOULD | — | — | SHOULD | SHOULD |
+| close Close & Transfer | MUST | MUST | — | — | SHOULD | SHOULD |
 
 ## Dirty Tracking (Incremental Validation)
 

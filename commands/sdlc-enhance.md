@@ -46,3 +46,4 @@ Generate stakeholder-friendly narrative companions for SDLC artifacts.
 - They are recommended before stakeholder reviews and phase transitions
 - The `narrative-enhancer` agent handles all generation — do not write narratives inline
 - Narratives are companions, not replacements for technical artifacts
+- **No activity metrics in client-facing narratives** — the `narrative-enhancer` agent must never surface velocity, story points, PR/commit counts, lines of code, or "AI productivity" claims, even if a source artifact contains them. Outcomes and quality only (per the delivery standard).

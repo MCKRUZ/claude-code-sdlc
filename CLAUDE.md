@@ -9,7 +9,7 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 - `commands/` — 12 slash commands (`/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`, `/sdlc-enhance`, `/sdlc-coach`, `/sdlc-review`, `/sdlc-intake`, `/sdlc-brief`, `/sdlc-phase-report`, `/sdlc-audit`)
 - `agents/` — 8 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst)
 - `profiles/` — Company/stack YAML configs with compliance gates
-- `phases/` — Phase definitions (10 phases, 0–9)
+- `phases/` — Phase definitions (9 phases: 0, 1, 2, 3 Foundation, build loop, 7, 8, 9, close). The 4/5/6 gap is intentional — the batch Implementation/Quality/Testing phases are replaced by the continuous Build loop. Phase identity/ordering is owned by `scripts/phase_model.py` reading `phases/phase-registry.yaml`.
 - `references/` — Progressive disclosure docs (loaded on-demand)
 - `templates/` — Artifact templates copied to target projects
 - `scripts/` — Python automation (uv runtime)
@@ -43,11 +43,11 @@ When adding a new agent or command, document both modes in its file. `discovery-
 - **Structured error specs** — Accepts/Returns/Errors required for P0/P1 requirements
 - **Cross-artifact validation** — File reference checking between markdown artifacts
 - **Question-to-file** — HITL open questions persisted to `open-questions.md` for audit trail
-- **Test expansion** — Healer/Expander/bug-to-test patterns in Phase 6
-- **Parallel review resolution** — Batch review findings by file in Phase 5
-- **Session health check** — Opt-in pre-flight build verification in Phase 4 Step 0 (agent-executed, cross-platform)
-- **Visual regression testing** — Optional screenshot capture in Phase 6 with baseline comparison (requires orchestrator integration)
-- **Single-section guardrail** — Intentionally redundant constraints preventing concurrent section work in Phase 4
+- **Test expansion** — Healer/Expander/bug-to-test patterns in the Build loop
+- **Parallel review resolution** — Batch review findings by file in the Build loop
+- **Session health check** — Opt-in pre-flight build verification at the start of Build-loop sessions (agent-executed, cross-platform)
+- **Visual regression testing** — Optional screenshot capture during Build-loop E2E with baseline comparison (requires orchestrator integration)
+- **Single-change guardrail** — Intentionally redundant constraints preventing concurrent spec work in the Build loop
 - **Phase-scoped evaluation criteria** — `evaluation_criteria` with optional `phases` array for non-code artifact quality rubrics
 - **Empirical metrics** — JSONL logging in `check_gates.py`, `validate_frozen_layer.py`, and `section-evaluator` agent to `.sdlc/metrics/`
 - **Document intake** — Opt-in corpus analysis in Phase 0: scans external docs (RFPs, API specs, vendor docs), generates per-doc summaries with DOC-NNN IDs, creates token-budgeted intake index (Tier 1.5), enables Phase 1 requirement-to-source traceability

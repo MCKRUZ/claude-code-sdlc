@@ -147,13 +147,11 @@ properties:
             maximum: 300
             description: "Maximum seconds to wait for the health check (default: 60)"
           min_phase:
-            type: integer
-            minimum: 0
-            maximum: 9
-            description: "Minimum phase to activate health check (default: 4)"
+            type: [string, integer]
+            description: "Minimum phase (by id) to activate the health check. Phase ids: 0, 1, 2, 3, build, 7, 8, 9, close. Default: build."
       evaluation_criteria:
         type: array
-        description: "Qualitative evaluation standards applied during gate checks and section evaluation. Criteria without a 'phases' field default to Phase 4 only (backward compatible). Criteria with a 'phases' field are applied during gate checks for those specific phases."
+        description: "Qualitative evaluation standards applied during gate checks and section evaluation. Criteria without a 'phases' field default to the build loop. Criteria with a 'phases' field are applied during gate checks for those specific phases."
         items:
           type: object
           required: [name, description]
@@ -171,10 +169,8 @@ properties:
             phases:
               type: array
               items:
-                type: integer
-                minimum: 0
-                maximum: 9
-              description: "Which phases this criterion applies to. If omitted, defaults to [4] for backward compatibility. Example: [1, 2] applies to Requirements and Design phases."
+                type: [string, integer]
+              description: "Which phases (by id) this criterion applies to. Phase ids: 0, 1, 2, 3, build, 7, 8, 9, close. If omitted, defaults to [build]. Example: [1, 2] applies to Requirements and Design."
 
   compliance:
     type: object

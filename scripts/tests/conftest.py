@@ -1,5 +1,6 @@
 """Shared fixtures for SDLC script tests."""
 
+import sys
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,8 @@ import yaml
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
+import phase_model as pm
 
 
 @pytest.fixture
@@ -97,12 +100,8 @@ def sdlc_dir(tmp_path):
     sdlc.mkdir()
     artifacts = sdlc / "artifacts"
     artifacts.mkdir()
-    for i, name in enumerate([
-        "discovery", "requirements", "design", "planning",
-        "implementation", "quality", "testing", "documentation",
-        "deployment", "monitoring",
-    ]):
-        (artifacts / f"{i:02d}-{name}").mkdir()
+    for p in pm.all_phases():
+        (artifacts / p["slug"]).mkdir()
     return sdlc
 
 
@@ -114,11 +113,11 @@ def state_yaml(sdlc_dir, valid_profile):
         "profile_id": "test-profile",
         "project_name": "test-project",
         "created_at": "2026-03-17T10:00:00+00:00",
-        "current_phase": 0,
+        "current_phase": "0",
         "phase_name": "discovery",
         "phases": {
-            0: {"name": "discovery", "status": "active", "entered_at": "2026-03-17T10:00:00+00:00", "completed_at": None, "gate_results": {}, "artifacts": []},
-            1: {"name": "requirements", "status": "pending", "entered_at": None, "completed_at": None, "gate_results": {}, "artifacts": []},
+            "0": {"name": "discovery", "status": "active", "entered_at": "2026-03-17T10:00:00+00:00", "completed_at": None, "gate_results": {}, "artifacts": []},
+            "1": {"name": "requirements", "status": "pending", "entered_at": None, "completed_at": None, "gate_results": {}, "artifacts": []},
         },
         "history": [],
     }

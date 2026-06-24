@@ -9,6 +9,8 @@ from pathlib import Path
 import yaml
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).parent))
+import phase_model as pm
 
 
 def load_yaml(path: Path) -> dict:
@@ -21,15 +23,8 @@ def save_yaml(path: Path, data: dict) -> None:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
-def get_phase_name(phase_id: int) -> str | None:
-    registry_path = PLUGIN_ROOT / "phases" / "phase-registry.yaml"
-    if not registry_path.exists():
-        return None
-    registry = load_yaml(registry_path)
-    for p in registry.get("phases", []):
-        if p["id"] == phase_id:
-            return p["name"]
-    return None
+def get_phase_name(phase_id) -> str | None:
+    return pm.phase_name(phase_id)
 
 
 def compute_checksum(file_path: Path) -> str:
@@ -85,13 +80,14 @@ def track(state_path: Path, phase_id: int | None, snapshot: bool) -> int:
 
     if phase_id is None:
         phase_id = state["current_phase"]
+    phase_id = pm.normalize_id(phase_id)
 
     phase_name = get_phase_name(phase_id)
     if not phase_name:
         print(f"Error: Phase {phase_id} not found in registry", file=sys.stderr)
         return 2
 
-    artifacts_dir = sdlc_dir / "artifacts" / f"{phase_id:02d}-{phase_name}"
+    artifacts_dir = sdlc_dir / "artifacts" / pm.artifact_dirname(phase_id)
     current = scan_artifacts(artifacts_dir)
 
     # Load stored checksums
@@ -144,7 +140,7 @@ def main() -> None:
     )
     parser.add_argument("--state", required=True, help="Path to .sdlc/state.yaml")
     parser.add_argument(
-        "--phase", type=int, default=None, help="Phase to track (default: current)"
+        "--phase", type=str, default=None, help="Phase to track (default: current)"
     )
     parser.add_argument(
         "--snapshot",

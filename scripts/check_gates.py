@@ -10,6 +10,8 @@ from pathlib import Path
 import yaml
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).parent))
+import phase_model as pm
 
 
 def load_yaml(path: Path) -> dict:
@@ -160,10 +162,10 @@ def compute_checksum(file_path: Path) -> str:
 
 
 def get_dirty_artifacts(
-    phase_id: int, state: dict, artifacts_dir: Path
+    phase_id, state: dict, artifacts_dir: Path
 ) -> dict[str, list[str]]:
     """Compare stored checksums to current files. Returns categorized lists."""
-    stored = state.get("phases", {}).get(phase_id, {}).get("artifact_checksums", {})
+    stored = state.get("phases", {}).get(pm.normalize_id(phase_id), {}).get("artifact_checksums", {})
     if not stored or not artifacts_dir.exists():
         return {"new": [], "modified": [], "unchanged": [], "deleted": []}
 
@@ -269,26 +271,22 @@ def check_intake_consistency(sdlc_dir: Path) -> list[dict]:
 
 
 def check_phase_gates(
-    phase_id: int,
+    phase_id,
     state: dict,
     profile: dict,
     artifacts_base: Path,
 ) -> list[dict]:
     """Run all gate checks for a phase. Returns list of results."""
-    registry = get_phase_registry()
+    phase_id = pm.normalize_id(phase_id)
     results = []
 
-    # Find phase definition in registry
-    phase_def = None
-    for p in registry["phases"]:
-        if p["id"] == phase_id:
-            phase_def = p
-            break
+    # Find phase definition in registry (single source of truth)
+    phase_def = pm.get_phase(phase_id)
 
     if not phase_def:
         return [{"gate": "registry", "passed": False, "message": f"Phase {phase_id} not found in registry"}]
 
-    artifacts_dir = artifacts_base / f"{phase_id:02d}-{phase_def['name']}"
+    artifacts_dir = artifacts_base / phase_def["slug"]
 
     # Dirty tracking — identify changed artifacts for incremental validation
     dirty = get_dirty_artifacts(phase_id, state, artifacts_dir)
@@ -343,8 +341,8 @@ def check_phase_gates(
     xref_results = check_cross_references(artifacts_dir)
     results.extend(xref_results)
 
-    # Phase 4 optional: sections-progress.json consistency check
-    if phase_id == 4:
+    # Build loop optional: sections-progress.json consistency check
+    if phase_id == "build":
         progress_path = artifacts_dir / "sections-progress.json"
         if progress_path.exists():
             try:
@@ -394,13 +392,13 @@ def check_phase_gates(
                     "severity": "SHOULD",
                 })
 
-    # Intake consistency (Phase 0 only)
-    if phase_id == 0:
+    # Intake consistency (Discovery only)
+    if phase_id == "0":
         intake_results = check_intake_consistency(artifacts_base.parent)
         results.extend(intake_results)
 
-    # Gate 3: Metrics — check profile quality thresholds (phases 5, 6)
-    if phase_id in [5, 6]:
+    # Gate 3: Metrics — coverage thresholds apply to the Build loop's per-change checking
+    if phase_id == "build":
         quality = profile.get("quality", {})
         results.append({
             "gate": "G3-metrics",
@@ -412,7 +410,7 @@ def check_phase_gates(
 
     # Gate 4: Classification — compliance gates
     compliance_gates = get_compliance_gates(profile)
-    phase_compliance = [g for g in compliance_gates if g["phase"] == phase_id]
+    phase_compliance = [g for g in compliance_gates if pm.normalize_id(g["phase"]) == phase_id]
     for gate in phase_compliance:
         if gate["check_type"] == "artifact_exists":
             passed, message = check_artifact_exists(artifacts_dir, gate["artifact"])
@@ -445,10 +443,9 @@ def check_phase_gates(
             "severity": gate.get("severity", "MUST"),
         })
 
-    # Gate: Dependency order (Phase 4 only)
-    if phase_id == 4:
-        sdlc_dir_dep = artifacts_base.parent
-        section_plans = sdlc_dir_dep / "artifacts" / "03-planning" / "section-plans"
+    # Gate: Dependency order (Build loop, when section plans were produced in Foundation)
+    if phase_id == "build":
+        section_plans = artifacts_base / pm.artifact_dirname("3") / "section-plans"
         if section_plans.exists():
             try:
                 sys.path.insert(0, str(Path(__file__).parent))
@@ -500,7 +497,7 @@ def check_phase_gates(
     eval_criteria = profile.get("quality", {}).get("evaluation_criteria", [])
     phase_criteria = [
         c for c in eval_criteria
-        if phase_id in c.get("phases", [4])  # Default to [4] for backward compat
+        if phase_id in [pm.normalize_id(p) for p in c.get("phases", ["build"])]
     ]
     if phase_criteria:
         for criterion in phase_criteria:
@@ -518,25 +515,26 @@ def check_phase_gates(
 
 
 def check_cross_phase_consistency(
-    phase_id: int,
+    phase_id,
     sdlc_dir: Path,
 ) -> list[dict]:
     """G5: Check locked metrics against frozen layers from prior phases."""
     results = []
+    phase_id = pm.normalize_id(phase_id)
     layers_dir = sdlc_dir / "context" / "layers"
 
-    if not layers_dir.exists() or phase_id < 1:
+    cur_order = pm.phase_order(phase_id)
+    if not layers_dir.exists() or cur_order is None or cur_order < 1:
         return results  # No prior phases to check
 
-    # Collect frozen layer content for prior phases
+    # Collect frozen layer content for prior phases (compared by lifecycle order, not int id)
     prior_layers = {}
     for layer_file in sorted(layers_dir.glob("phase*.md")):
-        try:
-            layer_phase = int(layer_file.stem.split("-")[0].replace("phase", ""))
-        except (ValueError, IndexError):
+        layer_id = layer_file.stem.split("-")[0].replace("phase", "")
+        if pm.get_phase(layer_id) is None:
             continue
-        if layer_phase < phase_id:
-            prior_layers[layer_phase] = layer_file.read_text(
+        if pm.is_before(layer_id, phase_id):
+            prior_layers[layer_id] = layer_file.read_text(
                 encoding="utf-8", errors="replace"
             )
 
@@ -554,17 +552,11 @@ def check_cross_phase_consistency(
         return results
 
     # Check for decision log in current phase
-    registry = get_phase_registry()
-    current_phase_def = None
-    for p in registry["phases"]:
-        if p["id"] == phase_id:
-            current_phase_def = p
-            break
-
+    current_phase_def = pm.get_phase(phase_id)
     if not current_phase_def:
         return results
 
-    current_artifacts_dir = sdlc_dir / "artifacts" / f"{phase_id:02d}-{current_phase_def['name']}"
+    current_artifacts_dir = sdlc_dir / "artifacts" / current_phase_def["slug"]
     decision_log = current_artifacts_dir / "decision-log.md"
 
     results.append({
@@ -671,7 +663,7 @@ def format_results(results: list[dict], phase_id: int) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Check SDLC phase exit gates")
     parser.add_argument("--state", required=True, help="Path to .sdlc/state.yaml")
-    parser.add_argument("--phase", type=int, default=None, help="Phase to check (default: current)")
+    parser.add_argument("--phase", type=str, default=None, help="Phase to check (default: current; e.g. 0, 3, build, 9, close)")
     args = parser.parse_args()
 
     state_path = Path(args.state)
@@ -688,7 +680,7 @@ def main():
         sys.exit(1)
 
     profile = load_yaml(profile_path)
-    phase_id = args.phase if args.phase is not None else state["current_phase"]
+    phase_id = pm.normalize_id(args.phase if args.phase is not None else state["current_phase"])
     artifacts_base = sdlc_dir / "artifacts"
 
     results = check_phase_gates(phase_id, state, profile, artifacts_base)

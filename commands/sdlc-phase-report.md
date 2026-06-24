@@ -40,7 +40,7 @@ Render all artifacts for the current (or specified) phase into a self-contained 
    - On failure: display the error from the script and suggest checking that artifact files exist
 
 5. **Update project index:** After generating the phase report, create or update `.sdlc/reports/index.html`:
-   - If `index.html` does not exist: create it with project header, mission, constitution link, and all 10 phases showing current status
+   - If `index.html` does not exist: create it with project header, mission, constitution link, and all 9 phases (0, 1, 2, 3, build, 7, 8, 9, close) showing current status
    - If `index.html` exists: update the phase status badges, dates, and report links to reflect current state
    - The index is the single entry point for all project documentation
 

@@ -15,9 +15,9 @@ scenarios:
       - action: "Accept default project name"
     acceptance_criteria:
       - ".sdlc/ directory created"
-      - ".sdlc/state.yaml contains current_phase: 0"
+      - ".sdlc/state.yaml contains current_phase: \"0\""
       - ".sdlc/profile.yaml matches microsoft-enterprise profile"
-      - ".sdlc/artifacts/ contains 10 phase directories (00-09)"
+      - ".sdlc/artifacts/ contains 9 phase directories (00-discovery, 01-requirements, 02-design, 03-foundation, build, 07-documentation, 08-deployment, 09-monitoring, close)"
       - ".sdlc/constitution.md created from template"
       - "CLAUDE.md updated with SDLC section"
 
@@ -124,14 +124,14 @@ scenarios:
 
   - id: full-lifecycle
     name: "Complete SDLC lifecycle (smoke test)"
-    description: "Walk through all 10 phases with minimal artifacts"
+    description: "Walk through all 9 phases (0, 1, 2, 3, build, 7, 8, 9, close) with minimal artifacts"
     steps:
       - action: "Initialize project"
-      - action: "For each phase 0-9: create required artifacts, run /sdlc-next"
+      - action: "For each phase in lifecycle order (0, 1, 2, 3, build, 7, 8, 9, close): create required artifacts, run /sdlc-next"
     acceptance_criteria:
-      - "All 10 phases complete"
-      - "state.yaml shows current_phase: 9 with status completed"
-      - "History has 9 transition entries"
+      - "All 9 phases complete"
+      - "state.yaml shows current_phase: \"close\" with status completed"
+      - "History has 8 transition entries"
       - "No errors during any transition"
 
   - id: microsoft-azure-patterns

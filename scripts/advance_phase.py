@@ -24,6 +24,7 @@ import yaml
 # Re-use gate checking and artifact tracking logic
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
+import phase_model as pm
 from check_gates import check_phase_gates, format_results
 from track_artifacts import scan_artifacts
 
@@ -38,17 +39,8 @@ def save_yaml(path: Path, data: dict) -> None:
         yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
 
-def get_phase_registry() -> list[dict]:
-    registry_path = PLUGIN_ROOT / "phases" / "phase-registry.yaml"
-    data = load_yaml(registry_path)
-    return data["phases"]
-
-
-def get_phase_def(phase_id: int) -> dict | None:
-    for p in get_phase_registry():
-        if p["id"] == phase_id:
-            return p
-    return None
+def get_phase_def(phase_id) -> dict | None:
+    return pm.get_phase(phase_id)
 
 
 def now_iso() -> str:
@@ -68,12 +60,17 @@ def advance(state_path: Path, confirmed: bool) -> int:
         return 2
 
     profile = load_yaml(profile_path)
-    current_phase_id = state["current_phase"]
+    current_phase_id = pm.normalize_id(state["current_phase"])
     artifacts_base = sdlc_dir / "artifacts"
 
+    current_def = get_phase_def(current_phase_id)
+    if current_def is None:
+        print(f"Error: Unknown phase '{current_phase_id}' in state.", file=sys.stderr)
+        return 2
+
     # Check we're not already at the end
-    if current_phase_id >= 9:
-        print("Project is at Phase 9 (Monitoring) — already complete.")
+    if pm.is_terminal(current_phase_id):
+        print(f"Project is at {current_def['display']} — the terminal phase. Engagement complete.")
         return 0
 
     # --- Run gate checks ---
@@ -103,13 +100,11 @@ def advance(state_path: Path, confirmed: bool) -> int:
         return 0
 
     # --- Advance state ---
-    next_phase_id = current_phase_id + 1
-    current_def = get_phase_def(current_phase_id)
-    next_def = get_phase_def(next_phase_id)
-
+    next_def = pm.next_phase(current_phase_id)
     if not next_def:
-        print(f"Error: No definition found for Phase {next_phase_id}", file=sys.stderr)
+        print(f"Error: No next phase after '{current_phase_id}'", file=sys.stderr)
         return 2
+    next_phase_id = pm.normalize_id(next_def["id"])
 
     timestamp = now_iso()
 
@@ -120,13 +115,16 @@ def advance(state_path: Path, confirmed: bool) -> int:
         "manual": sum(1 for r in results if r["passed"] is None),
     }
 
-    # Update phases
-    state["phases"][current_phase_id]["status"] = "completed"
-    state["phases"][current_phase_id]["completed_at"] = timestamp
-    state["phases"][current_phase_id]["gate_results"] = gate_summary
+    # Update phases (string-keyed map; guard against missing entries)
+    phases_map = state.setdefault("phases", {})
+    phases_map.setdefault(current_phase_id, {})
+    phases_map.setdefault(next_phase_id, {})
+    phases_map[current_phase_id]["status"] = "completed"
+    phases_map[current_phase_id]["completed_at"] = timestamp
+    phases_map[current_phase_id]["gate_results"] = gate_summary
 
-    state["phases"][next_phase_id]["status"] = "active"
-    state["phases"][next_phase_id]["entered_at"] = timestamp
+    phases_map[next_phase_id]["status"] = "active"
+    phases_map[next_phase_id]["entered_at"] = timestamp
 
     # Update top-level current phase
     state["current_phase"] = next_phase_id
@@ -143,9 +141,9 @@ def advance(state_path: Path, confirmed: bool) -> int:
     })
 
     # Snapshot artifact checksums for the completed phase (baseline for dirty tracking)
-    completed_artifacts_dir = artifacts_base / f"{current_phase_id:02d}-{current_def['name']}"
+    completed_artifacts_dir = artifacts_base / pm.artifact_dirname(current_phase_id)
     checksums = scan_artifacts(completed_artifacts_dir)
-    state["phases"][current_phase_id]["artifact_checksums"] = checksums
+    phases_map[current_phase_id]["artifact_checksums"] = checksums
 
     save_yaml(state_path, state)
 
@@ -180,7 +178,7 @@ def advance(state_path: Path, confirmed: bool) -> int:
             print(f"  -{a}")
 
     print()
-    print(f"Artifact directory: .sdlc/artifacts/phase{next_phase_id:02d}/")
+    print(f"Artifact directory: .sdlc/artifacts/{pm.artifact_dirname(next_phase_id)}/")
     print(f"Phase definition:   {next_def['definition']}")
     print()
     print("Run /sdlc to see full phase guidance.")

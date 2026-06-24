@@ -9,13 +9,12 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 | 0 Discovery | `/plan` | — | Manual elicitation + structured planning |
 | 1 Requirements | `/deep-project` | `/plan` | Decompose into planning units |
 | 2 Design | `/deep-plan` | `/plan`, `/visual-explainer` | Architecture + ADRs via deep planning. Visual diagrams via `/visual-explainer`. |
-| 3 Planning | `/deep-plan` | — | Section-level planning with TDD |
-| 4 Implementation | `/deep-implement`, `/tdd` | `/code-review` | TDD-driven implementation |
-| 5 Quality | `/code-review`, `/security-review` | — | Review gates before testing |
-| 6 Testing | `/e2e`, `/test-coverage` | `/tdd` | Coverage enforcement |
+| 3 Foundation | `/deep-plan` | `/tdd`, `/e2e` | Section-level planning with TDD; stand up rails + walking skeleton through the full Build loop |
+| build Build Loop | — | `/deep-implement`, `/tdd`, `/code-review`, `/security-review`, `/e2e`, `/test-coverage` | Continuous Intent → Delegate → Discern per change. Replaces batch Implementation/Quality/Testing; checking is per change, no batch gate. |
 | 7 Documentation | `/update-docs` | — | Sync docs with code |
 | 8 Deployment | `/e2e` | — | Smoke tests via `e2e-runner`; `devops-automator` agent for deployment execution |
 | 9 Monitoring | — | `/session-insights` | Retrospective analysis; `performance-benchmarker` agent for baseline |
+| close Close & Transfer | — | — | Prove unassisted client run end-to-end; harness audit + access revocation + harvest. Orchestrate agents per phase definition. |
 
 ## Skill Details
 
@@ -26,13 +25,13 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 - **Output:** Structured requirements, acceptance criteria
 
 ### /deep-plan
-- **Phases:** Design (2), Planning (3)
+- **Phases:** Design (2), Foundation (3)
 - **Purpose:** Creates detailed, sectionized, TDD-oriented implementation plans through research, stakeholder interviews, multi-LLM review, and parallel section generation
 - **Phase 2 usage (steps 1–15):** Research → Interview → Spec synthesis → Plan generation → External review
   - **Input:** `planning/spec.md` (synthesized from Phase 1 artifacts via `scripts/synthesize_spec.py`)
   - **Output:** `planning/claude-plan.md`, `planning/claude-research.md`, `planning/claude-interview.md`, `planning/reviews/`
   - **Maps to:** `design-doc.md`, `api-contracts.md`, `phase3-handoff.md` (via `scripts/map_deep_plan_artifacts.py --phase 2`)
-- **Phase 3 usage (steps 16–22):** TDD planning → Section index → Parallel section generation
+- **Phase 3 (Foundation) usage (steps 16–22):** TDD planning → Section index → Parallel section generation
   - **Input:** `planning/claude-plan.md` (from Phase 2), human-approved section boundaries
   - **Output:** `planning/claude-plan-tdd.md`, `planning/sections/index.md`, `planning/sections/section-NN-*.md`
   - **Maps to:** `section-plans/SECTION-NNN.md`, `tdd-plan.md`, `dependency-map.md` (via `scripts/map_deep_plan_artifacts.py --phase 3`)
@@ -40,37 +39,37 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 - **See also:** `references/deep-plan-integration.md` for full artifact mapping and troubleshooting
 
 ### /deep-implement
-- **Phase:** Implementation (4)
+- **Phase:** Build loop (`build`) — Delegate beat
 - **Purpose:** Implements code from /deep-plan section files with TDD methodology
 - **Input:** Section plan files
 - **Output:** Source code, tests, git commits
 
 ### /tdd
-- **Phases:** Implementation (4), Testing (6)
+- **Phases:** Foundation (3, walking skeleton), Build loop (`build`)
 - **Purpose:** Enforce test-driven development workflow
 - **Input:** Feature specification
 - **Output:** Tests first, then implementation
 
 ### /code-review
-- **Phase:** Quality (5)
+- **Phase:** Build loop (`build`) — Discern beat
 - **Purpose:** Expert code review for quality, security, maintainability
 - **Input:** Code diffs
 - **Output:** Review report with severity ratings
 
 ### /security-review
-- **Phase:** Quality (5)
+- **Phase:** Build loop (`build`) — Discern beat
 - **Purpose:** Security vulnerability detection
 - **Input:** Code handling user input, auth, APIs, sensitive data
 - **Output:** Security report with OWASP Top 10 analysis
 
 ### /e2e
-- **Phase:** Testing (6)
+- **Phases:** Build loop (`build`) — Discern beat; Deployment (8) smoke tests
 - **Purpose:** Generate and run end-to-end tests
 - **Input:** Critical user flows
 - **Output:** Playwright tests, screenshots, traces
 
 ### /test-coverage
-- **Phase:** Testing (6)
+- **Phase:** Build loop (`build`) — Discern beat
 - **Purpose:** Analyze and report test coverage
 - **Input:** Test suite
 - **Output:** Coverage report vs. profile thresholds

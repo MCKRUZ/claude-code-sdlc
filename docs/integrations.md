@@ -7,10 +7,10 @@ How the SDLC plugin orchestrates Claude Code skills across the development lifec
 - [1. Skill Integration Overview](#1-skill-integration-overview)
 - [2. Phase-to-Skill Mapping (Complete Reference)](#2-phase-to-skill-mapping-complete-reference)
 - [3. /deep-plan Integration (Phases 2-3)](#3-deep-plan-integration-phases-2-3)
-- [4. /deep-implement Integration (Phase 4)](#4-deep-implement-integration-phase-4)
-- [5. /tdd Integration (Phase 4)](#5-tdd-integration-phase-4)
-- [6. /code-review + /security-review Integration (Phase 5)](#6-code-review--security-review-integration-phase-5)
-- [7. /e2e + /test-coverage Integration (Phase 6)](#7-e2e--test-coverage-integration-phase-6)
+- [4. /deep-implement Integration (Build Loop)](#4-deep-implement-integration-build-loop)
+- [5. /tdd Integration (Build Loop)](#5-tdd-integration-build-loop)
+- [6. /code-review + /security-review Integration (Build Loop)](#6-code-review--security-review-integration-build-loop)
+- [7. /e2e + /test-coverage Integration (Build Loop + hardening passes)](#7-e2e--test-coverage-integration-build-loop--hardening-passes)
 - [8. synthesize_spec.py -- Requirements Synthesis](#8-synthesize_specpy--requirements-synthesis)
 - [9. /deep-project Integration (Phase 1)](#9-deep-project-integration-phase-1)
 - [10. Cross-References](#10-cross-references)
@@ -39,13 +39,12 @@ This table is the authoritative mapping, sourced from `phases/phase-registry.yam
 | 0 Discovery | `/plan` | -- | Structure discovery workshops, problem decomposition, stakeholder mapping |
 | 1 Requirements | `/deep-project` | `/plan` | Decompose vague requirements into well-scoped planning units with acceptance criteria |
 | 2 Design | `/deep-plan` (steps 1-15) | `/plan`, `/visual-explainer` | Architecture design, API contracts, ADRs; `/visual-explainer` generates interactive Mermaid diagrams |
-| 3 Planning | `/deep-plan` (steps 16-22) | -- | Section-level planning with TDD stubs, sprint planning, dependency mapping |
-| 4 Implementation | `/deep-implement`, `/tdd` | `/code-review` | Per-section code implementation following TDD methodology |
-| 5 Quality | `/code-review`, `/security-review` | -- | Parallel quality gates: correctness review and OWASP security assessment |
-| 6 Testing | `/e2e`, `/test-coverage` | `/tdd` | End-to-end test execution, coverage analysis against profile thresholds |
+| 3 Foundation | (no primary skill) | `/tdd`, `/e2e` | Stand up the harness + rails + dev infra; the section planning that finishes `/deep-plan` (steps 16-22) lands here, writing `section-plans/` under `03-foundation/`; run a walking skeleton through the Build loop |
+| Build Loop | (no primary skill) | `/tdd`, `/code-review`, `/e2e` | Per-change Intent->Delegate->Discern: `/deep-implement`-style building, TDD when required, code+security review and E2E run per change, never as a batch |
 | 7 Documentation | `/update-docs` | -- | Sync README, API docs, RUNBOOK with code changes |
 | 8 Deployment | `/e2e` | -- | Smoke tests via `e2e-runner` agent; `devops-automator` agent for deployment execution |
 | 9 Monitoring | -- | `/session-insights` | Retrospective analysis; `performance-benchmarker` agent for baseline metrics |
+| close (Close & Transfer) | -- | -- | Shadow-flip, harness audit, close gate (client runs one real spec end-to-end unassisted) |
 
 ### Agent Mapping
 
@@ -56,7 +55,7 @@ In addition to skills, the SDLC deploys specialized agents at certain phases:
 | `sdlc-orchestrator` | All | Coordinates phase transitions and skill invocation |
 | `requirements-analyst` | 0, 1 | Guides discovery interviews and requirement decomposition |
 | `compliance-checker` | All (if compliance enabled) | Validates compliance gates at phase transitions |
-| `section-evaluator` | 4 | Grades completed section implementations against their plan's Evaluator Contract |
+| `section-evaluator` | Build Loop | Grades each completed spec/section against its plan's Evaluator Contract |
 
 ---
 
@@ -106,9 +105,9 @@ files:
 
 The checkpoint enables Phase 3 to resume `/deep-plan` from step 16 without repeating steps 1-15.
 
-### Phase 3: Planning (Steps 16-22)
+### Phase 3: Foundation (Steps 16-22)
 
-In Phase 3, `/deep-plan` resumes from the checkpoint and performs TDD planning, section index creation, and parallel section generation.
+In Phase 3 (Foundation), `/deep-plan` resumes from the checkpoint and performs TDD planning, section index creation, and parallel section generation. Section planning now happens *within* Foundation -- the factory-building phase that stands up the harness, rails, and dev infrastructure -- not as a standalone Planning phase. The section plans become the ordered spec backlog the Build loop consumes.
 
 **Input:** `planning/claude-plan.md` from Phase 2, plus human-approved section boundaries.
 
@@ -121,9 +120,9 @@ In Phase 3, `/deep-plan` resumes from the checkpoint and performs TDD planning, 
 
 | /deep-plan Output | SDLC Artifact Location | Transformation |
 |-------------------|----------------------|----------------|
-| `planning/sections/section-NN-*.md` | `.sdlc/artifacts/03-planning/section-plans/SECTION-NNN.md` | Full structural transformation (see below) |
-| `planning/claude-plan-tdd.md` | `.sdlc/artifacts/03-planning/tdd-plan.md` | Direct copy |
-| `planning/sections/index.md` | `.sdlc/artifacts/03-planning/dependency-map.md` | Direct copy |
+| `planning/sections/section-NN-*.md` | `.sdlc/artifacts/03-foundation/section-plans/SECTION-NNN.md` | Full structural transformation (see below) |
+| `planning/claude-plan-tdd.md` | `.sdlc/artifacts/03-foundation/tdd-plan.md` | Direct copy |
+| `planning/sections/index.md` | `.sdlc/artifacts/03-foundation/dependency-map.md` | Direct copy |
 
 ### Artifact Mapping: map_deep_plan_artifacts.py
 
@@ -192,28 +191,28 @@ Both templates share identical Evaluator Contract sections with the same five-po
 
 ---
 
-## 4. /deep-implement Integration (Phase 4)
+## 4. /deep-implement Integration (Build Loop)
 
-The `/deep-implement` skill reads section plans and implements code one section at a time, following TDD methodology.
+The `/deep-implement` skill reads section plans (specs) and builds code one change at a time inside the Build loop, following TDD methodology. There is no batch implementation phase: one spec = one branch = one PR, and checking happens per change, never as a later batch.
 
 **Input:**
-- Section plan files from `.sdlc/artifacts/03-planning/section-plans/SECTION-NNN.md`
-- Sprint plan from `.sdlc/artifacts/03-planning/sprint-plan.md`
+- Section plan files (specs) from `.sdlc/artifacts/03-foundation/section-plans/SECTION-NNN.md`
+- The ordered build backlog -- the sequence of specs handed off from `.sdlc/artifacts/03-foundation/build-handoff.md` (there is no sprint plan; the spec backlog *is* the build order)
 - Profile configuration from `.sdlc/profile.yaml`
 
-**Workflow per section:**
-1. Read the SECTION-NNN.md plan, focusing on Implementation Guidance, Interfaces, and TDD Test Stubs
+**Workflow per change (one spec at a time):**
+1. Read the SECTION-NNN.md spec, focusing on Implementation Guidance, Interfaces, and TDD Test Stubs
 2. Write tests first (from TDD Test Stubs), then implement code to pass them
-3. Verify exit criteria from the section plan
+3. Verify exit criteria from the spec
 4. Update `sections-progress.json` with completion status
-5. Log any deviations from the plan in `implementation-notes.md`
-6. The `section-evaluator` agent grades the completed section against the Evaluator Contract
+5. Log any deviations from the spec in `implementation-notes.md`
+6. The `section-evaluator` agent grades the completed spec against the Evaluator Contract -- per change in the loop's Discern beat, not as a batch phase
 
 **Progress tracking via sections-progress.json:**
 
 ```json
 {
-  "phase": 4,
+  "phase": "build",
   "total_sections": 5,
   "completed_sections": 2,
   "sections": [
@@ -236,7 +235,7 @@ The `/deep-implement` skill reads section plans and implements code one section 
 
 When a Claude Code session ends mid-implementation, `session-handoff.json` captures the state so the next session can resume without context loss. It records: completed sections, in-progress sections, blockers, decisions made this session, deviations logged, and a free-text field for context the next session needs.
 
-**Section evaluator agent:** After each section completes, the `section-evaluator` agent (defined in `agents/section-evaluator.md`) runs an automated assessment:
+**Section evaluator agent:** After each spec completes in the loop (per change, not as a batch phase), the `section-evaluator` agent (defined in `agents/section-evaluator.md`) runs an automated assessment:
 
 1. Reads the section plan's Verification Criteria and Evaluator Contract
 2. Checks every exit criterion for evidence of satisfaction
@@ -249,7 +248,7 @@ The evaluator produces a PASS, WARN, or FAIL result. FAIL conditions (blocking) 
 
 ---
 
-## 5. /tdd Integration (Phase 4)
+## 5. /tdd Integration (Build Loop)
 
 The `/tdd` skill enforces test-driven development when the project profile requires it.
 
@@ -262,50 +261,49 @@ The `/tdd` skill enforces test-driven development when the project profile requi
 **Integration points:**
 - TDD test stubs originate in `/deep-plan`'s `claude-plan-tdd.md` and are embedded in each SECTION-NNN.md's Test Strategy section
 - The `tdd_enforced` flag in `sections-progress.json` tracks whether TDD was applied per section
-- Coverage is validated at Phase 5's quality gate against the profile's `coverage_minimum` threshold
+- Coverage is validated per change in the Build loop (G3 metrics) against the profile's `coverage_minimum` threshold
 - The section evaluator checks that TDD stubs from the plan were actually implemented as tests
 
-**Phase 6 secondary usage:** `/tdd` is also available as a secondary skill in Phase 6 (Testing) for writing additional tests discovered during the dedicated testing phase.
+**Hardening usage:** `/tdd` is also a Build-loop secondary skill, and is used in scheduled hardening passes inside the loop for writing additional tests discovered after the initial per-change build.
 
 ---
 
-## 6. /code-review + /security-review Integration (Phase 5)
+## 6. /code-review + /security-review Integration (Build Loop)
 
-Both review skills run in **parallel** during Phase 5, spawned in a single Agent message for efficiency.
+Both review skills run **per change** in the Build loop (the Discern beat), spawned in a single Agent message for efficiency. They run on every PR before merge -- there is no batched Quality phase.
 
 ### /code-review
 
 - **Scope:** Correctness, maintainability, naming conventions, code complexity, and adherence to profile-defined conventions
-- **Input:** Code diffs from Phase 4 implementation, profile quality settings
-- **Output:** `code-review-report.md` stored in `.sdlc/artifacts/05-quality/`
+- **Input:** The PR's code diff for this change, profile quality settings
+- **Output:** Code review findings produced per PR by the grader and the human Checker -- attached to the PR, not batched into a `05-quality` directory
 - **Severity levels:** CRITICAL, HIGH, MEDIUM, LOW, INFO
 
 ### /security-review
 
 - **Scope:** OWASP Top 10 vulnerabilities, authentication/authorization flaws, secret exposure, injection risks, XSS, CSRF
 - **Input:** Code handling user input, auth flows, API endpoints, sensitive data paths
-- **Output:** `security-review-report.md` stored in `.sdlc/artifacts/05-quality/`
+- **Output:** Security review findings produced per PR by the security gate -- attached to the PR, not batched into a `05-quality` directory
 - **Severity levels:** CRITICAL, HIGH, MEDIUM, LOW
 
 ### Gate requirements
 
-The Phase 5 exit gate enforces:
-- No CRITICAL issues remaining in the code review report
-- No HIGH issues remaining in the security review report
-- Both reports must exist and be marked complete
-- `quality-metrics.md` must summarize findings with aggregate counts
+Every PR's merge bar enforces:
+- No CRITICAL issues remaining in the code review (the grader plus the human Checker)
+- No HIGH issues remaining in the security review (the security gate)
+- Both run before merge
 
-CRITICAL and HIGH issues must be resolved before the project can advance to Phase 6. MEDIUM and LOW issues may be deferred with documented rationale.
+Checking is per change -- there is no Quality or Testing batch phase. CRITICAL and HIGH issues must be resolved before the change merges. MEDIUM and LOW issues may be deferred with documented rationale.
 
 ---
 
-## 7. /e2e + /test-coverage Integration (Phase 6)
+## 7. /e2e + /test-coverage Integration (Build Loop + hardening passes)
 
 ### /e2e
 
 - **Purpose:** Generate and execute end-to-end tests for critical user flows
-- **Input:** Critical user flows derived from Phase 1 requirements and Phase 3 section plans
-- **Output:** Playwright tests, screenshots, traces stored in `.sdlc/artifacts/06-testing/e2e-artifacts/`
+- **Input:** Critical user flows derived from Phase 1 requirements and the Foundation section plans (specs)
+- **Output:** Playwright tests, screenshots, traces -- produced per change in the Build loop and during scheduled hardening passes, not in a batch Testing phase
 - **Traceability:** Each E2E test scenario must map back to a requirement or epic from Phase 1. The test plan (`test-plan.md`) includes a scenario-to-requirement traceability matrix.
 
 ### /test-coverage
@@ -313,15 +311,11 @@ CRITICAL and HIGH issues must be resolved before the project can advance to Phas
 - **Purpose:** Analyze code coverage and identify testing gaps
 - **Input:** Full test suite (unit + integration + E2E)
 - **Output:** `coverage-report.md` with per-module breakdown
-- **Threshold enforcement:** Coverage must meet or exceed the profile's `coverage_minimum` setting. The exit gate checks this automatically.
+- **Threshold enforcement:** Coverage must meet or exceed the profile's `coverage_minimum` setting, checked per change at the merge bar.
 
 ### Gate requirements
 
-The Phase 6 exit gate enforces:
-- `test-plan.md` exists and covers all critical flows
-- `test-results.md` shows all tests passing
-- `coverage-report.md` shows coverage >= `coverage_minimum` from profile
-- All E2E tests passing
+Coverage and E2E pass are enforced per change at the merge bar (G3 metrics); integration-level E2E and load/pen testing run in scheduled hardening passes inside the loop. Note: `/e2e` is ALSO Phase 8's primary skill for deployment smoke tests.
 
 ---
 
@@ -410,6 +404,6 @@ The `/deep-project` skill decomposes vague, high-level project requirements into
 | `phases/phase-registry.yaml` | Machine-readable phase definitions, gate conditions, artifact lists |
 | `scripts/map_deep_plan_artifacts.py` | Source code for /deep-plan artifact transformation |
 | `scripts/synthesize_spec.py` | Source code for Phase 0-1 requirements synthesis |
-| `templates/phases/03-planning/section-plans/SECTION-template.md` | Pure SDLC section template |
-| `templates/phases/03-planning/section-plans/SECTION-template-deep-plan.md` | Hybrid SDLC + /deep-plan section template |
+| `templates/phases/03-foundation/section-plans/SECTION-template.md` | Pure SDLC section template |
+| `templates/phases/03-foundation/section-plans/SECTION-template-deep-plan.md` | Hybrid SDLC + /deep-plan section template |
 | `agents/section-evaluator.md` | Section evaluator agent definition and grading rubric |

@@ -55,12 +55,14 @@ What this artifact means for the project: timeline implications, resource needs,
 
 - **Complement, never replace.** The technical artifact is the source of truth. The narrative makes it accessible.
 - **No information invention.** Every claim traces back to the source artifact. If something isn't in the source, it's not in the narrative.
+- **No activity metrics — ever.** Narratives are stakeholder/client-facing. Never surface activity or vanity metrics: velocity, story points, PR/commit counts, lines of code, "AI productivity" claims, or hours/tokens spent. Even if a source artifact contains them, omit them here. Report outcomes and quality instead (the success metric, acceptance/accepted-as-is, coverage against threshold, risk posture). This mirrors the delivery standard's rule: no activity metrics in client materials, agents inflate every one of them.
 - **Business language, technical accuracy.** Simplify the vocabulary, not the meaning.
 - **Actionable over descriptive.** "The team needs to decide on the auth provider by Friday" beats "An auth provider decision is pending."
 
 ## Anti-Patterns
 
 - Don't just rephrase section headings as prose
+- Don't surface activity/vanity metrics (velocity, story points, PR/commit counts, lines of code, productivity claims) — outcomes and quality only
 - Don't add speculative analysis not supported by the source
 - Don't use AI-typical filler ("It's worth noting that...", "Importantly,...")
 - Don't pad to hit word count — shorter and clear beats longer and fluffy

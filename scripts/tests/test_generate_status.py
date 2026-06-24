@@ -5,16 +5,16 @@ from pathlib import Path
 import pytest
 import yaml
 
-from generate_status import count_artifacts, generate_dashboard, PHASE_NAMES, STATUS_ICONS
+import phase_model as pm
+from generate_status import count_artifacts, generate_dashboard, STATUS_ICONS
 
 
 class TestPhaseConstants:
-    def test_has_10_phases(self):
-        assert len(PHASE_NAMES) == 10
+    def test_phase_count_matches_registry(self):
+        assert pm.phase_count() == 9
 
-    def test_phase_ids_sequential(self):
-        for i in range(10):
-            assert i in PHASE_NAMES
+    def test_phase_chain_is_complete(self):
+        assert pm.all_phase_ids() == ["0", "1", "2", "3", "build", "7", "8", "9", "close"]
 
     def test_status_icons_complete(self):
         expected = {"completed", "active", "pending", "skipped"}
@@ -68,15 +68,15 @@ class TestGenerateDashboard:
         state = yaml.safe_load(state_yaml.read_text())
         output = generate_dashboard(state, sdlc_dir)
         assert "0%" in output
-        assert "0/10" in output
+        assert "0/9" in output
 
     def test_progress_bar_with_completions(self, sdlc_dir, state_yaml):
         state = yaml.safe_load(state_yaml.read_text())
-        state["phases"][0]["status"] = "completed"
-        state["current_phase"] = 1
+        state["phases"]["0"]["status"] = "completed"
+        state["current_phase"] = "1"
         output = generate_dashboard(state, sdlc_dir)
-        assert "10%" in output
-        assert "1/10" in output
+        assert "11%" in output
+        assert "1/9" in output
 
     def test_includes_phase_table(self, sdlc_dir, state_yaml):
         state = yaml.safe_load(state_yaml.read_text())

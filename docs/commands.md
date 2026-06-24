@@ -32,13 +32,13 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-setup` | Initialize SDLC for a project | Yes -- creates `.sdlc/` | Once per project, at the very start |
 | `/sdlc` | Show current phase guidance | No | Start of each work session |
 | `/sdlc-status` | Display progress dashboard | No | Anytime -- quick status check |
-| `/sdlc-gate` | Run 5-gate exit criteria check | Yes -- records `gate_results` | Before attempting to advance phases |
+| `/sdlc-gate` | Run 6-gate exit criteria check | Yes -- records `gate_results` | Before attempting to advance phases |
 | `/sdlc-next` | Run gates + advance phase | Yes -- advances `current_phase` | When ready to move to the next phase |
 | `/sdlc-phase-report` | Generate HTML report | No | Stakeholder reviews, documentation |
 | `/sdlc-audit` | Analyze gate effectiveness | No | After 3-4+ completed phases |
 | `/sdlc-enhance` | Generate stakeholder narrative companions | No | Before stakeholder reviews and phase transitions |
 | `/sdlc-coach` | Adaptive coaching dialogue for the current phase | No | When you want guided conversation instead of the step list |
-| `/sdlc-review` | Multi-perspective artifact review (council / adversarial / edge-cases) | No | Before `/sdlc-gate` on design-heavy phases (2, 3, 5) |
+| `/sdlc-review` | Multi-perspective artifact review (council / adversarial / edge-cases) | No | Before `/sdlc-gate` on design-heavy phases (2, 3, build) |
 | `/sdlc-intake` | Catalog + summarize the document corpus | Writes intake summaries/registry | Phase 0 Step 0c, when the profile has a `documentation` section; also runs standalone via `--docs` |
 | `/sdlc-brief` | Analyze intake corpus + draft workshop brief | No | Phase 0 Step 0d, before a stakeholder workshop; also runs standalone via `--docs` |
 
@@ -85,7 +85,7 @@ This creates the following structure:
   state.yaml          # Phase tracking (Phase 0: Discovery active)
   profile.yaml        # Frozen copy of the selected profile
   constitution.md     # Project constitution
-  artifacts/          # Per-phase artifact directories (00 through 09)
+  artifacts/          # Per-phase artifact directories (one per phase slug: 00-discovery, 01-requirements, 02-design, 03-foundation, build, 07-documentation, 08-deployment, 09-monitoring, close)
 ```
 
 **Step 5: Update CLAUDE.md**
@@ -118,7 +118,7 @@ uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_profile.py
 - Creates `.sdlc/state.yaml` with `current_phase: 0` and Phase 0 status set to `active`.
 - Creates `.sdlc/profile.yaml` (frozen profile copy).
 - Creates `.sdlc/constitution.md`.
-- Creates `.sdlc/artifacts/` with subdirectories `00-discovery/` through `09-monitoring/`.
+- Creates `.sdlc/artifacts/` with one subdirectory per phase slug (`00-discovery`, `01-requirements`, `02-design`, `03-foundation`, `build`, `07-documentation`, `08-deployment`, `09-monitoring`, `close`).
 - Appends SDLC context to the target project's `CLAUDE.md`.
 
 ### Python Scripts Called
@@ -250,9 +250,9 @@ None. This command is purely informational.
 
 ### What It Does
 
-Runs the 5-gate validation system against the current (or specified) phase to determine readiness for advancement. Generates an HTML report and opens it in the default browser. Records gate results in state but does NOT advance the phase -- that is exclusively `/sdlc-next`'s responsibility.
+Runs the 6-gate validation system against the current (or specified) phase to determine readiness for advancement. Generates an HTML report and opens it in the default browser. Records gate results in state but does NOT advance the phase -- that is exclusively `/sdlc-next`'s responsibility.
 
-### The 5-Gate System
+### The 6-Gate System
 
 | Gate | Name | What It Validates |
 |------|------|-------------------|
@@ -260,7 +260,8 @@ Runs the 5-gate validation system against the current (or specified) phase to de
 | G2 | Completeness | All required artifacts exist with sufficient content |
 | G3 | Metrics | Quantitative thresholds (coverage, size, counts) |
 | G4 | Compliance | Regulatory and framework-specific requirements |
-| G5 | Quality | Content quality, consistency, and cross-references |
+| G5 | Cross-Phase Consistency | Detects drift in locked metrics across phase transitions (budget, timeline, scope, stakeholder roster, quality thresholds, compliance reqs). Warns but does not block. |
+| G6 | Quality | Content quality, consistency, and cross-references |
 
 Each gate reports one of three statuses:
 - **PASS** -- Criteria fully satisfied.
@@ -289,7 +290,7 @@ Each gate also has a severity level:
      --state .sdlc/state.yaml
    ```
    Optionally with `--phase <N>` for a specific phase.
-4. **Display results:** For each of the 5 gates, show: gate name, PASS/FAIL/MANUAL status, severity (MUST/SHOULD/MAY), and specific details.
+4. **Display results:** For each of the 6 gates, show: gate name, PASS/FAIL/MANUAL status, severity (MUST/SHOULD/MAY), and specific details.
 5. **Generate HTML report:**
    ```bash
    uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
@@ -312,7 +313,7 @@ Each gate also has a severity level:
 
 | Script | Purpose |
 |--------|---------|
-| `check_gates.py` | Runs all 5 gates and returns structured results |
+| `check_gates.py` | Runs all 6 gates and returns structured results |
 | `generate_phase_report.py` | Renders artifacts and gate results into a self-contained HTML report |
 
 ### Important Distinction
@@ -361,7 +362,7 @@ Present a phase summary (what was produced, key decisions made) and ask: *"Does 
 Update `.sdlc/state.yaml`:
 - Set current phase status to `completed` with `completed_at` timestamp.
 - Set next phase status to `active` with `entered_at` timestamp.
-- Increment `current_phase` and update `phase_name`.
+- Set `current_phase` to the next phase by registry order (ids may be strings: `build`, `close` -- not id+1); update `phase_name`.
 - Append transition to the `history` array:
   ```yaml
   - from: <current_phase_id>
@@ -412,15 +413,15 @@ After advancement and HITL resolution, display:
 - Entry criteria (already met by advancing).
 - Reference to the phase definition file for full details.
 
-**Step 9: Edge Case -- Phase 9 Completion**
-If already at Phase 9 (Monitoring) and all gates pass, the project is marked as complete. The user is congratulated and informed about post-SDLC re-entry points for future work.
+**Step 9: Edge Case -- Final Phase Completion**
+When the terminal phase (Phase C: Close & Transfer) passes its close gate, the project is complete. The user is congratulated and informed about post-SDLC re-entry points for future work.
 
 ### State Changes
 
 - Updates `gate_results` for the current phase.
 - Sets current phase status to `completed` with timestamp.
 - Sets next phase status to `active` with timestamp.
-- Increments `current_phase` and updates `phase_name`.
+- Advances `current_phase` to the next phase by registry order and updates `phase_name`.
 - Appends to the `history` array.
 - Updates handoff documents with resolved questions.
 - Generates `.sdlc/reports/phaseNN-report.html`.
@@ -429,7 +430,7 @@ If already at Phase 9 (Monitoring) and all gates pass, the project is marked as 
 
 | Script | Purpose |
 |--------|---------|
-| `check_gates.py` | Runs the 5-gate validation system |
+| `check_gates.py` | Runs the 6-gate validation system |
 | `advance_phase.py` | Updates `state.yaml` with phase transition (called with `--confirmed`) |
 | `generate_phase_report.py` | Generates the HTML report before advancement |
 
@@ -451,13 +452,13 @@ Renders all artifacts for a specified phase (or all phases) into a self-containe
 | Argument | Description |
 |----------|-------------|
 | *(none)* | Generate report for the current phase |
-| `<phase-number>` | Generate report for a specific phase (0-9) |
-| `--all` | Generate individual reports for all phases (0-9) plus an `index.html` |
+| `<phase-id>` | Generate report for a specific phase (any phase id: 0,1,2,3,build,7,8,9,close) |
+| `--all` | Generate individual reports for all phases (any phase id: 0,1,2,3,build,7,8,9,close) plus an `index.html` |
 
 ### Internal Flow
 
 1. **Locate state:** Read `.sdlc/state.yaml`. If missing, instruct user to run `/sdlc-setup`.
-2. **Determine target phase:** Use `current_phase` from state if no argument provided; validate that the phase number is 0-9.
+2. **Determine target phase:** Use `current_phase` from state if no argument provided; validate the phase id against the registry.
 3. **Run report generator:**
 
    For a single phase:
@@ -620,7 +621,7 @@ None. Findings are advisory and do not block gates, but CRITICAL/HIGH findings u
 
 ### When to Use
 
-Phase 2 with `--council`, Phase 3 with `--edge-cases`, Phase 5 with `--adversarial`; any phase before its gate.
+Phase 2 with `--council`, Phase 3 (Foundation) with `--edge-cases`, the Build Loop with `--adversarial`; any phase before its gate.
 
 ---
 
@@ -702,7 +703,7 @@ The typical SDLC lifecycle follows this pattern:
 /sdlc          <-- Orient to the new phase
     |
     v
-  [repeat until Phase 9 complete]
+  [repeat through Phase 9, then Phase C: Close & Transfer]
 ```
 
 Supporting commands used at any time:
@@ -747,7 +748,7 @@ Scripts write structured output to stdout, which the calling command parses and 
 | `init_project.py` | `/sdlc-setup` | Creates `.sdlc/` directory structure |
 | `validate_profile.py` | `/sdlc-setup` | Validates profile YAML against schema |
 | `generate_status.py` | `/sdlc-status` | Generates progress dashboard |
-| `check_gates.py` | `/sdlc-gate`, `/sdlc-next` | Runs the 5-gate validation system |
+| `check_gates.py` | `/sdlc-gate`, `/sdlc-next` | Runs the 6-gate validation system |
 | `generate_phase_report.py` | `/sdlc-gate`, `/sdlc-next`, `/sdlc-phase-report` | Renders HTML reports |
 | `advance_phase.py` | `/sdlc-next` | Updates `state.yaml` with phase transition |
 | `audit_gates.py` | `/sdlc-audit` | Analyzes gate effectiveness across phases |
@@ -756,7 +757,7 @@ Scripts write structured output to stdout, which the calling command parses and 
 
 ## Cross-References
 
-- **Gate system details:** See [gate-system.md](gate-system.md) for the full 5-gate specification, severity levels, and override protocol.
+- **Gate system details:** See [gate-system.md](gate-system.md) for the full 6-gate specification, severity levels, and override protocol.
 - **State machine:** See [state-machine.md](state-machine.md) for the `state.yaml` schema and valid phase transitions.
 - **Phase lifecycle:** See [phase-lifecycle.md](phase-lifecycle.md) for phase definitions, artifact requirements, and entry/exit criteria.
 - **Script internals:** See [scripts.md](scripts.md) for Python script implementation details, dependencies, and extension points.

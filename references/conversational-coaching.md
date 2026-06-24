@@ -90,7 +90,7 @@ Use these techniques during coaching to push artifacts from "good enough" to "we
 
 ### Inverse Thinking
 "What would make this project fail? Now design against those failure modes."
-— Surfaces risks the team hasn't articulated. Pairs well with Phase 0 discovery and Phase 3 planning.
+— Surfaces risks the team hasn't articulated. Pairs well with Phase 0 discovery and Phase 3 foundation.
 
 ### Assumption Surfacing
 "What are we assuming that we haven't validated?"
@@ -155,62 +155,42 @@ Use these techniques during coaching to push artifacts from "good enough" to "we
 **Ready check:**
 - "Design looks comprehensive. Are the security boundaries clearly defined?"
 
-### Phase 3: Planning
+### Phase 3: Foundation
 
 **Opening:**
+- "Before any feature work — is the harness installed and adapted, and are the rails (CI/CD + gates) standing?"
 - "Looking at the design, how would you break this into implementable sections?"
-- "Which sections have dependencies on each other?"
-- "Where do you see the most complexity or risk?"
-- "What's your implementation order preference — core-out or edge-in?"
+- "Which sections have dependencies on each other, and where's the most risk?"
+- "What's the thinnest walking skeleton that proves the whole pipeline end-to-end?"
 
 **Progress:**
 - "Your section breakdown covers [N] sections. Do the complexity estimates feel right?"
 - "I see section [X] depends on [Y]. Is that dependency strict or could they parallelize?"
+- "Has the walking skeleton run the full Build loop into the dev environment yet?"
 
 **Ready check:**
-- "Plans are in place. Are the sprint allocations realistic given your team capacity?"
+- "Are the rails proven, not just present — does the Stop hook block, do gates fire, does deploy roll back?"
+- "Has at least one HIGH-risk spec run the full Build loop end-to-end?"
 
-### Phase 4: Implementation
+### Build Loop (`build`)
+
+The Build loop replaces the former batch Implementation/Quality/Testing phases. Coaching here is per change, not per phase: every change runs Intent → Delegate → Discern. There is no batch quality/testing gate — checking happens inside each change before merge.
 
 **Opening:**
-- "Which section should we start with? I'd suggest [X] because [reason]."
+- "What's the next change? Let's write its spec before we touch code (Intent)."
 - "Are you using TDD? Your profile [requires/suggests] it."
-- "What's your preferred implementation approach — scaffold first, or feature by feature?"
+- "Who reviews this change in the Discern beat — someone other than the author?"
 
-**Progress:**
-- "Section [X] is complete. The evaluator gave it a [PASS/FAIL]. Next is [Y]."
+**Progress (per change):**
+- "This change's spec is bounded and an approved plan is in place. Ready to build (Delegate)?"
+- "The change is built. The evaluator gave it a [PASS/FAIL] against the spec. Merge or rework?"
+- "Coverage on this change is [X]% (target [Y]%). Any edge cases or E2E journeys still uncovered?"
+- "Security-sensitive change — did the security review clear before merge?"
 - "I see a blocker on [X]. Can we work around it by [suggestion]?"
 
-**Ready check:**
-- "All sections implemented and evaluated. Ready for quality review?"
-
-### Phase 5: Quality
-
-**Opening:**
-- "What areas are you most concerned about? Where did you cut corners?"
-- "Any known technical debt we should surface in the review?"
-- "Are there security-sensitive areas that need extra attention?"
-
-**Progress:**
-- "Code review found [N] issues. Want to tackle the critical ones first?"
-- "Security review flagged [X]. This needs to be resolved before we proceed."
-
-**Ready check:**
-- "All review findings addressed. Coverage is at [X]%. Ready for testing?"
-
-### Phase 6: Testing
-
-**Opening:**
-- "What's your test strategy — unit-heavy, integration-heavy, or E2E-heavy?"
-- "What coverage target are you aiming for? Your profile requires [X]%."
-- "Which user journeys are most critical to test end-to-end?"
-
-**Progress:**
-- "Unit tests are at [X]% coverage. Integration tests cover [Y] scenarios."
-- "E2E test [Z] is failing. Want to debug it together?"
-
-**Ready check:**
-- "Test suite is green with [X]% coverage. Any edge cases you're worried about?"
+**Ready check (to leave the loop):**
+- "Is the backlog feature-complete? Leaving the Build loop is your call — there's no batch gate."
+- "Ready to hand off to Documentation? `phase7-handoff.md` is the bridge."
 
 ### Phase 7: Documentation
 

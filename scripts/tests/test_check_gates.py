@@ -182,15 +182,15 @@ class TestFormatResults:
             {"gate": "G1", "passed": True, "message": "OK", "severity": "MUST"},
         ]
         output = format_results(results, 0)
-        assert "PASS" in output
-        assert "ALL GATES PASSED" in output
+        assert "COMPLIANT" in output
+        assert "ALL GATES COMPLIANT" in output
 
     def test_has_failures(self):
         results = [
             {"gate": "G1", "passed": False, "message": "Missing file", "severity": "MUST"},
         ]
         output = format_results(results, 0)
-        assert "FAIL" in output
+        assert "NON-COMPLIANT" in output
         assert "BLOCKED" in output
 
     def test_manual_checks(self):
@@ -199,7 +199,6 @@ class TestFormatResults:
             {"gate": "G4", "passed": None, "message": "Manual check", "severity": "MUST"},
         ]
         output = format_results(results, 0)
-        assert "MANUAL" in output
         assert "REVIEW" in output
 
     def test_summary_counts(self):
@@ -209,7 +208,7 @@ class TestFormatResults:
             {"gate": "G3", "passed": None, "message": "Manual", "severity": "SHOULD"},
         ]
         output = format_results(results, 0)
-        assert "1 passed" in output
-        assert "1 failed" in output
-        assert "1 manual" in output
+        assert "1 compliant" in output
+        assert "1 non-compliant" in output
+        assert "1 review" in output
         assert "3 total" in output

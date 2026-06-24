@@ -2,7 +2,7 @@
 name: claude-code-sdlc
 description: |
   SDLC orchestration plugin for Claude Code. Drives projects through a
-  10-phase software development lifecycle with company-configurable profiles,
+  9-phase software development lifecycle with company-configurable profiles,
   compliance gates, and quality enforcement.
   Triggers: "start sdlc", "sdlc setup", "initialize project lifecycle",
   "run phase gate", "advance phase", "sdlc status", "compliance check",
@@ -11,14 +11,14 @@ description: |
 
 # claude-code-sdlc
 
-SDLC orchestration plugin for Claude Code. Drives projects through a 10-phase software development lifecycle with company-configurable profiles, compliance gates, and quality enforcement.
+SDLC orchestration plugin for Claude Code. Drives projects through a 9-phase software development lifecycle with company-configurable profiles, compliance gates, and quality enforcement.
 
 ## What This Does
 
 This plugin makes structured SDLC methodology executable in Claude Code. It provides:
-- **10 phases** from Discovery through Monitoring, each with entry/exit gates
+- **9 phases** — gated open (Discovery, Requirements, Design, Foundation) and gated close (Documentation, Deployment, Monitoring, Close & Transfer) bracketing a continuous **Build loop** (Intent→Delegate→Discern per change, no batch exit gate)
 - **Company profiles** (YAML) defining stack, quality thresholds, compliance frameworks, and conventions
-- **5-gate validation** at every phase transition (integrity, completeness, metrics, classification, quality)
+- **6-gate validation** at every phase transition (integrity, completeness, metrics, compliance, consistency, quality)
 - **Compliance enforcement** for SOC 2, HIPAA, GDPR, PCI-DSS
 - **Skill orchestration** — maps each phase to existing Claude Code skills (`/deep-plan`, `/deep-implement`, `/tdd`, `/code-review`, `/security-review`, `/e2e`, etc.)
 
@@ -51,11 +51,11 @@ The plugin maintains state in `.sdlc/state.yaml` in your project directory. Each
 - **Entry criteria** — what must be true to start the phase
 - **Workflow** — steps to follow, skills to use
 - **Required artifacts** — files you must produce (stored in `.sdlc/artifacts/XX-phase/`)
-- **Exit gates** — 5-level validation that must pass before advancing
+- **Exit gates** — 6-gate validation that must pass before advancing (gated phases only; the Build loop checks per change instead)
 
 Phase transitions are atomic — either all MUST gates pass and you advance, or none do and you get a blockers report.
 
-For long-running phases (especially Phase 4: Implementation), session continuity is maintained through `session-handoff.json` — a structured JSON file that tracks section progress, blockers, and next actions across sessions. The session start hook reads this file and displays a continuity summary.
+For long-running phases (especially the Build loop), session continuity is maintained through `session-handoff.json` — a structured JSON file that tracks section progress, blockers, and next actions across sessions. The session start hook reads this file and displays a continuity summary.
 
 ## Profiles
 
@@ -67,18 +67,19 @@ Profiles define: technology stack, quality thresholds (coverage, file size limit
 
 ## Phases
 
-| # | Phase | Key Skills |
-|---|-------|------------|
+Phase ids are strings (`build` and `close` are non-numeric); the 4/5/6 gap is intentional — batched check phases were replaced by per-change checking inside the Build loop. Advancement is always manual.
+
+| id | Phase | Key Skills |
+|----|-------|------------|
 | 0 | Discovery | `/plan` |
 | 1 | Requirements | `/deep-project` |
 | 2 | Design | `/deep-plan`, `/visual-explainer` |
-| 3 | Planning | `/deep-plan` |
-| 4 | Implementation | `/deep-implement`, `/tdd` |
-| 5 | Quality | `/code-review`, `/security-review` |
-| 6 | Testing | `/e2e`, `/test-coverage` |
+| 3 | Foundation | `/deep-plan` |
+| build | Build Loop | `/tdd`, `/code-review`, `/security-review`, `/e2e`, `/test-coverage` |
 | 7 | Documentation | `/update-docs` |
 | 8 | Deployment | CI/CD |
 | 9 | Monitoring | Manual |
+| close | Close & Transfer | Manual |
 
 ## Frozen Layers
 
@@ -121,7 +122,7 @@ Run `/sdlc-review` to evaluate phase artifacts from multiple angles before advan
 - `--adversarial` — Cynical QA: challenge assumptions, find quality issues
 - `--edge-cases` — Exhaustive path analysis: find unhandled conditions and boundaries
 
-Recommended before `/sdlc-gate` on design-heavy phases (2, 3) and quality phases (5). See `references/agent-roster.md` for phase-specific suggestions.
+Recommended before `/sdlc-gate` on design-heavy phases (2, 3) and during the Build loop. See `references/agent-roster.md` for phase-specific suggestions.
 
 ## Smart Repair
 
@@ -152,7 +153,7 @@ Never choose an architectural approach without presenting options. For each deci
 **3. Before finalizing scope or requirements (Phase 0–1)**
 Draft the key framing (executive summary, root cause statement, requirements list) and present it to the human for correction before writing the full artifact.
 
-**4. Before writing section plans (Phase 3)**
+**4. Before writing section plans (Phase 3: Foundation)**
 Present the proposed section breakdown — boundaries, order, complexity estimates — and get human approval before writing individual SECTION-NNN.md files.
 
 **5. Before advancing any phase**
@@ -186,13 +187,12 @@ Generate a visual report as the **second-to-last step** of every phase, immediat
 | 0 Discovery | Problem space overview | Persona cards, current state flow diagram, scope boundaries |
 | 1 Requirements | Requirements matrix | Requirements by domain/priority, traceability matrix, epic overview |
 | 2 Design | Architecture diagrams | Layer diagram, core flow, data flow, section dependencies, trust boundaries |
-| 3 Planning | Section review & sprint plan | Section breakdown table, sprint timeline, dependency DAG, risk cards |
-| 4 Implementation | Implementation progress | Section completion status, test coverage dashboard, code metrics |
-| 5 Quality | Review findings | Code review summary, security findings, severity distribution |
-| 6 Testing | Test results dashboard | Coverage heatmap, test pass/fail by category, scenario traceability |
+| 3 Foundation | Section review & sprint plan | Section breakdown table, sprint timeline, dependency DAG, risk cards |
+| build Build Loop | Build progress | Section completion status, test coverage dashboard, code metrics, review & security findings, test pass/fail by category |
 | 7 Documentation | Documentation audit | Docs completeness matrix, API coverage, README status |
 | 8 Deployment | Release checklist | Deployment readiness, environment status, rollback plan |
 | 9 Monitoring | Monitoring dashboard | Health checks, alert configuration, baseline metrics |
+| close Close & Transfer | Handoff & retrospective | Transfer checklist, lessons learned, final metrics, ownership map |
 
 ### How to Generate
 
@@ -227,14 +227,14 @@ An index page at `.sdlc/reports/index.html` MUST exist. It serves as the single 
 
 - **Auto-create:** Generate `index.html` when the first phase report is created (typically Phase 0).
 - **Auto-update:** Update `index.html` every time a phase report is generated or a phase advances. Update phase status badges, dates, and report links.
-- **Contents:** Project header (name, profile, type, start date, current phase), mission statement, link to constitution, and a timeline of all 10 phases showing status (active/completed/pending) with links to phase reports.
+- **Contents:** Project header (name, profile, type, start date, current phase), mission statement, link to constitution, and a timeline of all 9 phases showing status (active/completed/pending) with links to phase reports.
 - **End state:** By project completion, `index.html` is a complete navigable dashboard of the entire SDLC history.
 
 ### Output Location
 
 All reports are written to `.sdlc/reports/`:
 - `index.html` -- project dashboard (single entry point)
-- `phase00-visual.html`, `phase01-visual.html`, ..., `phase09-visual.html` -- phase summary reports
+- `phase00-visual.html`, `phase01-visual.html`, ..., `build-visual.html`, ..., `close-visual.html` -- phase summary reports (numeric phases use `phaseNN-`; the Build loop and Close use their `build` / `close` slug)
 - `phase00-<artifact>.html`, `phase01-<artifact>.html`, ... -- artifact sub-pages
 - Additional named reports (e.g., `architecture-diagrams.html`, `phase03-section-review.html`) are encouraged alongside the numbered report
 
@@ -250,10 +250,10 @@ See `references/agent-roster.md` for the full phase-by-phase mapping with condit
 |---------|-------|----------|
 | Build or compilation fails | `build-error-resolver` | Spawn immediately. Do not attempt manual fixes first. |
 | Code touches auth, payments, secrets, or PII | `security-reviewer` | Foreground. STOP on CRITICAL/HIGH findings. |
-| Phase 4 + profile requires TDD | `tdd-guide` | Spawn BEFORE writing any code for the section. |
-| Phase 5 entry | `code-reviewer` + `security-reviewer` | Spawn both in a single message (parallel, foreground). |
-| Section implementation completes (Phase 4) | `section-evaluator` | Foreground, blocking. FAIL verdict = fix before proceeding. |
-| Phase 4 with independent sections | Domain-specific agents | Spawn in parallel (single message) for non-dependent sections. |
+| Build loop + profile requires TDD | `tdd-guide` | Spawn BEFORE writing any code for the change. |
+| Per-change check in the Build loop | `code-reviewer` + `security-reviewer` | Spawn both in a single message (parallel, foreground). |
+| A change in the Build loop completes | `section-evaluator` | Foreground, blocking. FAIL verdict = fix before proceeding. |
+| Build loop with independent changes | Domain-specific agents | Spawn in parallel (single message) for non-dependent changes. |
 | Gate check fails unexpectedly | `Explore` | Investigate root cause before attempting fixes. |
 
 ### Phase-by-Phase Agent Roster (Summary)
@@ -263,53 +263,52 @@ See `references/agent-roster.md` for the full phase-by-phase mapping with condit
 | 0 Discovery | — | `Explore` (existing codebase) |
 | 1 Requirements | — | `Explore`, `feedback-synthesizer` |
 | 2 Design | `architect` | `backend-architect`, `frontend-developer`, `security-reviewer` |
-| 3 Planning | `deep-plan:section-writer` | `Plan`, `Explore` |
-| 4 Implementation | Domain agents per section | `tdd-guide`, `section-evaluator`, `build-error-resolver`, `security-reviewer` |
-| 5 Quality | `code-reviewer` + `security-reviewer` | `refactor-cleaner` (background) |
-| 6 Testing | `test-writer-fixer` | `e2e-runner`, `api-tester`, `performance-benchmarker` |
+| 3 Foundation | `deep-plan:section-writer` | `Plan`, `Explore` |
+| build Build Loop | Domain agents per change | `tdd-guide`, `section-evaluator`, `code-reviewer`, `security-reviewer`, `build-error-resolver`, `test-writer-fixer`, `e2e-runner`, `api-tester`, `performance-benchmarker`, `refactor-cleaner` (background) |
 | 7 Documentation | `doc-updater` | `backend-architect` (API docs) |
 | 8 Deployment | `devops-automator` | `e2e-runner` (smoke tests), `build-error-resolver` |
 | 9 Monitoring | — | `performance-benchmarker`, `feedback-synthesizer` |
+| close Close & Transfer | — | `doc-updater`, `feedback-synthesizer` |
 
 ### Parallel Execution Rules
 
 **Use a single message with multiple Agent tool calls when:**
-- Two or more Phase 4 sections have no dependency on each other (e.g., backend + frontend sections).
-- Phase 5 starts — always launch `code-reviewer` and `security-reviewer` simultaneously.
-- Phase 6 testing — launch `test-writer-fixer`, `e2e-runner`, and `api-tester` simultaneously when all apply.
-- Phase 3 has multiple independent section plans to generate.
+- Two or more Build loop changes have no dependency on each other (e.g., backend + frontend changes).
+- A per-change check fires in the Build loop — always launch `code-reviewer` and `security-reviewer` simultaneously.
+- Testing in the Build loop — launch `test-writer-fixer`, `e2e-runner`, and `api-tester` simultaneously when all apply.
+- Phase 3 (Foundation) has multiple independent section plans to generate.
 
 **Use sequential Agent calls when:**
 - One agent's output is the input to the next (e.g., `tdd-guide` must complete before the implementation agent starts).
 - A security CRITICAL/HIGH finding must be resolved before proceeding.
 - A build failure must be fixed before continuing.
 
-**Pattern for parallel section implementation:**
+**Pattern for parallel change implementation:**
 ```
 # Single message — two Agent tool calls fire simultaneously:
-Agent(backend-architect, "Implement SECTION-002 per .sdlc/artifacts/03-planning/section-plans/SECTION-002.md")
-Agent(frontend-developer, "Implement SECTION-003 per .sdlc/artifacts/03-planning/section-plans/SECTION-003.md")
+Agent(backend-architect, "Implement SECTION-002 per .sdlc/artifacts/03-foundation/section-plans/SECTION-002.md")
+Agent(frontend-developer, "Implement SECTION-003 per .sdlc/artifacts/03-foundation/section-plans/SECTION-003.md")
 ```
 
 ### Background Agents
 
 Run with `run_in_background: true` (non-blocking):
-- `doc-updater` — documentation updates during implementation
-- `refactor-cleaner` — dead code cleanup during Phase 5
-- `code-reviewer` — rolling per-section review in Phase 4
+- `doc-updater` — documentation updates during the Build loop
+- `refactor-cleaner` — dead code cleanup during the Build loop
+- `code-reviewer` — rolling per-change review in the Build loop
 - `deep-implement:code-reviewer` — diff review against section plans
 
 Never background: security reviews, build error resolution, or any work producing phase gate artifacts.
 
-### Domain Agent Selection (Phase 4)
+### Domain Agent Selection (Build loop)
 
-| Section domain | Primary agent |
+| Change domain | Primary agent |
 |----------------|---------------|
 | Python / C# / server-side logic | `backend-architect` |
 | HTML / CSS / Angular / React | `frontend-developer` |
 | CI/CD / cloud infrastructure | `devops-automator` |
 | Spike / proof-of-concept | `rapid-prototyper` |
-| Any section with auth / payments / secrets | + `security-reviewer` (foreground) |
+| Any change with auth / payments / secrets | + `security-reviewer` (foreground) |
 
 ---
 
@@ -317,7 +316,7 @@ Never background: security reviews, build error resolution, or any work producin
 
 Detailed documentation is in the `references/` directory:
 - `state-machine.md` — State format and transition rules
-- `validation-rules.md` — 5-gate validation system details
+- `validation-rules.md` — 6-gate validation system details
 - `skill-mapping.md` — Phase-to-skill mapping
 - `agent-roster.md` — Phase-to-subagent mapping with parallel groups and conditions
 - `compliance-frameworks.md` — SOC 2, HIPAA, GDPR, PCI-DSS gate definitions

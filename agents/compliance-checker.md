@@ -51,7 +51,7 @@ When invoked for a phase transition:
 ## Output Format
 
 ```
-Compliance Check: [Framework] — Phase [N] → Phase [N+1]
+Compliance Check: [Framework] — Phase [current] → Phase [next]
 =====================================================
 [PASS] [MUST] CC6.1: Access control requirements defined
 [FAIL] [MUST] CC6.6: System boundaries not documented in design-doc.md

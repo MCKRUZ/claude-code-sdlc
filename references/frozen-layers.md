@@ -18,10 +18,12 @@ After all phase gates pass and the user gives HITL sign-off, but **before** `adv
 ## Output Location
 
 ```
-.sdlc/context/layers/phase{N}-{name}.md
+.sdlc/context/layers/phase{id}-{name}.md
 ```
 
-Examples: `phase0-discovery.md`, `phase1-requirements.md`, `phase4-implementation.md`
+`{id}` is the phase id from the registry, which may be non-numeric. Examples: `phase0-discovery.md`, `phase1-requirements.md`, `phase3-foundation.md`, `phasebuild-build.md`, `phaseclose-close.md`.
+
+Layers are ordered by the registry's lifecycle `order` (`0 → 1 → 2 → 3 → build → 7 → 8 → 9 → close`), not by a lexical sort of the filenames — `phasebuild-build.md` sorts before `phase7-documentation.md` lexically but comes after it in the lifecycle.
 
 ## Template
 
@@ -89,7 +91,7 @@ Once created, frozen layers are **never modified**. If a phase needs to be revis
 
 ## Phase Re-Entry
 
-If a phase is re-entered (e.g., returning to Phase 2 after Phase 4 reveals a design flaw):
+If a phase is re-entered (e.g., returning to Phase 2 after the Build loop reveals a design flaw):
 
 1. The existing frozen layer for that phase is renamed with a `.superseded` suffix:
    `phase2-design.md` → `phase2-design.md.superseded`

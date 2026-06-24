@@ -153,11 +153,11 @@ def check(state_path: Path) -> int:
     state = load_yaml(state_path)
     sdlc_dir = state_path.parent
 
-    # Find section plans
-    section_plans_dir = sdlc_dir / "artifacts" / "03-planning" / "section-plans"
+    # Find section plans (produced in Foundation)
+    section_plans_dir = sdlc_dir / "artifacts" / "03-foundation" / "section-plans"
     if not section_plans_dir.exists():
-        print("No section plans found at .sdlc/artifacts/03-planning/section-plans/")
-        print("Dependency check skipped — run after Phase 3 completes.")
+        print("No section plans found at .sdlc/artifacts/03-foundation/section-plans/")
+        print("Dependency check skipped — run after Phase 3 (Foundation) completes.")
         return 0
 
     # Parse dependencies
@@ -192,8 +192,8 @@ def check(state_path: Path) -> int:
     for i, section in enumerate(order, 1):
         print(f"    {i}. {section}")
 
-    # Check implementation progress (if Phase 4 is active)
-    progress_path = sdlc_dir / "artifacts" / "04-implementation" / "sections-progress.json"
+    # Check implementation progress (during the Build loop)
+    progress_path = sdlc_dir / "artifacts" / "build" / "sections-progress.json"
     violations = check_implementation_order(order, progress_path)
 
     if violations:

@@ -35,7 +35,7 @@ gates:
     artifact: "adrs/"
     severity: MUST
 
-  - phase: 4
+  - phase: build
     id: soc2-cc6.1-implementation
     name: "Access Controls Implemented"
     criteria: "CC6.1 — Access control code present and tested"
@@ -43,23 +43,23 @@ gates:
     description: "Verify auth/authz code exists with unit tests"
     severity: MUST
 
-  - phase: 5
+  - phase: build
     id: soc2-cc7.2-vulnerability
     name: "Vulnerability Management"
-    criteria: "CC7.2 — Security review completed"
-    check_type: artifact_exists
-    artifact: "review-reports/"
+    criteria: "CC7.2 — Security review completed (per change, on the rails)"
+    check_type: manual
+    description: "Verify the security workflow ran and findings are resolved for risk:high changes"
     severity: MUST
 
-  - phase: 5
+  - phase: build
     id: soc2-cc8.1-code-review
     name: "Code Review"
-    criteria: "CC8.1 — Peer review documented"
-    check_type: artifact_exists
-    artifact: "review-reports/"
+    criteria: "CC8.1 — Non-author review documented (per change, on the rails)"
+    check_type: manual
+    description: "Verify every merged spec carried a non-author approval and the grader ran"
     severity: MUST
 
-  - phase: 6
+  - phase: build
     id: soc2-cc7.1-testing
     name: "Testing Requirements"
     criteria: "CC7.1 — Test coverage meets thresholds"

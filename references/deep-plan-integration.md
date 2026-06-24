@@ -9,7 +9,7 @@ How the `/deep-plan` skill integrates with SDLC Phases 2–3. This is the author
 | Phase | /deep-plan Steps | What It Produces |
 |-------|-----------------|-----------------|
 | Phase 2 (Design) | 1–15: Setup → Research → Interview → Spec → Plan → External Review | `claude-plan.md`, `claude-research.md`, `claude-interview.md`, `reviews/` |
-| Phase 3 (Planning) | 16–22: TDD Planning → Section Index → Section Generation | `claude-plan-tdd.md`, `sections/index.md`, `sections/section-NN-*.md` |
+| Phase 3 (Foundation) | 16–22: TDD Planning → Section Index → Section Generation | `claude-plan-tdd.md`, `sections/index.md`, `sections/section-NN-*.md` |
 
 A checkpoint file bridges the two phases: `.sdlc/artifacts/02-design/deep-plan-checkpoint.yaml`.
 
@@ -27,13 +27,13 @@ A checkpoint file bridges the two phases: `.sdlc/artifacts/02-design/deep-plan-c
 | `planning/reviews/` | `02-design/external-reviews/` | Copy (optional) |
 | (generated) | `02-design/deep-plan-checkpoint.yaml` | New: session state for Phase 3 |
 
-### Phase 3: /deep-plan → SDLC Planning Artifacts
+### Phase 3: /deep-plan → SDLC Foundation Artifacts
 
 | /deep-plan Output | SDLC Artifact | Mapping |
 |---|---|---|
-| `planning/sections/section-NN-*.md` | `03-planning/section-plans/SECTION-NNN.md` | Transform: converge into SDLC template |
-| `planning/claude-plan-tdd.md` | `03-planning/tdd-plan.md` | Copy (optional) |
-| `planning/sections/index.md` | `03-planning/dependency-map.md` | Copy (optional) |
+| `planning/sections/section-NN-*.md` | `03-foundation/section-plans/SECTION-NNN.md` | Transform: converge into SDLC template |
+| `planning/claude-plan-tdd.md` | `03-foundation/tdd-plan.md` | Copy (optional) |
+| `planning/sections/index.md` | `03-foundation/dependency-map.md` | Copy (optional) |
 
 ### Transformation Scripts
 

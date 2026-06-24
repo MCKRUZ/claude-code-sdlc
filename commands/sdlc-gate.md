@@ -1,6 +1,6 @@
 # /sdlc-gate — Run Exit Criteria Check
 
-Run the 5-gate validation system for the current (or specified) SDLC phase without advancing.
+Run the 6-gate validation system for the current (or specified) SDLC phase without advancing.
 
 ## Instructions
 

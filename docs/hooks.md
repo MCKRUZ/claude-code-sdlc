@@ -41,38 +41,38 @@ Fires once when a new Claude Code session begins. The hook checks for `.sdlc/sta
 | File | Purpose |
 |------|---------|
 | `.sdlc/state.yaml` | Extracts `current_phase`, `phase_name`, `profile_id`, `project_name` via regex |
-| `.sdlc/artifacts/<NN>-<phase>/` | Counts all files recursively to report artifact progress |
-| `.sdlc/artifacts/04-implementation/session-handoff.json` | Phase 4 only -- reads section progress, blockers, and next actions |
+| `.sdlc/artifacts/<slug>/` | Counts all files recursively to report artifact progress (dir is the phase slug; `build` and `close` are non-numeric) |
+| `.sdlc/artifacts/build/session-handoff.json` | Build Loop only -- reads section/spec progress, blockers, and next actions |
 
 ### State Parsing
 
 The hook does not use a full YAML parser. It extracts values with four targeted regexes:
 
-- `current_phase:\s*(\d+)` -- integer phase number (0-9)
+- `current_phase:\s*"?([^"\r\n]+)"?` -- phase id (0,1,2,3,build,7,8,9,close; may be non-numeric)
 - `phase_name:\s*"?([^"\r\n]+)"?` -- human-readable phase name
 - `profile_id:\s*"?([^"\r\n]+)"?` -- active profile identifier
 - `project_name:\s*"?([^"\r\n]+)"?` -- project display name
 
-A built-in lookup table maps phase numbers to canonical display names (Discovery, Requirements, Design, Planning, Implementation, Quality, Testing, Documentation, Deployment, Monitoring). The regex-extracted `phase_name` is used only as a fallback when the number is not in the table.
+A built-in lookup table maps phase ids to canonical display names (Discovery, Requirements, Design, Foundation, Build Loop, Documentation, Deployment, Monitoring, Close & Transfer). The regex-extracted `phase_name` is used only as a fallback when the id is not in the table.
 
 ### Artifact Counting
 
-The hook constructs the artifact directory path as `.sdlc/artifacts/<NN>-<phaseName>` (zero-padded phase number, hyphen, phase name) and recursively counts all files with `Get-ChildItem -File -Recurse`. This count appears in the context banner so Claude knows how much work product exists for the current phase.
+The hook constructs the path from the phase's slug (e.g. `00-discovery`, `03-foundation`, `build`, `close`) -- not by zero-padding an int, since `build` and `close` are non-numeric -- and recursively counts all files with `Get-ChildItem -File -Recurse`. This count appears in the context banner so Claude knows how much work product exists for the current phase.
 
 ### Output Format
 
 The hook emits two mandatory lines for every initialized project:
 
 ```
-[SDLC] Project: My API Service | Profile: microsoft-enterprise | Phase 4: Implementation | Artifacts: 12
+[SDLC] Project: My API Service | Profile: microsoft-enterprise | Phase: Build Loop | Artifacts: 12
 [SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance)
 ```
 
 The first line gives Claude situational awareness. The second reminds it which slash commands are available.
 
-### Session Continuity (Phase 4 Special Handling)
+### Session Continuity (Build Loop Special Handling)
 
-When the current phase is 4 (Implementation), the hook looks for `session-handoff.json` inside `.sdlc/artifacts/04-implementation/`. This file is maintained by the SDLC workflow to track multi-session implementation progress across section plans.
+When the current phase is the Build Loop, the hook looks for `session-handoff.json` inside `.sdlc/artifacts/build/`. This file is maintained by the SDLC workflow to track multi-session implementation progress across section plans.
 
 If the file exists and is valid JSON, the hook reads:
 
@@ -97,7 +97,7 @@ If `session-handoff.json` is malformed (invalid JSON), the hook emits a warning 
 [SDLC] WARNING: session-handoff.json is malformed - skipping handoff summary
 ```
 
-This design enables seamless multi-session implementation work. A developer can close Claude Code, reopen it hours later, and Claude will immediately know which section was last completed, what comes next, and whether any blockers exist.
+This design enables seamless multi-session build work. A developer can close Claude Code, reopen it hours later, and Claude will immediately know which section was last completed, what comes next, and whether any blockers exist.
 
 ---
 
@@ -120,27 +120,26 @@ If `$ToolName` is not in the allowed list (`Edit`, `Write`, `MultiEdit`), the ho
 
 | File | Purpose |
 |------|---------|
-| `.sdlc/state.yaml` | Extracts `current_phase` via regex |
+| `.sdlc/state.yaml` | Extracts `current_phase` via regex (the id may be a string, e.g. `build`, `close`) |
 | `.sdlc/profile.yaml` | Checks for convention flags (`immutability`, `no_console_log`) |
 
 ### Phase-Specific Reminders
 
-The hook maintains a lookup table mapping each phase number to a targeted reminder:
+The hook maintains a lookup table mapping each phase id to a targeted reminder:
 
 | Phase | Reminder |
 |-------|----------|
 | 0 -- Discovery | Focus on understanding the problem, not writing code. |
 | 1 -- Requirements | Ensure changes trace back to documented requirements. |
 | 2 -- Design | Document architectural decisions as ADRs. |
-| 3 -- Planning | Define section plans before implementing. |
-| 4 -- Implementation | Follow section plans. Write tests first (TDD). |
-| 5 -- Quality | Focus on review findings. No new features. |
-| 6 -- Testing | Fill coverage gaps. Don't change architecture. |
+| 3 -- Foundation | Build the factory: install/adapt the harness, stand up the rails, deploy a walking skeleton through the loop. |
+| build -- Build Loop | Write the spec first. Build from an approved plan. Prove against the spec before merge -- the author never approves their own work. |
 | 7 -- Documentation | Sync docs with code. Finalize ADRs. |
 | 8 -- Deployment | Prepare release. Document rollback plan. |
 | 9 -- Monitoring | Configure alerts and dashboards. |
+| close -- Close & Transfer | Prove the client can run the loop unassisted. Revoke pod access. Open the harvest PR. |
 
-These reminders prevent phase drift during long sessions. If Claude is in Phase 5 (Quality) and starts writing new feature code, the reminder nudges it back to focusing on review findings.
+These reminders prevent phase drift during long sessions. If Claude is in the Build Loop and starts skipping the spec for a "small" change, the reminder nudges it back to spec-first.
 
 ### Convention Reminders from Profile
 
@@ -153,10 +152,10 @@ These convention reminders fire on every file edit, reinforcing company coding s
 
 ### Example Injection
 
-When Claude is about to edit a file during Phase 4 with both convention flags active:
+When Claude is about to edit a file during the Build Loop with both convention flags active:
 
 ```
-[SDLC Phase 4: Implementation] Follow section plans. Write tests first (TDD).
+[SDLC Build Loop] Write the spec first. Build from an approved plan. Prove against the spec before merge.
 [Convention] Use immutable patterns (records, with-expressions, spread operators).
 [Convention] No console.log in production code.
 ```

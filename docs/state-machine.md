@@ -14,8 +14,8 @@ Comprehensive reference for the SDLC plugin's state management system. All proje
 6. [Transition Flow (advance_phase.py)](#6-transition-flow-advance_phasepy)
 7. [Gate System Integration](#7-gate-system-integration)
 8. [History Tracking](#8-history-tracking)
-9. [session-handoff.json (Phase 4 Continuity)](#9-session-handoffjson-phase-4-continuity)
-10. [sections-progress.json (Phase 4 Tracking)](#10-sections-progressjson-phase-4-tracking)
+9. [session-handoff.json (Build Loop Continuity)](#9-session-handoffjson-build-loop-continuity)
+10. [sections-progress.json (Build Loop Tracking)](#10-sections-progressjson-build-loop-tracking)
 11. [State Diagram](#11-state-diagram)
 12. [Cross-References](#12-cross-references)
 
@@ -23,13 +23,13 @@ Comprehensive reference for the SDLC plugin's state management system. All proje
 
 ## 1. State Management Overview
 
-The SDLC plugin uses a file-based state machine to track a project's progress through 10 sequential phases (0-9). Key principles:
+The SDLC plugin uses a file-based state machine to track a project's progress through 9 phases (ids `0`, `1`, `2`, `3`, `build`, `7`, `8`, `9`, `close`), ordered by the registry `order` field and advanced non-sequentially. Key principles:
 
 - **Single file**: All state lives in `.sdlc/state.yaml` inside the target project. This is the only mutable state file for phase progression.
 - **Single source of truth**: Phase progress, gate results, artifact lists, and transition history are all co-located. No external database or service is involved.
 - **Atomic writes**: Scripts read the entire file, modify in memory, and write back atomically using `yaml.dump()`. There are no partial updates -- either the full state is written or the file is unchanged.
 - **Profile separation**: The selected company profile is frozen at initialization time into `.sdlc/profile.yaml` and is never modified after creation. State and profile are read independently by scripts.
-- **Artifact isolation**: Phase artifacts are stored in `.sdlc/artifacts/<NN>-<phase-name>/` directories, separate from state. The state file tracks artifact paths but does not contain artifact content.
+- **Artifact isolation**: Phase artifacts are stored in `.sdlc/artifacts/<slug>/` directories, separate from state, where `<slug>` is the registry `slug` field (`00-discovery`, `03-foundation`, `build`, `close` -- never derived by zero-padding an integer id). The state file tracks artifact paths but does not contain artifact content.
 
 ### File Layout in Target Project
 
@@ -42,13 +42,12 @@ The SDLC plugin uses a file-based state machine to track a project's progress th
     00-discovery/      # Phase 0 artifacts
     01-requirements/   # Phase 1 artifacts
     02-design/         # Phase 2 artifacts
-    03-planning/       # Phase 3 artifacts
-    04-implementation/ # Phase 4 artifacts (includes session-handoff.json, sections-progress.json)
-    05-quality/        # Phase 5 artifacts
-    06-testing/        # Phase 6 artifacts
+    03-foundation/     # Phase 3 artifacts
+    build/             # Build loop artifacts (includes session-handoff.json, sections-progress.json)
     07-documentation/  # Phase 7 artifacts
     08-deployment/     # Phase 8 artifacts
     09-monitoring/     # Phase 9 artifacts
+    close/             # Phase C (Close & Transfer) artifacts
 ```
 
 ---
@@ -65,10 +64,10 @@ created_at: "2026-03-20T10:00:00Z"   # ISO 8601 timestamp when state was initial
 project_type: "service"              # Set during Phase 0 discovery; one of: service | app | library | skill | cli
                                      # Starts as null, populated when project type is determined
 
-current_phase: 4                     # Integer (0-9) indicating the currently active phase
-phase_name: "implementation"         # Human-readable name of the current phase (mirrors registry)
+current_phase: "build"               # Active phase id; int for 0,1,2,3,7,8,9 or string 'build'/'close'
+phase_name: "build"                  # Human-readable name of the current phase (mirrors registry)
 
-phases:                              # Map of phase_id (int) to phase tracking data
+phases:                              # Map of phase_id to phase tracking data (key may be int or string)
   0:
     name: discovery                  # Phase name from registry
     status: completed                # One of: pending | active | completed | skipped
@@ -100,24 +99,25 @@ phases:                              # Map of phase_id (int) to phase tracking d
       - "requirements-spec.md"
       - "acceptance-criteria.md"
       - "phase2-handoff.md"
-  # ... phases 2, 3 follow the same pattern
-  4:
-    name: implementation
-    status: active                   # Currently active phase
+  # ... phases 2 (design), 3 (foundation) follow the same pattern
+  build:
+    name: build
+    status: active                   # Currently active phase (the Build loop)
     entered_at: "2026-03-25T10:00:00Z"
     completed_at: null               # null because phase is not yet complete
     gate_results: {}                 # Empty until /sdlc-gate is run
     artifacts: []                    # Populated as artifacts are created
-  5:
-    name: quality
+  7:
+    name: documentation
     status: pending                  # Not yet reached
     entered_at: null
     completed_at: null
     gate_results: {}
     artifacts: []
-  # ... phases 6-9 follow with status: pending
+  # ... phases 8, 9, close follow with status: pending
 
 history:                             # Append-only transition log (see Section 8)
+                                     # from/to hold phase ids, which can be strings ('build', 'close')
   - from: 0
     to: 1
     at: "2026-03-21T14:30:00Z"
@@ -145,7 +145,7 @@ history:                             # Append-only transition log (see Section 8
 | `project_name` | string | init_project.py | Immutable | Project name from user input or directory name |
 | `created_at` | string | init_project.py | Immutable | ISO 8601 creation timestamp |
 | `project_type` | string/null | Phase 0 work | Set once | Determined during discovery; null until set |
-| `current_phase` | int | advance_phase.py | Updated on transition | Active phase index (0-9) |
+| `current_phase` | int\|string | advance_phase.py | Updated on transition | Active phase id (may be a string: build, close) |
 | `phase_name` | string | advance_phase.py | Updated on transition | Human-readable name of current phase |
 | `phases[N].name` | string | init_project.py | Immutable | Phase name from registry |
 | `phases[N].status` | string | advance_phase.py | Updated on transition | pending, active, completed, or skipped |
@@ -171,7 +171,7 @@ State initialization occurs when a user runs `/sdlc-setup`, which calls `init_pr
    - `${CREATED_AT}` -- current UTC timestamp in ISO 8601 format
 4. **Write state file**: The substituted content is written to `.sdlc/state.yaml`.
 5. **Freeze profile**: The full profile YAML is copied to `.sdlc/profile.yaml` (never modified after this point).
-6. **Create directories**: All 10 artifact directories (`00-discovery` through `09-monitoring`) are created under `.sdlc/artifacts/`.
+6. **Create directories**: All 9 artifact directories, one per phase slug (`00-discovery`, `01-requirements`, `02-design`, `03-foundation`, `build`, `07-documentation`, `08-deployment`, `09-monitoring`, `close`), are created under `.sdlc/artifacts/`.
 
 ### Initial State
 
@@ -181,7 +181,7 @@ After initialization, the state has these properties:
 - `phase_name`: "discovery"
 - `project_type`: null (set during Phase 0 when the project type is determined)
 - Phase 0 status: `active` with `entered_at` set to creation timestamp
-- Phases 1-9 status: `pending` with `entered_at` and `completed_at` both null
+- All phases after Discovery: `pending` with `entered_at` and `completed_at` both null
 - All `gate_results`: empty map `{}`
 - All `artifacts`: empty list `[]`
 - `history`: empty list `[]`
@@ -208,10 +208,10 @@ Only one phase can be `active` at any time. Skipping requires explicit justifica
 Four invariants govern all phase transitions:
 
 ### Rule 1: Forward Only
-Phases advance sequentially: 0 -> 1 -> 2 -> ... -> 9. The system does not support backward transitions through the normal advance flow. Skipping a phase requires explicit justification recorded in history.
+Phases advance in registry `order` (`0`, `1`, `2`, `3`, `build`, `7`, `8`, `9`, `close`), not by id; `build` and `close` are non-numeric ids. The gap where ids 4/5/6 sat is intentional -- batched checking is the rejected anti-pattern; checking happens per-change in the Build loop. The system does not support backward transitions through the normal advance flow. Skipping a phase requires explicit justification recorded in history.
 
 ### Rule 2: Gate Required
-Every transition from phase N to phase N+1 requires ALL exit gates with `severity: MUST` to pass. Gates with `severity: SHOULD` or `severity: MAY` produce warnings but do not block advancement.
+Every transition from a phase to the next by registry order requires ALL exit gates with `severity: MUST` to pass. Gates with `severity: SHOULD` or `severity: MAY` produce warnings but do not block advancement.
 
 ### Rule 3: Atomic Transitions
 State updates are all-or-nothing. The `advance_phase.py` script performs all state mutations in memory and writes the entire file in a single `yaml.dump()` call. If gate checking fails or any error occurs before the write, the state file remains unchanged.
@@ -220,14 +220,18 @@ State updates are all-or-nothing. The `advance_phase.py` script performs all sta
 If issues are discovered in a later phase that require revisiting an earlier phase, re-entry is permitted. This creates a new history entry with `reentry: true`, distinguishing it from the original forward progression. The re-entered phase's status returns to `active`.
 
 ### Rule 5: Manual Approval
-Some phases require explicit human sign-off before transition. The `phase-registry.yaml` specifies `approval: manual` or `approval: automatic` for each phase's exit gate. Manual approval is enforced by requiring the `--confirmed` flag in `advance_phase.py`.
+Every phase is `approval: manual` now; there is no `automatic`. Advancement always requires the `--confirmed` flag / human sign-off, enforced in `advance_phase.py`.
 
-Phases requiring manual approval (per the default registry):
+All phases require manual approval:
 - Phase 0 (Discovery): manual
 - Phase 1 (Requirements): manual
 - Phase 2 (Design): manual
-- Phase 3 (Planning): manual
+- Phase 3 (Foundation): manual
+- Build Loop (`build`): manual
+- Phase 7 (Documentation): manual
+- Phase 8 (Deployment): manual
 - Phase 9 (Monitoring): manual
+- Phase C (`close`, Close & Transfer): manual
 
 ---
 
@@ -244,7 +248,7 @@ The `advance_phase.py` script implements the complete transition logic. It accep
    - Extract current_phase from state
 
 2. BOUNDARY CHECK
-   - If current_phase >= 9: print "already complete", exit 0
+   - If the current phase is `terminal` (close): print "already complete", exit 0
 
 3. RUN GATE CHECKS
    - Call check_phase_gates(current_phase, state, profile, artifacts_base)
@@ -275,7 +279,7 @@ The `advance_phase.py` script implements the complete transition logic. It accep
    c. Store gate result summary in phases[current_phase].gate_results
    d. Set phases[next_phase].status = "active"
    e. Set phases[next_phase].entered_at = current UTC timestamp
-   f. Increment current_phase by 1
+   f. Set current_phase to the next phase by registry `order` (look up via phase_model.py -- NOT id+1)
    g. Update phase_name to next phase's name
    h. Append transition entry to history[] array
 
@@ -308,9 +312,10 @@ Gate checks are performed by `check_gates.py` and are invoked both by `/sdlc-gat
 |---------|------|----------------|----------|
 | G1-integrity | Artifact Integrity | Required artifacts exist on disk | MUST |
 | G2-completeness | Artifact Completeness | Required artifacts are non-empty and have expected content | MUST |
-| G3-metrics | Quality Metrics | Code coverage, test pass rates (Phases 5-6 only) | MUST |
+| G3-metrics | Quality Metrics | Code coverage, test pass rates -- quantitative thresholds checked per-change in the Build loop | MUST |
 | G4-compliance | Compliance | Framework-specific requirements from profile (e.g., SOC2, HIPAA) | Varies |
-| G5-quality | Quality Standards | Profile-defined quality thresholds | SHOULD |
+| G5-consistency | Cross-Phase Consistency | Detects drift in locked metrics across transitions (budget, timeline, scope, stakeholder roster, quality thresholds, compliance reqs) | SHOULD |
+| G6-quality | Quality Standards | Profile-defined quality thresholds | SHOULD |
 
 ### Gate Result Structure
 
@@ -332,8 +337,8 @@ severity: "MUST"              # MUST | SHOULD | MAY
 
 ### Phase-Specific Gate Behavior
 
-- **Phase 4 (Implementation)**: Additional SHOULD-level check validates `sections-progress.json` consistency -- verifying that `completed_sections` count matches the actual number of sections with `status: "complete"`.
-- **Phases 5-6 (Quality/Testing)**: G3-metrics checks profile quality thresholds such as `coverage_minimum`.
+- **Build loop**: the same SHOULD-level `sections-progress.json` consistency check applies per-spec -- verifying that `completed_sections` count matches the actual number of sections with `status: "complete"`.
+- **Build loop**: G3-metrics checks profile quality thresholds such as `coverage_minimum` per-change.
 - **Compliance phases**: G4-compliance loads framework-specific gates from `profiles/<id>/compliance/<framework>-gates.yaml`.
 
 ---
@@ -360,11 +365,11 @@ The `history` array in state.yaml is an append-only audit trail of every phase t
 When a completed phase is re-entered, the history entry includes `reentry: true`:
 
 ```yaml
-- from: 5
+- from: build
   to: 3
   at: "2026-03-28T09:00:00Z"
   reentry: true
-  justification: "Design issue discovered during quality review, re-entering planning"
+  justification: "Foundation rails gap discovered during the Build loop, re-entering Foundation"
 ```
 
 ### Audit Analysis
@@ -379,18 +384,18 @@ The audit report is used for process improvement and is typically run after seve
 
 ---
 
-## 9. session-handoff.json (Phase 4 Continuity)
+## 9. session-handoff.json (Build Loop Continuity)
 
-Located at: `.sdlc/artifacts/04-implementation/session-handoff.json`
+Located at: `.sdlc/artifacts/build/session-handoff.json`
 
-Implementation (Phase 4) often spans multiple Claude Code sessions. The session handoff file provides cross-session continuity so that each new session can pick up where the last one left off.
+The Build loop often spans multiple Claude Code sessions. The session handoff file provides cross-session continuity so that each new session can pick up where the last one left off.
 
 ### Complete Schema
 
 ```json
 {
   "$schema": "session-handoff-v1",
-  "phase": 4,
+  "phase": "build",
   "last_updated": "2026-03-26T15:00:00Z",
   "session_number": 3,
   "overall_status": "in_progress",
@@ -454,7 +459,7 @@ Implementation (Phase 4) often spans multiple Claude Code sessions. The session 
 | Field | Type | Description |
 |-------|------|-------------|
 | `$schema` | string | Schema identifier, always "session-handoff-v1" |
-| `phase` | int | Always 4 (implementation) |
+| `phase` | string | Always 'build' |
 | `last_updated` | string/null | ISO 8601 timestamp of last update |
 | `session_number` | int | Incremented each session |
 | `overall_status` | string | "in_progress", "blocked", or "complete" |
@@ -471,9 +476,9 @@ Implementation (Phase 4) often spans multiple Claude Code sessions. The session 
 
 ### Hook Integration
 
-The `sdlc-session-start.ps1` hook reads this file at the start of every Claude Code session. When Phase 4 is active, the hook:
+The `sdlc-session-start.ps1` hook reads this file at the start of every Claude Code session. When the Build loop is active, the hook:
 
-1. Parses `session-handoff.json` from `.sdlc/artifacts/04-implementation/`
+1. Parses `session-handoff.json` from `.sdlc/artifacts/build/`
 2. Counts completed, in-progress, and blocked sections
 3. Outputs a summary line: `[SDLC] Session Handoff: 3/8 sections complete, 1 in progress, 0 blocked (session #3)`
 4. Displays `context_for_next_session` if present
@@ -484,18 +489,18 @@ This gives the agent immediate context without needing to read the full handoff 
 
 ---
 
-## 10. sections-progress.json (Phase 4 Tracking)
+## 10. sections-progress.json (Build Loop Tracking)
 
-Located at: `.sdlc/artifacts/04-implementation/sections-progress.json`
+Located at: `.sdlc/artifacts/build/sections-progress.json`
 
-Machine-readable implementation progress tracker. While `session-handoff.json` is optimized for session continuity, `sections-progress.json` is optimized for gate validation and progress reporting.
+Machine-readable build progress tracker. While `session-handoff.json` is optimized for session continuity, `sections-progress.json` is optimized for gate validation and progress reporting.
 
 ### Complete Schema
 
 ```json
 {
   "$schema": "sections-progress-v1",
-  "phase": 4,
+  "phase": "build",
   "total_sections": 8,
   "completed_sections": 3,
   "last_updated": "2026-03-26T15:00:00Z",
@@ -557,7 +562,7 @@ Machine-readable implementation progress tracker. While `session-handoff.json` i
 
 ### Gate Validation
 
-At Phase 4 exit, `check_gates.py` performs a consistency check on this file:
+In the Build loop, `check_gates.py` performs a consistency check on this file:
 
 1. Reads `total_sections` and `completed_sections` from the top-level fields.
 2. Counts sections where `status == "complete"` in the `sections` array.
@@ -592,28 +597,31 @@ A phase starts as `pending`. When the previous phase completes and transitions f
 
 ```
   Phase 0       Phase 1          Phase 2        Phase 3
-  Discovery --> Requirements --> Design ------> Planning -->
+  Discovery --> Requirements --> Design ------> Foundation -->
   [active]      [pending]        [pending]       [pending]
     |              |                |               |
     | gates pass   | gates pass    | gates pass    | gates pass
     | + confirm    | + confirm     | + confirm     | + confirm
     v              v                v               v
 
-  Phase 4          Phase 5       Phase 6        Phase 7
-  Implementation -> Quality ----> Testing -----> Documentation ->
-  [pending]         [pending]     [pending]      [pending]
-    |                  |             |               |
-    | gates pass       | gates pass  | gates pass   | gates pass
-    v                  v             v               v
+  Build Loop                          Phase 7         Phase 8
+  (Intent -> Delegate -> Discern) --> Documentation -> Deployment -->
+  [pending]                           [pending]        [pending]
+    |                                     |               |
+    | human declares feature-complete     | gates pass    | gates pass
+    | (no batch exit gate) + confirm       | + confirm     | + confirm
+    v                                     v               v
 
-  Phase 8          Phase 9
-  Deployment -----> Monitoring
-  [pending]         [pending]
+  Phase 9          Phase C
+  Monitoring -----> Close & Transfer
+  [pending]         [pending, terminal]
     |                  |
     | gates pass       | gates pass + confirm
-    v                  v
-                    [PROJECT COMPLETE]
+    | + confirm        v
+    v               [PROJECT COMPLETE]
 ```
+
+The Build Loop has no batch exit gate -- checking happens per-change inside the loop; a human declares the backlog feature-complete to leave. Every transition requires gates to pass plus manual `--confirmed` sign-off.
 
 ### Transition Decision Tree
 
@@ -622,7 +630,7 @@ A phase starts as `pending`. When the previous phase completes and transitions f
   |
   +-> Read state.yaml (current_phase)
   |
-  +-> current_phase >= 9?
+  +-> current phase is terminal (close)?
   |     YES -> "Already complete" (exit 0)
   |     NO  -> Continue
   |
@@ -658,7 +666,8 @@ A phase starts as `pending`. When the previous phase completes and transitions f
 | Topic | File | Description |
 |-------|------|-------------|
 | Advance logic | `scripts/advance_phase.py` | Full transition implementation |
-| Gate checking | `scripts/check_gates.py` | Gate evaluation for all 5 gate types |
+| Gate checking | `scripts/check_gates.py` | Gate evaluation for all 6 gate types |
+| Phase model | `scripts/phase_model.py` | Single source of truth for phase ids, order, slugs (reads phase-registry.yaml) |
 | State init | `scripts/init_project.py` | Creates .sdlc/ directory and state.yaml |
 | Gate audit | `scripts/audit_gates.py` | Analyzes gate effectiveness across history |
 | Status dashboard | `scripts/generate_status.py` | Generates status report from state |

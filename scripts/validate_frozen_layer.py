@@ -10,6 +10,8 @@ from pathlib import Path
 import yaml
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).parent))
+import phase_model as pm
 
 REQUIRED_FRONTMATTER_FIELDS = [
     "phase",
@@ -30,16 +32,9 @@ def load_yaml(path: Path) -> dict:
         return yaml.safe_load(f)
 
 
-def get_phase_name(state: dict, phase_id: int) -> str | None:
+def get_phase_name(state: dict, phase_id) -> str | None:
     """Get the phase name from the phase registry."""
-    registry_path = PLUGIN_ROOT / "phases" / "phase-registry.yaml"
-    if not registry_path.exists():
-        return None
-    registry = load_yaml(registry_path)
-    for p in registry.get("phases", []):
-        if p["id"] == phase_id:
-            return p["name"]
-    return None
+    return pm.phase_name(phase_id)
 
 
 def extract_frontmatter(content: str) -> dict | None:
@@ -59,8 +54,9 @@ def estimate_tokens(content: str) -> int:
     return int(word_count * 1.3)
 
 
-def validate(state_path: Path, phase_id: int) -> int:
+def validate(state_path: Path, phase_id) -> int:
     """Validate a frozen layer. Returns 0=valid, 1=invalid, 2=error."""
+    phase_id = pm.normalize_id(phase_id)
     errors = []
     warnings = []
 
@@ -100,7 +96,7 @@ def validate(state_path: Path, phase_id: int) -> int:
             errors.append(f"Missing required frontmatter field: {field}")
 
     # Validate phase matches
-    if frontmatter.get("phase") != phase_id:
+    if pm.normalize_id(frontmatter.get("phase")) != phase_id:
         errors.append(
             f"Frontmatter phase ({frontmatter.get('phase')}) "
             f"does not match expected ({phase_id})"
@@ -143,7 +139,7 @@ def validate(state_path: Path, phase_id: int) -> int:
     if not source_artifacts:
         warnings.append("No source_artifacts listed in frontmatter")
     else:
-        artifacts_dir = sdlc_dir / "artifacts" / f"{phase_id:02d}-{phase_name}"
+        artifacts_dir = sdlc_dir / "artifacts" / pm.artifact_dirname(phase_id)
         for artifact in source_artifacts:
             artifact_path = artifacts_dir / artifact
             if not artifact_path.exists():
@@ -214,7 +210,7 @@ def main() -> None:
         "--state", required=True, help="Path to .sdlc/state.yaml"
     )
     parser.add_argument(
-        "--phase", type=int, required=True, help="Phase number to validate"
+        "--phase", type=str, required=True, help="Phase to validate (e.g. 0, 3, build, 9, close)"
     )
     args = parser.parse_args()
 

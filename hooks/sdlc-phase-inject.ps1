@@ -20,28 +20,27 @@ if ($ToolName -notin $editTools) {
     exit 0
 }
 
-# Read current phase
+# Read current phase (ids may be non-numeric: build, close)
 $content = Get-Content $stateFile -Raw
-$phaseMatch = [regex]::Match($content, 'current_phase:\s*(\d+)')
+$phaseMatch = [regex]::Match($content, 'current_phase:\s*"?([^"\r\n]+)"?')
 
 if (-not $phaseMatch.Success) {
     exit 0
 }
 
-$phaseId = [int]$phaseMatch.Groups[1].Value
+$phaseId = $phaseMatch.Groups[1].Value.Trim()
 
-# Phase-specific reminders
+# Phase-specific reminders (keyed by string phase id; 4/5/6 are replaced by the build loop)
 $reminders = @{
-    0 = "[SDLC Phase 0: Discovery] Focus on understanding the problem, not writing code."
-    1 = "[SDLC Phase 1: Requirements] Ensure changes trace back to documented requirements."
-    2 = "[SDLC Phase 2: Design] Document architectural decisions as ADRs."
-    3 = "[SDLC Phase 3: Planning] Define section plans before implementing."
-    4 = "[SDLC Phase 4: Implementation] Follow section plans. Write tests first (TDD)."
-    5 = "[SDLC Phase 5: Quality] Focus on review findings. No new features."
-    6 = "[SDLC Phase 6: Testing] Fill coverage gaps. Don't change architecture."
-    7 = "[SDLC Phase 7: Documentation] Sync docs with code. Finalize ADRs."
-    8 = "[SDLC Phase 8: Deployment] Prepare release. Document rollback plan."
-    9 = "[SDLC Phase 9: Monitoring] Configure alerts and dashboards."
+    "0"     = "[SDLC Phase 0: Discovery] Focus on understanding the problem, not writing code."
+    "1"     = "[SDLC Phase 1: Requirements] Ensure changes trace back to documented requirements."
+    "2"     = "[SDLC Phase 2: Design] Document architectural decisions as ADRs."
+    "3"     = "[SDLC Phase 3: Foundation] Build the factory (harness, rails, dev infra) and a thin walking skeleton."
+    "build" = "[SDLC Build Loop] One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work."
+    "7"     = "[SDLC Phase 7: Documentation] Prove docs by cold use. Finalize ADRs."
+    "8"     = "[SDLC Phase 8: Deployment] Promote the proven artifact. Document rollback plan."
+    "9"     = "[SDLC Phase 9: Monitoring] Configure alerts from measured baselines. Run the drill."
+    "close" = "[SDLC Phase C: Close & Transfer] Prove the client can run it without us. Audit the harness, revoke access, harvest."
 }
 
 $reminder = $reminders[$phaseId]

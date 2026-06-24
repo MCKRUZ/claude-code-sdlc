@@ -1,6 +1,6 @@
 # SDLC Phase Lifecycle Reference
 
-Comprehensive reference for all 10 phases of the claude-code-sdlc plugin lifecycle. This document covers phase definitions, entry/exit gates, workflow steps, artifacts, agent orchestration, HITL gates, handoff protocols, project type adaptations, and visual report generation.
+Comprehensive reference for all 9 phases of the claude-code-sdlc plugin lifecycle. This document covers phase definitions, entry/exit gates, workflow steps, artifacts, agent orchestration, HITL gates, handoff protocols, project type adaptations, and visual report generation.
 
 ---
 
@@ -13,29 +13,28 @@ Comprehensive reference for all 10 phases of the claude-code-sdlc plugin lifecyc
 5. [Phase 0: Discovery](#phase-0-discovery)
 6. [Phase 1: Requirements](#phase-1-requirements)
 7. [Phase 2: Design](#phase-2-design)
-8. [Phase 3: Planning](#phase-3-planning)
-9. [Phase 4: Implementation](#phase-4-implementation)
-10. [Phase 5: Quality](#phase-5-quality)
-11. [Phase 6: Testing](#phase-6-testing)
-12. [Phase 7: Documentation](#phase-7-documentation)
-13. [Phase 8: Deployment](#phase-8-deployment)
-14. [Phase 9: Monitoring](#phase-9-monitoring)
-15. [Phase Transition Protocol](#phase-transition-protocol)
-16. [Visual Phase Report Protocol](#visual-phase-report-protocol)
-17. [Handoff Chain](#handoff-chain)
+8. [Phase 3: Foundation](#phase-3-foundation)
+9. [Build Loop](#build-loop)
+10. [Phase 7: Documentation](#phase-7-documentation)
+11. [Phase 8: Deployment](#phase-8-deployment)
+12. [Phase 9: Monitoring](#phase-9-monitoring)
+13. [Phase C: Close & Transfer](#phase-c-close--transfer)
+14. [Phase Transition Protocol](#phase-transition-protocol)
+15. [Visual Phase Report Protocol](#visual-phase-report-protocol)
+16. [Handoff Chain](#handoff-chain)
 
 ---
 
 ## Overview
 
-The claude-code-sdlc plugin orchestrates a full Software Development Lifecycle across 10 sequential phases (numbered 0 through 9). Each phase has a clearly defined purpose, required artifacts, entry/exit gates, and a handoff document that feeds the next phase.
+The claude-code-sdlc plugin orchestrates a full Software Development Lifecycle across 9 phases, ordered but non-sequential (ids `0, 1, 2, 3, build, 7, 8, 9, close`). Each phase has a clearly defined purpose, required artifacts, entry/exit gates, and a handoff document that feeds the next phase.
 
 The lifecycle enforces discipline through:
 
-- **Sequential forward-only progression** -- phases advance from 0 to 9 and never skip backward (though re-entry is allowed if issues are discovered).
+- **Ordered progression by registry `order`, not by id** -- phases advance in the registry's `order` sequence, never by `id + 1`. Two phases (`build` and `close`) carry non-numeric ids, so id arithmetic does not apply. The visible gap where phases 4, 5, and 6 once sat (Implementation / Quality / Testing) is intentional: batched checking -- write everything, then review everything, then test everything -- is the rejected anti-pattern. Checking happens per-change inside the Build loop instead, never as a later batch phase. Re-entry to a completed phase is allowed if issues are discovered downstream.
 - **Gate-based transitions** -- every phase has entry gates (prerequisites) and exit gates (deliverable validation). MUST-level gates block advancement; SHOULD-level gates produce warnings; MAY-level gates are informational.
 - **Human-in-the-loop (HITL) gates** -- mandatory stopping points where Claude must pause and interact with the human before proceeding. These are marked with `> HITL GATE:` blockquotes in phase definitions.
-- **Handoff documents** -- each phase produces a `phaseN+1-handoff.md` that the next phase reads as its starting context. Open questions (Q-NN / AQ-NN) in handoffs must be resolved before any new-phase work begins.
+- **Handoff documents** -- each phase produces a handoff that the next phase reads as its starting context. Open questions (Q-NN / AQ-NN) in handoffs must be resolved before any new-phase work begins.
 
 ---
 
@@ -51,16 +50,10 @@ Phase 1: Requirements
 Phase 2: Design
     |
     v
-Phase 3: Planning
+Phase 3: Foundation
     |
     v
-Phase 4: Implementation
-    |
-    v
-Phase 5: Quality
-    |
-    v
-Phase 6: Testing
+Build Loop (continuous)
     |
     v
 Phase 7: Documentation
@@ -72,18 +65,24 @@ Phase 8: Deployment
 Phase 9: Monitoring
     |
     v
+Phase C: Close & Transfer
+    |
+    v
   [Complete]
 ```
 
-Phases advance forward only: `0 -> 1 -> 2 -> ... -> 9`. Skipping a phase requires explicit justification recorded in the history. A completed phase MAY be re-entered if issues are discovered downstream; this creates a new history entry with `reentry: true`.
+Phases advance in the registry's `order` sequence, **not** by numeric id. The next phase is always the registry entry with `order + 1` -- never `id + 1`, because `build` and `close` are non-numeric ids. The gap where phases 4, 5, and 6 used to be (Implementation / Quality / Testing) is intentional and permanent: batched checking is the failure mode the standard exists to kill, so checking now happens per-change inside the Build loop. A completed phase MAY be re-entered if issues are discovered downstream; this creates a new history entry with `reentry: true`.
 
 ---
 
 ## Phase Registry
 
-The file `phases/phase-registry.yaml` is the single source of truth for the phase model. It defines every phase with:
+The file `phases/phase-registry.yaml` is the single source of truth for the phase model, consumed by `scripts/phase_model.py`. It defines every phase with:
 
-- **id** -- numeric phase identifier (0-9)
+- **id** -- phase identifier; an int for `0, 1, 2, 3, 7, 8, 9` or a string for `build` / `close`. Scripts MUST NOT assume ids are integers, contiguous, or that next = current + 1.
+- **slug** -- the artifact directory name under `.sdlc/artifacts/<slug>/`. Never derived by zero-padding an int (e.g. `00-discovery`, `03-foundation`, `build`, `close`).
+- **order** -- sequence position (0..N). "Next phase" = the registry entry with `order + 1`.
+- **terminal** -- `true` on the final phase (`close`); there is no next phase after it.
 - **name** -- machine-readable phase name
 - **display** -- human-readable label
 - **description** -- one-sentence summary of the phase purpose
@@ -92,7 +91,7 @@ The file `phases/phase-registry.yaml` is the single source of truth for the phas
 - **skills.secondary** -- optional supplementary skills
 - **entry_gate.conditions** -- list of preconditions that must be true before entering
 - **exit_gate.conditions** -- list of artifact checks and runtime checks required to leave
-- **exit_gate.approval** -- `manual` (requires human sign-off) or `automatic` (advances if checks pass)
+- **exit_gate.approval** -- `manual` on **every** phase. There is no `automatic` approval anymore; advancement always requires human sign-off.
 - **artifacts.required** -- list of artifacts that MUST be produced
 - **artifacts.optional** -- nice-to-have outputs
 
@@ -108,17 +107,15 @@ The `check_gates.py` script reads this registry and validates exit conditions ag
 - Open questions from the handoff have been resolved.
 
 **Exit gates** validate that the phase produced all required deliverables. Each exit condition is one of:
-- **Artifact check** (`exists_and_complete`) -- the file exists in `.sdlc/artifacts/phaseN/` and is not empty or a stub.
-- **Runtime check** -- a condition that must be verified programmatically (e.g., "All unit tests passing", "Code coverage >= coverage_minimum").
+- **Artifact check** (`exists_and_complete`) -- the file exists in `.sdlc/artifacts/<slug>/` and is not empty or a stub.
+- **Runtime check** -- a condition that must be verified programmatically (e.g., "Walking skeleton deployed through the real pipeline and verified", "Close gate passed").
 
 **Gate severity levels:**
 - **MUST** -- blocks phase advancement. The phase cannot advance until this gate passes.
 - **SHOULD** -- produces a warning but does not block advancement. The warning is surfaced to the human.
 - **MAY** -- informational only. Logged but does not affect advancement.
 
-**Approval types:**
-- **manual** -- even if all checks pass, the human must explicitly confirm advancement. The `/sdlc-next` command presents a summary and asks "Shall I advance to Phase N?"
-- **automatic** -- if all MUST checks pass, the phase advances without requiring explicit human confirmation (though the HITL gate for open questions in the next phase still applies).
+**Approval:** Advancement is **always manual**. Every phase carries `approval: manual` -- even if all checks pass, the human must explicitly confirm advancement. The `/sdlc-next` command presents a summary and asks for human confirmation before advancing. There is no auto-advancing phase; the old `approval: automatic` mode has been removed entirely.
 
 ---
 
@@ -166,6 +163,7 @@ Understand the problem space, quantify impact, map stakeholders, and define scop
 
 - `stakeholder-notes.md` -- raw notes from stakeholder conversations
 - `market-research.md` -- competitive analysis or market context
+- `document-registry.md` -- document intake index (opt-in via profile documentation)
 - `phase0-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
@@ -200,7 +198,7 @@ No custom agents are spawned during Discovery. The orchestrator manages the work
 
 ### Project Type Adaptations
 
-Phase 0 is where `project_type` is established (service/app/library/skill/cli). The project type is recorded in `state.yaml` and determines adaptations in Phases 5-9. Phase 0 itself does not vary by project type.
+Phase 0 is where `project_type` is established (service/app/library/skill/cli). The project type is recorded in `state.yaml` and determines adaptations in later phases. Phase 0 itself does not vary by project type.
 
 ---
 
@@ -289,7 +287,7 @@ Phase 1 does not vary by project type. All project types produce the same requir
 
 ### Purpose
 
-Create software architecture, API contracts, data models, and Architecture Decision Records (ADRs). Design translates requirements into a technical blueprint that Planning can decompose into implementable sections. This phase integrates with the `/deep-plan` skill (Steps 1-15) for thorough architectural analysis.
+Create software architecture, API contracts, data models, and Architecture Decision Records (ADRs). Design translates requirements into a technical blueprint that Foundation can build the factory around and the Build loop can implement against. This phase integrates with the `/deep-plan` skill for thorough architectural analysis, and defines the walking-skeleton slice (the thinnest end-to-end path that proves the architecture) that Foundation will deploy.
 
 ### Entry Gate
 
@@ -304,13 +302,13 @@ Create software architecture, API contracts, data models, and Architecture Decis
 |------|------|-------------|
 | 0 | HITL Gate -- Resolve Architectural Questions | Extract every AQ-NN from the handoff. Present 2-3 concrete options with trade-offs for each. Collect human decisions for ALL AQs before writing any artifact. These become ADRs. |
 | 1 | Spec Synthesis | Synthesize requirements, NFRs, and human decisions into a coherent technical specification. |
-| 2 | Launch /deep-plan (Steps 1-15) | Run the /deep-plan skill through its first 15 steps: research, architecture analysis, component design, interface definitions, and risk assessment. |
+| 2 | Launch /deep-plan | Run the /deep-plan skill: research, architecture analysis, component design, interface definitions, and risk assessment. |
 | 3 | Map /deep-plan Outputs to SDLC Artifacts | Transform /deep-plan outputs into SDLC-standard artifacts (design-doc.md, api-contracts.md, etc.). |
 | 4 | Architecture Decision Records | Write ADRs encoding the human's architectural decisions from Step 0. Each ADR documents context, decision, alternatives considered, and consequences. |
 | 5 | Complete Design Artifacts | Fill in any remaining design artifact sections not covered by /deep-plan output. |
 | 6 | Data Model | Define data models, schema, and entity relationships. |
-| 7 | Generate Architecture Diagrams | Produce `architecture-diagrams.html` with 5 required diagram types using Mermaid.js. |
-| 8 | Phase Handoff | Package into `phase3-handoff.md`. |
+| 7 | Generate Architecture Diagrams | Produce `architecture-diagrams.html` with required diagram types using Mermaid.js. |
+| 8 | Phase Handoff | Package into `phase3-handoff.md`, including the walking-skeleton definition for Foundation. |
 | 9 | Generate Phase Report | Run `generate_phase_report.py`. |
 
 ### HITL Gates
@@ -325,7 +323,7 @@ Create software architecture, API contracts, data models, and Architecture Decis
 | `api-contracts.md` | API contract definitions: endpoints, request/response schemas, authentication, error codes. |
 | `adrs/` | Directory of Architecture Decision Records. Minimum one ADR. Each has context, decision, alternatives, and consequences. |
 | `adr-registry.md` | Index of all ADRs with ID, title, status, and date. |
-| `phase3-handoff.md` | Design summary, implementation implications, section breakdown suggestions, open questions, risks, and recommended planning approach. |
+| `phase3-handoff.md` | Design summary, the walking-skeleton definition, Foundation implications, open questions, risks, and recommended Foundation approach. |
 
 ### Optional Artifacts
 
@@ -335,12 +333,12 @@ Create software architecture, API contracts, data models, and Architecture Decis
 - `research-notes.md` -- codebase and web research findings from /deep-plan
 - `integration-notes.md` -- cross-system integration concerns
 - `external-reviews/` -- multi-LLM review outputs
-- `deep-plan-checkpoint.yaml` -- session state for Phase 3 resumption
+- `deep-plan-checkpoint.yaml` -- session state for Foundation resumption
 - `architecture-diagrams.html` -- interactive Mermaid diagrams (recommended)
 
 ### Primary Skills
 
-- `/deep-plan` -- primary skill; runs Steps 1-15 for thorough architecture analysis
+- `/deep-plan` -- primary skill; runs thorough architecture analysis
 - `/plan` -- secondary skill for structuring design work
 
 ### Agents
@@ -363,11 +361,11 @@ No custom SDLC agents are spawned. The orchestrator drives the /deep-plan skill 
 
 `phase3-handoff.md` contains:
 - Design summary and key architectural choices
-- Implementation implications (what the design means for how code is structured)
-- Suggested section breakdown for Planning
+- The walking-skeleton definition (the thinnest end-to-end slice that proves the architecture, and which slice carries the most risk)
+- Foundation implications (what the design means for the rails and the dev environment)
 - Open questions for Phase 3
 - Technical risks identified during design
-- Recommended planning approach
+- Recommended Foundation approach
 
 ### Project Type Adaptations
 
@@ -375,11 +373,11 @@ Phase 2 does not vary by project type. All project types produce the same design
 
 ---
 
-## Phase 3: Planning
+## Phase 3: Foundation
 
 ### Purpose
 
-Break the design into implementable sections with a sprint plan, risk register, and implementation order. Planning bridges design and implementation by producing self-contained section plans that developers (or agents) can pick up independently. This phase integrates with `/deep-plan` Steps 16-22.
+Build the factory and prove it on real software. Install and adapt the harness, stand up the rails (CI, grader, correctness, security, and deploy-dev workflows plus branch protection), provision the dev environment from code, then deploy a thin walking skeleton -- including at least one HIGH-risk spec -- end-to-end through the full Build loop into the client's dev environment. This is the hinge of the engagement: the phase where the documents stop and the software starts. Foundation's product is not a feature; it is a working factory with one part already moving through it.
 
 ### Entry Gate
 
@@ -387,340 +385,179 @@ Break the design into implementable sections with a sprint plan, risk register, 
 |-----------|------|
 | Phase 2 exit gate passed | MUST |
 | `phase3-handoff.md` reviewed | MUST |
+| Walking-skeleton definition and section boundaries from Phase 2 available | MUST |
 
 ### Workflow Steps
 
 | Step | Name | Description |
 |------|------|-------------|
-| 0 | HITL Gate -- Approve Section Boundaries | Present the proposed section decomposition to the human. Confirm boundaries, ordering, and parallelization opportunities before writing detailed plans. |
-| 1 | Resume /deep-plan (Steps 16-22) | Continue the /deep-plan skill from where Phase 2 left off. Steps 16-22 produce detailed implementation plans, test stubs, and dependency graphs. |
-| 1b | Map /deep-plan Outputs to SDLC Artifacts | Transform /deep-plan step outputs into section plan files and sprint structure. |
-| 2 | Dependency Mapping | Map dependencies between sections, external systems, and shared infrastructure. Identify parallelization opportunities. |
-| 3 | Sprint Planning | Organize sections into sprints based on dependencies and risk. |
-| 4 | Risk Register | Document technical and project risks with probability, impact, mitigation, and contingency for each. |
-| 5 | Phase Handoff | Package into `phase4-handoff.md`. |
-| 6 | Generate Visual Report | Generate `.sdlc/reports/phase03-visual.html`. |
-| 7 | Generate Phase Report | Run `generate_phase_report.py`. |
+| 0 | HITL Gate -- Confirm the Rails Plan and the Skeleton Slices | Read `phase3-handoff.md` and the Phase 2 walking-skeleton definition. Before installing anything, confirm with the human: the skeleton's slices and which carries the most risk; where the dev environment lives and who holds branch-protection admin, Actions, runner policy, and the secrets vault; the Setup Owner's deputy; and what `deploy-dev` means for `library`/`cli`/`skill`. |
+| 1 | Install and Adapt the Harness | Scaffold from the firm's kit (`CLAUDE.md`, spec template, settings, skills, grader and security-reviewer agents, the Stop hook, workflow YAML, IaC starters). Adapt `CLAUDE.md` to the client's domain, stack standards, risk taxonomy, gated paths, and Definition of Checked, as reviewed PRs. Both-eyes review by the Setup Owner's deputy -- the author is never sole approver. |
+| 2 | Stand Up the Rails | Build the five workflows and branch protection (agent proposes, gate disposes): **ci** (hard block), **grader** (required to run, advisory), **correctness** (blocks on a high-confidence defect, named-human override), **security** (blocks on HIGH), **deploy-dev** (merge ships to dev, restores last good on failure). Wire the **Stop hook**. Register Phase 2 security gates against their guarded paths. |
+| 3 | The Risk-Tier Map | Produce `risk-tier-map.md`: every codebase area with its tier (HIGH/MEDIUM/LOW) and any registered security gate -- the same taxonomy that lives in `CLAUDE.md`. |
+| 4 | Provision the Dev Environment from Code | Draft IaC for the dev environment (HIGH risk; agent-safe IaC funnel: schema-validate -> policy gate -> dry-run -> human approval -> scoped apply). Secrets land in the client's vault, never in code. `N/A` for `library`/`cli`/`skill`. |
+| 5 | Run the Walking Skeleton Through the Loop | Author the skeleton's slices as specs and ride each through the full Build loop into dev. At least one HIGH-risk slice runs the loop at HIGH (hard exit condition). Connect the slices end-to-end and run a smoke journey, verified against the Phase 2 definition. |
+| 6 | Prove the Rails by Forcing Their Failure | Make each rail fail deliberately and catch it: a failing test proves the Stop hook blocks; a planted spec mismatch proves the grader posts; a planted logic defect proves correctness blocks-and-overrides; a known-bad deploy proves deploy-dev rolls back; a probe PR proves the security gate fires. Record in `pipeline-proof.md`. |
+| 7 | The Cadence Plan and the Build Tripwires | Produce `cadence-plan.md`: schedule the Build cadences (daily flow check, weekly intent triage, retro+, setup review) and agree two numbers -- the **WIP cap** and the **review-wait tripwire**. |
+| 8 | Phase Handoff | Draft `build-handoff.md` and `foundation-report.md`: the ordered spec backlog, the risk-tier map, the cadence calendar, and open questions. The exit demo runs in the client's own dev environment through the real pipeline. |
+| 9 | Generate Visual Report | Generate `.sdlc/reports/phase03-visual.html`. |
+| 10 | Generate Phase Report | Run `/sdlc-gate` to validate and produce `.sdlc/reports/phase03-report.html`. |
 
 ### HITL Gates
 
-**Step 0 -- Approve Section Boundaries Before Writing Plans:** Claude presents the proposed section decomposition from /deep-plan analysis. The human approves or adjusts section boundaries, ordering, and parallelization before detailed section plans are written.
+**Step 0 -- Confirm the Rails Plan and the Skeleton Slices:** Before installing the harness or standing up any rail, Claude confirms with the human the skeleton scope and the highest-risk slice, the client access realities (branch-protection admin, Actions, runner policy, secrets vault), the Setup Owner's deputy, and what `deploy-dev` means for non-server targets. Foundation answers four questions and nothing else: Is the harness real and adapted? Are the rails real and enforced? Does the loop actually run? Is the architecture real?
+
+> **CONSTRAINT (intentionally repeated in the phase definition):** Every walking-skeleton slice MUST run the full Build loop on the real rails. Hand-building the skeleton off the rails "because it's only the skeleton" is prohibited -- the skeleton is precisely where the loop and the rails get proven.
 
 ### Required Artifacts
 
 | Artifact | Description |
 |----------|-------------|
-| `section-plans/` | Directory of `SECTION-NNN.md` files. Each is a self-contained implementation guide containing: goal, epics/stories covered, entry/exit criteria, dependencies, implementation guidance, interfaces, test strategy, risk, verification criteria, and evaluator contract. |
-| `sprint-plan.md` | Sections organized into sprints with ordering, estimated effort, and parallelization notes. |
-| `risk-register.md` | All identified risks with probability, impact, mitigation strategy, and contingency plan. |
-| `phase4-handoff.md` | Planning summary, implementation order recommendation, known risks, open questions, and suggested section to start with. |
+| `foundation-report.md` | Harness summary, rails summary, forced-failure evidence, walking-skeleton outcome (including the HIGH-risk slice and the outcome metric ticking in dev), and open questions. |
+| `risk-tier-map.md` | Tier table for every codebase area with rationale, registered security gates (the Phase 2 gates MUST appear), and the risk taxonomy mirrored from `CLAUDE.md`. |
+| `cadence-plan.md` | Cadence calendar with owners; the agreed WIP cap; the review-wait tripwire; and the numbers that steer the loop (with the banned activity metrics noted). |
+| `build-handoff.md` | Ordered spec backlog ready for triage, the risk-tier map reference, the cadence calendar with WIP cap and review-wait tripwire, open questions, and the proven entry conditions for Build. |
 
 ### Optional Artifacts
 
-- `dependency-map.md` -- section dependency DAG and parallelization graph
-- `tdd-plan.md` -- prose test stubs mirroring plan structure
-- `phase3-report.html` -- self-contained HTML phase report
+- `harness-inventory.md` -- what the kit installed and per-file adaptation notes
+- `pipeline-proof.md` -- forced-failure evidence, one entry per rail
+- `walking-skeleton-spec.md` -- the skeleton slices with per-slice loop evidence (spec, PR, grader verdict, Checker, deploy)
+- `phase3-report.html` -- the generated phase report
 
 ### Primary Skills
 
-- `/deep-plan` -- primary skill; runs Steps 16-22 for implementation planning
+- (none primary) -- `/tdd` and `/e2e` as secondary skills during the skeleton's loop runs and the first smoke journey
 
 ### Agents
 
-No custom SDLC agents are spawned during Planning.
+No new custom SDLC agents are introduced; Foundation exercises the harness's own grader and security-reviewer agents and the `build-error-resolver` on build failures, the same agents the Build loop uses.
 
 ### Exit Gate
 
 | Condition | Check | Type |
 |-----------|-------|------|
-| `section-plans/` | exists_and_complete | MUST |
-| `sprint-plan.md` | exists_and_complete | MUST |
-| `risk-register.md` | exists_and_complete | MUST |
-| `phase4-handoff.md` | exists_and_complete | MUST |
+| `foundation-report.md` | exists_and_complete | MUST |
+| `risk-tier-map.md` | exists_and_complete | MUST |
+| `cadence-plan.md` | exists_and_complete | MUST |
+| `build-handoff.md` | exists_and_complete | MUST |
+| Walking skeleton deployed to the dev environment through the real pipeline and verified against the Phase 2 definition | runtime check | MUST |
+| The rails are proven, not just present (Stop hook blocks, gates fire, deploy rolls back) | runtime check | MUST |
+| At least one HIGH-risk spec has run the full Build loop | runtime check | MUST |
+| The dev environment provisioned from code; secrets in the client's vault | runtime check | MUST |
+| The WIP cap and review-wait tripwire are set | runtime check | MUST |
 
 **Approval:** manual
 
 ### Handoff Document
 
-`phase4-handoff.md` contains:
-- Planning summary with section count and sprint structure
-- Recommended implementation order
-- Critical path sections (must be done first)
-- Open questions for Phase 4
-- Risks to carry into implementation
-- Suggested starting section
+`build-handoff.md` is the entry package for the Build loop. It contains:
+- The ordered spec backlog ready for the first intent triage
+- The risk-tier map reference, including the Phase 2 security gates
+- The cadence calendar with the WIP cap and review-wait tripwire
+- Open questions carried under their original IDs
+- The proven entry conditions for Build (rails, skeleton, dev environment)
 
 ### Project Type Adaptations
 
-Phase 3 does not vary by project type. Section plan structure is consistent across all types, though section content reflects the project type (e.g., `skill` sections focus on instruction files rather than compiled code).
-
----
-
-## Phase 4: Implementation
-
-### Purpose
-
-Write code following section plans using TDD methodology. Log all technical decisions and deviations from the plan. Implementation is the longest phase and uses the most agents. It operates section-by-section with mandatory evaluation checkpoints.
-
-### Entry Gate
-
-| Condition | Type |
-|-----------|------|
-| Phase 3 exit gate passed | MUST |
-| `phase4-handoff.md` reviewed | MUST |
-
-### Workflow Steps
-
-| Step | Name | Description |
-|------|------|-------------|
-| 0 | Agent Orchestration Setup | Read all section plans, identify dependencies, determine parallelization. Set up agent launch strategy -- parallel agents for independent sections, sequential for dependent ones. |
-| 1 | Per-Section Execution | For each section: (1a) spawn `tdd-guide` if TDD required, (1b) spawn domain-specific agent to implement, (1c) verify exit criteria, update notes, spawn `section-evaluator` (blocking -- FAIL means fix before proceeding), commit code, update progress tracking. Post-section: spawn `code-reviewer` in background; spawn `security-reviewer` (foreground, blocking) if security-sensitive. |
-| 2 | Integration Points | Verify cross-section interfaces work correctly. |
-| 3 | Deviation Tracking | Document any deviations from the plan with rationale. |
-| 3b | Session Boundary Protocol | Update `session-handoff.json` with completed sections, current state, and next steps for context reconstruction across session boundaries. |
-| 4 | Phase Handoff | Package into `phase5-handoff.md`. |
-| 5 | Generate Visual Report | Generate `.sdlc/reports/phase04-visual.html`. |
-| 6 | Generate Phase Report | Run `generate_phase_report.py`. |
-
-### HITL Gates
-
-Phase 4 does not have a Step 0 HITL gate. Instead, it has **mandatory CHECKPOINT gates** at the end of each section. The section-evaluator verdict is binding: a FAIL verdict means the section must be fixed and re-evaluated before the next section can begin.
-
-### Required Artifacts
-
-| Artifact | Description |
-|----------|-------------|
-| `implementation-notes.md` | Technical decision log for reviewers. Documents every significant decision, deviation from plan, and rationale. Written for someone who was not present during implementation. |
-| `phase5-handoff.md` | Implementation summary, areas of concern, known technical debt, test coverage status, open questions, and recommended review focus areas for Quality. |
-
-### Optional Artifacts
-
-- `technical-decisions.md` -- detailed technical decision records
-- `session-handoff.json` -- session boundary state for multi-session implementations (tracks completed/in-progress sections, agent history, next steps)
-- `sections-progress.json` -- per-section completion tracking (status, timestamps, test results, evaluator verdicts)
-- `phase4-report.html` -- self-contained HTML phase report
-
-### Primary Skills
-
-- `/deep-implement` -- primary skill for code implementation
-- `/tdd` -- primary skill for test-driven development workflow
-- `/code-review` -- secondary skill for rolling reviews
-
-### Agents
-
-Phase 4 spawns the most agents of any phase:
-
-| Agent | When | Behavior |
-|-------|------|----------|
-| `tdd-guide` | Before each section (if TDD required by profile) | Writes failing tests (red phase) before implementation begins. |
-| Domain-specific agents (`backend-architect`, `frontend-developer`, etc.) | During section implementation | Implements code to pass tests (green), then refactors. |
-| `section-evaluator` | After each section completes | Foreground, blocking. Reads section plan verification criteria and evaluator contract. Produces evaluation report. FAIL = fix before proceeding. |
-| `code-reviewer` | After each section (background) | Rolling review. Non-blocking. Feedback accumulated for next sprint. |
-| `security-reviewer` | After security-sensitive sections (foreground) | Blocking. STOP on CRITICAL/HIGH findings. |
-| `build-error-resolver` | On any build failure | Spawned immediately. Do not attempt manual fixes first. |
-
-### Exit Gate
-
-| Condition | Check | Type |
-|-----------|-------|------|
-| `implementation-notes.md` | exists_and_complete | MUST |
-| `phase5-handoff.md` | exists_and_complete | MUST |
-| All unit tests passing | runtime check | MUST |
-| No compilation errors | runtime check | MUST |
-
-**Approval:** automatic -- if all checks pass, Phase 4 advances without manual sign-off.
-
-### Handoff Document
-
-`phase5-handoff.md` contains:
-- Implementation summary (what was built, section completion status)
-- Areas of concern for reviewers
-- Known technical debt
-- Test coverage status
-- Deviations from plan and their rationale
-- Open questions for Quality phase
-- Recommended review focus areas
-
-### Project Type Adaptations
-
-Phase 4 does not have formal project type adaptations. However, the section plans (produced in Phase 3) already reflect the project type, so implementation naturally varies -- `skill` projects implement instruction files rather than compiled code, `library` projects focus on public API implementation, etc.
-
----
-
-## Phase 5: Quality
-
-### Purpose
-
-Perform code review, security review, and quality metrics validation against profile thresholds. Quality is the gate between implementation and testing -- it catches structural and security issues before test effort is invested.
-
-### Entry Gate
-
-| Condition | Type |
-|-----------|------|
-| Phase 4 exit gate passed | MUST |
-| `phase5-handoff.md` reviewed | MUST |
-
-### Workflow Steps
-
-| Step | Name | Description |
-|------|------|-------------|
-| 0 | HITL Gate -- Scope the Review | Read `phase5-handoff.md`. Present to the human: (1) areas with most plan deviation, (2) known risk areas, (3) compliance-specific checks needed, (4) for `skill` projects, confirm focus on instruction quality. Get confirmation of review scope. |
-| 1 | Parallel Review Launch | Spawn `code-reviewer` and `security-reviewer` in parallel (foreground). Both produce structured reports. |
-| 2 | Review Triage | Categorize findings by severity (CRITICAL/HIGH/MEDIUM/LOW). CRITICAL and HIGH findings block advancement. |
-| 3 | Quality Metrics | Calculate quality metrics: file/function size limits, code coverage instrumentation, complexity metrics. |
-| 4 | Remediation | Fix CRITICAL and HIGH issues. Document MEDIUM/LOW as accepted risk or deferred work. |
-| 5 | Phase Handoff | Package into `phase6-handoff.md`. |
-| 6 | Generate Visual Report | Generate `.sdlc/reports/phase05-visual.html`. |
-| 7 | Generate Phase Report | Run `generate_phase_report.py`. |
-
-### HITL Gates
-
-**Step 0 -- Scope the Review:** Claude reads the implementation handoff and presents the review scope to the human. The human confirms which areas deserve deeper review, identifies known risk areas, and specifies any compliance-specific checks. For `skill` projects, the human confirms that review focuses on instruction quality and prompt safety rather than traditional code metrics.
-
-### Required Artifacts
-
-| Artifact | Description |
-|----------|-------------|
-| `code-review-report.md` | Structured code review findings with severity, location, description, and recommended fix for each issue. |
-| `security-review-report.md` | Security review findings covering OWASP categories, authentication/authorization, data handling, and injection vectors. |
-| `quality-metrics.md` | Quantified quality metrics: file sizes, function lengths, complexity scores, coverage percentages, and comparison against profile thresholds. |
-| `phase6-handoff.md` | Quality summary, unresolved findings, test focus recommendations, coverage gaps, and open questions for Testing. |
-
-### Optional Artifacts
-
-- `phase5-report.html` -- self-contained HTML phase report
-
-### Primary Skills
-
-- `/code-review` -- primary skill for structured code review
-- `/security-review` -- primary skill for security analysis
-
-### Agents
-
-| Agent | When | Behavior |
-|-------|------|----------|
-| `code-reviewer` | Step 1 | Foreground, parallel with security-reviewer. Produces structured findings report. |
-| `security-reviewer` | Step 1 | Foreground, parallel with code-reviewer. Produces security findings report. |
-
-### Exit Gate
-
-| Condition | Check | Type |
-|-----------|-------|------|
-| `code-review-report.md` | exists_and_complete | MUST |
-| `security-review-report.md` | exists_and_complete | MUST |
-| `quality-metrics.md` | exists_and_complete | MUST |
-| `phase6-handoff.md` | exists_and_complete | MUST |
-| No CRITICAL issues in code review | runtime check | MUST |
-| No HIGH issues in security review | runtime check | MUST |
-
-**Approval:** manual
-
-### Handoff Document
-
-`phase6-handoff.md` contains:
-- Quality review summary
-- Unresolved findings (MEDIUM/LOW accepted or deferred)
-- Recommended test focus areas based on review findings
-- Coverage gaps identified
-- Open questions for Testing phase
-
-### Project Type Adaptations
-
-| project_type | Quality Focus |
-|--------------|--------------|
-| `service` / `app` | Full OWASP scan, coverage instrumentation, file/function size metrics. All security categories apply. |
-| `library` / `cli` | Focus on public API surface, backwards compatibility, and dependency audit. Skip infrastructure security checks (CSRF, server config, etc.). |
-| `skill` | No compiled code to instrument for coverage. Quality = instruction clarity, edge case handling, prompt injection resistance. Replace code coverage metrics with requirement coverage review. Security review focuses on prompt safety (injection, jailbreak, data leakage), not OWASP infrastructure categories. |
-
----
-
-## Phase 6: Testing
-
-### Purpose
-
-Comprehensive testing -- unit, integration, E2E -- with coverage analysis and test plan execution. Testing validates that the implementation meets the requirements and the quality review findings have been addressed.
-
-### Entry Gate
-
-| Condition | Type |
-|-----------|------|
-| Phase 5 exit gate passed | MUST |
-| `phase6-handoff.md` reviewed | MUST |
-
-### Workflow Steps
-
-| Step | Name | Description |
-|------|------|-------------|
-| 0 | HITL Gate -- Confirm Test Scope | Read `phase6-handoff.md`. Present testing strategy to the human: coverage targets, E2E scope, and any areas to skip or emphasize. |
-| 1 | Test Plan | Write comprehensive test plan covering unit, integration, and E2E test strategies with specific test cases. |
-| 2 | Test Execution | Execute tests according to plan. For `service`/`app`: parallel agent launch with unit, integration, and E2E runners. For `skill`: scenario-based manual execution against the requirement list. |
-| 3 | Test Results Consolidation | Aggregate results across all test types. Calculate coverage metrics. |
-| 4 | Defect Management | Triage failures. Fix blocking defects. Document known issues. |
-| 5 | Phase Handoff | Package into `phase7-handoff.md`. |
-| 6 | Generate Visual Report | Generate `.sdlc/reports/phase06-visual.html`. |
-| 7 | Generate Phase Report | Run `generate_phase_report.py`. |
-
-### HITL Gates
-
-**Step 0 -- Confirm Test Scope:** Claude presents the testing strategy (derived from the quality review handoff) and asks the human to confirm coverage targets, E2E scope, and any areas to skip or emphasize.
-
-### Required Artifacts
-
-| Artifact | Description |
-|----------|-------------|
-| `test-plan.md` | Comprehensive test plan: test types, test cases, coverage targets, environment requirements, and execution order. |
-| `test-results.md` | Consolidated test results: pass/fail counts by type, failure details, and flaky test identification. |
-| `coverage-report.md` | Coverage analysis: line/branch/function coverage percentages, uncovered areas, and comparison against profile minimum. |
-| `phase7-handoff.md` | Test summary, coverage status, known defects, documentation needs identified during testing, and open questions. |
-
-### Optional Artifacts
-
-- `e2e-artifacts/` -- E2E test screenshots, videos, and logs
-- `phase6-report.html` -- self-contained HTML phase report
-
-### Primary Skills
-
-- `/e2e` -- primary skill for end-to-end test execution
-- `/test-coverage` -- primary skill for coverage analysis
-- `/tdd` -- secondary skill for test refinement
-
-### Agents
-
-| Agent | When | Behavior |
-|-------|------|----------|
-| `e2e-runner` | Step 2 (service/app) | Runs E2E tests against the deployed or locally running application. |
-| `test-writer-fixer` | Step 2 (library/cli) | Writes and fixes tests for public API surface. |
-| `api-tester` | Step 2 (library/cli) | Tests API contract compliance. |
-
-### Exit Gate
-
-| Condition | Check | Type |
-|-----------|-------|------|
-| `test-plan.md` | exists_and_complete | MUST |
-| `test-results.md` | exists_and_complete | MUST |
-| `coverage-report.md` | exists_and_complete | MUST |
-| `phase7-handoff.md` | exists_and_complete | MUST |
-| Code coverage >= coverage_minimum | runtime check | MUST |
-| All E2E tests passing | runtime check | MUST |
-
-**Approval:** automatic
-
-### Handoff Document
-
-`phase7-handoff.md` contains:
-- Test execution summary
-- Final coverage numbers
-- Known defects and their status
-- Documentation needs identified during testing
-- Open questions for Documentation phase
-
-### Project Type Adaptations
-
-| project_type | Testing Approach |
+| project_type | Foundation Focus |
 |--------------|-----------------|
-| `service` / `app` | Standard: unit tests, integration tests, E2E with Playwright, API contract tests. Parallel agent launch in Step 2. |
-| `library` / `cli` | Focused: unit tests for public API surface, integration tests for key workflows. E2E = invocation tests. Skip `e2e-runner`; use `test-writer-fixer` + `api-tester`. |
-| `skill` | Scenario-based: no compiled code to instrument. Replace parallel agent launch with manual scenario execution against the requirement list. Coverage = % of requirements exercised by a passing scenario, not line coverage. |
+| `service` / `app` | Full rails: CI + grader + correctness + security + deploy-dev workflows, IaC dev environment, branch protection, walking skeleton deployed to a real dev environment through the pipeline. All exit conditions apply. |
+| `library` / `cli` | Rails without an environment: the CI/grader/correctness/security workflows and branch protection apply; `deploy-dev` becomes a publish-to-internal-feed (or a no-op dry-run). The "walking skeleton" is the thinnest end-to-end invocation path exercised through the loop. |
+| `skill` | No compiled deploy target. CI runs lint + scenario checks; the grader and correctness gates run against changed instruction files; the security gate becomes prompt-safety review. The "walking skeleton" is one end-to-end scenario through the loop. Prove the rails by forcing each to fail. |
+
+---
+
+## Build Loop
+
+### Purpose
+
+The continuous middle of the engagement. Every change -- large or small -- runs the same three beats: **Intent** (decide what you want, clearly enough to check, and write it as a spec), **Delegate** (an agent builds it inside bounds a human set, from a plan a human approved), **Discern** (checks and a non-author prove it against the spec, then merge deploys it). The Build loop **replaces the batch Implementation, Quality, and Testing phases** that used to sit at ids 4, 5, and 6.
+
+It is not a phase in the gated sense: there is no artifact exit gate at the end of a loop pass, because checking happens per change. A human declares the backlog feature-complete to leave, which produces `phase7-handoff.md`. The registry marks this entry `continuous: true`; it never auto-advances, and leaving it is always a manual human declaration.
+
+### Why This Is Not a Batched Phase
+
+The visible gap where Implementation / Quality / Testing used to sit is intentional. Batched checking -- write everything, then review everything, then test everything -- is the failure mode the standard exists to kill. When an agent can produce code in minutes, the constraint is not building; it is proving. Checking moves to per-change inside the loop, never a later batch phase. The moment the pod starts skipping the loop for "small" changes is the moment unchecked work creeps back in.
+
+### Entry Gate
+
+| Condition | Type |
+|-----------|------|
+| Phase 3 (Foundation) exit gate passed | MUST |
+| `build-handoff.md` reviewed | MUST |
+| Rails proven and walking skeleton deployed | MUST |
+| The ordered spec backlog, risk-tier map, and cadence calendar in hand | MUST |
+| The WIP cap and review-wait tripwire set | MUST |
+
+### The Three Beats
+
+**Beat 1 -- Intent: decide and write.** Nothing enters the loop as a conversation. A story becomes buildable only by clearing the **Definition of Ready** at weekly intent triage: every acceptance criterion passes the **vague-line test** ("Could two people build different things from this line?"), scope-in and scope-out are both stated, the silent product decisions are surfaced with a named owner, a risk tier is assigned by the Pod Lead, and the harness pattern to reuse is named. Then write the spec -- one file in the repo (`specs/NNNN-name.md`) durable across sessions, with Goal / Why / Scope in-out / Acceptance checks / Risk tier / Delegation plan / Checking plan. A stale spec is a lie; the spec changes in the same PR as the behavior.
+
+**Beat 2 -- Delegate: bound and build.** Delegating is drawing the box and approving the plan before the build starts. **Plan mode first, always** -- the agent reads the repo and spec and proposes an approach before writing anything; the Orchestrator corrects or approves. **Three bounds, set per spec:** *Scope* (the file patterns it may touch), *Context* (the one canonical pattern to reuse, named), *Permissions* (what the agent may do without asking -- safe commands auto-allowed, the rest gated). Freedom scales by risk within one change. Fan out only to *explore*; single-thread to *build* shared code. **TDD when the profile or spec requires it** -- and always for a bug fix (write the failing regression test first). The **Stop hook** refuses to let the agent finish on a failing build or red tests.
+
+**Beat 3 -- Discern: prove, then merge.** A change is done when it has been proven against its spec by something other than its author -- not when the code exists. The proving climbs a **five-rung checking ladder**: (1) the done-rule in the harness, (2) the agent re-checks each turn, (3) the blocking Stop hook, (4) the separate **grader** (a fresh agent grading check-by-check against the spec -- where the bug the author's green tests hid goes to die), (5) the human / security gate. In the rails this lands as three layers on every PR: mechanical CI gates (hard block), the grader (required to run, advisory verdict), and the human Checker (hard block, non-author).
+
+**The merge bar** every change clears: CI green; the grader has run; correctness passed or a named-human override recorded; and a **non-author approval -- the author never approves their own work, no exceptions.** A `risk:high` change adds the security workflow pass and a named human sign-off. **Depth scales by risk tier:** LOW stops after the grader's advisory pass and a light human look; MEDIUM gets grader-plus-Checker; HIGH goes all the way up. Merge deploys to dev automatically -- the rails from Foundation.
+
+### HITL Gates
+
+The Build loop's human-in-the-loop discipline is per-change rather than a single Step-0 gate: plan approval in Beat 2, the non-author Checker and (on HIGH) the security sign-off in Beat 3, and the merge bar on every PR. The author never approves their own work.
+
+### Cadences (the week)
+
+Four short meetings replace the ceremony calendar. None asks "what did you do yesterday." They point at the two things that constrain the loop -- the clarity of intent going in, and the review queue coming out:
+
+| Meeting | Length | Replaces | What it does |
+|---------|--------|----------|--------------|
+| **Flow check** (daily) | 10-15 min | standup | The queue number first: how many changes wait for checking, how long the oldest has waited. Every waiting change gets a Checker; vague specs flagged back to triage; the WIP cap enforced. |
+| **Intent triage** (weekly) | 60 min | refinement | Stories become ready specs: vague lines sharpened, silent decisions surfaced, risk tiers assigned, the backlog ordered. |
+| **Retro+** (weekly) | 60 min | retro | Every escaped bug gets the same question -- "which check should have caught it?" -- and the answer becomes a harness improvement. |
+| **Setup review** (weekly) | 30-60 min | (new) | The week's harness changes merge: `CLAUDE.md` updates, skill/hook improvements, permission tuning -- versioned, PR'd, deputy-reviewed. |
+
+**Two numbers run the week.** The **WIP cap** keeps the pod from opening more changes than its checking capacity can clear. The **review-wait tripwire** is the alarm on the same constraint: when the median wait crosses the agreed threshold, the pod stops starting new work and clears the queue. The security queue is read separately at every flow check.
+
+### The Numbers That Steer the Loop
+
+Internal dashboard, baseline-and-trend, no vanity targets: **accepted-as-is rate**, **review wait (median)**, **rework/revert rate** and **bounce-back-for-unclear rate**, **escaped bugs** (each answered at Retro+), the **DORA four**, and **security-review wait** on its own line.
+
+**Never tracked, never reported -- the BANNED activity metrics:** velocity, story points, PR count, lines of code. Agents inflate all of them. No activity metrics in client materials, ever.
+
+### Hardening Passes
+
+Some concerns only exist at the integration level -- performance under load, end-to-end journeys, penetration testing. The Quality Engineer plans and runs these as **scheduled hardening passes** (typically one mid-Build and one before deployment prep) using `/e2e` and security tooling. The first hardening pass is also where the test environment gets added alongside dev. A hardening pass runs its own specs through the loop (use the expander pattern: after each integration run, raise specs for 3-5 untested edge cases). Record in `hardening-pass-notes.md`.
+
+### Session Continuity
+
+The loop spans many sessions; the spec is the durable source of truth (the agent re-reads it every session). **One spec = one branch = one PR.** Do not start a new spec while one you own is in-flight and half-built -- finish the in-flight spec first. When `session_health_check.enabled` is true, run the configured command at session start before touching new work; on failure, diagnose and fix the build (spawn `build-error-resolver` if needed) before starting new spec work. At a session boundary, leave the in-flight spec resumable.
+
+### Required Artifacts
+
+| Artifact | Description |
+|----------|-------------|
+| `phase7-handoff.md` | Produced by the human feature-complete declaration. Names what was built, the current system state in dev, open questions carried forward, deferred items with rationale, and what Documentation must cover that surfaced during Build. |
+
+### Optional Artifacts
+
+- `specs/` -- the spec files (`specs/NNNN-name.md`), the durable per-change record; these live in the repo, not only under `.sdlc/`
+- `build-summary.md` -- a rolling summary of merged work, useful for the weekly client async summary and the feature-complete declaration
+- `hardening-pass-notes.md` -- per hardening pass: scope, findings, the specs raised, and their resolution
+
+### Primary Skills
+
+- (none primary) -- `/tdd`, `/code-review`, and `/e2e` as secondary skills inside the three beats and the hardening passes
+
+### Agents
+
+The Build loop runs the harness's standing agents inside the beats: the **grader** and **security-reviewer** in CI (Beat 3), and `build-error-resolver` on any build failure. There is no batch agent-orchestration step -- agents are spawned per spec, single-threaded for shared code and fanned out only to explore.
+
+### Exit
+
+The Build loop has **no artifact exit gate**. It is left by a human **feature-complete declaration** -- every committed story has ridden the loop and merged -- which produces `phase7-handoff.md`. `/sdlc-gate` for this entry verifies only that `phase7-handoff.md` exists and is complete; it does not batch-check the build, because checking already happened per change. Leaving is always a manual human declaration; there is no auto-advance.
+
+### Project Type Adaptations
+
+The loop's discipline (no spec / no build, plan first, the author never approves their own work, the merge bar) holds identically for every project type. What varies is what the rails ship and what "done" exercises: `service`/`app` deploy to dev; `library`/`cli` publish to an internal feed and prove the invocation path; `skill` runs scenario checks and prompt-safety review against changed instruction files.
 
 ---
 
@@ -728,13 +565,13 @@ Comprehensive testing -- unit, integration, E2E -- with coverage analysis and te
 
 ### Purpose
 
-Update README, API docs, runbook, and finalize ADRs. All documentation must be current before deployment. Documentation is written for specific audiences: developers (README, API docs), operators (RUNBOOK), and decision-makers (ADRs).
+Prove that someone who isn't the pod can understand, run, and operate the system from its documentation alone -- verified by **cold use**, not by reading. README, API docs, and RUNBOOK are current before deployment, and each is proven by a stranger running it unassisted. Documentation is written for specific audiences: developers (README, API docs), operators (RUNBOOK), and decision-makers (ADRs).
 
 ### Entry Gate
 
 | Condition | Type |
 |-----------|------|
-| Phase 6 exit gate passed | MUST |
+| Build loop feature-complete | MUST |
 | `phase7-handoff.md` reviewed | MUST |
 
 ### Workflow Steps
@@ -745,14 +582,14 @@ Update README, API docs, runbook, and finalize ADRs. All documentation must be c
 | 1 | Parallel Documentation Launch | Write README, API docs, and RUNBOOK in parallel. Each targets its specific audience. |
 | 2 | API Documentation -- Diff-Based Approach | Compare implemented API against `api-contracts.md` from Phase 2. Document differences and update contracts. |
 | 3 | Runbook -- Write for 3am | Write the runbook assuming the reader is an on-call engineer at 3am. Include troubleshooting trees, rollback procedures, and escalation paths. |
-| 4 | ADR Finalization | Review all ADRs from Phase 2. Update status (accepted/superseded/deprecated). Add any new ADRs for decisions made during implementation. |
-| 5 | Phase Handoff | Package into `phase8-handoff.md`. |
-| 6 | Generate Visual Report | Generate `.sdlc/reports/phase07-visual.html`. |
-| 7 | Generate Phase Report | Run `generate_phase_report.py`. |
+| 4 | ADR Finalization | Review all ADRs from Phase 2. Update status (accepted/superseded/deprecated). Add any new ADRs for decisions made during Build. |
+| 5 | Cold-Use Verification | Have someone new to the repo run the README checkout unassisted, and have the ops engineer execute the RUNBOOK deploy + rollback + one failure scenario cold. These cold runs are exit conditions, not nice-to-haves. |
+| 6 | Phase Handoff | Package into `phase8-handoff.md`. |
+| 7 | Generate Reports | Generate `.sdlc/reports/phase07-visual.html` and run `generate_phase_report.py`. |
 
 ### HITL Gates
 
-**Step 0 -- Scope the Documentation:** Claude reviews the testing handoff and existing documentation state. The human confirms primary audiences, creation vs. update scope, company documentation standards, and which artifacts apply for the project type.
+**Step 0 -- Scope the Documentation:** Claude reviews the Build handoff and existing documentation state. The human confirms primary audiences, creation vs. update scope, company documentation standards, and which artifacts apply for the project type.
 
 ### Required Artifacts
 
@@ -767,6 +604,7 @@ Update README, API docs, runbook, and finalize ADRs. All documentation must be c
 
 - `CHANGELOG.md` -- version history
 - `CONTRIBUTING.md` -- contribution guidelines
+- `drift-catalog.md` -- drift between the Phase 2 contracts and what Build shipped
 - `phase7-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
@@ -785,13 +623,15 @@ No custom SDLC agents are spawned during Documentation. The orchestrator manages
 | `api-docs.md` | exists_and_complete | MUST |
 | `RUNBOOK.md` | exists_and_complete | MUST |
 | `phase8-handoff.md` | exists_and_complete | MUST |
+| README cold checkout completed by someone new to the repo, unassisted | runtime check | MUST |
+| RUNBOOK deploy + rollback + one failure scenario executed cold by the ops engineer | runtime check | MUST |
 
 **Approval:** manual
 
 ### Handoff Document
 
 `phase8-handoff.md` contains:
-- Documentation completion summary
+- Documentation completion summary, including the cold-use verification outcomes
 - Deployment prerequisites identified during doc writing
 - Release notes draft
 - Known documentation gaps (deferred)
@@ -801,9 +641,9 @@ No custom SDLC agents are spawned during Documentation. The orchestrator manages
 
 | project_type | Documentation Scope |
 |--------------|-------------------|
-| `service` / `app` | Full suite: README, API docs, RUNBOOK, ADR finalization. All artifacts required. |
-| `library` / `cli` | README, API reference (generated from code), CHANGELOG, migration guide if applicable. Skip RUNBOOK. Replace `RUNBOOK.md` exit criterion with CHANGELOG + migration guide. |
-| `skill` | README (install + usage), SKILL.md refinement, example gallery. Skip API docs and RUNBOOK. Replace `api-docs.md` and `RUNBOOK.md` exit criteria with SKILL.md + examples. |
+| `service` / `app` | Full suite: README, API docs, RUNBOOK, ADR finalization. All artifacts required, including both cold runs. |
+| `library` / `cli` | README, API reference (generated from code), CHANGELOG, migration guide if applicable. Skip RUNBOOK. Replace `RUNBOOK.md` exit criterion with CHANGELOG + migration guide; the cold checkout still applies. |
+| `skill` | README (install + usage), SKILL.md refinement, example gallery. Skip API docs and RUNBOOK. Replace `api-docs.md` and `RUNBOOK.md` exit criteria with SKILL.md + examples; the cold checkout still applies. |
 
 For `library`/`cli`/`skill` projects, skipped artifacts are marked as `N/A -- {project_type}` in the gate check.
 
@@ -813,7 +653,7 @@ For `library`/`cli`/`skill` projects, skipped artifacts are marked as `N/A -- {p
 
 ### Purpose
 
-Deploy to staging, execute the deployment checklist, run smoke tests, and promote to production. Deployment is the operational phase that moves tested code into a running environment.
+Promote to production through the pipeline that has existed since Foundation. Phase 8 adds the rollout decision, the rehearsal, and a named human saying go -- it does not invent a deployment mechanism, because the pipeline already shipped the walking skeleton to dev in Foundation and every merged change since. A good Phase 8 is boring -- it invents nothing.
 
 ### Entry Gate
 
@@ -826,30 +666,32 @@ Deploy to staging, execute the deployment checklist, run smoke tests, and promot
 
 | Step | Name | Description |
 |------|------|-------------|
-| 0 | HITL Gate -- Deployment Go/No-Go | Present deployment readiness summary to the human: documentation status, test results, known issues, and deployment plan. The human makes the go/no-go decision. |
+| 0 | HITL Gate -- Deployment Go/No-Go | Present deployment readiness summary to the human: documentation status, test results, known issues, and the deployment plan. Conduct the recorded go/no-go with every named role asked and answered. |
 | 1 | Pre-Deployment Checklist | Verify all deployment prerequisites: environment configuration, secrets management, database migrations, dependency versions. |
-| 2 | Staging Deployment | Deploy to staging environment. Verify the deployment succeeds and the application starts. |
-| 3 | Smoke Test Execution | Run smoke tests against the staging environment. Verify critical paths work end-to-end. |
-| 4 | Production Deployment | After staging smoke tests pass, deploy to production. Verify production health. |
+| 2 | Rollback Rehearsal in Test | The client's operators rehearse the rollback in the test environment before any production promotion. |
+| 3 | Production Promotion | Promote to production through the existing pipeline. Verify production health. |
+| 4 | Production Smoke Tests | Run smoke tests against production. Verify critical paths work end-to-end. |
 | 5 | Phase Handoff | Package into `phase9-handoff.md`. |
-| 6 | Generate Visual Report | Generate `.sdlc/reports/phase08-visual.html`. |
-| 7 | Generate Phase Report | Run `generate_phase_report.py`. |
+| 6 | Generate Reports | Generate `.sdlc/reports/phase08-visual.html` and run `generate_phase_report.py`. |
 
 ### HITL Gates
 
-**Step 0 -- Deployment Go/No-Go:** Claude presents the complete deployment readiness summary including documentation status, test results, known issues, and the deployment plan. The human makes the explicit go/no-go decision. No deployment proceeds without human approval.
+**Step 0 -- Deployment Go/No-Go:** Claude presents the complete deployment readiness summary including documentation status, test results, known issues, and the deployment plan. The recorded go/no-go has every named role asked and answered. No deployment proceeds without human approval.
 
 ### Required Artifacts
 
 | Artifact | Description |
 |----------|-------------|
 | `release-notes.md` | Version release notes: new features, bug fixes, breaking changes, migration instructions, and known issues. |
-| `deployment-checklist.md` | Step-by-step deployment checklist: pre-deployment verification, deployment steps, post-deployment validation, and rollback procedure. |
-| `smoke-test-results.md` | Smoke test execution results: which tests ran, pass/fail status, environment details, and any issues encountered. |
+| `deployment-checklist.md` | Step-by-step deployment checklist: pre-deployment verification, promotion steps, post-deployment validation, and rollback procedure. |
+| `smoke-test-results.md` | Production smoke test execution results: which tests ran, pass/fail status, environment details, and any issues encountered. |
 | `phase9-handoff.md` | Deployment summary (what, when, where), current system state, monitoring requirements, known issues in production, and escalation contacts. |
 
 ### Optional Artifacts
 
+- `rollback-procedure.md` -- the rehearsed rollback steps
+- `go-no-go-record.md` -- the recorded decision with every named role's answer
+- `deployment-log.md` -- the promotion log
 - `phase8-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
@@ -858,7 +700,7 @@ Deploy to staging, execute the deployment checklist, run smoke tests, and promot
 
 ### Agents
 
-No custom SDLC agents are spawned during Deployment. The orchestrator manages the deployment workflow directly.
+No custom SDLC agents are spawned during Deployment. The orchestrator manages the promotion workflow directly.
 
 ### Exit Gate
 
@@ -868,7 +710,9 @@ No custom SDLC agents are spawned during Deployment. The orchestrator manages th
 | `deployment-checklist.md` | exists_and_complete | MUST |
 | `smoke-test-results.md` | exists_and_complete | MUST |
 | `phase9-handoff.md` | exists_and_complete | MUST |
-| Smoke tests passing | runtime check | MUST |
+| Rollback rehearsed in test by the client's operators before production promotion | runtime check | MUST |
+| Recorded go/no-go with every named role asked and answered | runtime check | MUST |
+| Production smoke tests passing | runtime check | MUST |
 
 **Approval:** manual
 
@@ -883,13 +727,13 @@ No custom SDLC agents are spawned during Deployment. The orchestrator manages th
 
 ### Project Type Adaptations
 
-| project_type | Deployment Model | Staging | Rollback |
-|--------------|-----------------|---------|---------|
-| `service` / `app` | Container or cloud deploy. Full staging environment. Smoke tests against live endpoints. | Required running environment | Redeploy previous image/version; reverse DB migrations |
-| `library` / `cli` | Package registry publish (npm, PyPI, NuGet). Staging = local install test in a fresh environment. | Install in isolated environment, run public API smoke tests | Yank the package version; pin consumers to previous version |
-| `skill` | File distribution (copy to `.claude/commands/`). No server, no process. Staging = fresh install on a clean project. | Install skill files in new project; run minimum smoke test set | Delete skill files; re-copy previous version |
+| project_type | Deployment Model | Rehearsal | Rollback |
+|--------------|-----------------|-----------|---------|
+| `service` / `app` | Container or cloud promotion through the existing pipeline. Smoke tests against live endpoints. | Operators rehearse rollback in the test environment | Redeploy previous image/version; reverse DB migrations |
+| `library` / `cli` | Package registry publish (npm, PyPI, NuGet). | Install in an isolated environment, run public API smoke tests | Yank the package version; pin consumers to previous version |
+| `skill` | File distribution (copy to `.claude/commands/`). | Install skill files on a clean project; run the minimum smoke set | Delete skill files; re-copy previous version |
 
-For `skill`/`library` projects, skip steps referencing staging servers, database migrations, health checks, and monitoring dashboards. Focus on: (1) install verification, (2) smoke test execution, (3) rollback documentation, (4) release artifact creation.
+For `skill`/`library` projects, skip steps referencing staging servers, database migrations, and monitoring dashboards. Focus on: install verification, smoke test execution, rollback documentation, and release artifact creation.
 
 ---
 
@@ -897,7 +741,7 @@ For `skill`/`library` projects, skip steps referencing staging servers, database
 
 ### Purpose
 
-Configure production monitoring, define alerts, write an incident response playbook, and capture the project retrospective. Monitoring is the final phase that ensures the deployed system is observable, alertable, and maintainable. It also closes the loop with a structured retrospective.
+Make production observable, make alerts real (thresholds from measured baselines), prove incident response by drill, and capture the engagement retrospective (the harvest raw material). Monitoring ensures the deployed system is observable, alertable, and maintainable, and feeds **Phase C: Close & Transfer** via `close-handoff.md`.
 
 ### Entry Gate
 
@@ -912,11 +756,12 @@ Configure production monitoring, define alerts, write an incident response playb
 |------|------|-------------|
 | 0 | HITL Gate -- Monitoring Scope | Present monitoring plan to the human: which metrics to track, alert thresholds, on-call routing, and dashboard requirements. Get human confirmation of scope. |
 | 1 | Monitoring Configuration | Configure health checks, metric collection, log aggregation, and dashboard setup. |
-| 2 | Alert Definitions | Define alert rules: conditions, thresholds, severity levels, routing, and escalation policies. |
+| 2 | Alert Definitions | Define alert rules with thresholds derived from measured baselines (or flagged modeled, with a revisit date), severity levels, routing, and escalation policies. |
 | 3 | Incident Response Playbook | Write incident response procedures: detection, triage, mitigation, resolution, and post-incident review steps. |
-| 4 | Project Retrospective | Structured retrospective covering: what went well, what did not go well, what to improve, key learnings, and recommendations for future projects. |
-| 5 | Generate Visual Report | Generate `.sdlc/reports/phase09-visual.html`. |
-| 6 | Generate Phase Report | Run `generate_phase_report.py`. |
+| 4 | Alert Drill | Execute the alert drill: every critical alert fired and answered from the playbook. |
+| 5 | Project Retrospective | Structured retrospective covering what went well, what did not, what to improve, key learnings, and the harvest raw material for the standard. |
+| 6 | Phase Handoff | Package into `close-handoff.md` for Phase C. |
+| 7 | Generate Reports | Generate `.sdlc/reports/phase09-visual.html` and run `generate_phase_report.py`. |
 
 ### HITL Gates
 
@@ -927,12 +772,15 @@ Configure production monitoring, define alerts, write an incident response playb
 | Artifact | Description |
 |----------|-------------|
 | `monitoring-config.md` | Monitoring configuration: health check endpoints, metric collection setup, log aggregation rules, and dashboard definitions. |
-| `alert-definitions.md` | Alert rule definitions: metric conditions, thresholds, severity classification, notification routing, and escalation timelines. |
+| `alert-definitions.md` | Alert rule definitions: metric conditions, thresholds (each from a measured baseline or flagged modeled with a revisit date), severity classification, notification routing, and escalation timelines. |
 | `incident-response.md` | Incident response playbook: detection procedures, triage criteria, mitigation steps, resolution procedures, and post-incident review template. |
-| `project-retrospective.md` | Structured retrospective: what went well, what did not go well, improvement areas, key learnings, metrics (planned vs. actual timeline, coverage achieved, defect counts), and recommendations. |
+| `project-retrospective.md` | Structured retrospective: what went well, what did not, improvement areas, key learnings, metrics history, and the harvest raw material for the standard. |
+| `close-handoff.md` | Handoff into Phase C: the system's live/observable/drilled state, the retrospective's harvest candidates, the named client Setup Owner, the access inventory to revoke, and open questions. |
 
 ### Optional Artifacts
 
+- `baseline-data.md` -- the measured baselines behind the alert thresholds
+- `drill-record.md` -- the alert drill evidence
 - `phase9-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
@@ -951,12 +799,15 @@ No custom SDLC agents are spawned during Monitoring.
 | `alert-definitions.md` | exists_and_complete | MUST |
 | `incident-response.md` | exists_and_complete | MUST |
 | `project-retrospective.md` | exists_and_complete | MUST |
+| `close-handoff.md` | exists_and_complete | MUST |
+| Every alert threshold derived from a measured baseline (or flagged modeled, with revisit date) | runtime check | MUST |
+| Alert drill executed: every critical alert fired and answered from the playbook | runtime check | MUST |
 
 **Approval:** manual
 
 ### Handoff Document
 
-Phase 9 is the final phase. There is no `phase10-handoff.md`. Instead, the `project-retrospective.md` serves as the closing document. When Phase 9 gates pass and the human approves, the project is marked as **complete** in `state.yaml`.
+Phase 9 is **no longer the final phase**. It hands off into **Phase C: Close & Transfer** via `close-handoff.md`, which carries the live/observable/drilled system state, the retrospective's harvest candidates, the named client Setup Owner, and the access inventory to revoke. The `project-retrospective.md` is the harvest raw material that the close phase feeds back into the delivery standard.
 
 ### Project Type Adaptations
 
@@ -965,6 +816,87 @@ Phase 9 is the final phase. There is no `phase10-handoff.md`. Instead, the `proj
 | `service` / `app` | Full monitoring: health checks, APM, log aggregation, error tracking, uptime monitoring, and alerting dashboards. |
 | `library` / `cli` | Download/install metrics, issue tracker monitoring, dependency vulnerability alerts, breaking change detection. No server health checks or APM. |
 | `skill` | Usage tracking (if available), user feedback collection, prompt failure monitoring, version adoption tracking. No infrastructure monitoring. |
+
+---
+
+## Phase C: Close & Transfer
+
+### Purpose
+
+Prove the client can run all of it without the pod -- the system, the harness, the loop, and the judgment -- by observed, unassisted use; then exit cleanly and feed the standard. The engagement does not end when the code is done; it ends when the **close gate** passes: the client team ran one real spec end-to-end -- triage, spec, delegate, grade, merge, deploy -- without the pod driving. This phase is **terminal**: there is no handoff out, only a clean exit (access revoked, audited) and a harvest PR back to the delivery standard.
+
+### Entry Gate
+
+| Condition | Type |
+|-----------|------|
+| Phase 9 exit gate passed | MUST |
+| `close-handoff.md` reviewed | MUST |
+| The client Setup Owner named before this phase starts | MUST |
+| Client engineers available to orchestrate real specs | MUST |
+
+### Workflow Steps
+
+| Step | Name | Description |
+|------|------|-------------|
+| 0 | HITL Gate -- Confirm the Transfer Is Real Before Testing It | Read `close-handoff.md` and the Phase 9 retrospective. Confirm with the human: client engineers named and available (at least three with pod Checkers, then one solo); the client Setup Owner named and ready to merge harness changes; which real backlog items are the shadow-flip and close-gate candidates; and what pod access exists to revoke. |
+| 1 | The Shadow Flip -- Their Hands, Our Eyes | Client engineers take the Orchestrator seat on **at least three real specs** from their own backlog; the pod serves only as Checkers, coaching by question, never by keyboard. Log every place coaching was needed -- each is a transfer gap. |
+| 2 | The Harness Audit -- Find Anything Only We Understand | Sweep the repo (read-only `Explore` agent) for skills/hooks/conventions only the pod understands. Every finding becomes a documented fix the **client Setup Owner** merges. "Ask the pod" must return zero results before the gate. The client Setup Owner also ships at least one harness change of their own. |
+| 3 | The Close Gate -- One Real Spec, Solo, Observed | One real spec runs the loop end to end with **nobody from the pod driving**. The pod observes silently. Stalls are data; **help voids the run** -- a voided run is re-run on a *different* real spec. Record in `close-gate-evidence.md`. |
+| 4 | Hand Over the Record | Deliver the complete engagement record into the client's tooling: `final-handoff-report.md`, every phase report (0-9), the outcomes dashboard re-pointed to client ownership with its quarter-read date, and the debt log with owners and dates. |
+| 5 | Revoke Access, Audited | Remove every pod seat, token, repo permission, environment role, and vault access on a checklist, confirmed against the client's audit trail by their security. Rotate any production secrets the pod touched. |
+| 6 | The Harvest PR -- Feed the Standard | Open the mandatory improvements PR against the firm's `delivery-standard` repo -- generalized skills, corrected templates, repeatable patterns, with client specifics stripped. Write the retro file into the standard's `retros/`. |
+| 7 | Generate Reports | Generate `.sdlc/reports/close-visual.html` and run `/sdlc-gate` to produce `.sdlc/reports/close-report.html`. |
+
+### HITL Gates
+
+**Step 0 -- Confirm the Transfer Is Real Before Testing It:** Before scheduling any close activity, Claude confirms the transfer's readiness with the human -- client engineers named and available, the client Setup Owner named and merging, the real-spec candidates, and the access inventory.
+
+> **CONSTRAINT:** The close-gate spec MUST be real work with a real risk tier and real consequences, and the run MUST be unassisted -- any answer, hint, or keyboard touch from the pod voids it. The gap the help revealed is the finding: record it, fix it, and re-run on a *different* real spec.
+
+### Required Artifacts
+
+| Artifact | Description |
+|----------|-------------|
+| `final-handoff-report.md` | The engagement record in one place: every phase gate and named sign-off, links to all phase reports (0-9), the metrics history, the debt log with owners and dates, and who the client calls now (a future engagement is a new Phase 0). |
+| `harness-audit.md` | Findings table (each transfer-risk finding, its location, why it would strand the client), the fixes the client Setup Owner merged, evidence the owner shipped at least one change of their own plus their named deputy, and the zero-result "ask the pod" confirmation. |
+| `close-gate-evidence.md` | The shadow-flip record (at least three real specs, who orchestrated, who checked, outcomes, coaching gaps) and the close-gate observation (one real spec end-to-end, client-driven, names and timestamps per loop step, every stall and guardrail event, the merge that deployed, the verdict), plus any re-run record. |
+| `access-revocation-checklist.md` | Credential inventory (every seat, token, permission, role, vault access ever granted), removal status with dates, audit-trail confirmation by the client's security, and secret rotation for anything the pod touched. |
+
+### Optional Artifacts
+
+- `outcomes-dashboard-handover.md` -- the dashboard re-pointed to client ownership, caveats intact, quarter-read date on their calendar
+- `harvest-pr-notes.md` -- the patterns sent home to the standard, the harvest PR reference, and the retro file
+- `close-report.html` -- the generated phase report
+
+### Primary Skills
+
+- (none primary) -- the close gate is run by the client team; the pod observes and audits using the read-only `Explore` agent for the harness audit and the final-report and harvest drafts
+
+### Agents
+
+The harness audit, the final-handoff-report draft, and the harvest-PR draft each use a read-only `Explore` agent to sweep the repo and the engagement record. The close gate itself is run by the client's engineers, not by an agent.
+
+### Exit Gate
+
+| Condition | Check | Type |
+|-----------|-------|------|
+| `final-handoff-report.md` | exists_and_complete | MUST |
+| `harness-audit.md` | exists_and_complete | MUST |
+| `close-gate-evidence.md` | exists_and_complete | MUST |
+| `access-revocation-checklist.md` | exists_and_complete | MUST |
+| Close gate: client team ran one real spec end-to-end without the pod driving, observed and unassisted | runtime check | MUST |
+| Pod access revoked and confirmed against the client's audit trail | runtime check | MUST |
+| Harvest PR opened against the delivery-standard repo | runtime check | MUST |
+
+**Approval:** manual
+
+### Handoff Document
+
+Close is **terminal**: there is no next phase and no handoff out. The engagement is complete once the close gate passes, pod access is revoked and confirmed, and the harvest PR is opened. If the client wants ongoing help, that is a new agreement with its own Phase 0 -- not a quiet extension of this engagement.
+
+### Project Type Adaptations
+
+The close gate requires a real client team and real backlog specs and cannot be simulated; this holds across project types. The harness audit and access-revocation checklist apply identically. What the close-gate spec exercises follows the project type's Build-loop "done" (deploy for `service`/`app`, publish for `library`/`cli`, scenario run for `skill`).
 
 ---
 
@@ -998,16 +930,14 @@ This validates all artifact existence checks and runtime conditions defined in t
 
 ### 3. HITL Gate -- Human Sign-Off
 
-For phases with `approval: manual`, Claude presents the phase summary (what was produced, key decisions made) and asks: "Does this look correct? Shall I advance to Phase N?" The `advance_phase.py` script is NOT called until the human explicitly confirms.
-
-For phases with `approval: automatic`, this step is skipped -- advancement happens if all MUST checks pass.
+Every phase carries `approval: manual`. Claude presents the phase summary (what was produced, key decisions made) and asks for confirmation before advancing. The `advance_phase.py` script is NOT called until the human explicitly confirms. There is no auto-advancing phase; the human sign-off step always runs.
 
 ### 4. State Update
 
 The `advance_phase.py` script updates `state.yaml`:
 - Sets current phase status to `completed` with `completed_at` timestamp
 - Sets next phase status to `active` with `entered_at` timestamp
-- Increments `current_phase`
+- Sets `current_phase` to the next registry entry **by `order`** (ids are strings; the next phase is the entry with `order + 1`, never `id + 1`)
 - Updates `phase_name`
 - Appends transition to the `history` array with gate results
 
@@ -1015,12 +945,12 @@ The `advance_phase.py` script updates `state.yaml`:
 
 This is the most critical step. After advancing, `/sdlc-next` executes a **mandatory, blocking HITL gate**:
 
-1. Read the handoff document that was just produced (e.g., `phase2-handoff.md` when entering Phase 2).
+1. Read the handoff document that was just produced (e.g., `phase2-handoff.md` when entering Phase 2, `build-handoff.md` when entering the Build loop).
 2. Extract ALL Q-NN or AQ-NN items listed under "Open Questions", "What X Must Address", or any similar heading.
 3. Display them in a prominent block:
 
 ```
-BLOCKING: OPEN QUESTIONS MUST BE RESOLVED BEFORE PHASE N BEGINS
+BLOCKING: OPEN QUESTIONS MUST BE RESOLVED BEFORE THE NEXT PHASE BEGINS
 
 | ID    | Question          | Needed by        | Proposed default           |
 |-------|-------------------|------------------|----------------------------|
@@ -1044,9 +974,9 @@ After the open questions gate is fully resolved, display:
 - Entry criteria (already met by advancing)
 - Reference to phase definition file for full details
 
-### Forward-Only Progression
+### Ordered Progression
 
-Phases advance sequentially: `0 -> 1 -> 2 -> ... -> 9`. Skipping phases requires explicit justification recorded in history. Re-entry to a completed phase is allowed if issues are discovered -- this creates a new history entry with `reentry: true`. There is no `--force` flag for gate checks; exceptional cases use the override protocol documented in `references/validation-rules.md`.
+Phases advance in the registry's `order` sequence, never by `id + 1`. The next phase is the registry entry with `order + 1`. The gap where ids 4, 5, and 6 used to be (Implementation / Quality / Testing) is intentional -- those phases were folded into the continuous Build loop, where checking happens per change. Re-entry to a completed phase is allowed if issues are discovered -- this creates a new history entry with `reentry: true`. There is no `--force` flag for gate checks; exceptional cases use the override protocol documented in `references/validation-rules.md`.
 
 ### Gate Severity Summary
 
@@ -1066,7 +996,7 @@ Every phase generates a self-contained HTML report as one of its final steps. Th
 
 Generated by running:
 ```bash
-uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --phase <N>
+uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --phase <id>
 ```
 
 These reports:
@@ -1078,7 +1008,7 @@ These reports:
 
 ### Visual Reports (/visual-explainer)
 
-Generated using the `/visual-explainer` skill (or equivalent HTML generation). These are interactive stakeholder review artifacts stored at `.sdlc/reports/phaseNN-visual.html`.
+Generated using the `/visual-explainer` skill (or equivalent HTML generation). These are interactive stakeholder review artifacts stored at `.sdlc/reports/<slug>-visual.html`.
 
 **Visual standards:**
 - Self-contained HTML (no external assets except CDN fonts and Mermaid)
@@ -1095,14 +1025,13 @@ Generated using the `/visual-explainer` skill (or equivalent HTML generation). T
 |-------|-------------------|
 | Phase 0: Discovery | Personas, scope boundaries, problem-impact mapping |
 | Phase 1: Requirements | Requirements by priority, epic breakdown, NFR radar chart |
-| Phase 2: Design | Architecture layer diagram, core loop flowchart, data flow, section dependencies DAG, trust boundary diagram |
-| Phase 3: Planning | Section dependency graph, sprint timeline, risk heat map |
-| Phase 4: Implementation | Coverage dashboard, section completion status, deviation tracker |
-| Phase 5: Quality | Review findings by severity, quality metrics gauges, security posture summary |
-| Phase 6: Testing | Test results by type, coverage bar charts, defect trend |
-| Phase 7: Documentation | Documentation completeness audit, API coverage, README checklist, runbook completeness |
-| Phase 8: Deployment | Deployment pipeline status, smoke test results, environment comparison |
-| Phase 9: Monitoring | Monitoring configuration status, baseline metrics, alert routing overview, post-launch checklist |
+| Phase 2: Design | Architecture layer diagram, core loop flowchart, data flow, walking-skeleton slice map, trust boundary diagram |
+| Phase 3: Foundation | Rails status board (each workflow present/proven), walking-skeleton slice tracker, risk-tier map, cadence calendar with WIP cap and review-wait tripwire |
+| Build Loop | Flow/queue dashboard, checking-ladder status, accepted-as-is and review-wait trends, hardening-pass tracker |
+| Phase 7: Documentation | Documentation completeness audit, API coverage, README cold-checkout result, RUNBOOK cold-run completeness |
+| Phase 8: Deployment | Promotion pipeline status, production smoke test results, rollback-rehearsal record, go/no-go roster |
+| Phase 9: Monitoring | Monitoring configuration status, baseline-to-threshold mapping, alert routing overview, alert-drill record |
+| Phase C: Close & Transfer | Shadow-flip spec tracker, harness-audit findings, close-gate observation record, access-revocation checklist |
 
 ---
 
@@ -1122,21 +1051,13 @@ Phase 2: Design
   reads    <- phase2-handoff.md
   produces -> phase3-handoff.md
                 |
-Phase 3: Planning
+Phase 3: Foundation
   reads    <- phase3-handoff.md
-  produces -> phase4-handoff.md
+  produces -> build-handoff.md
                 |
-Phase 4: Implementation
-  reads    <- phase4-handoff.md
-  produces -> phase5-handoff.md
-                |
-Phase 5: Quality
-  reads    <- phase5-handoff.md
-  produces -> phase6-handoff.md
-                |
-Phase 6: Testing
-  reads    <- phase6-handoff.md
-  produces -> phase7-handoff.md
+Build Loop
+  reads    <- build-handoff.md
+  produces -> phase7-handoff.md   (on human feature-complete declaration)
                 |
 Phase 7: Documentation
   reads    <- phase7-handoff.md
@@ -1148,8 +1069,14 @@ Phase 8: Deployment
                 |
 Phase 9: Monitoring
   reads    <- phase9-handoff.md
-  produces -> project-retrospective.md (terminal)
+  produces -> close-handoff.md
+                |
+Phase C: Close & Transfer
+  reads    <- close-handoff.md
+  produces -> final-handoff-report.md + harvest PR (terminal: no handoff out)
 ```
+
+The handoff file names jump `3 -> build -> 7` -- there is no `phase4-handoff.md`, `phase5-handoff.md`, or `phase6-handoff.md`, because the old Implementation / Quality / Testing phases were folded into the continuous Build loop. The Build loop emits `phase7-handoff.md` directly when a human declares the backlog feature-complete.
 
 ### Handoff Document Structure
 
@@ -1171,4 +1098,4 @@ Every open question must include: the question text, who or what needs the answe
 
 ---
 
-*This document reflects the claude-code-sdlc plugin phase-registry.yaml v1.0 and the phase definition files in `phases/00-discovery.md` through `phases/09-monitoring.md`.*
+*This document reflects the claude-code-sdlc plugin phase-registry.yaml v2.0 and the phase definition files `phases/00-discovery.md`, `01-requirements.md`, `02-design.md`, `03-foundation.md`, `build-loop.md`, `07-documentation.md`, `08-deployment.md`, `09-monitoring.md`, and `close.md`.*

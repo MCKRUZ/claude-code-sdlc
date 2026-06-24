@@ -51,7 +51,7 @@ workshop brief (`/sdlc-brief`); its outputs are questions for humans, never answ
 
 ---
 
-## Phase 3: Planning
+## Phase 3: Foundation
 
 | Role | Agent | Condition | Parallel Group | Background |
 |------|-------|-----------|----------------|------------|
@@ -61,71 +61,49 @@ workshop brief (`/sdlc-brief`); its outputs are questions for humans, never answ
 
 **Parallel group `plan-A`:** When multiple section plans have no dependency on each other, spawn one `deep-plan:section-writer` per independent section in a single message.
 
-**`/deep-plan` orchestration (steps 16–22):** `/deep-plan` resumes from the Phase 2 checkpoint and manages `deep-plan:section-writer` subagents internally (batch size up to 7 concurrent). After generation, run `scripts/map_deep_plan_artifacts.py --phase 3` to transform `/deep-plan`'s `sections/section-NN-*.md` files into SDLC's `section-plans/SECTION-NNN.md` format using the converged template. The `Plan` and `Explore` agents listed above are for supplementary work alongside `/deep-plan`.
+**`/deep-plan` orchestration (steps 16–22):** `/deep-plan` resumes from the Phase 2 checkpoint and manages `deep-plan:section-writer` subagents internally (batch size up to 7 concurrent). After generation, run `scripts/map_deep_plan_artifacts.py --phase 3` to transform `/deep-plan`'s `sections/section-NN-*.md` files into SDLC's `section-plans/SECTION-NNN.md` format (under `03-foundation/`) using the converged template. The `Plan` and `Explore` agents listed above are for supplementary work alongside `/deep-plan`.
 
 ---
 
-## Phase 4: Implementation
+## Build Loop (`build`)
+
+The Build loop replaces the former batch Implementation/Quality/Testing phases (4/5/6). It is **continuous**: every change runs the same three beats — Intent (decide + write a spec), Delegate (bound + build from an approved plan), Discern (prove against the spec by someone other than the author, then merge). There is **no batch artifact exit gate** — checking happens per change, not as a later batch phase. The agents below are spawned per change as the beat requires, not once per phase.
 
 | Role | Agent | Condition | Parallel Group | Background |
 |------|-------|-----------|----------------|------------|
-| TDD enforcement | `tdd-guide` | Profile requires TDD | — | No (sequential before impl) |
-| Backend implementation | `backend-architect` | Section is Python/C#/server-side | impl-A | No |
-| Frontend implementation | `frontend-developer` | Section is HTML/CSS/Angular/React | impl-A | No |
-| Rapid prototyping | `rapid-prototyper` | Section is a spike or proof-of-concept | — | No |
-| Section evaluation | `section-evaluator` | After each section implementation completes | — | No (foreground, blocking) |
-| Code review (rolling) | `code-reviewer` | After each section completes | — | Yes |
-| Security review (rolling) | `security-reviewer` | Section touches auth/payments/secrets/PII | — | No (foreground) |
-| Build error resolution | `build-error-resolver` | Build or compilation fails | — | No (immediate) |
-| Doc updates | `doc-updater` | Implementation changes public interfaces | — | Yes |
-| Diff review | `deep-implement:code-reviewer` | After each section, review vs plan | — | Yes |
-
-**Parallel group `impl-A`:** When the sprint plan contains independent sections targeting different domains, spawn domain-specific agents in the same message. Never implement independent sections sequentially.
-
-**Mandatory spawns:**
-- `build-error-resolver` on ANY build failure — do not attempt manual fixes first.
-- `security-reviewer` on ANY section that handles auth, payments, secrets, or PII.
-- `tdd-guide` BEFORE each section when the profile enables TDD.
-- `section-evaluator` after EACH completed section — foreground, blocking. The section is not marked complete until the evaluator produces a PASS or CONDITIONAL PASS verdict. On FAIL, the implementation agent must address blocking issues and the evaluator re-runs.
-
-**Session handoff:** At the end of each session (or when context window is nearing limits), the orchestrator MUST update `session-handoff.json` in `.sdlc/artifacts/04-implementation/`. At session start, it MUST read this file before beginning work. See `phases/04-implementation.md` Step 0g and Step 3b.
-
----
-
-## Phase 5: Quality
-
-| Role | Agent | Condition | Parallel Group | Background |
-|------|-------|-----------|----------------|------------|
-| Code review | `code-reviewer` | Always | review-A | No |
-| Security review | `security-reviewer` | Always | review-A | No |
+| TDD enforcement | `tdd-guide` | Profile requires TDD | — | No (sequential before build) |
+| Backend implementation | `backend-architect` | Change is Python/C#/server-side | impl-A | No |
+| Frontend implementation | `frontend-developer` | Change is HTML/CSS/Angular/React | impl-A | No |
+| Rapid prototyping | `rapid-prototyper` | Change is a spike or proof-of-concept | — | No |
+| Spec/section evaluation | `section-evaluator` | Discern beat — after each change | — | No (foreground, blocking) |
+| Code review (rolling) | `code-reviewer` | Discern beat — after each change | review-A | Yes |
+| Security review (rolling) | `security-reviewer` | Change touches auth/payments/secrets/PII | review-A | No (foreground) |
 | Adversarial + edge-case review | `multi-reviewer` | Suggested; use `--adversarial` and `--edge-cases` | — | No |
-| Dead code cleanup | `refactor-cleaner` | Always | — | Yes |
-| Root cause investigation | `Explore` | Gate check fails unexpectedly | — | No |
-| Backend remediation | `backend-architect` | CRITICAL/HIGH findings in backend code | — | No |
-| Frontend remediation | `frontend-developer` | CRITICAL/HIGH findings in frontend code | — | No |
-
-**Parallel group `review-A`:** ALWAYS spawn `code-reviewer` and `security-reviewer` in a single message. Never run them sequentially.
-
-**Mandatory:** If `security-reviewer` finds CRITICAL or HIGH issues, STOP all other work. Fix before advancing.
-
-**Remediation:** For CRITICAL/HIGH findings requiring code fixes, spawn the appropriate domain agent (`backend-architect` or `frontend-developer`). Security fixes are done inline, then re-run `security-reviewer` to confirm.
-
----
-
-## Phase 6: Testing
-
-| Role | Agent | Condition | Parallel Group | Background |
-|------|-------|-----------|----------------|------------|
-| Unit/integration tests | `test-writer-fixer` | Always | test-A | No |
+| Dead code cleanup | `refactor-cleaner` | During hardening passes | — | Yes |
+| Unit/integration tests | `test-writer-fixer` | Always (per change) | test-A | No |
 | E2E tests | `e2e-runner` | Project has user-facing flows | test-A | No |
 | API contract tests | `api-tester` | Project has API endpoints | test-A | No |
 | Performance benchmarks | `performance-benchmarker` | NFRs include performance targets | — | No |
-| Build error resolution | `build-error-resolver` | Test compilation fails | — | No |
-| Backend defect fix | `backend-architect` | Defect in backend code | — | No |
-| Frontend defect fix | `frontend-developer` | Defect in frontend code | — | No |
-| Doc updates | `doc-updater` | Test results change public docs | — | Yes |
+| Build error resolution | `build-error-resolver` | Build, compile, or test compilation fails | — | No (immediate) |
+| Doc updates | `doc-updater` | Change touches public interfaces | — | Yes |
+| Diff review | `deep-implement:code-reviewer` | Discern beat — review vs the spec/plan | — | Yes |
+| Root cause investigation | `Explore` | A check fails unexpectedly | — | No |
+
+**Parallel group `impl-A`:** When independent changes target different domains, spawn domain-specific agents in the same message. Never build independent changes sequentially.
+
+**Parallel group `review-A`:** When both apply, spawn `code-reviewer` and `security-reviewer` in a single message. Never run them sequentially.
 
 **Parallel group `test-A`:** Spawn all applicable test agents in a single message. They operate on different test domains and do not conflict.
+
+**Mandatory spawns:**
+- `build-error-resolver` on ANY build failure — do not attempt manual fixes first.
+- `security-reviewer` on ANY change that handles auth, payments, secrets, or PII. STOP all other work on CRITICAL/HIGH findings; fix before merging.
+- `tdd-guide` BEFORE each change when the profile enables TDD.
+- `section-evaluator` in the Discern beat after EACH change — foreground, blocking. The change is not merged until the evaluator produces a PASS or CONDITIONAL PASS verdict. On FAIL, the build agent must address blocking issues and the evaluator re-runs.
+
+**Remediation:** For CRITICAL/HIGH findings requiring code fixes, spawn the appropriate domain agent (`backend-architect` or `frontend-developer`). Security fixes are done inline, then re-run `security-reviewer` to confirm.
+
+**Session handoff:** At the end of each session (or when the context window is nearing limits), the orchestrator MUST update `session-handoff.json` in `.sdlc/artifacts/build/`. At session start, it MUST read this file before beginning work. See `phases/build-loop.md`.
 
 ---
 
@@ -191,10 +169,10 @@ These apply to ALL phases:
 ## Background Agent Policy
 
 Run with `run_in_background: true`:
-- `doc-updater` — documentation updates during implementation
-- `refactor-cleaner` — dead code cleanup during quality review
-- `code-reviewer` — rolling per-section reviews in Phase 4
-- `deep-implement:code-reviewer` — diff review against section plans
+- `doc-updater` — documentation updates during the Build loop
+- `refactor-cleaner` — dead code cleanup during Build-loop hardening passes
+- `code-reviewer` — rolling per-change reviews in the Build loop
+- `deep-implement:code-reviewer` — diff review against the spec/section plan
 
 Never background:
 - Security reviews (always foreground, always blocking)

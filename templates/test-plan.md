@@ -48,7 +48,7 @@
 3. Run E2E tests: `[command]`
 4. Generate coverage report: `[command]`
 5. Verify coverage meets thresholds
-6. Archive results to `.sdlc/artifacts/06-testing/`
+6. Archive results to `.sdlc/artifacts/build/`
 
 ## Pass/Fail Criteria
 - All unit tests pass

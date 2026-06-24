@@ -47,14 +47,16 @@ This tier exists only when document intake was performed during Phase 0. Project
 
 Loaded automatically by the session-start hook for the **most recent 3 completed phases**. Contains condensed phase summaries with locked metrics, constraints, and key decisions.
 
-**Why only 3?** With 10 phases and ~2K tokens per layer, loading all completed layers could consume 20K tokens. Capping at 3 keeps Tier 2 under ~6K tokens while providing the most relevant context.
+**Why only 3?** With 9 phases and ~2K tokens per layer, loading all completed layers could consume ~18K tokens. Capping at 3 keeps Tier 2 under ~6K tokens while providing the most relevant context.
 
-**Loading order:** Most recent 3 completed phases, loaded in chronological order (oldest first).
+**"Most recent" means by lifecycle order, not lexical filename sort.** Layer files are named `phase{id}-{name}.md` where `{id}` is the phase id, which may be non-numeric (`phasebuild-build.md`, `phaseclose-close.md`). Recency is resolved against the registry `order` (`0 → 1 → 2 → 3 → build → 7 → 8 → 9 → close`), so a lexical sort of filenames would order them wrong.
+
+**Loading order:** Most recent 3 completed phases by lifecycle order, loaded oldest-first.
 
 **To access older layers:** Read them on-demand from `.sdlc/context/layers/` — they exist on disk, just aren't auto-loaded.
 
 **Source files:**
-- `.sdlc/context/layers/phase{N}-{name}.md`
+- `.sdlc/context/layers/phase{id}-{name}.md`
 
 ## Tier 3: Reference (On-Demand)
 
