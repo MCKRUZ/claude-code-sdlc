@@ -18,6 +18,11 @@ Detailed documentation for all Python automation scripts in the `scripts/` direc
   - [audit_gates.py](#audit_gatespy)
   - [synthesize_spec.py](#synthesize_specpy)
   - [map_deep_plan_artifacts.py](#map_deep_plan_artifactspy)
+  - [risk_model.py](#risk_modelpy)
+  - [new_spec.py](#new_specpy)
+  - [check_spec.py](#check_specpy)
+  - [track_specs.py](#track_specspy)
+  - [scorecard.py](#scorecardpy)
   - [generate_handoff_report.py](#generate_handoff_reportpy)
 - [4. Dependencies](#4-dependencies)
 - [5. Error Handling](#5-error-handling)
@@ -799,6 +804,173 @@ The output uses `SECTION-template-deep-plan.md` which preserves both systems' re
 
 ---
 
+### risk_model.py
+
+**Purpose:** Single source of truth for the risk taxonomy and the checking ladder. A spec's risk tier (`HIGH`/`MEDIUM`/`LOW`, assigned by a human at triage) sets how high its change climbs the checking ladder in the Discern beat. This module encodes that mapping once so `check_spec.py` and any other consumer resolve review depth the same way. It is a library module (imported), not a CLI — it has no `main()`.
+
+**Imported by:** `check_spec.py`, `track_specs.py`, `generate_handoff_report.py` (indirectly via `track_specs`).
+
+**What scales by tier:** the *depth* of human review and whether the security pass + named sign-off are mandatory — never whether checking happens at all. Every tier blocks on CI, runs the grader (advises), runs the correctness gate (blocks on a defect), and requires a non-author approval. HIGH adds a blocking security pass and a named human sign-off recorded in the PR. The security pass also fires path-triggered (any PR touching a gated path), independent of tier.
+
+**Public API:**
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `normalize_tier(tier)` | `str \| None` | Canonical upper-case tier from any source, or `None` if invalid |
+| `is_valid_tier(tier)` | `bool` | Whether the value names a valid tier |
+| `resolve_ladder(tier, touches_gated_path=False)` | `dict \| None` | The required ladder booleans for a tier (`ci_blocks`, `grader_runs`, `correctness_blocks_on_defect`, `non_author_approval`, `security_pass_required`, `named_signoff_required`, plus `review_depth`). `touches_gated_path=True` forces the security pass |
+| `required_rungs(tier, touches_gated_path=False)` | `list[str]` | Human-readable list of gates a tier must clear, in ladder order |
+
+**Module constants:** `RISK_TIERS = ("HIGH", "MEDIUM", "LOW")`, `TAXONOMY` (what lands in each tier and what it triggers — mirrored in `CLAUDE.md` so agents see it).
+
+**Exit codes:** N/A (library module).
+
+---
+
+### new_spec.py
+
+**Purpose:** Scaffold a new Build-loop spec (`specs/NNNN-name.md`) from the spec template. Specs are the durable per-change unit of the Build loop — one spec = one branch = one PR — and live in the target repo's `specs/` directory (in the repo, not under `.sdlc/`), so the agent and grader read them from version control like any source file.
+
+**CLI:**
+
+```bash
+# Workflow mode (repo root = .sdlc parent)
+uv run scripts/new_spec.py --state .sdlc/state.yaml --name "duplicate claim 409" --risk HIGH
+
+# Standalone mode (any repo, no .sdlc/ required)
+uv run scripts/new_spec.py --repo <path> --name "duplicate claim 409" --risk HIGH --source REQ-123
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` | One of `--state`/`--repo` | Path to `.sdlc/state.yaml` (workflow mode) |
+| `--repo` | One of `--state`/`--repo` | Target repo root (standalone; default cwd) |
+| `--name` | Yes | Short descriptive name (becomes the kebab-case slug and frontmatter `name`) |
+| `--risk` | No | Risk tier `HIGH`/`MEDIUM`/`LOW` (default `MEDIUM`) — the agent proposes, a human confirms |
+| `--source` | No | Originating story / REQ-id (default `—`) |
+
+**Process:**
+
+1. **Resolve repo root** from `--state` (`.sdlc` parent) or `--repo`
+2. **Allocate id** — scan `specs/*.md`, take the highest 4-digit prefix + 1 (`0001` when none), so ids stay stable and gap-free across sessions
+3. **Render the template** (`templates/phases/build/spec.md`) — fill frontmatter `spec`/`name`/`risk`/`source`/`created`, the title, and sync the body `**Tier:**` and `**Ladder depth:**` lines to the chosen risk (both agreements that `check_spec.py` enforces)
+4. **Write** `specs/NNNN-slug.md` (errors if it already exists)
+
+**Exit codes:** `0` (created), `1` (invalid `--risk`, empty slug, template missing, state file missing, or spec already exists)
+
+---
+
+### check_spec.py
+
+**Purpose:** Enforce the Definition of Ready (DoR) on a Build-loop spec — the "Intent rail": a story becomes buildable only by clearing the DoR. Checks the mechanical floor of that bar (structure, risk tier, scope in/out, no placeholders, field/section agreement, checking-ladder depth) plus an advisory vague-line lint on acceptance checks.
+
+**CLI:**
+
+```bash
+# Standalone
+uv run scripts/check_spec.py --spec specs/0001-duplicate-claim-409.md
+
+# Workflow (also logs metrics to .sdlc/metrics/spec-log.jsonl)
+uv run scripts/check_spec.py --spec specs/0001-duplicate-claim-409.md --state .sdlc/state.yaml
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--spec` | Yes | Path to `specs/NNNN-name.md` |
+| `--state` | No | Path to `.sdlc/state.yaml` — enables empirical metrics logging |
+
+**Checks (MUST blocks, exit 1; SHOULD advises, exit 0 — mirrors `check_gates.py` severities):**
+
+| Severity | Check |
+|----------|-------|
+| MUST | Parseable YAML frontmatter present |
+| MUST | `name` set (not the template default) |
+| MUST | `risk` is one of HIGH/MEDIUM/LOW |
+| MUST | All required sections present (Goal, Why, Scope, Acceptance Checks, Risk Tier, Delegation Plan, Checking Plan) |
+| MUST | Scope > In scope **and** Scope > Out of scope both non-empty |
+| MUST | At least one acceptance check |
+| MUST | No unfilled template placeholders (`TODO`, `TBD`, `NNNN`, `<title>`, …) |
+| MUST | Risk Tier section agrees with frontmatter `risk` |
+| MUST | Checking Plan `**Ladder depth:**` declared and equal to the risk tier |
+| SHOULD | `harness_context` names the ONE existing pattern reused |
+| SHOULD | Vague-line lint — acceptance checks carrying vague words or lacking a concrete signal |
+| SHOULD | HIGH spec's Checking Plan names the security pass and the named sign-off |
+
+**Key functions:** `parse_frontmatter`, `extract_section` / `extract_subsection`, `list_items`, `check_spec_text` (the orchestrator, importable — reused by `track_specs.py`), `log_spec_metrics`, `format_results`.
+
+**Exit codes:** `0` (ready, possibly with advisories), `1` (any MUST fails, or spec not found)
+
+---
+
+### track_specs.py
+
+**Purpose:** Track the Build-loop spec backlog from the specs themselves. In the spec-driven Build loop the spec IS the unit of work and the durable source of truth, so backlog progress is derived from each spec's frontmatter `status` — never from a separate hand-maintained tracker that can drift. This replaced the section-plan progress model (`sections-progress.json`) in the Build loop.
+
+**CLI:**
+
+```bash
+# Workflow
+uv run scripts/track_specs.py --state .sdlc/state.yaml [--wip-cap 3] [--json]
+
+# Standalone
+uv run scripts/track_specs.py --repo <path>
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` | One of `--state`/`--repo` | Path to `.sdlc/state.yaml` (workflow mode) |
+| `--repo` | One of `--state`/`--repo` | Target repo root (standalone; default cwd) |
+| `--wip-cap` | No | Flag when more than N specs are in-flight (the cap itself lives in `cadence-plan.md`) |
+| `--json` | No | Emit the summary as JSON |
+
+**Output:** Total specs; breakdown by status (`draft`/`ready`/`in-flight`/`merged`) and by risk tier; the in-flight list (one spec = one branch = one PR); WIP-cap warnings. Invoked by `check_gates.py` to print the Build gate's INFO spec-backlog summary, and by `generate_handoff_report.py` for the handoff report's spec-backlog section.
+
+**Key functions:** `scan_specs` (parses every `specs/*.md` frontmatter), `summarize`, `wip_warnings` — all importable.
+
+**Exit codes:** `0` (no warnings), `1` (a WIP-cap breach was flagged)
+
+---
+
+### scorecard.py
+
+**Purpose:** Record and report the Build-loop steering scorecard — the numbers that steer the loop, baseline-and-trend. The delivery-standard steers on **outcomes, not activity**. This tool records loop outcome events to `.sdlc/metrics/loop-events.jsonl` and reports the scorecard from them. It is deliberately separate from `gate-log.jsonl` (gate calibration) and `spec-log.jsonl` (DoR data): those measure the harness; this measures delivery.
+
+**CLI:**
+
+```bash
+# Record an outcome event
+uv run scripts/scorecard.py record --state .sdlc/state.yaml --type spec_merged --field accepted_as_is=true --field risk=HIGH
+
+# Report the scorecard
+uv run scripts/scorecard.py report --state .sdlc/state.yaml [--window-days 14] [--json]
+```
+
+**Subcommands & arguments:**
+
+| Subcommand | Argument | Description |
+|------------|----------|-------------|
+| `record` / `report` | `--state` / `--repo` | `.sdlc/state.yaml` (workflow) or repo root (standalone; default cwd) |
+| `record` | `--type` | Event type (see below) |
+| `record` | `--field key=value` | Repeatable; bools/ints/floats coerced, else string |
+| `report` | `--window-days` | Label only (date filtering is the caller's job) |
+| `report` | `--json` | Emit the scorecard as JSON |
+
+**Event types:** `spec_merged` (`accepted_as_is`, `risk`), `spec_reverted`, `spec_bounced`, `escaped_bug` (`which_check`), `deploy` (`env`, `succeeded`, `lead_time_hours`, `caused_failure`), `incident` (`ttr_hours`), `review_wait` (`wait_hours`, `security`).
+
+**Reported metrics:** accepted-as-is rate, rework/revert rate, bounce-back rate, review-wait median (security-review wait on its own line), the DORA four (deploy count, lead-time median, change-fail rate, time-to-recover median), and escaped bugs. Missing data reads **"no data"**, never a fabricated zero.
+
+**Refused by design:** recording `velocity`, `story_points`, `pr_count`, `lines_of_code`, `commits` exits `2` — the activity metrics the standard never tracks. `compute_scorecard`, `load_events`, `format_report`, `_pct`, `_hrs` are importable (reused by `generate_handoff_report.py`).
+
+**Exit codes:** `0` (success), `1` (unknown event type, bad `--field`, or state file missing), `2` (a forbidden activity metric was passed to `record`)
+
+---
+
 ### generate_handoff_report.py
 
 **Purpose:** Draft the Phase C (Close & Transfer) `final-handoff-report.md` from the engagement's own records — the deterministic first pass of close.md Step 4 ("Hand over the record"), run before the Explore agent enriches the narrative. It fills the existing handoff-report template's mechanical sections from real data and marks the judgment sections with `[Fill: ...]` slots.
@@ -839,8 +1011,6 @@ uv run scripts/generate_handoff_report.py --state .sdlc/state.yaml --output hand
 **Honest by design:** missing metrics read "no data", never a fabricated zero (inherited from `scorecard.py`). A standalone run with no `state.yaml` adds a "Standalone draft" banner noting the engagement context is absent.
 
 **Exit codes:** `0` (drafted), `1` (state file not found, or the report exists and `--force` was not given)
-
-> **Note:** This reference does not yet carry full entries for `new_spec.py`, `check_spec.py`, `risk_model.py`, `track_specs.py`, and `scorecard.py` (added in earlier chunks). That backfill is tracked separately.
 
 ---
 

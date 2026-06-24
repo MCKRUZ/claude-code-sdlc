@@ -19,6 +19,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 - [/sdlc-review -- Multi-Perspective Review](#sdlc-review----multi-perspective-review)
 - [/sdlc-intake -- Document Corpus Intake](#sdlc-intake----document-corpus-intake)
 - [/sdlc-brief -- Discovery Workshop Brief](#sdlc-brief----discovery-workshop-brief)
+- [/sdlc-spec -- Author a Ready Spec](#sdlc-spec----author-a-ready-spec)
 - [Command Interaction Flow](#command-interaction-flow)
 - [Python Script Invocation](#python-script-invocation)
 - [Cross-References](#cross-references)
@@ -41,6 +42,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-review` | Multi-perspective artifact review (council / adversarial / edge-cases) | No | Before `/sdlc-gate` on design-heavy phases (2, 3, build) |
 | `/sdlc-intake` | Catalog + summarize the document corpus | Writes intake summaries/registry | Phase 0 Step 0c, when the profile has a `documentation` section; also runs standalone via `--docs` |
 | `/sdlc-brief` | Analyze intake corpus + draft workshop brief | No | Phase 0 Step 0d, before a stakeholder workshop; also runs standalone via `--docs` |
+| `/sdlc-spec` | Author a ready spec (scaffold → DoR → human risk tier) | Writes `specs/NNNN-name.md`; logs spec metrics | The Build-loop Intent beat, before building any change; also runs standalone via `--repo` |
 
 ---
 
@@ -673,6 +675,38 @@ None. Outputs are optional for gate purposes, but every `blocks-outcome` contrad
 ### When to Use
 
 Phase 0 Step 0d, after document intake, before a multi-stakeholder workshop. Standalone: any time a folder of documents needs contradiction and gap analysis.
+
+---
+
+## /sdlc-spec -- Author a Ready Spec
+
+### What It Does
+
+The Build-loop **Intent beat** wrapped as one command: turn a story into a *ready spec* (`specs/NNNN-name.md`) that clears the Definition of Ready before anyone builds it — scaffold → author → enforce the DoR → confirm the risk tier with a human. No spec, no build. The spec is the durable per-change record: one spec = one branch = one PR, living in the repo's `specs/` directory (in version control, not only under `.sdlc/`) because the agent re-reads it every session and the grader grades against it.
+
+The command owns two scripts the user never calls by hand: `new_spec.py` (scaffold + id allocation) and `check_spec.py` (DoR enforcement). It drives Intent so nothing stays implicit — Goal, Why, Scope in/out, testable acceptance checks (each past the vague-line test), silent product decisions surfaced to a Decision List with named owners, and the one existing pattern the change reuses (`harness_context`).
+
+### Arguments
+
+- No arguments: workflow mode — author a spec in the current `.sdlc/` engagement (reads the spec backlog and `risk-tier-map.md` for context).
+- `--repo <path>`: standalone mode — author a spec in any repo with no `.sdlc/` present (the missing engagement context is noted in the spec's `source` field).
+- `--spec <path>`: validate (and finish authoring) an **existing** spec instead of scaffolding a new one.
+
+### Internal Flow
+
+1. **Resolve mode and repo root** (workflow `.sdlc/` parent, or standalone `--repo`).
+2. **Gather Intent** — drive every DoR element; apply the vague-line test (*"could two people build different things from this?"*) to each acceptance check.
+3. **Propose a risk tier, never assign it** — recommend HIGH/MEDIUM/LOW with one sentence of justification, then a HITL `AskUserQuestion` gate where the Pod Lead confirms or overrides. Risk challenges escalate up, never down.
+4. **Scaffold** via `new_spec.py` (auto-allocated 4-digit id), then write the gathered Intent into the section bodies.
+5. **Enforce the DoR** via `check_spec.py` — fix every BLOCK (MUST); judge each ADVISE (SHOULD) vague-line flag. Re-run until it reads `READY`.
+
+### State Changes
+
+Writes `specs/NNNN-name.md` to the repo. In workflow mode (`--state`), each `check_spec.py` run logs to `.sdlc/metrics/spec-log.jsonl`. Does not modify `state.yaml` or advance phases.
+
+### When to Use
+
+The Build loop's Intent beat — before building any change. A spec that `check_spec.py` reports as NOT READY must not enter the Delegate beat (that is the "skipping Intent" failure the loop exists to kill). When behavior changes later, the spec changes in the **same PR** as the code.
 
 ---
 
