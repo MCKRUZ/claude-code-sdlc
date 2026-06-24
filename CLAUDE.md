@@ -6,7 +6,7 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 ## Architecture
 - `plugin.json` — Plugin manifest (entry point for Claude Code)
 - `SKILL.md` — Main skill definition (loaded when plugin activates)
-- `commands/` — 12 slash commands (`/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`, `/sdlc-enhance`, `/sdlc-coach`, `/sdlc-review`, `/sdlc-intake`, `/sdlc-brief`, `/sdlc-phase-report`, `/sdlc-audit`)
+- `commands/` — 13 slash commands (`/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`, `/sdlc-enhance`, `/sdlc-coach`, `/sdlc-review`, `/sdlc-intake`, `/sdlc-brief`, `/sdlc-spec`, `/sdlc-phase-report`, `/sdlc-audit`)
 - `agents/` — 8 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst)
 - `profiles/` — Company/stack YAML configs with compliance gates
 - `phases/` — Phase definitions (9 phases: 0, 1, 2, 3 Foundation, build loop, 7, 8, 9, close). The 4/5/6 gap is intentional — the batch Implementation/Quality/Testing phases are replaced by the continuous Build loop. Phase identity/ordering is owned by `scripts/phase_model.py` reading `phases/phase-registry.yaml`.
@@ -51,6 +51,10 @@ When adding a new agent or command, document both modes in its file. `discovery-
 - **Phase-scoped evaluation criteria** — `evaluation_criteria` with optional `phases` array for non-code artifact quality rubrics
 - **Empirical metrics** — JSONL logging in `check_gates.py`, `validate_frozen_layer.py`, and `section-evaluator` agent to `.sdlc/metrics/`
 - **Document intake** — Opt-in corpus analysis in Phase 0: scans external docs (RFPs, API specs, vendor docs), generates per-doc summaries with DOC-NNN IDs, creates token-budgeted intake index (Tier 1.5), enables Phase 1 requirement-to-source traceability
+- **Spec authoring & Definition-of-Ready enforcement** — `/sdlc-spec` is the Build-loop Intent beat: `new_spec.py` scaffolds `specs/NNNN-name.md` (auto-allocated id, risk tier a first-class frontmatter field) and `check_spec.py` enforces the DoR — required sections, valid risk tier, scope in *and* out, no placeholders — plus a vague-line lint that flags acceptance checks likely to fail the vague-line test (advisory). The agent proposes the risk tier; a human confirms it. Runs standalone or in-workflow (logs to `.sdlc/metrics/spec-log.jsonl`)
+- **Risk tier drives gate depth** — `risk_model.py` is the single source of truth for the risk taxonomy and the checking ladder (every tier blocks on CI + grader + correctness + non-author approval; HIGH adds a security pass and named sign-off; a gated path forces the security pass regardless of tier). `check_spec.py` enforces a spec's Checking Plan depth against its risk tier, so the tier sets the climb mechanically rather than as a label
+- **Spec-backlog tracking (specs are the Build unit)** — the Build loop is spec-driven (one spec = one branch = one PR); `track_specs.py` derives backlog progress (status/risk breakdown, in-flight list, WIP-cap breaches) straight from spec frontmatter, so there is no separate tracker to drift. The section-plan/`sections-progress.json` model was retired from the Build loop; `check_dependencies.py` + `/deep-plan` sections are now Phase-2 *design* aids that feed the spec backlog
+- **Steering scorecard (outcomes, not activity)** — `scorecard.py` records loop outcomes to `.sdlc/metrics/loop-events.jsonl` and reports the standard's numbers (accepted-as-is, review-wait median, rework/revert, bounce-back, escaped bugs, the DORA four; security-review wait on its own line). Reads "no data" rather than a fabricated zero, and *refuses* to record the forbidden activity metrics (velocity, story points, PR count, LOC). `steering-scorecard.md` is the client-facing artifact
 
 ## Testing
 ```bash
@@ -61,4 +65,10 @@ uv run scripts/validate_frozen_layer.py --state /tmp/test/.sdlc/state.yaml --pha
 uv run scripts/track_artifacts.py --state /tmp/test/.sdlc/state.yaml --snapshot
 uv run scripts/check_dependencies.py --state /tmp/test/.sdlc/state.yaml
 uv run scripts/intake_documents.py --state /tmp/test/.sdlc/state.yaml
+uv run scripts/new_spec.py --repo /tmp/test --name "duplicate claim 409" --risk HIGH
+uv run scripts/check_spec.py --spec /tmp/test/specs/0001-duplicate-claim-409.md
+uv run scripts/track_specs.py --state /tmp/test/.sdlc/state.yaml
+uv run scripts/scorecard.py record --state /tmp/test/.sdlc/state.yaml --type spec_merged --field accepted_as_is=true
+uv run scripts/scorecard.py report --state /tmp/test/.sdlc/state.yaml --window-days 14
+uv run --project scripts --extra test python -m pytest scripts/tests/ -q
 ```

@@ -37,6 +37,8 @@ Then write the spec — one file in the repo, durable across sessions:
 
 The spec outlives the chat that produced it: the agent reads it every session, the grader grades against it, and when behavior changes later, the spec changes in the same PR. A stale spec is a lie that misleads the next reader and the next agent.
 
+**Tooling for Intent.** `/sdlc-spec` wraps this beat: it scaffolds the spec from the template (`scripts/new_spec.py` allocates the next `NNNN` id), drives the Definition of Ready, proposes a risk tier for a human to confirm (the agent never assigns the tier), and enforces the DoR with `scripts/check_spec.py` — a mechanical floor (required sections, a valid risk tier, scope in *and* out, no unfilled placeholders) plus a **vague-line lint** that flags acceptance checks likely to fail the vague-line test. The lint advises; the real vague-line test is your judgment. A spec that `check_spec.py` reports NOT READY does not enter the loop — building from it is the "skipping Intent" failure this loop exists to kill. Both scripts run standalone (point `--spec`/`--repo` at any repo) or in the workflow (with `--state`, each check logs to `.sdlc/metrics/spec-log.jsonl`).
+
 **The risk taxonomy** (it lives in the harness so agents see it too):
 
 | Tier | What lands here | What it triggers |
@@ -97,6 +99,8 @@ A `risk:high` change adds the security workflow pass and a named human sign-off 
 
 **The depth scales by risk tier.** You do not run every change up all five rungs — that recreates the review bottleneck the loop exists to remove. LOW stops after the grader's advisory pass and a light human look; MEDIUM gets the standard grader-plus-Checker treatment; HIGH goes all the way up. One depth for everything fails in both directions — reading a typo fix as hard as an auth change burns the pod's scarce review attention, and waving an auth change through on a glance ships the instability.
 
+The tier-to-ladder mapping is encoded once in `scripts/risk_model.py` (the single source of truth: every tier blocks on CI, runs the grader, runs correctness, and requires a non-author approval; HIGH adds a security pass and a named sign-off; a gated path forces the security pass regardless of tier). `check_spec.py` enforces it at Intent time — a spec's **Checking Plan** ladder depth must equal its risk tier (a HIGH spec that declares a LOW climb, or omits the security pass and sign-off, fails the Definition of Ready). The tier on the spec is not a label; it sets the climb, mechanically.
+
 **Failed checks come back to the same Orchestrator,** who drives the fix on the same branch. Every gate, including a fresh grader run, runs again on the updated PR before merge. Re-run the gate that flagged the issue to confirm the fix — never self-certify.
 
 Merge deploys to the client's dev environment automatically — the rails from Foundation. A true emergency merge past a gate requires the Pod Lead plus one other human, an exception label, and a retro agenda item. Two exceptions in a month means the gate or the specs are wrong — fix that, don't keep excepting.
@@ -105,7 +109,7 @@ Merge deploys to the client's dev environment automatically — the rails from F
 
 The Build loop spans many sessions. Context windows fill; people pause. The spec is the durable source of truth across sessions — the agent re-reads it every session, so a spec kept current *is* the handoff. Beyond the spec:
 
-- **A spec in flight is the unit of handoff.** One spec = one branch = one PR. A spec is either not-started, in-flight (its branch open), or merged. Do not start a new spec while one you own is in-flight and half-built — finishing the in-flight spec before starting the next is how the loop avoids compounding half-done work across sessions. This is the same discipline the old batch Implementation phase enforced per section, now enforced per spec.
+- **A spec in flight is the unit of handoff.** One spec = one branch = one PR. A spec's `status` frontmatter moves draft → ready → in-flight → merged, and the spec file IS the progress tracker — `scripts/track_specs.py` derives the backlog (counts by status and risk, the in-flight list, WIP-cap breaches) straight from the specs, so there is no separate progress file to drift from reality. Do not start a new spec while one you own is in-flight and half-built — finishing the in-flight spec before starting the next is how the loop avoids compounding half-done work across sessions. The Build gate reports this backlog as information; it never batch-gates on a count.
 - **Session health check.** When `session_health_check.enabled` is true in the profile, run the configured command (via the Bash tool) at session start before touching new work. On failure, do not start new spec work — diagnose and fix the build first (spawn `build-error-resolver` if needed). This catches a broken build before you compound it.
 - **At a session boundary**, leave the in-flight spec's branch and PR in a state the next session can resume from: the spec current, the plan recorded, the failing/passing test state obvious. If the engagement uses a machine-readable handoff file, update it with the in-flight specs, what's blocked, and the next action. The 60 seconds this costs saves 30 minutes of context reconstruction next session.
 
@@ -139,6 +143,8 @@ Internal dashboard, baseline-and-trend, no vanity targets:
 - **Security-review wait** — on its own line, always.
 
 **Never tracked, never reported:** velocity, story points, PR count, lines of code. Agents inflate all of them — measured teams have doubled PR volume while actual delivery stayed flat. No activity metrics in client materials, ever; demos and outcomes don't lie.
+
+**Tooling for the scorecard.** `scripts/scorecard.py` records loop outcomes to `.sdlc/metrics/loop-events.jsonl` (`record --type spec_merged|spec_reverted|spec_bounced|escaped_bug|deploy|incident|review_wait`) and renders the scorecard (`report --window-days 14`) for the biweekly steering. It is deliberately separate from the gate-calibration and DoR metric logs — those measure the harness; this measures delivery. When there is no data for a metric it reads "no data," never a fabricated zero. It **refuses** to record the forbidden activity metrics, and `steering-scorecard.md` (the client-facing artifact) carries the never-tracked guardrail. The numbers are baseline-and-trend; the tool computes them, the pod reads the trend.
 
 ## Leaving the Loop
 

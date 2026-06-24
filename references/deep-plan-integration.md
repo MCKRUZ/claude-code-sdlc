@@ -2,6 +2,15 @@
 
 How the `/deep-plan` skill integrates with SDLC Phases 2–3. This is the authoritative reference for artifact mapping, HITL gate alignment, checkpoint mechanism, and troubleshooting.
 
+> **Scope: this is a design-time flow, not the Build-loop unit of work.** `/deep-plan`, the
+> sectioned plans it produces, and `check_dependencies.py` (which validates the SECTION-NNN
+> dependency DAG — cycle detection + topological order) are all **Phase-2/Foundation design
+> aids**. They decompose the design into an ordered set of sections. Those sections become the
+> **spec backlog** the Build loop draws from: each becomes a spec (`specs/NNNN-name.md`), and the
+> Build loop's unit of work is the spec (one spec = one branch = one PR), with progress tracked
+> from spec frontmatter via `track_specs.py`. The section DAG is a design ordering artifact — the
+> Build loop does **not** track "completed sections."
+
 ## Architecture: Split Invocation
 
 `/deep-plan` runs twice — once per phase — to respect the SDLC gate boundary:

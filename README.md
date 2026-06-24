@@ -93,9 +93,9 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 9 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
 | [Gate System](docs/gate-system.md) | 6-gate validation — integrity, completeness, metrics, compliance, consistency, quality — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 11 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Commands](docs/commands.md) | All 13 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
 | [Agents](docs/agents.md) | 8 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
-| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, sections-progress.json |
+| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, the spec backlog |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
 | [Scripts](docs/scripts.md) | All Python scripts (incl. `phase_model.py`, the phase-identity source of truth) — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
 | [Integrations](docs/integrations.md) | How /deep-plan, /deep-implement, /tdd, /code-review map into SDLC phases, artifact transformation pipeline |
@@ -112,6 +112,9 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-next` | Advance to next phase if all MUST gates pass |
 | `/sdlc-enhance` | Generate narrative companions for stakeholder review (optional) |
 | `/sdlc-coach` | Interactive coaching mode — adaptive dialogue for current phase |
+| `/sdlc-intake` | Catalog and summarize an external document corpus (Phase 0, opt-in) |
+| `/sdlc-brief` | Prep a stakeholder workshop brief from the document corpus |
+| `/sdlc-spec` | Author a ready Build-loop spec (`specs/NNNN-name.md`) and enforce the Definition of Ready |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases |
@@ -192,7 +195,7 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # 11 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-phase-report, /sdlc-audit)
+├── commands/                # 13 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit)
 ├── agents/                  # 8 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst)
 ├── profiles/                # Company/stack YAML profiles
 ├── phases/                  # Phase definitions (0,1,2,3,build,7,8,9,close)

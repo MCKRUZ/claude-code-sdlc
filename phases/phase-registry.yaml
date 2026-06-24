@@ -208,6 +208,7 @@ phases:
         - "specs/"
         - "build-summary.md"
         - "hardening-pass-notes.md"
+        - "steering-scorecard.md"
 
   - id: 7
     slug: "07-documentation"

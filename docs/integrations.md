@@ -204,31 +204,22 @@ The `/deep-implement` skill reads section plans (specs) and builds code one chan
 1. Read the SECTION-NNN.md spec, focusing on Implementation Guidance, Interfaces, and TDD Test Stubs
 2. Write tests first (from TDD Test Stubs), then implement code to pass them
 3. Verify exit criteria from the spec
-4. Update `sections-progress.json` with completion status
+4. Set the spec's frontmatter `status` to `merged` once the PR merges (progress is read from the spec, not a separate tracker)
 5. Log any deviations from the spec in `implementation-notes.md`
 6. The `section-evaluator` agent grades the completed spec against the Evaluator Contract -- per change in the loop's Discern beat, not as a batch phase
 
-**Progress tracking via sections-progress.json:**
+**Progress tracking via the spec backlog:**
 
-```json
-{
-  "phase": "build",
-  "total_sections": 5,
-  "completed_sections": 2,
-  "sections": [
-    {
-      "id": "SECTION-001",
-      "name": "Core data models",
-      "sprint": 1,
-      "status": "complete",
-      "tdd_enforced": true,
-      "tests_passing": true,
-      "evaluator_passed": true,
-      "deviations": 0,
-      "decisions": 1
-    }
-  ]
-}
+Progress is derived from the spec files' own frontmatter `status`, not a separate tracker. The spec is the unit of work (one spec = one branch = one PR), so the backlog state always reflects reality. `scripts/track_specs.py` scans `<repo>/specs/*.md`, reads each spec's `status` (`draft` → `ready` → `in-flight` → `merged`) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports totals, a status breakdown, a risk breakdown, and the in-flight list. It can flag a WIP-cap breach with `--wip-cap N`, and runs standalone (`--repo`) or in-workflow (`--state`).
+
+```yaml
+# specs/0001-core-data-models.md (frontmatter)
+---
+spec: "0001"
+name: "Core data models"
+status: merged       # draft -> ready -> in-flight -> merged
+risk: MEDIUM
+---
 ```
 
 **Session continuity via session-handoff.json:**
@@ -259,8 +250,8 @@ The `/tdd` skill enforces test-driven development when the project profile requi
 3. **REFACTOR** -- Clean up the implementation while keeping tests green
 
 **Integration points:**
-- TDD test stubs originate in `/deep-plan`'s `claude-plan-tdd.md` and are embedded in each SECTION-NNN.md's Test Strategy section
-- The `tdd_enforced` flag in `sections-progress.json` tracks whether TDD was applied per section
+- TDD test stubs originate in `/deep-plan`'s `claude-plan-tdd.md` and are embedded in each SECTION-NNN.md's Test Strategy section (a Phase-2 design artifact)
+- The profile's `require_tdd` setting governs whether TDD is mandatory for each spec's change in the loop
 - Coverage is validated per change in the Build loop (G3 metrics) against the profile's `coverage_minimum` threshold
 - The section evaluator checks that TDD stubs from the plan were actually implemented as tests
 
