@@ -194,11 +194,11 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
 
 1. **Load and validate profile** -- Reads the profile YAML (does not re-run full schema validation; assumes prior `validate_profile.py` pass)
 2. **Check for existing `.sdlc/`** -- If `.sdlc/` already exists, prints a warning and exits without modifying anything (safe re-run behavior)
-3. **Create directory structure:**
+3. **Create directory structure** -- one **empty** artifact directory per phase (slugs from the registry), plus the context directories:
    ```
    .sdlc/
      artifacts/
-       00-discovery/
+       00-discovery/       (empty -- artifacts are authored later, not seeded)
        01-requirements/
        02-design/
        03-foundation/
@@ -207,15 +207,21 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
        08-deployment/
        09-monitoring/
        close/
+     context/
+       layers/             (frozen per-phase layers)
+       intake/             (document-intake summaries; opt-in via profile.documentation)
      state.yaml
      profile.yaml
+     constitution.md       (only if templates/constitution.md exists)
    ```
 4. **Generate `state.yaml`** from `templates/state-init.yaml` with variable substitution:
    - `${PROFILE_ID}` -- replaced with `profile.company.profile_id`
    - `${PROJECT_NAME}` -- replaced with `--name` argument or target directory name
    - `${CREATED_AT}` -- replaced with current UTC timestamp in ISO 8601 format
-5. **Copy frozen profile** -- Writes a copy of the profile to `.sdlc/profile.yaml` so the project retains its configuration even if the source profile changes
-6. **Copy phase templates** -- For each phase directory under `templates/phases/`, copies template files into the corresponding `.sdlc/artifacts/` subdirectory (only if the template directory exists for that phase)
+5. **Copy frozen profile** -- Writes the profile to `.sdlc/profile.yaml` (via `yaml.dump`, `sort_keys=False`) so the project retains its configuration even if the source profile changes
+6. **Copy the constitution template** -- Copies `templates/constitution.md` to `.sdlc/constitution.md` if it exists
+
+> **Note:** `init_project.py` does **not** seed phase-artifact templates. The artifact directories are created empty; the files under `templates/phases/<slug>/` are references the phase docs and agents author artifacts from — auto-seeding placeholder files would fail the completeness gate (G2) on every fresh project. The exceptions written at init are `constitution.md` and `state.yaml`.
 
 **Key Constants:**
 
@@ -226,11 +232,14 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
 **Output on success:**
 
 ```
-Initialized .sdlc/ in /path/to/project
+Created .sdlc/ in /path/to/project
   Profile: microsoft-enterprise
-  Project: my-app
-  Phases: 9 directories created
+  Artifacts: 9 phase directories
+  Context: frozen layers + intake directories
+  State: Phase 0 (Discovery) active
 ```
+
+If `.sdlc/` already exists, the script prints `Warning: <path>/.sdlc already exists. Skipping creation.` and exits `0` without modifying anything.
 
 **Exit codes:** `0` (success), `1` (profile not found or load error)
 
