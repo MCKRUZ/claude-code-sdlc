@@ -60,11 +60,25 @@ The complete engagement record, delivered into the client's tooling, not left in
 - The **outcomes dashboard**, re-pointed to client ownership with its caveats intact and the quarter-read date (the day the outcome metric gets its first full-period reading) on the client's calendar — record the handover in `outcomes-dashboard-handover.md`
 - The debt log with owners and dates
 
-Draft the final handoff report from the engagement's own records:
+Draft the final handoff report in two passes — deterministic first, judgment second:
 
-```
-Agent(Explore, "Read-only sweep of the engagement record to draft the final handoff report. Collect: every phase gate and its sign-off, every phase report, the metrics history (accepted-as-is, review wait, DORA four, escaped bugs), the debt log, and all open items with their owners and dates. Produce a single consolidated record organized for the sponsor and the client's incoming team.")
-```
+1. **Mechanical assembly (the script).** Run `generate_handoff_report.py` to draft
+   `final-handoff-report.md` straight from the engagement's records — the phase report index, the
+   per-phase gate/sign-off table from `state.yaml`, the metrics history (via `scorecard.py`), and
+   the spec backlog (via `track_specs.py`). It fills what is data and marks the rest with
+   `[Fill: ...]` slots. It refuses to clobber a human-edited report without `--force`.
+
+   ```
+   uv run scripts/generate_handoff_report.py --state .sdlc/state.yaml
+   ```
+
+2. **Narrative enrichment (the agent).** Fill the marked slots — the judgment the script cannot
+   make: outcomes against the Phase 0 statement, the debt log, open items with owners and dates,
+   and who the client calls now.
+
+   ```
+   Agent(Explore, "Read-only sweep of the engagement record to fill the [Fill: ...] slots in the drafted final-handoff-report.md. Collect: each Phase 0 outcome and its result with caveats, the debt log with owners and dates, and all open items. Leave the script-filled sections (phase index, engagement record, metrics history, spec backlog) intact; enrich only the narrative slots, organized for the sponsor and the client's incoming team.")
+   ```
 
 ### Step 5: Revoke Access, Audited
 
@@ -100,7 +114,7 @@ Run `/sdlc-gate` to validate exit criteria and automatically generate the phase 
 
 ## Standalone or Workflow
 
-In the workflow, Close reads `.sdlc/state.yaml`, the Phase 9 retrospective, and `close-handoff.md`. It also runs standalone: a transfer audit can be pointed at any repo with a harness installed, with no `.sdlc/` present — run the harness audit and draft the access-revocation checklist against the actual repo and granted access, and note the missing engagement context in each artifact's header. The close gate itself, however, requires a real client team and real backlog specs — it cannot be simulated standalone, and the artifact will say so explicitly when the engagement context is absent.
+In the workflow, Close reads `.sdlc/state.yaml`, the Phase 9 retrospective, and `close-handoff.md`. It also runs standalone: a transfer audit can be pointed at any repo with a harness installed, with no `.sdlc/` present — run the harness audit and draft the access-revocation checklist against the actual repo and granted access, and draft the handoff report with `generate_handoff_report.py --repo <path>`, noting the missing engagement context in each artifact's header. The close gate itself, however, requires a real client team and real backlog specs — it cannot be simulated standalone, and the artifact will say so explicitly when the engagement context is absent.
 
 ## Artifact Specifications
 
