@@ -57,6 +57,22 @@ if ($phaseMatch.Success) {
     Write-Output "[SDLC] Project: $projectName | Profile: $profileId | Phase $phaseId`: $displayName | Artifacts: $artifactCount"
     Write-Output "[SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance) | /sdlc-coach (coaching)"
 
+    # Phase-specific behavioral reminder (folded in from the retired PreToolUse phase-inject hook,
+    # which could not inject context — PreToolUse stdout is not shown to Claude. SessionStart is.)
+    $phaseReminders = @{
+        "0"     = "Focus on understanding the problem, not writing code."
+        "1"     = "Ensure changes trace back to documented requirements."
+        "2"     = "Document architectural decisions as ADRs."
+        "3"     = "Build the factory (harness, rails, dev infra) and a thin walking skeleton."
+        "build" = "One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work."
+        "7"     = "Prove docs by cold use. Finalize ADRs."
+        "8"     = "Promote the proven artifact. Document the rollback plan."
+        "9"     = "Configure alerts from measured baselines. Run the drill."
+        "close" = "Prove the client can run it without us. Audit the harness, revoke access, harvest."
+    }
+    $phaseReminder = $phaseReminders[$phaseId]
+    if ($phaseReminder) { Write-Output "[SDLC-PHASE] $phaseReminder" }
+
     # --- Tier 1: Foundation Context ---
     $constitutionPath = Join-Path $sdlcDir "constitution.md"
     if (Test-Path $constitutionPath) {
@@ -116,6 +132,15 @@ if ($phaseMatch.Success) {
     $profileFile = Join-Path $sdlcDir "profile.yaml"
     if (Test-Path $profileFile) {
         $profileContent = Get-Content $profileFile -Raw -ErrorAction SilentlyContinue
+
+        # Convention reminders (folded in from the retired phase-inject hook)
+        if ($profileContent -match 'immutability:\s*true') {
+            Write-Output "[SDLC-CONVENTION] Use immutable patterns (records, with-expressions, spread operators)."
+        }
+        if ($profileContent -match 'no_console_log:\s*true') {
+            Write-Output "[SDLC-CONVENTION] No console.log in production code."
+        }
+
         $healthEnabled = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?enabled:\s*(true|false)')
         $healthMinPhase = [regex]::Match($profileContent, 'session_health_check:[\s\S]*?min_phase:\s*"?([^"\s\r\n]+)"?')
 
