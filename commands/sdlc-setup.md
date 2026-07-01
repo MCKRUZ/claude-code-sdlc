@@ -44,27 +44,50 @@ This creates:
 └── artifacts/          # Per-phase artifact directories (00–09)
 ```
 
-### Step 5: Update CLAUDE.md
-Read the profile's `claude-md-template.md` and append its contents to the project's `CLAUDE.md` file:
+### Step 5: Install the delivery harness
+Install the standard-aligned harness (the kit) from the plugin's bundled `harness/` payload into
+the repo. This lays down the governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, the
+five CI gates in `.github/workflows/`, the `profile/` rubrics + branch-protection ruleset, and the
+`infra/` starters. Idempotent — existing files are left in place and reported as SKIPPED (pass
+`--force` only when you intend to overwrite).
+```bash
+uv run --project <plugin-root>/scripts <plugin-root>/scripts/install_harness.py \
+  --payload <plugin-root>/harness --target .
+```
+Run this BEFORE Step 6 so the governance `CLAUDE.md` exists before the SDLC section is appended.
+
+### Step 6: Update CLAUDE.md
+Read the profile's `claude-md-template.md` and append its contents to the project's `CLAUDE.md`
+(the governance base written in Step 5):
 - If `CLAUDE.md` exists: append the SDLC section
 - If `CLAUDE.md` doesn't exist: create it with the SDLC section
 
-### Step 6: Confirmation
+### Step 7: Apply branch protection (optional — needs GitHub + `gh`)
+The harness ships a branch-protection ruleset (`.github/rulesets/branch-protection.json`) and an
+applier. If the repo is on GitHub and `gh` is authenticated, offer to apply it:
+```bash
+bash scripts/rails/apply-branch-protection.sh
+```
+This makes the five gates + a non-author approval mandatory at merge. Skip if the repo isn't on
+GitHub yet; the ruleset stays in the repo to apply later.
+
+### Step 8: Confirmation
 Display:
 ```
-SDLC initialized successfully!
+SDLC + delivery harness installed!
 
 Profile: <profile-id>
 Phase: 0 — Discovery (active)
-Artifacts: .sdlc/artifacts/00-discovery/
+Harness: CLAUDE.md, .claude/, .github/workflows (5 gates), infra/
 
 Next steps:
-1. Run /sdlc to start the Phase 0 discovery interview
-2. Run /sdlc-gate when ready to check exit criteria
-3. Run /sdlc-next to advance to Phase 1
+1. Fill the {{PLACEHOLDER}} tokens in CLAUDE.md (stack, glossary, gated paths)
+2. PROVE THE RAILS before trusting them — run the shakedown drills in .github/RAILS.md
+3. Run /sdlc to start the Phase 0 discovery interview
+4. Run /sdlc-gate when ready to check exit criteria; /sdlc-next to advance
 ```
 
-### Step 7: Validate
+### Step 9: Validate
 Run the profile validator to confirm the setup is healthy:
 ```bash
 uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_profile.py .sdlc/profile.yaml
@@ -74,3 +97,4 @@ uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_profile.py
 - If uv is not installed: tell the user to install it (`pip install uv` or `brew install uv`)
 - If profile validation fails: show errors and suggest fixes
 - If directory permissions prevent creation: report the error clearly
+- If the harness install reports SKIPPED files you wanted replaced: re-run install_harness.py with `--force`

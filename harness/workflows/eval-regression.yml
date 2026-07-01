@@ -1,0 +1,140 @@
+# =============================================================================
+# Eval REGRESSION gate — per-PR, BLOCKING
+# =============================================================================
+# Delivery standard §11: prompts, model selections, and tool definitions are
+# HIGH risk. Any change to them is a spec whose acceptance is an eval-regression
+# gate — degradation blocks the merge the same way a failing test does.
+#
+# This workflow runs the FAST regression suite (~30 deterministic-first cases,
+# target < 5 min) on PRs that touch the HIGH-risk surface, scores per metric,
+# and EXITS NON-ZERO if any key metric drops below its floor or falls more than
+# the configured trip-wire versus the base branch. Mark it a REQUIRED check in
+# branch protection so it actually blocks.
+#
+# MATURITY FLAG: per-PR eval-regression gating is an EMERGING practice. The
+# trip-wire below (REGRESSION_TRIPWIRE, default 0.03 = 3 percentage points) is a
+# PRACTITIONER figure, NOT an Anthropic-published constant. Calibrate it to your
+# measured run-to-run variance (see eval-datasets/README.md) before trusting it.
+#
+# Commands marked <PLACEHOLDER> must be wired to your eval runner. The flags
+# shown (--suite, --trials, --isolate, --baseline, --tripwire) are the contract
+# this gate expects; adapt names to your tool.
+# =============================================================================
+name: Eval Regression Gate
+
+on:
+  pull_request:
+    # Only gate PRs that touch the HIGH-risk agentic surface. Tune these globs
+    # to where your prompts / model configs / tool defs / agent specs live.
+    paths:
+      - 'prompts/**'                      # judge & classifier prompts (versioned)
+      - 'eval-datasets/**'                # the golden sets themselves
+      - '**/model-config*.{json,yaml,yml}'  # model selections
+      - '**/tools/**'                     # tool definitions
+      - 'specs/**/agent*.md'              # agent specs
+      - 'specs/**/golden-set.yaml'
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write   # to surface the per-metric scorecard as a PR comment
+
+concurrency:
+  group: eval-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression-gate:
+    name: Fast eval-regression suite (blocking)
+    runs-on: ubuntu-latest
+
+    env:
+      # ---- Calibrate these to your measured variance (see README) ----
+      REGRESSION_TRIPWIRE: '0.03'   # max allowed per-metric drop vs base. PRACTITIONER
+                                    # figure (~3pp) — calibrate, do not trust blindly.
+      MIN_TRIALS: '3'               # trials per case; each in a clean isolated env.
+      SUITE_TAG: 'regression'       # selects the fast subset from the golden sets.
+      DOTNET_NOLOGO: 'true'
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # need base history to score the baseline
+
+      # --- Toolchain. Swap for your runner's runtime (node/python/etc). ---
+      - name: Setup runtime
+        # <PLACEHOLDER> e.g. actions/setup-dotnet@v4 / setup-node / setup-python
+        run: echo "TODO install the eval-runner toolchain"
+
+      # --- Score the BASE branch first to get the comparison baseline. ---
+      # Skip the rebuild by caching base scores keyed on the base SHA if your
+      # runner supports it; shown here as an explicit step for clarity.
+      - name: Score baseline (base branch)
+        run: |
+          set -euo pipefail
+          git worktree add ../base "${{ github.event.pull_request.base.sha }}"
+          # <PLACEHOLDER> run the fast suite against the BASE checkout:
+          # eval-runner \
+          #   --suite "$SUITE_TAG" \
+          #   --path ../base/eval-datasets \
+          #   --trials "$MIN_TRIALS" \
+          #   --isolate clean-per-trial \
+          #   --out json:baseline-scores.json
+          echo "TODO: produce baseline-scores.json"
+        env:
+          EVAL_LLM_API_KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+
+      # --- Score the PR head. ---
+      - name: Score PR head
+        run: |
+          set -euo pipefail
+          # <PLACEHOLDER> run the fast suite against the PR checkout:
+          # eval-runner \
+          #   --suite "$SUITE_TAG" \
+          #   --path ./eval-datasets \
+          #   --trials "$MIN_TRIALS" \
+          #   --isolate clean-per-trial \
+          #   --out json:head-scores.json \
+          #   --out junit:eval-regression.junit.xml
+          echo "TODO: produce head-scores.json + eval-regression.junit.xml"
+        env:
+          EVAL_LLM_API_KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+
+      # --- THE GATE. Compare head vs baseline; exit non-zero on regression. ---
+      # Fails the job (and thus the required check) when EITHER:
+      #   (a) any key metric falls below its absolute floor, OR
+      #   (b) any key metric drops more than REGRESSION_TRIPWIRE vs baseline.
+      # Replace the placeholder comparison with your runner's compare subcommand;
+      # the inline logic below is the fallback contract if you compare by hand.
+      - name: Regression gate (blocks on degradation)
+        run: |
+          set -euo pipefail
+          # Preferred: let the runner do the diff and set the exit code.
+          # <PLACEHOLDER>
+          # eval-runner compare \
+          #   --baseline baseline-scores.json \
+          #   --head head-scores.json \
+          #   --tripwire "$REGRESSION_TRIPWIRE" \
+          #   --fail-on-regression
+          #
+          # The runner MUST exit non-zero when a key metric drops below its floor
+          # or by more than the trip-wire. This step's exit code is the gate.
+          echo "TODO: wire eval-runner compare; it must exit non-zero on regression."
+          exit 1   # fail-closed until wired — a stub gate must never report green.
+
+      - name: Publish scorecard (JUnit)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-regression-junit
+          path: eval-regression.junit.xml
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Comment per-metric scorecard on PR
+        if: always()
+        # <PLACEHOLDER> post a head-vs-baseline per-metric table so the human
+        # checker sees WHICH metric moved and by how much, not just pass/fail.
+        run: echo "TODO render baseline-vs-head metric table and post as PR comment"
