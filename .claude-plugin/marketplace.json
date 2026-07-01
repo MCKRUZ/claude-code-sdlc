@@ -1,0 +1,18 @@
+{
+  "name": "mckruz",
+  "description": "MCKRUZ delivery tooling — SDLC orchestration plus the one-command delivery harness.",
+  "owner": {
+    "name": "MCKRUZ",
+    "url": "https://github.com/MCKRUZ"
+  },
+  "plugins": [
+    {
+      "name": "claude-code-sdlc",
+      "source": ".",
+      "version": "0.2.0",
+      "description": "SDLC orchestration + one-command install of the full delivery harness (governance CLAUDE.md, five CI gates, Stop/review hooks, build-loop agents & skills, IaC starters).",
+      "category": "sdlc",
+      "keywords": ["sdlc", "harness", "gates", "quality", "enterprise"]
+    }
+  ]
+}

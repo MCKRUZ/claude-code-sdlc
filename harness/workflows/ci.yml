@@ -1,0 +1,152 @@
+name: CI
+
+# The CI rail (the-rails.md §3): build + test + lint + coverage — the mechanical,
+# deterministic gate. This is a HARD BLOCK: any red here stops the merge. Nothing
+# in this file calls an LLM; it answers only the questions a machine can answer
+# definitively (does it compile, do the tests pass, is coverage met).
+#
+# ── PLACEHOLDERS (adapt per client, then delete this block) ────────────────────
+#   <<BUILD_TOOLCHAIN>>   The setup-* action + version for your stack.
+#                         Reference profile below uses .NET 10; swap for
+#                         actions/setup-node, setup-java, setup-go, etc.
+#   <<RESTORE_CMD>> / <<BUILD_CMD>> / <<TEST_CMD>>
+#                         Your stack's commands. Reference values are dotnet.
+#   <<SOLUTION_OR_PROJECT>>  Path to the solution/workspace/package manifest.
+#   <<SERVICE_PROVISIONING>>  The `services:` block + any schema/seed steps your
+#                         integration tests need (DB, cache, broker). The
+#                         reference shows Postgres; DELETE the whole block if your
+#                         tests need no external service.
+#   <<COVERAGE_THRESHOLD>>   Enforce the standard's 80% floor in your test runner
+#                         or a follow-up gate step (see the commented example).
+#   <<EVAL_GATE>>         OPTIONAL second hard gate for an agentic/eval fixture
+#                         suite (the source repo's "OWASP Agentic Top-10 Gate").
+#                         Keep it if you ship agent behavior that must not
+#                         regress; DELETE the whole job otherwise.
+# ───────────────────────────────────────────────────────────────────────────────
+
+on:
+  push:
+    branches: [ main ]   # <<DEFAULT_BRANCH>>
+  pull_request:
+    branches: [ main ]   # <<DEFAULT_BRANCH>>
+
+jobs:
+  build-and-test:
+    name: build-and-test          # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+
+    # <<SERVICE_PROVISIONING>> — provision the backing services your INTEGRATION
+    # tests actually exercise, so they execute instead of silently skipping. The
+    # credentials here must match whatever your test fixtures expect. Setting an
+    # explicit connection env var (below) should also flip your fixtures into
+    # "explicitly configured" mode, so a connectivity failure is a HARD error, not
+    # a silent skip. DELETE this whole `services:`/`env:` pairing if not needed.
+    services:
+      database:
+        image: postgres:16
+        env:
+          POSTGRES_DB: appdb
+          POSTGRES_USER: appdb
+          POSTGRES_PASSWORD: appdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U appdb -d appdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Setting this both points tests at the service AND (by convention) makes the
+      # fixture fail hard on a bad connection rather than skip. <<SERVICE_PROVISIONING>>
+      TEST_DB_CONN: "Host=localhost;Port=5432;Database=appdb;Username=appdb;Password=appdb"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # <<BUILD_TOOLCHAIN>>
+      - name: Setup toolchain
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      # <<SERVICE_PROVISIONING>> — apply schema/seed the way your app would. GitHub
+      # Actions service containers do NOT run an image's init scripts, so apply them
+      # explicitly once the service is healthy. DELETE if no external service.
+      - name: Apply database schema
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+          for f in db/init/*.sql; do
+            echo "Applying $f"
+            PGPASSWORD=appdb psql -h localhost -p 5432 -U appdb -d appdb -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Restore
+        run: dotnet restore <<SOLUTION_OR_PROJECT>>          # <<RESTORE_CMD>>
+
+      - name: Build
+        run: dotnet build <<SOLUTION_OR_PROJECT>> --no-restore --configuration Release   # <<BUILD_CMD>>
+
+      - name: Test with coverage
+        # <<TEST_CMD>> — must FAIL the job on any failing test or sub-threshold
+        # coverage. Configure the <<COVERAGE_THRESHOLD>> (standard floor: 80% on new
+        # code) in the runner settings (e.g. coverlet's threshold args) so a coverage
+        # miss is a non-zero exit, not a passing run with a low number in a report.
+        run: >
+          dotnet test <<SOLUTION_OR_PROJECT>>
+          --no-build
+          --configuration Release
+          --collect:"XPlat Code Coverage"
+          --results-directory coverage
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage
+          path: coverage/
+
+  # ── OPTIONAL: <<EVAL_GATE>> ────────────────────────────────────────────────────
+  # A second HARD gate for projects that ship agentic behavior with an eval-fixture
+  # suite that must not regress (the source repo gated the OWASP Agentic Top-10
+  # fixtures here). Any failing fixture exits non-zero and BLOCKS the merge. A
+  # legitimate, time-boxed bypass is RECORDED in profile/eval-bypasses.md — the gate
+  # still runs; the ledger only documents why a known failure was accepted.
+  # DELETE this whole job if you have no such suite.
+  eval-gate:
+    name: eval-gate               # <-- required status-check context if kept
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup toolchain
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Restore
+        run: dotnet restore <<SOLUTION_OR_PROJECT>>
+
+      - name: Build
+        run: dotnet build <<SOLUTION_OR_PROJECT>> --no-restore --configuration Release
+
+      - name: Run eval fixtures (hard gate)
+        # Any failing eval fixture causes a non-zero exit and blocks the merge.
+        # Document a legitimate bypass in profile/eval-bypasses.md (the gate still runs).
+        run: >
+          dotnet test <<EVAL_TEST_PROJECT>>
+          --no-build
+          --configuration Release
+          --filter "<<EVAL_FILTER>>"
+          --logger "trx;LogFileName=eval-gate.trx"
+          --results-directory eval-results
+
+      - name: Upload eval results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-gate-results
+          path: eval-results/

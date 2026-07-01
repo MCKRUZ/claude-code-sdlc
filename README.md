@@ -43,7 +43,21 @@ No existing tool combines specification-driven development + quality enforcement
 
 ## Installation
 
-### As a Claude Code Skill
+### Via the plugin marketplace (recommended)
+
+One marketplace add, one install — brings the orchestration commands **and** the delivery harness:
+
+```
+/plugin marketplace add MCKRUZ/claude-code-sdlc
+/plugin install claude-code-sdlc@mckruz
+```
+
+Then, per project: `/sdlc-setup` initializes `.sdlc/` **and installs the full delivery harness**
+(governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, the five CI gates in
+`.github/workflows/`, branch-protection ruleset, and `infra/` starters). To add or refresh just the
+harness in an existing repo, use `/sdlc-harness`. Requires Claude Code v2.1.196+ (`source: "."`).
+
+### As a Claude Code Skill (local dev)
 
 ```bash
 # Clone the repo
@@ -75,7 +89,7 @@ uv sync
 ## Quick Start
 
 ```
-1. /sdlc-setup          → Select profile, initialize .sdlc/ in your project
+1. /sdlc-setup          → Select profile, initialize .sdlc/ AND install the delivery harness
 2. /sdlc                → See Phase 0: Discovery guidance
 3. Create artifacts     → Write problem-statement.md in .sdlc/artifacts/00-discovery/
 4. /sdlc-gate           → Check if exit criteria are met
