@@ -1,0 +1,137 @@
+<!--
+  CLAUDE.md — governance template (kit). Adapt per client in week one (Phase 3).
+  This file is read at the start of EVERY session, so every line spends context budget.
+  Keep it a MAP, not the territory: what / why / how-to-build-test-verify, and the gates.
+  Push deep stack docs into @imported files; prune anything Claude can infer from the code.
+
+  Placeholders: replace every {{LIKE_THIS}} token. Delete guidance comments before commit.
+  An empty or stale CLAUDE.md means agents guess — and guesses differ per run. Keeping it
+  current is Setup Owner work, reviewed at setup review.
+-->
+
+# {{PROJECT_NAME}}
+
+## What this is
+{{ONE_PARAGRAPH: what the system does, who uses it, the business outcome it serves —
+in the client's words.}}
+
+**Stack:** {{e.g. .NET 8 / Angular / SQL Server / Azure / GitHub Actions}}
+**Build / test / verify:** `{{BUILD_CMD}}` · `{{TEST_CMD}}` · `{{LINT_CMD}}`
+**Done means the hook lets you stop.** A change is finished when it is proven against its
+spec by something other than its author — not when the code exists. The blocking Stop hook
+will not let you end a turn on a red test or a broken build.
+
+---
+
+## The one rule
+Claude drafts and interrogates; humans decide and own. Every gate below exists to enforce it:
+a machine reports, a named human signs.
+
+## The build loop (every story runs this)
+**Intent → Delegate → Discern → merged & deployed to dev.**
+- **Intent** — a human writes a short, testable spec (`specs/NNNN-name.md`). No spec, no build.
+- **Delegate** — you (the agent) plan and build inside the spec's stated bounds. The plan is
+  approved before code on MEDIUM/HIGH work.
+- **Discern** — automated gates plus a **non-author** human check it before it is trusted.
+
+## Definition of Ready (a story before anyone builds it)
+- Acceptance criteria pass the **vague-line test**: *could two people build different things
+  from this line?* If yes, it's a wish, not a check — rewrite it.
+- Scope in / out stated. The silent decisions answered (no open decision-list item for this story).
+- A **risk tier** assigned. The harness context named.
+
+## Definition of Checked (a change before it merges)
+Proven against its spec by something other than its author. Written is cheap; **checked is the bar.**
+The climb is set by risk tier — see the checking ladder below.
+
+---
+
+## Risk taxonomy (the tier sets the gates)
+Assigned by the {{POD_LEAD_ROLE}} at intent triage, recorded in the spec, and lived here so
+agents see it too. **Challenges escalate up, never down, without discussion.**
+
+| Tier | Lands here | Triggers |
+|---|---|---|
+| **HIGH** | Auth / identity, payments, PII / client data, schema migrations, public API contract changes, IaC / pipeline changes, **prompt / model / tool-definition changes**, anything hard to undo | Tight agent permissions · full checking ladder · security-reviewer pass · **named human sign-off recorded in the PR** |
+| **MEDIUM** | New business logic, external integrations, changes to shared internal services | Standard permissions · grader + non-author human Checker |
+| **LOW** | UI within existing patterns, copy, internal tooling, additive CRUD on established rails | Lighter review; grader + mechanical gates still run |
+
+## The checking ladder (you don't run every change up all five rungs)
+| Rung | Check | Catches |
+|---|---|---|
+| 1 | Done-rule in this file | Sets the bar; persuasion only |
+| 2 | Agent re-checks each turn | The agent's own mechanical slips |
+| 3 | Blocking **Stop hook** | "Done" on red tests / broken build |
+| 4 | Separate **grader** | The hole the author was blind to — check-by-check vs the spec |
+| 5 | **Human / security gate** | Judgment calls no machine should own |
+
+LOW stops after the grader's advisory + a light human look. MEDIUM = grader + Checker.
+HIGH = all five rungs, including security-reviewer and a named human sign-off.
+
+---
+
+## Gated paths (extra review independent of the spec's risk tier)
+Any change touching these is held to extra review and may trip the security gate:
+- `{{AUTH_PATHS}}` — authentication / identity / authorization
+- `{{DATA_PATHS}}` — schema migrations, data access
+- `{{PIPELINE_PATHS}}` — `.github/`, the hooks, this CLAUDE.md, branch protection
+- `{{INFRA_PATHS}}` — `infra/` (IaC is HIGH risk every time)
+- `{{PROMPT_PATHS}}` — prompts, model selection, tool definitions (see "Agentic work" below)
+
+## Spec convention
+One feature = one file `specs/NNNN-name.md` = one branch `spec/NNNN-name` = one squash-merged PR.
+The spec is part of the diff so the reviewer sees intent and implementation in one view. The
+seven parts: **Goal · Why · Scope in/out · Acceptance checks · Risk tier · Delegation plan
+(what you may touch, what's gated) · Checking plan (which rungs).** Template: `spec-template.md`.
+
+## Repo etiquette
+- Branch `spec/NNNN-name`. You push **only to branches you create**, never to `{{DEFAULT_BRANCH}}`.
+- You **cannot approve or merge your own work** — platform-enforced.
+- Every agent commit is **co-authored** (provenance in history).
+- Squash merge; conventional-commit title (`type: description`, imperative, under 72 chars).
+
+---
+
+## Metrics discipline (so the dashboard doesn't lie)
+- **When a metric has no data, report "no data" — never a fabricated zero.** A zero reads as a
+  measured result and steers the room wrong.
+- **Never tracked, never reported:** velocity, story points, PR count, lines of code. Agents
+  inflate all of them.
+
+## Data boundary & secrets (non-negotiable)
+- Secrets live in {{CLIENT}}'s Key Vault and GitHub secrets. **Never in code, never in this file,
+  never in specs.** A key in a commit is the one unrecoverable mistake.
+- The {{LLM_PROVIDER}} key is {{CLIENT}}-procured under their own agreement.
+- Tag genuinely sensitive material out of agent context. See `docs/data-flow-brief.md`.
+
+---
+
+## Agentic work (applies when a spec's deliverable is LLM-powered)
+"Tests pass" is not sufficient verification for probabilistic behavior.
+- **Evals are acceptance criteria.** An agentic spec ships a **golden set** versioned next to the
+  spec and a **threshold** (e.g. ">= {{EVAL_THRESHOLD}}% of the golden set"). CI runs evals like tests.
+- **Prompts, model selections, and tool definitions are HIGH risk.** Any change runs the
+  **eval-regression gate**; degradation blocks like a failing test. **No drive-by prompt edits.**
+- **Observability is required:** tracing (what the agent saw, decided, called), token cost per
+  task, failure-mode logging.
+- Model output is **untrusted input**. No raw user input embedded in system prompts. Tool
+  permissions enforced **server-side, not by prompt**.
+
+---
+
+## Stack standards — {{STACK}} profile
+<!--
+  Keep this section lean. As it grows, extract topics into @imported files so the always-loaded
+  surface stays small, e.g.:
+    @./.claude/rules/clean-architecture.md
+    @./.claude/rules/testing.md
+  Below is the worked .NET-10 / Microsoft Agent Framework profile — replace for your stack.
+-->
+- **Architecture:** {{e.g. Clean Architecture; dependencies point inward; CQRS via MediatR;
+  FluentValidation at boundaries; one class per file; files < 400 lines}}.
+- **Immutability first:** {{e.g. IReadOnlyList/IReadOnlyDictionary on public surfaces; records for
+  value types; init-only DTOs}}.
+- **Error handling:** {{e.g. Result<T> for expected failures; exceptions only for the exceptional}}.
+- **Tests:** {{e.g. xUnit, Arrange-Act-Assert, WebApplicationFactory + in-memory DB for pipeline
+  tests; 80% coverage on new code; name MethodName_Scenario_ExpectedResult}}.
+- **Common gotchas (things the code won't tell you):** {{LIST_NON_OBVIOUS_BEHAVIORS}}.
