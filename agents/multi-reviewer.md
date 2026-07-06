@@ -66,7 +66,9 @@ Evaluate artifacts from 4 viewpoints. Each viewpoint produces 2-3 specific findi
 
 ## Output Format
 
-Write the review report to `.sdlc/artifacts/{NN}-{phase}/review-report.md`:
+Write the review report to `.sdlc/artifacts/{NN}-{phase}/review-report.md`. The report opens with a
+machine-readable `## Gate Results` block (so `record_findings.py` can give each finding memory and a
+disposition across rounds), then the human-readable summary and detail:
 
 ```markdown
 # Review Report — Phase {N}: {Name}
@@ -75,26 +77,52 @@ Write the review report to `.sdlc/artifacts/{NN}-{phase}/review-report.md`:
 **Date:** {ISO timestamp}
 **Artifacts reviewed:** {list}
 
+## Gate Results
+
+<!-- findings: critical=0 high=2 medium=1 low=0 | open=3 fixed=0 accepted_risk=0 split=0 postponed=0 -->
+
+| id | category | severity | target | disposition | detail |
+|----|----------|----------|--------|-------------|--------|
+| F1 | missing-rollback | HIGH | design-doc.md:88 | OPEN | no rollback strategy for the migration |
+| F2 | auth-offline-refresh | HIGH | design-doc.md:120 | OPEN | token refresh unspecified when offline |
+| F3 | untestable-criterion | MEDIUM | requirements.md:42 | OPEN | acceptance criterion has no measurable signal |
+
 ## Summary
 
 {2-3 sentence overview of findings}
 
-## Findings
-
-| # | Finding | Severity | Viewpoint | Recommendation |
-|---|---------|----------|-----------|----------------|
-| 1 | {description} | CRITICAL/HIGH/MEDIUM/LOW | {viewpoint} | {specific action} |
-| 2 | ... | ... | ... | ... |
-
 ## Detail
 
-### Finding 1: {title}
+### F1: {title}
 {Detailed explanation with specific artifact references}
 
 **Recommendation:** {actionable fix}
 
 ---
 ```
+
+**Rules for the `## Gate Results` block** — this block is parsed mechanically, so it must be exact:
+
+- It MUST be a top-level `## Gate Results` heading (not nested, not inside a code fence). A report
+  without it is treated as incomplete.
+- One row per finding. Columns are fixed: `id | category | severity | target | disposition | detail`.
+- `id` — a short stable label within this report (F1, F2, …).
+- `category` — a **kebab-case slug naming the *class* of problem**, not the instance. This is what
+  lets the tool notice the same class recurring later, so reuse an existing slug when the class
+  matches. Seed examples: `missing-rollback`, `unhandled-error-path`, `auth-gap`, `input-unvalidated`,
+  `untestable-criterion`, `race-condition`, `resource-leak`, `secret-exposure`, `scope-ambiguity`,
+  `cross-artifact-contradiction`. Use `other` only when nothing fits.
+- `severity` — CRITICAL / HIGH / MEDIUM / LOW (your own scale; don't inflate).
+- `target` — `file.md:line` (or just `file.md`) the finding is anchored to. Blank if truly global.
+- `disposition` — on a fresh review every finding is `OPEN`. Later rounds may carry a resolved
+  disposition; if so, name its evidence inline: `SPLIT(split_to=0042; owner=Jane)`,
+  `ACCEPTED_RISK(approver=Jane Doe; date=2026-07-06; reason=...; review_condition=...)`. An AI may
+  not sign an `ACCEPTED_RISK`. Marking a finding `FIXED` without the target file having changed is a
+  false claim and is flagged automatically — only mark FIXED what was really fixed.
+- The `<!-- findings: ... -->` counts comment is a convenience tally; keep it consistent with the rows.
+
+The human-readable `## Detail` sections use the same `id`s (F1, F2, …) so a reader can move between
+the table and the prose.
 
 ## Principles
 

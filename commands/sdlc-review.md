@@ -32,7 +32,25 @@ Run a structured review of the current phase's artifacts from multiple perspecti
    Full report: .sdlc/artifacts/02-design/review-report.md
    ```
 
-6. **If CRITICAL or HIGH findings exist:** Recommend addressing them before running `/sdlc-gate`. These are likely to surface as gate failures.
+6. **Record the findings** so they survive the next review (the report itself is overwritten each run):
+
+   ```bash
+   uv run --project scripts python scripts/record_findings.py record \
+     --report .sdlc/artifacts/{NN}-{phase}/review-report.md --state .sdlc/state.yaml
+   ```
+
+   This parses the report's `## Gate Results` block into the append-only ledger
+   `.sdlc/metrics/findings-log.jsonl`, so a finding's disposition can be tracked across rounds and a
+   recurring class of finding becomes visible over time. Then surface the standing picture:
+
+   ```bash
+   uv run --project scripts python scripts/record_findings.py report --state .sdlc/state.yaml
+   ```
+
+   Show the **open HIGH+ debt count** and any **FIXED_CLAIM_MISMATCH** (a finding marked fixed whose
+   file never changed) in your summary to the user.
+
+7. **If CRITICAL or HIGH findings exist:** Recommend addressing them before running `/sdlc-gate`. These are likely to surface as gate failures.
 
 ## Arguments
 
@@ -52,6 +70,14 @@ Run a structured review of the current phase's artifacts from multiple perspecti
 
 ## Important
 
-- Reviews are **advisory** — findings don't block gate checks directly
+- Reviews are **advisory** — the grader advises, it never blocks (the-rails.md §4). Findings do not
+  gate advancement; the open HIGH+ debt count is surfaced so the human Checker can weigh it at the
+  merge bar.
+- The one factual exception is the **FIXED-claim check**: a finding marked FIXED whose target file
+  never changed is a false claim. `record_findings.py report --strict` exits non-zero on it — the
+  honesty check may block because it's a fact, not a judgment.
+- Findings persist in `.sdlc/metrics/findings-log.jsonl` across runs even though `review-report.md`
+  is overwritten — that ledger is what later makes a recurring finding promotable into a permanent
+  check (Phase C: "findings become new checks").
 - The review report is written as an artifact that stakeholders can review
 - Running `/sdlc-review --all` before `/sdlc-next` is recommended for design-heavy phases
