@@ -280,7 +280,7 @@ The `--project` flag ensures `uv` resolves dependencies from the scripts' `pypro
 
 **Step 3: Phase Work.** During each phase, Claude guides the user through the phase definition's workflow. Artifacts are written to `.sdlc/artifacts/<slug>/`, where the directory name is the phase's `slug` field -- not a zero-padded integer (`build` and `close` are non-numeric). Each phase has required and optional artifacts defined in `phase-registry.yaml`. Within the Build Loop, session continuity is maintained per-spec through `session-handoff.json` -- a structured JSON file tracking spec/section progress, blockers, and next actions across sessions.
 
-**Step 4: Gate Checking (`/sdlc-gate`).** The `check_gates.py` script reads `state.yaml` to determine the current phase, then validates artifacts against the 6-gate system:
+**Step 4: Gate Checking (`/sdlc-gate`).** The `check_gates.py` script reads `state.yaml` to determine the current phase, then validates artifacts against the 7-gate system:
 
 | Gate | What It Checks | Severity |
 |------|---------------|----------|
@@ -290,8 +290,9 @@ The `--project` flag ensures `uv` resolves dependencies from the scripts' `pypro
 | G4: Compliance | Correct labeling -- requirement priorities, ADR statuses, compliance framework mappings, risk severities | MUST or SHOULD (varies by phase) |
 | G5: Cross-Phase Consistency | Detects drift in locked metrics across phase transitions (budget, timeline, scope, stakeholder roster, quality thresholds, compliance reqs); warns via decision log, does not block | SHOULD |
 | G6: Quality | Holistic assessment -- clarity, accuracy, internal consistency, alignment with prior phase artifacts | MUST or SHOULD (varies by phase) |
+| G7: Exit criteria | The phase's declared `exit_gate.conditions[]` prose checks, surfaced so the approver sees the checklist they are signing against | REVIEW (never blocks) |
 
-Gate severity varies by phase. Phase 2 (Design) and the Build Loop apply the gates most strictly, while Phase 0 (Discovery) only requires G1 and G2 as MUST.
+Gate severity varies by phase. Phase 2 (Design) and the Build Loop apply the gates most strictly, while Phase 0 (Discovery) only requires G1 and G2 as MUST. G7 is silent for Phases 0-2, which declare no prose exit conditions.
 
 **Step 5: Phase Advancement (`/sdlc-next`).** The `advance_phase.py` script:
 1. Runs `check_gates.py` internally to verify all MUST gates pass
@@ -372,7 +373,7 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |
 |-- references/                            Progressive disclosure documents
 |   |-- state-machine.md                   State format and transition rules
-|   |-- validation-rules.md                6-gate validation system details
+|   |-- validation-rules.md                7-gate validation system details
 |   |-- skill-mapping.md                   Phase-to-skill mapping
 |   |-- agent-roster.md                    Phase-to-agent mapping with parallel groups
 |   |-- compliance-frameworks.md           SOC 2, HIPAA, GDPR, PCI-DSS gates
@@ -404,7 +405,7 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |   |-- uv.lock                            Locked dependency versions
 |   |-- validate_profile.py                Validate profile YAML against schema
 |   |-- init_project.py                    Initialize .sdlc/ in target project
-|   |-- check_gates.py                     Run 6-gate validation for current phase
+|   |-- check_gates.py                     Run 7-gate validation for current phase
 |   |-- advance_phase.py                   Advance to next phase (atomic state update)
 |   |-- generate_status.py                 Generate progress dashboard data
 |   |-- generate_phase_report.py           Generate self-contained HTML report
@@ -661,7 +662,7 @@ This document covers the system architecture at a high level. For detailed docum
 | Document | Contents |
 |----------|----------|
 | `references/state-machine.md` | State format, field definitions, transition rules, history schema |
-| `references/validation-rules.md` | 6-gate validation system, per-gate checks, severity matrix by phase |
+| `references/validation-rules.md` | 7-gate validation system, per-gate checks, severity matrix by phase |
 | `references/skill-mapping.md` | Phase-to-skill mapping, when to invoke each Claude Code skill |
 | `references/agent-roster.md` | Phase-to-agent mapping, parallel execution groups, spawn conditions |
 | `references/compliance-frameworks.md` | SOC 2, HIPAA, GDPR, PCI-DSS gate definitions and artifact requirements |

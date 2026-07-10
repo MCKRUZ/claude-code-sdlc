@@ -33,7 +33,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-setup` | Initialize SDLC for a project | Yes -- creates `.sdlc/` | Once per project, at the very start |
 | `/sdlc` | Show current phase guidance | No | Start of each work session |
 | `/sdlc-status` | Display progress dashboard | No | Anytime -- quick status check |
-| `/sdlc-gate` | Run 6-gate exit criteria check | Yes -- records `gate_results` | Before attempting to advance phases |
+| `/sdlc-gate` | Run 7-gate exit criteria check | Yes -- records `gate_results` | Before attempting to advance phases |
 | `/sdlc-next` | Run gates + advance phase | Yes -- advances `current_phase` | When ready to move to the next phase |
 | `/sdlc-phase-report` | Generate HTML report | No | Stakeholder reviews, documentation |
 | `/sdlc-audit` | Analyze gate effectiveness | No | After 3-4+ completed phases |
@@ -252,9 +252,9 @@ None. This command is purely informational.
 
 ### What It Does
 
-Runs the 6-gate validation system against the current (or specified) phase to determine readiness for advancement. Generates an HTML report and opens it in the default browser. Records gate results in state but does NOT advance the phase -- that is exclusively `/sdlc-next`'s responsibility.
+Runs the 7-gate validation system against the current (or specified) phase to determine readiness for advancement. Generates an HTML report and opens it in the default browser. Records gate results in state but does NOT advance the phase -- that is exclusively `/sdlc-next`'s responsibility.
 
-### The 6-Gate System
+### The 7-Gate System
 
 | Gate | Name | What It Validates |
 |------|------|-------------------|
@@ -293,7 +293,7 @@ Each gate also has a severity level:
      --state .sdlc/state.yaml
    ```
    Optionally with `--phase <N>` for a specific phase.
-4. **Display results:** For each of the 6 gates, show: gate name, PASS/FAIL/MANUAL status, severity (MUST/SHOULD/MAY), and specific details.
+4. **Display results:** For each of the 7 gates, show: gate name, PASS/FAIL/MANUAL status, severity (MUST/SHOULD/MAY), and specific details.
 5. **Generate HTML report:**
    ```bash
    uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
@@ -316,7 +316,7 @@ Each gate also has a severity level:
 
 | Script | Purpose |
 |--------|---------|
-| `check_gates.py` | Runs all 6 gates and returns structured results |
+| `check_gates.py` | Runs all 7 gates and returns structured results |
 | `generate_phase_report.py` | Renders artifacts and gate results into a self-contained HTML report |
 
 ### Important Distinction
@@ -433,7 +433,7 @@ When the terminal phase (Phase C: Close & Transfer) passes its close gate, the p
 
 | Script | Purpose |
 |--------|---------|
-| `check_gates.py` | Runs the 6-gate validation system |
+| `check_gates.py` | Runs the 7-gate validation system |
 | `advance_phase.py` | Updates `state.yaml` with phase transition (called with `--confirmed`) |
 | `generate_phase_report.py` | Generates the HTML report before advancement |
 
@@ -783,7 +783,7 @@ Scripts write structured output to stdout, which the calling command parses and 
 | `init_project.py` | `/sdlc-setup` | Creates `.sdlc/` directory structure |
 | `validate_profile.py` | `/sdlc-setup` | Validates profile YAML against schema |
 | `generate_status.py` | `/sdlc-status` | Generates progress dashboard |
-| `check_gates.py` | `/sdlc-gate`, `/sdlc-next` | Runs the 6-gate validation system |
+| `check_gates.py` | `/sdlc-gate`, `/sdlc-next` | Runs the 7-gate validation system |
 | `generate_phase_report.py` | `/sdlc-gate`, `/sdlc-next`, `/sdlc-phase-report` | Renders HTML reports |
 | `advance_phase.py` | `/sdlc-next` | Updates `state.yaml` with phase transition |
 | `audit_gates.py` | `/sdlc-audit` | Analyzes gate effectiveness across phases |
@@ -792,7 +792,7 @@ Scripts write structured output to stdout, which the calling command parses and 
 
 ## Cross-References
 
-- **Gate system details:** See [gate-system.md](gate-system.md) for the full 6-gate specification, severity levels, and override protocol.
+- **Gate system details:** See [gate-system.md](gate-system.md) for the full 7-gate specification, severity levels, and override protocol.
 - **State machine:** See [state-machine.md](state-machine.md) for the `state.yaml` schema and valid phase transitions.
 - **Phase lifecycle:** See [phase-lifecycle.md](phase-lifecycle.md) for phase definitions, artifact requirements, and entry/exit criteria.
 - **Script internals:** See [scripts.md](scripts.md) for Python script implementation details, dependencies, and extension points.

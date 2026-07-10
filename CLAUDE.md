@@ -32,7 +32,7 @@ When adding a new agent or command, document both modes in its file. `discovery-
 ## Key Features
 - **Frozen layers** — Token-efficient phase summaries in `.sdlc/context/layers/` for cross-phase continuity
 - **3-tier context** — Foundation (always loaded), frozen layers (per-phase), references (on-demand)
-- **6-gate validation** — Integrity, completeness, metrics, compliance, consistency, quality
+- **7-gate validation** — Integrity, completeness, metrics, compliance, consistency, quality, exit criteria
 - **Narrative enhancement** — `/sdlc-enhance` generates stakeholder-friendly `.narrative.md` companions
 - **Conversational coaching** — `/sdlc-coach` for adaptive guided dialogue through phases
 - **Artifact checksums** — SHA-256 dirty tracking; gate checks skip unchanged artifacts

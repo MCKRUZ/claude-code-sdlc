@@ -11,7 +11,7 @@ No existing tool combines specification-driven development + quality enforcement
 - **9 SDLC phases** — Discovery, Requirements, Design, Foundation, the continuous **Build loop**, Documentation, Deployment, Monitoring, Close & Transfer. The gap where batch Implementation/Quality/Testing used to be is intentional — checking happens per change inside the Build loop, never as a later batch phase.
 - **Project type routing** — testing, deployment, and monitoring adapt automatically based on `project_type` (service, app, library, skill, cli)
 - **Company profiles** — YAML configs for stack, quality thresholds, compliance, conventions
-- **6-gate validation** — Integrity, completeness, metrics, compliance, consistency, quality checks at every transition
+- **7-gate validation** — Integrity, completeness, metrics, compliance, consistency, quality checks at every transition, plus the phase's own exit criteria rendered for the human who signs
 - **Frozen layers** — Token-efficient phase summaries enabling cross-phase context continuity
 - **3-tier context architecture** — Foundation (always), frozen layers (per-phase), references (on-demand)
 - **Narrative enhancement** — Optional stakeholder-friendly `.narrative.md` companions for technical artifacts
@@ -105,7 +105,7 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 |-------|-------------|
 | [Architecture](docs/architecture.md) | Plugin anatomy, component relationships, data flow diagrams, two-directory model, progressive disclosure strategy |
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 9 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
-| [Gate System](docs/gate-system.md) | 6-gate validation — integrity, completeness, metrics, compliance, consistency, quality — severity levels, override protocol |
+| [Gate System](docs/gate-system.md) | 7-gate validation — integrity, completeness, metrics, compliance, consistency, quality, exit criteria — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
 | [Commands](docs/commands.md) | All 13 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
 | [Agents](docs/agents.md) | 8 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
@@ -122,7 +122,7 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-setup` | Interactive setup wizard — select profile, initialize project |
 | `/sdlc` | Show current phase guidance, next action, required artifacts |
 | `/sdlc-status` | Progress dashboard with phase table and completion % |
-| `/sdlc-gate` | Run 6-gate exit criteria check (does not advance) |
+| `/sdlc-gate` | Run 7-gate exit criteria check (does not advance) |
 | `/sdlc-next` | Advance to next phase if all MUST gates pass |
 | `/sdlc-enhance` | Generate narrative companions for stakeholder review (optional) |
 | `/sdlc-coach` | Interactive coaching mode — adaptive dialogue for current phase |
@@ -185,9 +185,9 @@ Phase 0 captures `project_type`, which is stored in `state.yaml` and controls ho
 | 9 | Monitoring | Manual | monitoring config (approach varies by project_type) |
 | close | Close & Transfer | — | final-handoff-report.md, harness-audit.md, close-gate-evidence.md, access-revocation-checklist.md |
 
-## 6-Gate Validation System
+## 7-Gate Validation System
 
-Every phase transition runs through six gates:
+Every phase transition runs through seven gates:
 
 1. **Integrity** — Required artifacts exist and are well-formed
 2. **Completeness** — Artifacts contain all required sections, no placeholders
@@ -195,6 +195,9 @@ Every phase transition runs through six gates:
 4. **Compliance** — Correct labeling (priorities, ADR status, compliance mapping)
 5. **Consistency** — Locked metrics checked against frozen layers from prior phases
 6. **Quality** — Phase-scoped evaluation criteria from profile (e.g., requirement testability in Phase 1, ADR completeness in Phase 2, code patterns in the Build loop)
+7. **Exit criteria** — The phase's own prose exit conditions from the registry, rendered as review items for the human who signs the advance
+
+Gates 1–6 pass or fail. Gate 7 always reports REVIEW: its conditions are judgments ("The rails are proven, not just present") that no script can settle, so it shows the approver the checklist rather than deciding for them. Phases 0–2 declare no prose conditions, so Gate 7 is silent there.
 
 All gate results are logged to `.sdlc/metrics/gate-log.jsonl` for empirical tracking of gate effectiveness.
 
