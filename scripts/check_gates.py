@@ -81,6 +81,36 @@ def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, s
     return True, f"File '{artifact}' is complete"
 
 
+def check_exit_criteria(phase_def: dict) -> list[dict]:
+    """Surface the phase's declared prose exit conditions as human-review items.
+
+    `exit_gate.conditions[]` holds two shapes:
+
+      - {"artifact": "design-doc.md", "check": "exists_and_complete"}  -> machine-checked by G1/G2
+      - {"check": "The rails are proven, not just present"}            -> a human's judgment
+
+    Only the second shape is returned here, one result per condition, always with
+    `passed: None` so it renders as REVIEW and is picked up by `advance_phase.py`'s
+    manual-gate handling. These never fail and never block: a MUST failure is what
+    stops an advance, and a condition nobody evaluated cannot have failed.
+    """
+    conditions = (phase_def.get("exit_gate") or {}).get("conditions") or []
+    results = []
+    for condition in conditions:
+        if not isinstance(condition, dict) or "artifact" in condition:
+            continue
+        check = condition.get("check")
+        if not check:
+            continue
+        results.append({
+            "gate": "G7-exit-criteria",
+            "passed": None,
+            "message": f"Human verification required: {check}",
+            "severity": "MUST",
+        })
+    return results
+
+
 def check_cross_references(artifacts_dir: Path) -> list[dict]:
     """Check that file references within artifacts resolve to existing files."""
     import re
@@ -341,6 +371,15 @@ def check_phase_gates(
     # Cross-artifact reference validation
     xref_results = check_cross_references(artifacts_dir)
     results.extend(xref_results)
+
+    # Gate 7: Exit criteria — the phase's declared conditions, rendered for the human who signs.
+    #
+    # The registry has always carried these. Nothing read them, so the approver was shown a list of
+    # files that exist and contain no placeholders, then asked to approve — without ever seeing the
+    # checklist they were approving against. They are deliberately not machine-checked: "the rails
+    # are proven, not just present" is a judgment, and a spike is a person touching a live system.
+    # Reported, never enforced. Gates report; humans decide.
+    results.extend(check_exit_criteria(phase_def))
 
     # Build loop: spec-backlog summary (the spec is the unit of work; progress derives from
     # spec frontmatter, not a separate tracker). Informational — the loop has no batch gate.

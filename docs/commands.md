@@ -264,6 +264,7 @@ Runs the 6-gate validation system against the current (or specified) phase to de
 | G4 | Compliance | Regulatory and framework-specific requirements |
 | G5 | Cross-Phase Consistency | Detects drift in locked metrics across phase transitions (budget, timeline, scope, stakeholder roster, quality thresholds, compliance reqs). Warns but does not block. |
 | G6 | Quality | Content quality, consistency, and cross-references |
+| G7 | Exit criteria | The phase's declared `exit_gate.conditions[]` prose checks, rendered for the human who signs. Always REVIEW — never blocks. |
 
 Each gate reports one of three statuses:
 - **PASS** -- Criteria fully satisfied.
