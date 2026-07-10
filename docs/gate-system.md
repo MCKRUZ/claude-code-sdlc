@@ -13,12 +13,13 @@ Comprehensive reference for the gate validation system used by the claude-code-s
 5. [Gate 4: Compliance](#5-gate-4-compliance)
 6. [Gate 5: Cross-Phase Consistency](#6-gate-5-cross-phase-consistency)
 7. [Gate 6: Quality](#7-gate-6-quality)
-8. [Severity Levels Deep Dive](#8-severity-levels-deep-dive)
-9. [Gate Results Format](#9-gate-results-format)
-10. [Override Protocol](#10-override-protocol)
-11. [Compliance Gate Extensions](#11-compliance-gate-extensions)
-12. [Gate Auditing](#12-gate-auditing)
-13. [Cross-References](#13-cross-references)
+8. [Gate 7: Exit Criteria](#8-gate-7-exit-criteria)
+9. [Severity Levels Deep Dive](#9-severity-levels-deep-dive)
+10. [Gate Results Format](#10-gate-results-format)
+11. [Override Protocol](#11-override-protocol)
+12. [Compliance Gate Extensions](#12-compliance-gate-extensions)
+13. [Gate Auditing](#13-gate-auditing)
+14. [Cross-References](#14-cross-references)
 
 ---
 
@@ -64,17 +65,17 @@ Exit code 0 (all clear) or 1 (any MUST gate failed)
 
 **Gate application varies by phase.** Not every gate applies at every phase with the same severity. The rows below are the nine registry phases (ordered by `order`, not by id):
 
-| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality |
-|-------|:---:|:---:|:---:|:---:|:---:|:---:|
-| 0 Discovery | MUST | MUST | -- | -- | -- | SHOULD |
-| 1 Requirements | MUST | MUST | -- | MUST | SHOULD | SHOULD |
-| 2 Design | MUST | MUST | -- | MUST | SHOULD | MUST |
-| 3 Foundation | MUST | MUST | -- | -- | SHOULD | SHOULD |
-| build (Build Loop) | MUST | MUST | SHOULD | SHOULD | SHOULD | SHOULD |
-| 7 Documentation | MUST | MUST | -- | -- | SHOULD | MUST |
-| 8 Deployment | MUST | MUST | SHOULD | -- | SHOULD | SHOULD |
-| 9 Monitoring | MUST | SHOULD | -- | -- | SHOULD | SHOULD |
-| close (Close & Transfer) | MUST | MUST | -- | -- | SHOULD | MUST |
+| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality | G7: Exit criteria |
+|-------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 Discovery | MUST | MUST | -- | -- | -- | SHOULD | -- |
+| 1 Requirements | MUST | MUST | -- | MUST | SHOULD | SHOULD | -- |
+| 2 Design | MUST | MUST | -- | MUST | SHOULD | MUST | -- |
+| 3 Foundation | MUST | MUST | -- | -- | SHOULD | SHOULD | REVIEW (3) |
+| build (Build Loop) | MUST | MUST | SHOULD | SHOULD | SHOULD | SHOULD | REVIEW (1) |
+| 7 Documentation | MUST | MUST | -- | -- | SHOULD | MUST | REVIEW (2) |
+| 8 Deployment | MUST | MUST | SHOULD | -- | SHOULD | SHOULD | REVIEW (3) |
+| 9 Monitoring | MUST | SHOULD | -- | -- | SHOULD | SHOULD | REVIEW (2) |
+| close (Close & Transfer) | MUST | MUST | -- | -- | SHOULD | MUST | REVIEW (3) |
 
 A dash (--) means the gate is not evaluated for that phase. For the **Build Loop**, the metrics, compliance, consistency, and quality gates are checked **per change** (each spec'd change is proven against its spec before merge) — there is no batch exit gate.
 
@@ -329,7 +330,44 @@ Each compliance gate specifies a `check_type` that determines how it is evaluate
 
 ---
 
-## 8. Severity Levels Deep Dive
+## 8. Gate 7: Exit Criteria
+
+**Purpose:** Surface each phase's declared exit conditions that cannot be machine-checked, so a human sees the actual checklist before approving advancement. The registry has always declared these conditions under `exit_gate.conditions[]`, but until this gate existed no code ever read the prose ones. The human was stopped at the gate, shown a list of files that exist and contain no placeholders, and asked to approve — without ever seeing the checklist they were approving against. Gates report; humans decide.
+
+**Checks performed:**
+
+`check_gates.py` reads each phase's `exit_gate.conditions[]` from `phases/phase-registry.yaml`. Every condition is a dict:
+
+- Conditions carrying an `artifact:` key are **skipped** — Gate 1 (existence) and Gate 2 (completeness) already check those.
+- Conditions that are **prose** (a `check:` key and no `artifact:` key) are surfaced as human-review items. Each becomes a result with gate name `G7-exit-criteria`, `severity: "MUST"`, `passed: None`, and message `Human verification required: {check}`.
+
+```python
+for cond in phase.get("exit_gate", {}).get("conditions", []):
+    if "artifact" in cond:
+        continue  # G1/G2 already cover artifact conditions
+    results.append({
+        "gate": "G7-exit-criteria",
+        "check": cond["check"],
+        "passed": None,
+        "message": f"Human verification required: {cond['check']}",
+        "severity": "MUST",
+    })
+```
+
+**Why it never blocks:** Severity is `MUST`, but `passed` is always `None` (never `False`), so it renders as `[MANUAL]` / `REVIEW`, never `[FAIL]`. `check_gates.py` exits non-zero only on MUST *failures* (`passed is False`), so G7 results never block the run. Instead, `advance_phase.py` treats `passed is None` as a manual gate: it prints `REVIEW REQUIRED`, lists every G7 item, and refuses to advance without `--confirmed`. The gate does not decide — it makes the human decide against the real checklist.
+
+**Deliberately not machine-checkable:** These conditions encode judgment that no script can make. Examples from the registry:
+
+- **Phase 3 (Foundation):** "The rails are proven, not just present (Stop hook blocks, gates fire, deploy rolls back)." A file existing does not prove the rail fires.
+- **build (Build Loop):** "Build backlog is feature-complete (human declaration — no batch artifact gate)." Completeness of the backlog is a human call, not a countable artifact.
+
+**Silence is expected for early phases:** Phases 0–2 declare no prose conditions today, so G7 emits nothing there. That is by design, not a gap. Adding conditions later is a **data-only change** to `phase-registry.yaml` — no code change is needed; the gate reads whatever the registry declares.
+
+**Severity:** `MUST` in name, but always rendered as `REVIEW` because `passed` is `None`. It never blocks the run and never appears as a failure.
+
+---
+
+## 9. Severity Levels Deep Dive
 
 The gate system uses three severity levels drawn from RFC 2119 terminology.
 
@@ -372,7 +410,7 @@ An optional observation. No impact on the transition. Used for suggestions and o
 
 ---
 
-## 9. Gate Results Format
+## 10. Gate Results Format
 
 The `check_phase_gates()` function in `check_gates.py` returns a list of result dictionaries. Each result represents one check within one gate.
 
@@ -434,7 +472,7 @@ The final summary line reports all three categories and provides a clear verdict
 
 ---
 
-## 10. Override Protocol
+## 11. Override Protocol
 
 When a gate fails but the team decides to proceed anyway, the override must be formally recorded.
 
@@ -475,7 +513,7 @@ The `audit_gates.py` script tracks override frequency across all completed phase
 
 ---
 
-## 11. Compliance Gate Extensions
+## 12. Compliance Gate Extensions
 
 Compliance frameworks add extra checks to the base 6-gate system. These are loaded dynamically from profile-specific YAML files.
 
@@ -547,7 +585,7 @@ Compliance gate results appear in the output with gate identifiers prefixed by `
 
 ---
 
-## 12. Gate Auditing
+## 13. Gate Auditing
 
 The `scripts/audit_gates.py` script analyzes gate effectiveness across completed phases to identify process calibration issues.
 
@@ -603,7 +641,7 @@ If fewer than 3 phases have been completed, the audit prints a warning that resu
 
 ---
 
-## 13. Cross-References
+## 14. Cross-References
 
 | Topic | Document | Description |
 |-------|----------|-------------|

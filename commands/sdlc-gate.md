@@ -19,7 +19,7 @@ Run the 6-gate validation system for the current (or specified) SDLC phase witho
    Optionally specify a phase: `--phase <N>`
 
 5. **Display results:** Show each gate result with:
-   - Gate name (G1-integrity, G2-completeness, G3-metrics, G4-compliance, G5-consistency, G6-quality)
+   - Gate name (G1-integrity, G2-completeness, G3-metrics, G4-compliance, G5-consistency, G6-quality, G7-exit-criteria)
    - PASS / FAIL / MANUAL status
    - Severity (MUST / SHOULD / MAY)
    - Details on what passed or failed

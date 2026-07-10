@@ -176,6 +176,86 @@ class TestCheckPhaseGates:
         assert len(compliance_gates) >= 1
 
 
+class TestExitCriteriaGate:
+    """G7 — the registry's prose exit conditions must reach the human who signs.
+
+    Every phase declares `exit_gate.conditions[]`. Before this gate existed, no code
+    read them: the human was stopped at the gate, shown a list of files that exist and
+    contain no placeholders, and asked to approve. The checklist they were approving
+    against was never rendered.
+    """
+
+    def _exit_criteria(self, results):
+        return [r for r in results if r["gate"] == "G7-exit-criteria"]
+
+    def test_prose_conditions_are_surfaced_for_review(self, sdlc_dir, valid_profile, state_yaml):
+        """Phase 3 declares three prose conditions; each must appear as a REVIEW item."""
+        state = yaml.safe_load(state_yaml.read_text())
+        results = check_phase_gates(3, state, valid_profile, sdlc_dir / "artifacts")
+
+        criteria = self._exit_criteria(results)
+        assert len(criteria) == 3, "Phase 3's three prose exit conditions must all be surfaced"
+        assert all(r["passed"] is None for r in criteria), "prose conditions are human-verified"
+
+        messages = " ".join(r["message"] for r in criteria)
+        assert "Walking skeleton deployed" in messages
+        assert "The rails are proven, not just present" in messages
+        assert "At least one HIGH-risk spec has run the full Build loop" in messages
+
+    def test_artifact_conditions_are_not_duplicated(self, sdlc_dir, valid_profile, state_yaml):
+        """Conditions carrying an `artifact:` key are already covered by G1/G2."""
+        state = yaml.safe_load(state_yaml.read_text())
+        results = check_phase_gates(3, state, valid_profile, sdlc_dir / "artifacts")
+
+        for r in self._exit_criteria(results):
+            assert "artifact" not in r, f"artifact condition re-emitted by G7: {r}"
+
+    def test_phase_with_no_prose_conditions_emits_none(self, sdlc_dir, valid_profile, state_yaml):
+        """Phase 0's exit conditions are all artifact entries — G7 must stay silent."""
+        state = yaml.safe_load(state_yaml.read_text())
+        results = check_phase_gates(0, state, valid_profile, sdlc_dir / "artifacts")
+        assert self._exit_criteria(results) == []
+
+    def test_exit_criteria_never_block(self, sdlc_dir, valid_profile, state_yaml):
+        """A human decides these. They must never turn into a MUST failure."""
+        state = yaml.safe_load(state_yaml.read_text())
+        results = check_phase_gates(3, state, valid_profile, sdlc_dir / "artifacts")
+
+        blocking = [
+            r for r in self._exit_criteria(results)
+            if r["passed"] is False and r.get("severity") == "MUST"
+        ]
+        assert blocking == [], "exit criteria are reported, not enforced — gates report, humans decide"
+
+    def test_build_loop_condition_is_surfaced(self, sdlc_dir, valid_profile, state_yaml):
+        """The Build loop's single condition is the human declaration itself."""
+        state = yaml.safe_load(state_yaml.read_text())
+        results = check_phase_gates("build", state, valid_profile, sdlc_dir / "artifacts")
+
+        criteria = self._exit_criteria(results)
+        assert len(criteria) == 1
+        assert "feature-complete" in criteria[0]["message"]
+
+    def test_all_declared_prose_conditions_reach_the_human(self, sdlc_dir, valid_profile, state_yaml):
+        """Whatever the registry declares, G7 renders. No phase's checklist goes unread."""
+        import phase_model as pm
+
+        state = yaml.safe_load(state_yaml.read_text())
+        for phase in pm.all_phases():
+            declared = [
+                c for c in (phase.get("exit_gate", {}) or {}).get("conditions", []) or []
+                if isinstance(c, dict) and "artifact" not in c and "check" in c
+            ]
+            results = check_phase_gates(
+                phase["id"], state, valid_profile, sdlc_dir / "artifacts"
+            )
+            surfaced = self._exit_criteria(results)
+            assert len(surfaced) == len(declared), (
+                f"phase {phase['id']}: declared {len(declared)} prose conditions, "
+                f"surfaced {len(surfaced)}"
+            )
+
+
 class TestFormatResults:
     def test_all_pass(self):
         results = [
