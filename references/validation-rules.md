@@ -1,6 +1,6 @@
-# 6-Gate Validation System
+# 7-Gate Validation System
 
-Adapted from the AI-SDLC methodology. Every gated phase transition runs artifacts through six validation gates in order. A gate failure blocks the transition. The **Build loop** (`build`) has no batch artifact gate — these checks run per change in its Discern beat instead of at a phase boundary.
+Adapted from the AI-SDLC methodology. Every gated phase transition runs artifacts through seven validation gates in order. A gate failure blocks the transition. The **Build loop** (`build`) has no batch artifact gate — these checks run per change in its Discern beat instead of at a phase boundary.
 
 ## Gate 1: Artifact Integrity
 
@@ -81,21 +81,37 @@ Adapted from the AI-SDLC methodology. Every gated phase transition runs artifact
 
 **Severity:** SHOULD pass. Quality gate failures generate warnings but MAY be overridden with justification.
 
+## Gate 7: Exit Criteria
+
+**Purpose:** Show the approver the phase's own exit checklist at the moment they are asked to sign.
+
+Each phase declares `exit_gate.conditions[]` in `phases/phase-registry.yaml`. Conditions naming an artifact (`{artifact: design-doc.md, check: exists_and_complete}`) are already covered by Gates 1 and 2. The rest are prose judgments — *"The rails are proven, not just present"* — that no script can evaluate. Gate 7 renders those, one review item each, so the human sees the checklist rather than approving against an unstated standard.
+
+**Checks:**
+- Every prose condition declared for the phase is surfaced as a review item
+- Artifact-bearing conditions are not re-emitted (Gates 1 and 2 own those)
+
+**Severity:** Always REVIEW, never PASS or FAIL. Gate 7 reports; it cannot block. Only a MUST *failure* stops an advance, and a condition nobody evaluated has not failed. The block is `advance_phase.py`'s existing `--confirmed` requirement, unchanged.
+
+Phases 0–2 declare no prose conditions today, so Gate 7 is silent there.
+
 ## Gate Application by Phase
 
 Gates apply at the exit of each **gated** phase. The Build loop (`build`) is omitted from the table on purpose — it has no batch artifact gate; the same checks (G1–G3, G6) run per change in its Discern beat.
 
-| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality |
-|-------|:---:|:---:|:---:|:---:|:---:|:---:|
-| 0 Discovery | MUST | MUST | — | — | — | SHOULD |
-| 1 Requirements | MUST | MUST | — | MUST | SHOULD | SHOULD |
-| 2 Design | MUST | MUST | — | MUST | SHOULD | MUST |
-| 3 Foundation | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
-| build Build Loop | per change | per change | per change | — | SHOULD | per change |
-| 7 Documentation | MUST | MUST | — | — | SHOULD | MUST |
-| 8 Deployment | MUST | MUST | SHOULD | — | SHOULD | SHOULD |
-| 9 Monitoring | MUST | SHOULD | — | — | SHOULD | SHOULD |
-| close Close & Transfer | MUST | MUST | — | — | SHOULD | SHOULD |
+| Phase | G1: Integrity | G2: Completeness | G3: Metrics | G4: Compliance | G5: Consistency | G6: Quality | G7: Exit criteria |
+|-------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| 0 Discovery | MUST | MUST | — | — | — | SHOULD | — |
+| 1 Requirements | MUST | MUST | — | MUST | SHOULD | SHOULD | — |
+| 2 Design | MUST | MUST | — | MUST | SHOULD | MUST | — |
+| 3 Foundation | MUST | MUST | SHOULD | — | SHOULD | SHOULD | REVIEW (3) |
+| build Build Loop | per change | per change | per change | — | SHOULD | per change | REVIEW (1) |
+| 7 Documentation | MUST | MUST | — | — | SHOULD | MUST | REVIEW (2) |
+| 8 Deployment | MUST | MUST | SHOULD | — | SHOULD | SHOULD | REVIEW (3) |
+| 9 Monitoring | MUST | SHOULD | — | — | SHOULD | SHOULD | REVIEW (2) |
+| close Close & Transfer | MUST | MUST | — | — | SHOULD | SHOULD | REVIEW (3) |
+
+`REVIEW (n)` is the number of prose conditions that phase declares. A dash means the gate is not evaluated.
 
 ## Dirty Tracking (Incremental Validation)
 
@@ -122,3 +138,4 @@ When a gate fails but the team decides to proceed:
 3. Gate 5 (Consistency) findings SHOULD be reviewed but MAY proceed if drift is intentional
 4. Gate 6 (Quality) MAY be overridden with documented justification
 5. Gates 1–3 SHOULD NOT be overridden — they indicate objective failures
+6. Gate 7 (Exit Criteria) has nothing to override — it never fails. Its items are answered by the human who signs the advance

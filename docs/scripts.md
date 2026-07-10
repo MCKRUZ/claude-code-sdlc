@@ -247,7 +247,7 @@ If `.sdlc/` already exists, the script prints `Warning: <path>/.sdlc already exi
 
 ### check_gates.py
 
-**Purpose:** Run the 6-gate validation system against a specific SDLC phase. This is the most complex script (~11KB) and serves as the quality enforcement engine. It reads the phase registry to determine which artifacts are required, then runs each gate check against the artifacts directory.
+**Purpose:** Run the 7-gate validation system against a specific SDLC phase. This is the most complex script (~11KB) and serves as the quality enforcement engine. It reads the phase registry to determine which artifacts are required, then runs each gate check against the artifacts directory.
 
 **CLI:**
 

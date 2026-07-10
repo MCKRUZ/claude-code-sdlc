@@ -1,6 +1,6 @@
-# 6-Gate Validation System
+# 7-Gate Validation System
 
-Comprehensive reference for the gate validation system used by the claude-code-sdlc plugin. Every phase transition in the 9-phase SDLC lifecycle is guarded by six sequential validation gates that ensure artifact quality, completeness, consistency, and compliance before work advances.
+Comprehensive reference for the gate validation system used by the claude-code-sdlc plugin. Every phase transition in the 9-phase SDLC lifecycle is guarded by seven sequential validation gates. Six check artifact quality, completeness, consistency, and compliance before work advances. The seventh renders the phase's own prose exit criteria for the human who signs.
 
 ---
 
@@ -515,7 +515,7 @@ The `audit_gates.py` script tracks override frequency across all completed phase
 
 ## 12. Compliance Gate Extensions
 
-Compliance frameworks add extra checks to the base 6-gate system. These are loaded dynamically from profile-specific YAML files.
+Compliance frameworks add extra checks to the base 7-gate system. These are loaded dynamically from profile-specific YAML files.
 
 ### Supported Frameworks
 
@@ -651,7 +651,7 @@ If fewer than 3 phases have been completed, the audit prints a warning that resu
 | `check_gates.py` | `scripts/check_gates.py` | Gate evaluation implementation |
 | `audit_gates.py` | `scripts/audit_gates.py` | Gate effectiveness analysis implementation |
 | Phase registry | `phases/phase-registry.yaml` | Phase definitions including required/optional artifacts and exit gate conditions |
-| Validation rules | `references/validation-rules.md` | Concise reference for the 6-gate system and override protocol |
+| Validation rules | `references/validation-rules.md` | Concise reference for the 7-gate system and override protocol |
 | Cross-phase consistency | `references/cross-phase-consistency.md` | Locked-metric list and change protocol for Gate 5 |
 | State machine | `docs/state-machine.md` | How gate results are stored in `.sdlc/state.yaml` and drive phase transitions |
 | Phase definitions | `phases/00-discovery.md`, `01-requirements.md`, `02-design.md`, `03-foundation.md`, `build-loop.md`, `07-documentation.md`, `08-deployment.md`, `09-monitoring.md`, `close.md` | Individual phase requirements and artifact specifications |

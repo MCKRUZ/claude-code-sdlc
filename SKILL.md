@@ -18,7 +18,7 @@ SDLC orchestration plugin for Claude Code. Drives projects through a 9-phase sof
 This plugin makes structured SDLC methodology executable in Claude Code. It provides:
 - **9 phases** — gated open (Discovery, Requirements, Design, Foundation) and gated close (Documentation, Deployment, Monitoring, Close & Transfer) bracketing a continuous **Build loop** (Intent→Delegate→Discern per change, no batch exit gate)
 - **Company profiles** (YAML) defining stack, quality thresholds, compliance frameworks, and conventions
-- **6-gate validation** at every phase transition (integrity, completeness, metrics, compliance, consistency, quality)
+- **7-gate validation** at every phase transition (integrity, completeness, metrics, compliance, consistency, quality, exit criteria)
 - **Compliance enforcement** for SOC 2, HIPAA, GDPR, PCI-DSS
 - **Skill orchestration** — maps each phase to existing Claude Code skills (`/deep-plan`, `/deep-implement`, `/tdd`, `/code-review`, `/security-review`, `/e2e`, etc.)
 
@@ -54,7 +54,7 @@ The plugin maintains state in `.sdlc/state.yaml` in your project directory. Each
 - **Entry criteria** — what must be true to start the phase
 - **Workflow** — steps to follow, skills to use
 - **Required artifacts** — files you must produce (stored in `.sdlc/artifacts/XX-phase/`)
-- **Exit gates** — 6-gate validation that must pass before advancing (gated phases only; the Build loop checks per change instead)
+- **Exit gates** — 7-gate validation that must pass before advancing (gated phases only; the Build loop checks per change instead)
 
 Phase transitions are atomic — either all MUST gates pass and you advance, or none do and you get a blockers report.
 
@@ -319,7 +319,7 @@ Never background: security reviews, build error resolution, or any work producin
 
 Detailed documentation is in the `references/` directory:
 - `state-machine.md` — State format and transition rules
-- `validation-rules.md` — 6-gate validation system details
+- `validation-rules.md` — 7-gate validation system details
 - `skill-mapping.md` — Phase-to-skill mapping
 - `agent-roster.md` — Phase-to-subagent mapping with parallel groups and conditions
 - `compliance-frameworks.md` — SOC 2, HIPAA, GDPR, PCI-DSS gate definitions
