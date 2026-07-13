@@ -34,6 +34,15 @@ Run exit gate checks for the current phase and advance to the next phase if all 
      ```
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
    - **HITL GATE — Ask for explicit sign-off before advancing:** Present the phase summary (what was produced, key decisions made) and ask: "Does this look correct? Shall I advance to Phase N?" Do NOT call `advance_phase.py` until the human explicitly confirms.
+   - **Optional — capture discipline sign-off(s):** After the human confirms the advance, use
+     `AskUserQuestion` to offer (optionally) recording per-discipline sign-off on this phase's work:
+     "Any discipline sign-offs to record for this phase? (e.g. Design signs the interaction specs,
+     Data signs the data contract, Bizreq signs the business rules.)" This is **optional** — skipping
+     it advances exactly as before. For each sign-off the human names, capture a
+     `Discipline:Section:Name` triple; capture the overall signer name too if given. These feed the
+     `advance_phase.py` invocation in step 6 via `--signed-by "<name>"` and one
+     `--discipline-signoff "Discipline:Section:Name"` per sign-off (repeatable). No sign-offs → no
+     flags → byte-identical state. The named human signs; the agent only records what it is told.
 
 5. **Generate Frozen Layer:** After HITL sign-off, before advancing state:
    1. Read ALL artifacts in `.sdlc/artifacts/{NN}-{phase-name}/`
@@ -53,7 +62,16 @@ Run exit gate checks for the current phase and advance to the next phase if all 
    7. If validation fails, fix issues and re-validate before proceeding
    8. See `references/frozen-layers.md` for format details and condensation strategy
 
-6. **Advance phase:** Update `.sdlc/state.yaml`:
+6. **Advance phase:** Perform the advance via `advance_phase.py` (it applies the state updates below
+   and records any discipline sign-offs captured in step 4 on the phase's existing sign-off record):
+   ```bash
+   uv run --project <plugin-root>/scripts <plugin-root>/scripts/advance_phase.py \
+     --state .sdlc/state.yaml --confirmed \
+     [--signed-by "<name>"] \
+     [--discipline-signoff "Design:interaction-specs:<name>"]   # repeatable; omit both if none
+   ```
+   The `--signed-by` / `--discipline-signoff` flags are **optional**; with neither, the resulting
+   state is byte-identical to a no-flags advance. The script updates `.sdlc/state.yaml`:
    - Set current phase status to `completed` with `completed_at` timestamp
    - Set next phase status to `active` with `entered_at` timestamp
    - Increment `current_phase`

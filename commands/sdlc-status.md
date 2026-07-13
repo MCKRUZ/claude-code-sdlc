@@ -19,7 +19,26 @@ Display the current SDLC progress for this project.
    - Phase table with status, artifact count, timestamps
    - Recent transition history (if any)
 
-5. **Suggest next action:** Based on current phase status:
+5. **Channel rollup + decision-log:** Two additive reads that surface the multi-discipline layer
+   without touching `generate_status.py`:
+
+   - **By-channel spec backlog** — derive the per-channel rollup from spec frontmatter:
+     ```bash
+     uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_specs.py --state .sdlc/state.yaml --json
+     ```
+     Render the `by_channel` block (spec counts per delivery surface; `channel-agnostic` and
+     `unassigned` are first-class buckets). If the JSON has no `by_channel` key or every spec is
+     `unassigned`, skip this — no project has bound a `channel:` yet.
+
+   - **Open + overdue decisions** — surface the phase-spanning decision-log:
+     ```bash
+     uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_decisions.py --state .sdlc/state.yaml --json
+     ```
+     List **open** decisions and flag those **overdue** past the 2-business-day clock (owner + due
+     shown). If `track_decisions.py` or `.sdlc/decision-log.md` is absent, read `.sdlc/decision-log.md`
+     directly for open items, or skip silently if neither exists. Advisory only (exit 0) — never blocks.
+
+6. **Suggest next action:** Based on current phase status:
    - If phase is `active`: suggest running `/sdlc` for phase guidance
    - If all gates would pass: suggest running `/sdlc-next` to advance
    - If artifacts are missing: list what's needed

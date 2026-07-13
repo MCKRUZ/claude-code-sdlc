@@ -33,11 +33,15 @@ def scan_specs(specs_dir: Path) -> list[dict]:
         fm, _ = parse_frontmatter(f.read_text(encoding="utf-8", errors="replace"))
         if not fm:
             continue
+        channel = fm.get("channel") or "unassigned"
+        if channel == "—":
+            channel = "channel-agnostic"
         specs.append({
             "id": fm.get("spec", "????"),
             "name": fm.get("name", f.stem),
             "status": (fm.get("status") or "draft").strip().lower(),
             "risk": rm.normalize_tier(fm.get("risk")) or "?",
+            "channel": channel,
             "path": str(f),
         })
     return specs
@@ -47,17 +51,20 @@ def summarize(specs: list[dict]) -> dict:
     """Backlog summary: totals, status breakdown, risk breakdown, the in-flight list."""
     by_status = {s: 0 for s in STATUS_ORDER}
     by_risk = {t: 0 for t in rm.RISK_TIERS}
+    by_channel: dict[str, int] = {}
     in_flight = []
     for spec in specs:
         by_status[spec["status"]] = by_status.get(spec["status"], 0) + 1
         if spec["risk"] in by_risk:
             by_risk[spec["risk"]] += 1
+        by_channel[spec["channel"]] = by_channel.get(spec["channel"], 0) + 1
         if spec["status"] == "in-flight":
             in_flight.append(spec)
     return {
         "total": len(specs),
         "by_status": by_status,
         "by_risk": by_risk,
+        "by_channel": by_channel,
         "in_flight": in_flight,
     }
 
@@ -92,6 +99,10 @@ def format_report(summary: dict, warnings: list[str]) -> str:
     lines.append("By risk tier:")
     for t in rm.RISK_TIERS:
         lines.append(f"  {t:<8} {summary['by_risk'].get(t, 0)}")
+    lines.append("")
+    lines.append("By channel:")
+    for c in sorted(summary["by_channel"]):
+        lines.append(f"  {c:<16} {summary['by_channel'][c]}")
     if summary["in_flight"]:
         lines.append("")
         lines.append("In flight (one spec = one branch = one PR):")

@@ -20,6 +20,15 @@ def write_spec(specs_dir, spec_id, name, status, risk):
     )
 
 
+def write_spec_with_channel(specs_dir, spec_id, channel_line):
+    """Write a spec whose frontmatter carries an explicit `channel:` line."""
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / f"{spec_id}-x.md").write_text(
+        f'---\nspec: "{spec_id}"\nname: "x"\nstatus: draft\nrisk: LOW\n{channel_line}\n---\n# Spec\n',
+        encoding="utf-8",
+    )
+
+
 class TestScanSpecs:
     def test_empty_dir(self, tmp_path):
         assert scan_specs(tmp_path / "specs") == []
@@ -89,3 +98,21 @@ class TestResolveSpecsDir:
         args = argparse.Namespace(state=str(tmp_path / "nope.yaml"), repo=None)
         with pytest.raises(SystemExit):
             resolve_specs_dir(args)
+
+
+class TestByChannel:
+    def test_scan_sets_channel_field(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec_with_channel(specs, "0001", "channel: voice")
+        scanned = scan_specs(specs)
+        assert scanned[0]["channel"] == "voice"
+
+    def test_summarize_buckets_voice_unassigned_and_agnostic(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec_with_channel(specs, "0001", "channel: voice")   # -> voice
+        write_spec(specs, "0002", "b", "draft", "LOW")             # no channel -> unassigned
+        write_spec_with_channel(specs, "0003", 'channel: "—"')     # em-dash -> channel-agnostic
+        summary = summarize(scan_specs(specs))
+        assert summary["by_channel"]["voice"] == 1
+        assert summary["by_channel"]["unassigned"] == 1
+        assert summary["by_channel"]["channel-agnostic"] == 1

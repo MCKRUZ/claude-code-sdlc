@@ -20,6 +20,14 @@ Show guidance for the current SDLC phase including what to do, which skills to u
    Profile: {profile_id}
    ```
 
+   ### Team & RACI (this phase)
+   Read `references/team-model.md` from the plugin directory and find the entry keyed by the current
+   phase id. Render a short block: which disciplines are active this phase and their per-phase RACI
+   (Responsible / Accountable / Consulted / Informed). This tells each seat — Product, Data, Design,
+   Engineering, Bizreq — where it owns work vs. where it advises.
+   - **Degrade gracefully:** if `references/team-model.md` is absent, or has no entry for this phase,
+     skip this subsection silently and continue — do not error or emit a placeholder.
+
    ### Purpose
    One-line description of this phase's goal.
 

@@ -1,0 +1,32 @@
+# Channel descriptor template — copy to channels/<id>.yaml and fill it in.
+# Validate with:  uv run --project scripts scripts/validate_channel.py channels/<id>.yaml
+# A channel is the customer SURFACE a capability is delivered through — not the logic behind it.
+# Keep descriptors GENERAL and reusable across products (no product names).
+
+id: ""                     # kebab-case, matches the filename (channels/<id>.yaml)
+name: ""                   # human-readable name
+surface: ""                # what the customer touches (screen / voice line / chat thread / API ...)
+status: experimental       # stable | experimental
+llm_powered: false         # true if the deliverable here is model-driven (then evals are required)
+risk_floor: MEDIUM         # HIGH | MEDIUM | LOW — advisory; may only RAISE a spec's tier, never lower it
+harness_context_seed: ""   # a pattern phrase a first channel spec can cite for its DoR harness_context
+
+interaction_contract: >-
+  Describe the turn / round-trip model and where a named human decides (HITL).
+
+acceptance_dimensions:
+  - id: ""                 # kebab-case dimension id
+    intent: ""             # what this guarantees for the customer
+    example_check: ""      # a concrete, vague-line-passing acceptance check to lift into the spec
+  # - add more dimensions...
+
+discipline_touchpoints:
+  design: ""
+  data: ""
+  bizreq: ""
+  engineering: ""
+
+observability_signals:     # OUTCOME signals for monitoring — never vanity metrics
+  - ""
+
+eval_hooks: []             # required (non-empty) when llm_powered: true

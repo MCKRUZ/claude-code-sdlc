@@ -40,7 +40,7 @@ Focus areas: missing paths, boundary conditions, race conditions, data edge case
 
 ### `--council` (default) — Multi-Perspective Review
 
-Evaluate artifacts from 4 viewpoints. Each viewpoint produces 2-3 specific findings.
+Evaluate artifacts from 7 viewpoints. Each viewpoint produces 2-3 specific findings.
 
 **Architecture viewpoint:**
 - Is the design sound? Are patterns appropriate for the scale?
@@ -57,6 +57,18 @@ Evaluate artifacts from 4 viewpoints. Each viewpoint produces 2-3 specific findi
 **Security viewpoint:**
 - Are there authentication/authorization gaps? Data exposure risks?
 - Does input validation cover all entry points?
+
+**Design viewpoint:**
+- Is the per-channel experience fully specified — the journey, its dead-ends, and a fallback-to-human path reachable at every turn?
+- Do the interaction-spec contract rows map to concrete acceptance checks, and is accessibility (a11y, states: loading/empty/error) covered for a visual surface?
+
+**Data viewpoint:**
+- Is every field classified for PII, and is sensitive data (transcripts, identifiers) masked or redacted downstream?
+- Is data readiness proven — sources available, lineage and retention designed — or are the gaps flagged as advisory items rather than silently assumed?
+
+**Bizreq viewpoint:**
+- Does every business rule (BR-NN) trace to an acceptance check, and does every golden scenario (SCEN-NN) have a home in the eval set?
+- Are pending or ambiguous rules (awaiting a decision-log item) called out, rather than the agent guessing the outcome?
 
 **Consistency & ambiguity audit** (always runs in council mode):
 - Are there contradictions between artifacts? (e.g., requirement says X, design says Y)
@@ -111,7 +123,8 @@ disposition across rounds), then the human-readable summary and detail:
   lets the tool notice the same class recurring later, so reuse an existing slug when the class
   matches. Seed examples: `missing-rollback`, `unhandled-error-path`, `auth-gap`, `input-unvalidated`,
   `untestable-criterion`, `race-condition`, `resource-leak`, `secret-exposure`, `scope-ambiguity`,
-  `cross-artifact-contradiction`. Use `other` only when nothing fits.
+  `cross-artifact-contradiction`, `design-gap`, `rule-uncovered`, `pii-exposure`. Use `other` only
+  when nothing fits.
 - `severity` — CRITICAL / HIGH / MEDIUM / LOW (your own scale; don't inflate).
 - `target` — `file.md:line` (or just `file.md`) the finding is anchored to. Blank if truly global.
 - `disposition` — on a fresh review every finding is `OPEN`. Later rounds may carry a resolved

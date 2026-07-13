@@ -4,6 +4,7 @@ name: "short-kebab-name"
 status: draft            # draft | ready | in-flight | merged
 risk: MEDIUM             # HIGH | MEDIUM | LOW — first-class field; sets review depth
 source: "—"              # the story / REQ-id this spec realizes, or — if standalone
+channel: ""              # optional — delivery surface (see channels/); blank = channel-agnostic
 harness_context: ""      # the ONE existing pattern this change reuses (DoR requires this named)
 created: "YYYY-MM-DD"
 ---
