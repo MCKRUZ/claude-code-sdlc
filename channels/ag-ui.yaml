@@ -1,0 +1,47 @@
+id: ag-ui
+name: Agentic Web UI (AG-UI protocol)
+surface: Browser SPA driven by streamed AG-UI agent events (any agentic web product)
+status: experimental
+llm_powered: true
+risk_floor: HIGH           # money/approval surfaces on the web are hard to undo
+harness_context_seed: "AG-UI event pipeline in the web console module"
+
+interaction_contract: >-
+  The agent streams rationale tokens into a generative UI; each result carries a confidence signal;
+  a named human approves or rejects before anything commits (the HITL approval round-trip).
+  Agent-emitted components are rendered from events as DATA, never executed. Model output is
+  untrusted input.
+
+acceptance_dimensions:
+  - id: streamed-rationale
+    intent: The user can follow the agent's reasoning as it streams, and partial output is never actionable.
+    example_check: "If the rationale stream drops mid-response, the console shows a reconnect affordance and no partial result is actionable."
+  - id: confidence-display
+    intent: Every result shows how confident the agent is, and low confidence is gated from one-click commit.
+    example_check: "Every displayed result shows a confidence value; a result below the configured threshold is visually gated from the one-click approve control."
+  - id: hitl-approval
+    intent: No consequential action commits without an explicit approval by a named human.
+    example_check: "No result commits without an explicit approve action by a named approver; the approver identity and UTC timestamp are recorded on the committed record."
+  - id: generative-ui-safety
+    intent: Unknown agent-emitted components fail safe and never inject executable markup.
+    example_check: "An agent-emitted component of an unknown type renders a safe fallback panel and never injects executable markup."
+  - id: untrusted-output
+    intent: Instructions embedded in upstream data cannot drive a UI action.
+    example_check: "Injected instructions in upstream data cannot trigger a UI approval action (covered by an eval golden-set case)."
+
+discipline_touchpoints:
+  design: Confidence display, the approval affordance, streaming/interrupted states, generative-UI components.
+  data: The rationale/decision eval golden set and the confidence threshold.
+  bizreq: Who may approve, and the approval-authority policy.
+  engineering: The web/front-end code and the AG-UI event contract (lives with the shared harness).
+
+observability_signals:
+  - Time-to-first-token
+  - Stream-completion rate
+  - Confidence distribution
+  - Approve-vs-override rate
+  - Injection-attempt blocks
+
+eval_hooks:
+  - streamed-rationale faithfulness (llm_rubric)
+  - untrusted-output / injection resistance (transcript_constraint + llm_rubric)

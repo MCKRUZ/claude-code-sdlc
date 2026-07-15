@@ -31,6 +31,11 @@ workshop brief (`/sdlc-brief`); its outputs are questions for humans, never answ
 |------|-------|-----------|----------------|------------|
 | Codebase exploration | `Explore` | Existing codebase to understand | — | No |
 | Feedback analysis | `feedback-synthesizer` | User feedback/analytics available | — | No |
+| Feature decomposition (Product) | `feature-architect` | Featuring a channel-bound feature (epic→feature→spec, via `/sdlc-feature`) | — | No |
+| Business rules + scenarios (Bizreq) | `bizreq-analyst` | Business rules (BR-NN) or golden scenarios (SCEN-NN) to capture (via `/sdlc-rules`) | — | No |
+
+**Note:** `feature-architect` and `bizreq-analyst` also double as `/sdlc-review` council lenses
+(Product / Bizreq viewpoints). They draft and interrogate; a named human decides (the One Rule).
 
 ---
 
@@ -43,9 +48,16 @@ workshop brief (`/sdlc-brief`); its outputs are questions for humans, never answ
 | Frontend architecture | `frontend-developer` | Project has a frontend | design-A | No |
 | Security model review | `security-reviewer` | Auth, payments, or sensitive data in scope | — | No |
 | Multi-perspective review | `multi-reviewer` | Suggested before `/sdlc-gate`; use `--council` mode | — | No |
+| Experience design — web | `visual-designer` | A `channel: ag-ui`/web surface is in scope (via `/sdlc-experience`) | design-B | No |
+| Experience design — voice/chat | `conversation-designer` | A `channel: voice`/`chat` surface is in scope (via `/sdlc-experience`) | design-B | No |
+| Data contract + readiness | `data-analyst` | Feature touches data or PII (via `/sdlc-data`) | — | No |
 | Codebase exploration | `Explore` | Existing codebase being extended | — | No |
 
 **Parallel group `design-A`:** When the project has both backend and frontend, spawn `backend-architect` and `frontend-developer` in the same message.
+
+**Parallel group `design-B`:** When a feature spans a web surface and a voice/chat surface, spawn `visual-designer` and `conversation-designer` in the same message — they author different interaction specs and do not conflict. `/sdlc-experience` routes to the right one by the spec's `channel:`.
+
+**Note:** `visual-designer`, `conversation-designer`, and `data-analyst` also double as `/sdlc-review` council lenses (Design / Data viewpoints). They propose and draft; a named human decides.
 
 **`/deep-plan` orchestration (steps 1–15):** When `/deep-plan` is invoked in this phase, it manages its own subagents internally (Explore for codebase research, web-search-researcher for web research, opus-plan-reviewer or external LLMs for review). These do not need to be spawned separately — `/deep-plan` handles the orchestration. The agents listed above (`architect`, domain agents, `security-reviewer`) operate alongside `/deep-plan` for SDLC-native work like ADR generation and security review.
 

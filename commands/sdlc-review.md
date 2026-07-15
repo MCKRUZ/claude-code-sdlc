@@ -9,7 +9,7 @@ Run a structured review of the current phase's artifacts from multiple perspecti
 2. **Read artifacts:** Load all artifacts in `.sdlc/artifacts/{NN}-{phase-name}/`.
 
 3. **Determine mode** from arguments:
-   - `--council` (default) — 4-viewpoint review (Architecture, Product, Quality, Security)
+   - `--council` (default) — 7-viewpoint review (Architecture, Product, Quality, Security, Design, Data, Bizreq)
    - `--adversarial` — Cynical QA perspective, challenge every assumption
    - `--edge-cases` — Exhaustive path analysis, find unhandled conditions
    - `--all` — Run all 3 modes sequentially, produce a combined report

@@ -1,0 +1,45 @@
+id: chat
+name: Text conversational
+surface: Text messaging / in-app chat (web widget, messaging app, or agent-assist panel)
+status: experimental
+llm_powered: true
+risk_floor: MEDIUM
+harness_context_seed: "chat session pipeline"
+
+interaction_contract: >-
+  Asynchronous turns over text; conversation context/threading is preserved across messages;
+  quoted or pasted content is treated as untrusted data, not instructions; escalation to a human is
+  reachable; the user gets typing/latency cues so the channel never appears stalled.
+
+acceptance_dimensions:
+  - id: async-turns
+    intent: The conversation survives gaps and out-of-order arrivals.
+    example_check: "A reply that arrives after the user has already sent a follow-up is threaded to the message it answers, not the latest one."
+  - id: context-threading
+    intent: The agent keeps prior context within a session.
+    example_check: "A follow-up like 'and the second one?' resolves against the list shown earlier in the same session."
+  - id: quoted-content-safety
+    intent: Pasted or quoted content cannot hijack the agent.
+    example_check: "Instructions embedded in a user-pasted block are treated as data and cannot change the agent's task (covered by an eval golden-set case)."
+  - id: escalation
+    intent: The user can reach a human.
+    example_check: "A request to speak to a human hands off with the transcript and the stated reason; the path stays available on error."
+  - id: latency-cues
+    intent: The channel never looks stalled.
+    example_check: "If a response takes over 3 s, a typing/working indicator is shown within 1 s of the user's message."
+
+discipline_touchpoints:
+  design: Message layout, threading, typing/working states, and the escalation UX.
+  data: The intent/response eval golden set.
+  bizreq: The escalation policy and what may be committed by chat.
+  engineering: The chat integration and session/context handling.
+
+observability_signals:
+  - Time-to-first-response
+  - Containment vs escalation
+  - Context-resolution rate
+  - Injection-attempt blocks
+
+eval_hooks:
+  - intent resolution (transcript_constraint)
+  - quoted-content injection resistance (llm_rubric)

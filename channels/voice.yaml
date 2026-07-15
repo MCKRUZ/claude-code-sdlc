@@ -1,0 +1,51 @@
+id: voice
+name: Voice / spoken conversational
+surface: Transport-agnostic spoken voice — telephony (PSTN/CCaaS), web-voice, or device; no screen
+status: experimental
+llm_powered: true
+risk_floor: HIGH           # no visual confirmation + latency-sensitive + typically PII in the audio
+harness_context_seed: "voice turn pipeline"
+
+interaction_contract: >-
+  Strict turn-taking (system speaks, then yields) with barge-in (the caller may interrupt TTS);
+  intent captured by ASR or DTMF under a hard latency budget (dead air is failure); no visual
+  confirmation, so any state change is read back and verbally confirmed before commit; a graceful
+  fallback-to-human is reachable at every turn. Low-confidence ASR is untrusted input.
+
+acceptance_dimensions:
+  - id: turn-taking
+    intent: The system never talks over the caller.
+    example_check: "The system yields the turn after each prompt and does not resume until the caller stops or 1.5 s of silence elapses."
+  - id: barge-in
+    intent: The caller can interrupt the agent at any time.
+    example_check: "When the caller begins speaking during TTS, output stops within 200 ms."
+  - id: intent-capture
+    intent: The agent never acts on a silent or low-confidence guess.
+    example_check: "An ASR result below 0.70 confidence triggers a confirm-or-reprompt; the system never acts on a silent guess."
+  - id: latency-budget
+    intent: No dead air; the caller is never left waiting silently.
+    example_check: "No response gap exceeds 1200 ms without a hold/filler cue; a gap over 3 s is a failure."
+  - id: readback-confirmation
+    intent: Nothing changes state without a spoken confirmation, since there is no screen.
+    example_check: "Any state-changing action is read back and the caller's explicit spoken or DTMF confirmation is recorded before commit."
+  - id: fallback-to-human
+    intent: The caller can always reach a human.
+    example_check: "A human is reachable at every turn; two consecutive low-confidence turns auto-offer transfer with call context, and the transfer path stays available on error."
+
+discipline_touchpoints:
+  design: Conversation/turn design, confirmation prompts, and the fallback/escalation UX.
+  data: The ASR/intent eval golden set and the confidence thresholds.
+  bizreq: The escalation policy and what may be committed by voice.
+  engineering: The telephony/voice integration and the turn/barge-in implementation.
+
+observability_signals:
+  - Barge-in cancel latency
+  - ASR confidence distribution
+  - Reprompt rate
+  - Dead-air incidents
+  - Fallback-to-human rate
+  - Containment vs escalation
+
+eval_hooks:
+  - intent-capture accuracy (transcript_constraint)
+  - confirm-before-commit (transcript_constraint)

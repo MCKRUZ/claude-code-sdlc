@@ -47,7 +47,12 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def advance(state_path: Path, confirmed: bool) -> int:
+def advance(
+    state_path: Path,
+    confirmed: bool,
+    signed_by: str | None = None,
+    discipline_signoffs: list[str] | None = None,
+) -> int:
     """
     Returns 0 on success, 1 on gate failure, 2 on other errors.
     """
@@ -114,6 +119,10 @@ def advance(state_path: Path, confirmed: bool) -> int:
         "failed": sum(1 for r in results if r["passed"] is False),
         "manual": sum(1 for r in results if r["passed"] is None),
     }
+    # Optional human sign-off — a scalar string, safe to carry inside gate_results
+    # (audit_gates.extract_gate_history ignores non-dict/list values there).
+    if signed_by:
+        gate_summary["signed_off_by"] = signed_by
 
     # Update phases (string-keyed map; guard against missing entries)
     phases_map = state.setdefault("phases", {})
@@ -122,6 +131,21 @@ def advance(state_path: Path, confirmed: bool) -> int:
     phases_map[current_phase_id]["status"] = "completed"
     phases_map[current_phase_id]["completed_at"] = timestamp
     phases_map[current_phase_id]["gate_results"] = gate_summary
+
+    # Optional per-discipline sign-offs — a SIBLING key on the phase entry, never inside
+    # gate_results (audit_gates.extract_gate_history expands dict/list values in gate_results
+    # into phantom rows; a sibling key is never read by the audit).
+    if discipline_signoffs:
+        sign_offs = []
+        for entry in discipline_signoffs:
+            parts = entry.split(":", 2)
+            sign_offs.append({
+                "discipline": parts[0] if len(parts) > 0 else "",
+                "section": parts[1] if len(parts) > 1 else "",
+                "by": parts[2] if len(parts) > 2 else "",
+                "at": timestamp,
+            })
+        phases_map[current_phase_id]["sign_offs"] = sign_offs
 
     phases_map[next_phase_id]["status"] = "active"
     phases_map[next_phase_id]["entered_at"] = timestamp
@@ -195,6 +219,17 @@ def main() -> None:
         default=False,
         help="Human has reviewed artifacts and approved phase transition. Required to actually advance.",
     )
+    parser.add_argument(
+        "--signed-by",
+        default=None,
+        help="Name of the human who signed off on this phase transition (recorded in gate results).",
+    )
+    parser.add_argument(
+        "--discipline-signoff",
+        action="append",
+        default=None,
+        help="Per-discipline sign-off as 'Discipline:Section:Name' (repeatable).",
+    )
     args = parser.parse_args()
 
     state_path = Path(args.state)
@@ -202,7 +237,7 @@ def main() -> None:
         print(f"Error: State file not found: {state_path}", file=sys.stderr)
         sys.exit(2)
 
-    sys.exit(advance(state_path, args.confirmed))
+    sys.exit(advance(state_path, args.confirmed, args.signed_by, args.discipline_signoff))
 
 
 if __name__ == "__main__":

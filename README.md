@@ -107,8 +107,8 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 9 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
 | [Gate System](docs/gate-system.md) | 7-gate validation — integrity, completeness, metrics, compliance, consistency, quality, exit criteria — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 13 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
-| [Agents](docs/agents.md) | 8 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
+| [Commands](docs/commands.md) | All 19 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Agents](docs/agents.md) | 13 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
 | [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, the spec backlog |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
 | [Scripts](docs/scripts.md) | All Python scripts (incl. `phase_model.py`, the phase-identity source of truth) — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
@@ -132,6 +132,12 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases |
+| `/sdlc-feature` | Decompose an epic into channel-aware features and specs (`feature-brief.md`) |
+| `/sdlc-experience` | Author per-channel journeys, surface layout, and the channel interaction spec |
+| `/sdlc-data` | Author the data contract, data-readiness, and lineage/audit (Data) |
+| `/sdlc-rules` | Capture business rules (BR-NN) and golden scenarios (SCEN-NN) (Bizreq) |
+| `/sdlc-channel` | Bind a spec's `channel:` and inject that channel's acceptance dimensions |
+| `/sdlc-evals` | Author a versioned golden set next to a spec (wraps the harness eval-builder) |
 
 ## Profiles
 
@@ -212,9 +218,10 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # 13 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit)
-├── agents/                  # 8 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst)
+├── commands/                # 19 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals)
+├── agents/                  # 13 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst, feature-architect, visual-designer, conversation-designer, data-analyst, bizreq-analyst)
 ├── profiles/                # Company/stack YAML profiles
+├── channels/                # Channel descriptor library (ag-ui, voice, chat) + schema
 ├── phases/                  # Phase definitions (0,1,2,3,build,7,8,9,close)
 ├── references/              # Progressive disclosure docs
 ├── templates/               # Artifact templates

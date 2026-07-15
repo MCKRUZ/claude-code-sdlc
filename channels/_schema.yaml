@@ -1,0 +1,83 @@
+# Channel descriptor schema — validates channels/<id>.yaml
+# Mirrors the style of profiles/_schema.yaml. A channel is the customer SURFACE a
+# capability is delivered through (a web AG-UI console, a voice line, a chat surface) —
+# not the logic behind it. Descriptors are inert data: read only by validate_channel.py,
+# check_channel.py, and the discipline commands/agents — never by the protected gate/spec core.
+version: "1.0"
+type: object
+required:
+  - id
+  - name
+  - surface
+  - llm_powered
+  - acceptance_dimensions
+properties:
+  id:
+    type: string
+    pattern: "^[a-z0-9][a-z0-9-]*$"
+    description: Kebab-case identifier; matches the filename (channels/<id>.yaml).
+  name:
+    type: string
+    description: Human-readable channel name.
+  surface:
+    type: string
+    description: >-
+      What the customer touches (e.g. "browser SPA via AG-UI events", "PSTN/CCaaS voice",
+      "text chat thread").
+  status:
+    type: string
+    enum: [stable, experimental]
+    description: Maturity of the descriptor. Defaults to experimental.
+  llm_powered:
+    type: boolean
+    description: >-
+      True when the deliverable on this channel is model-driven. When true, evals are required
+      acceptance criteria (see eval_hooks) and the risk floor is HIGH.
+  risk_floor:
+    type: string
+    enum: [HIGH, MEDIUM, LOW]
+    description: >-
+      Advisory minimum risk tier for specs on this channel. It may only RAISE, never lower, the
+      tier risk_model.py assigns. The Pod Lead still owns the final tier.
+  harness_context_seed:
+    type: string
+    description: >-
+      A canonical existing-pattern phrase a first-of-its-kind channel spec can cite to satisfy the
+      spec DoR's harness_context requirement.
+  interaction_contract:
+    type: string
+    description: Prose — the turn / round-trip model and where a named human decides (HITL).
+  acceptance_dimensions:
+    type: array
+    description: >-
+      The dimensions a channel-bound spec must satisfy. Each becomes (or maps to) a concrete
+      acceptance check on the spec. check_channel.py cross-checks these against the spec's
+      ## Acceptance Checks (advisory).
+    items:
+      type: object
+      required: [id, intent, example_check]
+      properties:
+        id:
+          type: string
+          description: Kebab-case dimension id (e.g. barge-in, confidence-display).
+        intent:
+          type: string
+          description: One line — what this dimension guarantees for the customer.
+        example_check:
+          type: string
+          description: A concrete, vague-line-passing acceptance check the author can lift into the spec.
+  discipline_touchpoints:
+    type: object
+    description: Who owns what on this channel (design / data / bizreq / engineering).
+  observability_signals:
+    type: array
+    description: Channel-specific OUTCOME signals to emit in monitoring. Never vanity metrics.
+    items:
+      type: string
+  eval_hooks:
+    type: array
+    description: >-
+      Which dimensions become golden-set cases (for llm_powered channels). Required (non-empty)
+      when llm_powered is true. Points at harness/skills/eval-builder + the golden-set template.
+    items:
+      type: string
