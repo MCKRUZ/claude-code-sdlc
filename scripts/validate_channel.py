@@ -107,7 +107,7 @@ def main():
             had_error = True
             print(f"FAIL — {channel_path.name}: {len(errors)} validation error(s):")
             for e in errors:
-                print(f"  ✗ {e}")
+                print(f"  - {e}")
         else:
             print(f"PASS — {channel_path.name} is valid")
 
