@@ -1,0 +1,33 @@
+{
+  "//": "Merged (not overwritten) into .claude/settings.json by the installer (pack.yaml: merge: true). Adds Node/TypeScript tooling permissions on top of the core file. The core settings.json carries no npm/npx entries at all (its allow-list is dotnet + git + gh), so every entry here is additive — nothing is restated. `deny` is deliberately absent: denying is core's job, and this stack introduces no new class of destructive command. NOTE ON `npx`: there is intentionally no broad `Bash(npx:*)` ask rule. Rules are evaluated deny -> ask -> allow and specificity does NOT change that order, so a blanket npx ask would out-rank the four specific npx allows below and prompt on every test run. It is also unnecessary: an npx invocation that matches no rule already prompts by default. The allows below are scoped to the four tools this pack's ci-profile actually declares, each of which npx resolves from the repo's own devDependencies (installed by `npm ci`) rather than fetching from the registry.",
+  "permissions": {
+    "allow": [
+      "Bash(npm ci:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run test:*)",
+      "Bash(npm test:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm outdated:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest run:*)",
+      "Bash(npx eslint:*)",
+      "Bash(npx prettier --check:*)"
+    ],
+    "ask": [
+      "Bash(npm install:*)",
+      "Bash(npm i:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(npm update:*)",
+      "Bash(npm publish:*)",
+      "Bash(npm link:*)",
+      "Bash(npm audit fix:*)",
+      "Bash(npx prettier --write:*)",
+      "Edit(./**/package.json)",
+      "Write(./**/package.json)",
+      "Edit(./**/package-lock.json)",
+      "Write(./**/package-lock.json)"
+    ]
+  }
+}

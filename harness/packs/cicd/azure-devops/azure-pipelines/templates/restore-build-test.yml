@@ -74,9 +74,14 @@ steps:
         else
           echo "Coverage ${pct}% >= ${FLOOR}% floor ($report)"
         fi
-      done < <(find coverage -name 'coverage.cobertura.xml' 2>/dev/null)
+      # Any cobertura report under coverage/ counts. The names differ per stack and none
+      # is wrong: .NET's XPlat collector writes coverage.cobertura.xml, istanbul
+      # (vitest/jest) writes cobertura-coverage.xml, pytest-cov writes coverage.xml.
+      # The gate accepts all three rather than making each stack pack rename its
+      # output to suit this file — the stack declares, the platform adapts.
+      done < <(find coverage \( -name 'coverage.cobertura.xml' -o -name 'cobertura-coverage.xml' -o -name 'coverage.xml' \) 2>/dev/null)
       if [ "$found" -eq 0 ]; then
-        echo "##vso[task.logissue type=error]No coverage.cobertura.xml produced — the coverage gate cannot pass without a report (fail closed)."
+        echo "##vso[task.logissue type=error]No cobertura coverage report found under coverage/ — the coverage gate cannot pass without a report (fail closed)."
         exit 1
       fi
       exit "$fail"

@@ -1,0 +1,113 @@
+# Python / uv CI command profile — the interface a CI/CD pack consumes.
+#
+# A CI/CD pack (packs/cicd/github, packs/cicd/azure-devops) reads these values and realizes them into
+# its platform's pipeline syntax. This is MECHANICAL, not a copy-by-hand: the installer builds a
+# `<<CI_*>>` token table from this file plus the CI/CD pack's `toolchain_map:` and substitutes it into
+# every file that pack overlays. An unfilled token fails the install closed. The exact token each key
+# fills is noted below; the full contract is packs/README.md "The seam between the two".
+#
+# This file is a COMPOSE-TIME INPUT — it is never installed into the target repo. What lands there is
+# the realized pipeline carrying these values.
+#
+# The repo fills {{SOLUTION_OR_PROJECT}} during Phase 3 adaptation: it rides INSIDE the commands
+# below and passes through substitution untouched. For a uv project it is the SOURCE ROOT or the
+# importable package — `src` in a src-layout repo (the shape rules/project-structure.md prescribes).
+# It is the same Phase-3 blank the .NET reference uses; no new vocabulary is introduced here.
+#
+# Shape mirrors the .NET reference profile (packs/stacks/dotnet/ci-profile.yaml). The COMMANDS are
+# authored for uv, not harvested from a live repo, and every one was executed end-to-end against a
+# throwaway uv project before being written here — see README.md "Provenance".
+
+toolchain:
+  # Which toolchain — NOT how to install it. Each CI/CD pack maps this id to its own platform's setup
+  # step via `toolchain_map:` in its pack.yaml (github → actions/setup-python@v6 + `python-version`;
+  # azure-devops → UsePythonVersion@0 + `versionSpec`). An id no CI/CD pack maps fails the install
+  # closed. `python` is mapped by BOTH packs today — verified against their toolchain_map blocks.
+  id: python             # -> <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>> (via toolchain_map)
+  # 3.13 is a BUGFIX-status line (python.org devguide, checked 2026-07-16): 3.13 and 3.14 are in
+  # bugfix; 3.12 and older are SECURITY-ONLY and must not be a new project's default. 3.13 over 3.14
+  # deliberately — both are supported, and 3.13 is the line the numeric/ML wheel ecosystem this
+  # profile's tooling leans on has fully caught up to. Bumping to "3.14" is a one-line change here
+  # and needs no CI/CD pack edit; that is the point of the seam.
+  version: "3.13"        # -> <<CI_TOOLCHAIN_VERSION>>
+
+solution: "{{SOLUTION_OR_PROJECT}}"   # e.g. src — repo adaptation fills this (source root / package)
+
+# Each command MUST be a single line: the CI/CD pack splices it verbatim into one `run:`/`script:`
+# block scalar, so an embedded newline would emit an extra, unreviewed shell line. The installer
+# rejects a multi-line command. A folded '>-' scalar (see `test`) is single-line once loaded — the
+# line breaks are authoring convenience and fold back to spaces. ' && ' is the way to chain (see
+# `lint`), never a newline.
+#
+# What each verb MEANS for a uv project — the vocabulary does not map 1:1 onto .NET's:
+#   restore -> dependency sync from the lockfile. `--locked` ASSERTS uv.lock is already consistent
+#              with pyproject.toml and fails if it would change, so CI can never silently resolve a
+#              different dependency set than the one committed and reviewed. `--all-groups` installs
+#              the dev group too — pytest/ruff/mypy live there, and the later steps need them.
+#   build   -> Python has NO compile step. Rather than ship a no-op that lies about being a gate,
+#              this slot runs the real static check that catches the class of errors a compiler
+#              would: the type check. Strictness is configured in pyproject.toml [tool.mypy], not in
+#              flags here, so the repo owns its own bar. REQUIRES mypy in the dev dependency group
+#              (see README.md "What the repo must provide"). A repo that has genuinely not adopted
+#              typing yet substitutes `uv run --frozen --no-sync python -m compileall -q
+#              {{SOLUTION_OR_PROJECT}}` — a weaker but still HONEST check (it exits non-zero on a
+#              syntax error). It must not become `true` or `echo`.
+#   test    -> pytest with coverage. See the coverage note below — the report path is load-bearing.
+#   lint    -> ruff, both halves: `check` is the linter (flake8/isort/pyupgrade rules), `format
+#              --check` is the formatter verification and is the direct analogue of .NET's
+#              `dotnet format --verify-no-changes`. Neither writes; both exit non-zero on a finding.
+#
+# `--cov-report=xml:coverage/coverage.cobertura.xml` is LOAD-BEARING and is why the path is spelled
+# out rather than left to default. The CI/CD packs' coverage-floor step searches ONE directory —
+# `find coverage \( -name 'coverage.cobertura.xml' -o -name 'cobertura-coverage.xml' -o -name
+# 'coverage.xml' \)` — and fails closed when it finds nothing. pytest-cov's bare `--cov-report=xml`
+# writes `coverage.xml` into the CWD (the repo root), which that search would NOT find: the
+# DIRECTORY is the mismatch, not the filename. The `xml:<path>` form puts the report inside
+# `coverage/` under the gate's primary name, so this pack fits the existing CI contract instead of
+# asking the cicd packs to change. It also satisfies the narrower glob those packs carried before
+# 2026-07-16 (`-name 'coverage.cobertura.xml'` alone), so it is robust to that widening being
+# reverted. Change it here and that step must follow.
+commands:
+  restore: uv sync --locked --all-groups                                                # -> <<CI_RESTORE_CMD>>
+  build:   uv run --frozen mypy {{SOLUTION_OR_PROJECT}}                                 # -> <<CI_BUILD_CMD>>
+  test:    >-
+    uv run --frozen pytest
+    --cov={{SOLUTION_OR_PROJECT}}
+    --cov-report=xml:coverage/coverage.cobertura.xml
+    --cov-report=term
+  lint:    uv run --frozen ruff check . && uv run --frozen ruff format --check .        # -> <<CI_LINT_CMD>>
+
+coverage:
+  # The standard's floor (profile.quality.coverage_minimum: 80). ENFORCED BY THE PIPELINE: each CI/CD
+  # pack has an explicit post-test gate step that parses the cobertura reports and exits non-zero
+  # below this number (github ci.yml "Enforce coverage floor"; the ADO restore-build-test template's
+  # twin). It is NOT enforced via `--cov-fail-under` — deliberately. pytest-cov DOES support that
+  # flag, but the pipeline owning the gate is what makes the floor uniform across stacks, and a
+  # second threshold in the runner would be a second source of truth that silently drifts from this
+  # one. The runner collects; the pipeline judges.
+  floor_percent: 80        # -> <<CI_COVERAGE_FLOOR>>
+  tool: pytest-cov         # informational: pytest-cov drives coverage.py, which writes the
+                           # Cobertura-schema XML (root <coverage line-rate="..."> ) the gate reads.
+
+# Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
+# Realized by the CI/CD pack as an extra job/stage.
+# PARTIAL SEAM (same known gap the .NET reference carries): only the filter is bound. The eval job's
+# runner invocation around it is still written in .NET's vocabulary in both CI/CD packs
+# (`dotnet test --filter "<<CI_EVAL_TEST_FILTER>>"`), so a repo enabling this job on Python MUST
+# rewrite that invocation to `uv run --frozen pytest -m "<filter>"`. That job is hand-adapted per repo
+# anyway (it carries a repo-level <<EVAL_TEST_PROJECT>> blank and is deleted unless `enabled` is
+# true). The filter below is a pytest MARKER expression (`pytest -m`), not a .NET trait expression.
+# Register the marker in pyproject.toml [tool.pytest.ini_options] markers and run with
+# --strict-markers so a typo is an error, not a silently empty selection.
+eval_gate:
+  enabled: false
+  test_filter: "eval_gate"   # -> <<CI_EVAL_TEST_FILTER>>  (used as: pytest -m "eval_gate")
+
+# Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke
+# test. Must be FAST and must not mutate the environment or hit the network: `--no-sync` skips the
+# env sync entirely and `compileall` byte-compiles the tree offline, exiting non-zero on a syntax
+# error. This is the cheapest honest answer to "is the tree sound right now" — the full type check
+# is the `build` gate's job, not a session-start hook's.
+session_health:
+  command: uv run --frozen --no-sync python -m compileall -q {{SOLUTION_OR_PROJECT}}
+  timeout_seconds: 60

@@ -1,0 +1,93 @@
+# Node / TypeScript CI command profile — the interface a CI/CD pack consumes.
+#
+# A CI/CD pack (packs/cicd/github, packs/cicd/azure-devops) reads these values and realizes them into
+# its platform's pipeline syntax. This is MECHANICAL, not a copy-by-hand: the installer builds a
+# `<<CI_*>>` token table from this file plus the CI/CD pack's `toolchain_map:` and substitutes it into
+# every file that pack overlays. An unfilled token fails the install closed. The exact token each key
+# fills is noted below; the full contract is packs/README.md "The seam between the two".
+#
+# This file is a COMPOSE-TIME INPUT — it is never installed into the target repo. What lands there is
+# the realized pipeline carrying these values.
+#
+# NO {{REPO_TOKEN}} HERE, deliberately. The .NET profile carries {{SOLUTION_OR_PROJECT}} because
+# `dotnet` needs to be told WHAT to build. A Node repo's equivalent is nothing: `npm ci` reads
+# package-lock.json and `tsc --project tsconfig.json` reads the conventional root config, both by
+# convention from the repo root. A token here would be symmetry for its own sake — see packs/README.md.
+#
+# Shape mirrors packs/stacks/dotnet/ci-profile.yaml (the reference). The commands are this stack's own;
+# each was verified against current upstream docs (see README.md "Provenance"), not carried over.
+
+toolchain:
+  # Which toolchain — NOT how to install it. Each CI/CD pack maps this id to its own platform's setup
+  # step via `toolchain_map:` in its pack.yaml (github → actions/setup-node@v7 + `node-version`;
+  # azure-devops → NodeTool@0 + `versionSpec`). An id no CI/CD pack maps fails the install closed.
+  # `node` is mapped by BOTH packs today — verified against their toolchain_map blocks.
+  id: node               # -> <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>> (via toolchain_map)
+  # 24.x is the ACTIVE LTS as of 2026-07-16 (nodejs/Release: 24.x "Krypton", Active LTS 2025-10-28 →
+  # maintenance 2026-10-20). 22.x is already MAINTENANCE LTS; 26.x is Current, not LTS. The standard
+  # runs Active LTS. Revisit when 26.x enters Active LTS (2026-10-28).
+  version: "24.x"        # -> <<CI_TOOLCHAIN_VERSION>>
+
+# Each command MUST be a single line: the CI/CD pack splices it verbatim into one `run:`/`script:`
+# block scalar, so an embedded newline would emit an extra, unreviewed shell line. The installer
+# rejects a multi-line command. A folded '>-' scalar (see `test`) is single-line once loaded — the
+# line breaks are authoring convenience and fold back to spaces.
+#
+# TOOLING DECISIONS (justified, not defaulted):
+#  - npm, not pnpm/yarn: the delivery standard's toolchain rule is npm/npx. `npm ci` is also the
+#    correct CI verb — it installs from package-lock.json exactly and fails if the lockfile is out of
+#    sync with package.json, which is the restore-step behavior a gate wants (`npm install` would
+#    silently rewrite the lockfile mid-pipeline).
+#  - vitest, not jest: vitest runs TypeScript and native ESM without a separate transform pipeline
+#    (babel/ts-jest), which is the whole cost centre of jest on a modern TS/ESM repo.
+#  - `npx <tool>` runs the version pinned in the repo's devDependencies (installed by `npm ci`) — it
+#    is not an arbitrary registry download. vitest + @vitest/coverage-v8 + typescript + eslint must be
+#    devDependencies, or these commands fail closed at restore. See README.md.
+commands:
+  restore: npm ci                                    # -> <<CI_RESTORE_CMD>>
+  build:   npx tsc --project tsconfig.json           # -> <<CI_BUILD_CMD>>
+  # -> <<CI_TEST_CMD>>. `vitest run` = single pass, no watch. Coverage flags use dot notation, which
+  # per Vitest docs REQUIRES `--coverage.enabled` (never a bare `--coverage` alongside it).
+  #
+  # Vitest reports through istanbul-reports, whose cobertura reporter writes `cobertura-coverage.xml`
+  # (its `{ file }` option is config-file-only, not CLI-expressible). That name is fine as-is: the
+  # CI/CD packs' coverage-floor gate accepts any cobertura report under coverage/, because report
+  # names differ per stack and none of them is wrong. The stack declares; the platform adapts.
+  test:    >-
+    npx vitest run
+    --coverage.enabled --coverage.provider=v8
+    --coverage.reporter=cobertura --coverage.reporter=text
+    --coverage.reportsDirectory=coverage
+  lint:    npx eslint .                              # -> <<CI_LINT_CMD>>
+
+coverage:
+  # The standard's floor. ENFORCED BY THE PIPELINE: each CI/CD pack has an explicit post-test gate
+  # step that parses the cobertura reports from `coverage/` and exits non-zero below this number
+  # (github ci.yml "Enforce coverage floor"; the ADO restore-build-test template's twin).
+  #
+  # Vitest CAN self-enforce (`--coverage.thresholds.lines=<n>`), and repos SHOULD wire that into their
+  # local `npm test` script for fast feedback. It is deliberately NOT in the test command above: that
+  # would hard-code a second 80 with nothing keeping it in sync with this key, and the pipeline gate is
+  # the authoritative one. One floor, one place.
+  floor_percent: 80        # -> <<CI_COVERAGE_FLOOR>>
+  tool: "@vitest/coverage-v8"   # informational: what produces the cobertura report the gate reads
+
+# Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
+# Realized by the CI/CD pack as an extra job/stage.
+# PARTIAL SEAM: only the filter is bound. The eval job's runner invocation around it is still written
+# in .NET's vocabulary in both CI/CD packs — that job is hand-adapted per repo anyway (it carries a
+# repo-level <<EVAL_TEST_PROJECT>> blank and is deleted unless `enabled` is true). A Node repo enabling
+# it rewrites those flags as `npx vitest run <dir> -t "<filter>"`.
+#
+# The filter is a TEST-NAME pattern, because that is what vitest filters on (`-t/--testNamePattern`);
+# there is no xUnit-style trait/category system. Convention: tag the fixture titles, e.g.
+# `describe('@owasp-agentic tool poisoning', ...)`.
+eval_gate:
+  enabled: false
+  test_filter: "@owasp-agentic"   # -> <<CI_EVAL_TEST_FILTER>>
+
+# Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
+# --noEmit: a health check answers "does this still type-check?" — it must not write build output.
+session_health:
+  command: npx tsc --project tsconfig.json --noEmit
+  timeout_seconds: 120

@@ -1,0 +1,35 @@
+{
+  "//": "Merged (not overwritten) into .claude/settings.json by the installer (pack.yaml: merge: true). Adds Python/uv-specific tool permissions on top of the core file. Checked against kit/settings.json on 2026-07-16: the core carries dotnet/git/gh entries and NO Python entries, so nothing here is a duplicate. The split is by BLAST RADIUS, not by tool: read-only, test, and lint invocations are allowed; anything that mutates the dependency set, the lockfile, or publishes is asked. Deny stays empty on purpose — deny is the core's job, and this pack has no Python-specific destructive command to add to it. Note the allowed `uv` forms are the pinned ones (--frozen / --locked): they cannot silently re-resolve dependencies, which is exactly why they are safe to run unattended.",
+  "permissions": {
+    "allow": [
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff:*)",
+      "Bash(uv run mypy:*)",
+      "Bash(uv run python -m compileall:*)",
+      "Bash(uv sync --frozen:*)",
+      "Bash(uv sync --locked:*)",
+      "Bash(uv tree:*)",
+      "Bash(uv version:*)",
+      "Bash(uv python list:*)",
+      "Bash(uv pip list:*)",
+      "Bash(uv pip show:*)"
+    ],
+    "ask": [
+      "Bash(uv add:*)",
+      "Bash(uv remove:*)",
+      "Bash(uv lock:*)",
+      "Bash(uv sync --upgrade:*)",
+      "Bash(uv publish:*)",
+      "Bash(uv build:*)",
+      "Bash(uv tool install:*)",
+      "Bash(uv pip install:*)",
+      "Bash(uv pip uninstall:*)",
+      "Bash(pip install:*)",
+      "Bash(pip uninstall:*)",
+      "Edit(./**/pyproject.toml)",
+      "Write(./**/pyproject.toml)",
+      "Edit(./**/uv.lock)",
+      "Write(./**/uv.lock)"
+    ]
+  }
+}

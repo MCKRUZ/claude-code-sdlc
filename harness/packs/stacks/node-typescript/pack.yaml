@@ -1,0 +1,42 @@
+# Node / TypeScript stack pack — manifest.
+# Realizes the core kit's <<...>> / {{STACK}} blanks for a Node + TypeScript service repo.
+# Read by the profile-aware installer to overlay this pack after the core.
+# Resolver: profile stack.backend.language: typescript -> packs/stacks/node-typescript.
+
+pack:
+  id: node-typescript
+  axis: stack
+  name: "Node 24 LTS / TypeScript"
+  version: "0.1.0"
+
+# What this pack provides to the composition.
+provides:
+  claude_standards: claude/stack-standards.md   # fills CLAUDE.md "Stack standards — {{STACK}}"
+  rules:                                          # the @imports the core CLAUDE.md references
+    - rules/project-structure.md
+    - rules/testing.md
+  skills:
+    - skills/api-pattern-node
+  ci_profile: ci-profile.yaml                     # the command interface a CI/CD pack consumes
+  settings_fragment: settings.fragment.json       # node tooling perms, merged into settings.json
+  # NO mcp_fragment: there is no Node-specific MCP server to contribute. The core's .mcp.json already
+  # carries context7 (which covers Node/TS library lookups); the .NET pack contributes microsoft-learn
+  # because that server is genuinely stack-specific. Shipping an empty fragment to match dotnet's shape
+  # would be symmetry with no content behind it — the key is omitted instead.
+
+# Overlay map: pack-relative source -> repo destination. `merge: true` means the installer
+# deep-merges JSON rather than overwriting (dicts merge key-wise, lists concatenate and
+# dedup), so core + pack permissions combine and core entries survive.
+overlays:
+  - { src: rules/project-structure.md,         dest: .claude/rules/project-structure.md }
+  - { src: rules/testing.md,                   dest: .claude/rules/testing.md }
+  - { src: skills/api-pattern-node/SKILL.md,   dest: .claude/skills/api-pattern-node/SKILL.md }
+  - { src: settings.fragment.json,             dest: .claude/settings.json, merge: true }
+
+# Consumed by CI/CD packs; not installed directly as files.
+exposes:
+  ci_commands: ci-profile.yaml
+
+# Requires a CI/CD pack to realize the pipeline. Any of these satisfies it.
+# Reciprocal: both packs list node-typescript in their requires_stack_pack.
+requires_cicd_pack: [github, azure-devops]
