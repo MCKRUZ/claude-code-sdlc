@@ -29,17 +29,27 @@ The stack pack **declares** its commands in `ci-profile.yaml` (`toolchain`, `sol
 `session_health.command`). This pack **realizes** them in Azure Pipelines syntax, so the two axes stay
 independent — add a stack and every CI/CD pack can run it; add a CI platform and every stack works on it.
 
-The realization lives in two step templates, each slot marked with a `# «stack pack: ci-profile.…»`
-comment carrying the .NET reference value as its default:
+The realization is **mechanical**. Each slot is a `<<CI_*>>` token marked with a
+`# «stack pack: ci-profile.…»` comment naming the value it is filled from; the installer builds the
+token table from the selected stack pack's `ci-profile.yaml` joined with this pack's `toolchain_map:`
+(`pack.yaml`) and substitutes as it copies. Nothing here carries a .NET value as a "default", and the
+install **fails closed** if any token survives — a literal token is never written to a repo.
 
-- `templates/use-dotnet.yml` — `actions/setup-dotnet` → **`UseDotNet@2`** (consumes `ci-profile.toolchain`).
-- `templates/dotnet-restore-build-test.yml` — the `dotnet restore/build/test/lint` script steps
-  (consumes `ci-profile.commands` + `ci-profile.coverage.floor_percent`, enforced in the runner via
-  coverlet threshold args so a coverage miss is a non-zero exit).
+The realization lives in two step templates, both stack-neutral:
 
-`ci.yml` includes these templates; it hard-codes no stack commands as policy. A repo on a different stack
-swaps the two templates for its own (`UseNode@1` + `npm` steps, etc.) — the interface it consumes is
-`ci-profile.yaml`, not this file.
+- `templates/setup-toolchain.yml` — emits the task `toolchain_map` gives for
+  `ci-profile.toolchain.id`, with that task's own version-input name
+  (`dotnet` → **`UseDotNet@2`**/`version`; `node` → **`NodeTool@0`**/`versionSpec`;
+  `python` → **`UsePythonVersion@0`**/`versionSpec`).
+- `templates/restore-build-test.yml` — the restore/build/test/lint script steps, spliced verbatim from
+  `ci-profile.commands`, plus the coverage-floor gate bound to `ci-profile.coverage.floor_percent`.
+  The gate is an explicit post-test step that parses the cobertura reports and exits non-zero below
+  the floor (**not** coverlet threshold args — the XPlat collector cannot enforce a threshold).
+
+`ci.yml` includes these templates and hard-codes no stack commands. A repo on a different stack does
+**not** swap the templates: it selects a different stack pack, and the same templates emit that
+stack's commands. The interface is `ci-profile.yaml` + `toolchain_map`, not these files. A
+`toolchain.id` this pack has no `toolchain_map` entry for fails the install closed, naming the id.
 
 ## Install map
 

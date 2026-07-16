@@ -1,8 +1,8 @@
 # Azure DevOps CI/CD pack — manifest.
 # Realizes the core kit's rails (the-rails.md §3–§6) as Azure Pipelines, consuming the stack pack's
 # ci-profile.yaml (the SEAM). Read by the profile-aware installer to overlay this pack after the core
-# and after the chosen stack pack. Pair with any stack pack (dotnet, angular, python) — the technology
-# conventions live in the stack pack; only the pipeline platform changes here.
+# and after the chosen stack pack. Pair with any stack pack — the technology conventions live in the
+# stack pack; only the pipeline platform changes here.
 
 pack:
   id: azure-devops
@@ -22,8 +22,8 @@ provides:
     - azure-pipelines/eval-regression.yml  # per-PR eval-regression gate — BLOCKS
     - azure-pipelines/eval-suite.yml       # full benchmark — manual + scheduled, ADVISORY
   templates:
-    - azure-pipelines/templates/use-dotnet.yml            # UseDotNet@2 (consumes ci-profile.toolchain)
-    - azure-pipelines/templates/dotnet-restore-build-test.yml  # consumes ci-profile.commands
+    - azure-pipelines/templates/setup-toolchain.yml       # ci-profile.toolchain via toolchain_map
+    - azure-pipelines/templates/restore-build-test.yml    # ci-profile.commands + coverage.floor_percent
     - azure-pipelines/templates/checkout-with-base.yml    # checkout + full base fetch for diff scope
     - azure-pipelines/templates/claude-review.yml         # run Claude CLI → post PR thread → enforce
   scripts:
@@ -37,7 +37,9 @@ provides:
                                                    # per-developer via az login — never a committed PAT)
 
 # The SEAM. This pack REALIZES the stack pack's declared commands into Azure Pipelines syntax.
-# It does not know .NET; it knows how to run whatever ci-profile.yaml declares.
+# It does not know .NET; it knows how to run whatever ci-profile.yaml declares. The realization is
+# MECHANICAL: each declared value is a `<<CI_*>>` token in the pipelines/templates that the installer
+# substitutes at compose time. ci-profile.yaml is a compose-time INPUT, never an installed file.
 consumes:
   stack_ci_profile: ci-profile.yaml        # packs/stacks/<id>/ci-profile.yaml — toolchain + commands + coverage
   # Neutral, platform-agnostic governance assets shared with the github pack. They are NOT re-authored
@@ -48,6 +50,21 @@ consumes:
     - correctness.md
     - security.md
   diff_anchors: diff-anchors.sh             # kit/profile/scripts/diff-anchors.sh — stack- and platform-neutral
+
+# The PLATFORM half of the seam: ci-profile.toolchain.id -> the Azure Pipelines task that installs it
+# and the name of that task's version input. The stack pack declares WHICH toolchain; this pack knows
+# how Azure Pipelines installs it. Fills <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>>;
+# <<CI_TOOLCHAIN_VERSION>> comes from ci-profile.toolchain.version. Note the input name is NOT uniform
+# across these tasks (`version` vs `versionSpec`) — that is precisely why it is mapped, not assumed.
+# A toolchain.id absent from this map FAILS THE INSTALL CLOSED naming the id and this pack.
+# Verified against the Microsoft Learn task references (YAML syntax blocks) — 2026-07-16:
+#   UseDotNet@2        learn.microsoft.com/azure/devops/pipelines/tasks/reference/use-dotnet-v2
+#   NodeTool@0         learn.microsoft.com/azure/devops/pipelines/tasks/reference/node-tool-v0
+#   UsePythonVersion@0 learn.microsoft.com/azure/devops/pipelines/tasks/reference/use-python-version-v0
+toolchain_map:
+  dotnet: { action: "UseDotNet@2",        input: "version" }
+  node:   { action: "NodeTool@0",         input: "versionSpec" }
+  python: { action: "UsePythonVersion@0", input: "versionSpec" }
 
 # Overlay map: pack-relative source -> repo destination in an Azure DevOps repo.
 # The installed pipeline prompts reference the `.azuredevops/...` and `scripts/rails/...` paths below;
@@ -60,8 +77,8 @@ overlays:
   - { src: azure-pipelines/deploy-dev.yml,                      dest: .azuredevops/pipelines/deploy-dev.yml }
   - { src: azure-pipelines/eval-regression.yml,                 dest: .azuredevops/pipelines/eval-regression.yml }
   - { src: azure-pipelines/eval-suite.yml,                      dest: .azuredevops/pipelines/eval-suite.yml }
-  - { src: azure-pipelines/templates/use-dotnet.yml,            dest: .azuredevops/pipelines/templates/use-dotnet.yml }
-  - { src: azure-pipelines/templates/dotnet-restore-build-test.yml, dest: .azuredevops/pipelines/templates/dotnet-restore-build-test.yml }
+  - { src: azure-pipelines/templates/setup-toolchain.yml,       dest: .azuredevops/pipelines/templates/setup-toolchain.yml }
+  - { src: azure-pipelines/templates/restore-build-test.yml,    dest: .azuredevops/pipelines/templates/restore-build-test.yml }
   - { src: azure-pipelines/templates/checkout-with-base.yml,    dest: .azuredevops/pipelines/templates/checkout-with-base.yml }
   - { src: azure-pipelines/templates/claude-review.yml,         dest: .azuredevops/pipelines/templates/claude-review.yml }
   - { src: scripts/configure-branch-policies.sh,                dest: scripts/rails/configure-branch-policies.sh }
@@ -76,5 +93,8 @@ overlays:
   #   scripts/rails/diff-anchors.sh          <- kit/profile/scripts/diff-anchors.sh
   #   .azuredevops/rails/rubrics/{grader,correctness,security}.md  <- kit/profile/rubrics/*.md
 
-# Requires a stack pack to fill the command SEAM. Any of these satisfies it.
-requires_stack_pack: [dotnet, angular, python]
+# Requires a stack pack to fill the command SEAM (the <<CI_*>> tokens). Any of these satisfies it,
+# provided toolchain_map above has an entry for its toolchain.id. These are STACK PACK ids
+# (packs/stacks/<id>), not toolchain ids.
+# Reciprocal of the stack pack's requires_cicd_pack: [github, azure-devops].
+requires_stack_pack: [dotnet, node-typescript, python]

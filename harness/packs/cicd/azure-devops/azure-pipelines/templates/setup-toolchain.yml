@@ -1,0 +1,27 @@
+# Step template: install the toolchain.
+#
+# The Azure Pipelines half of the toolchain seam. The stack pack DECLARES which toolchain it needs
+# (ci-profile.toolchain.id + .version); this pack's `toolchain_map:` (pack.yaml) knows how Azure
+# Pipelines installs it, and the installer substitutes both at compose time:
+#
+#   github → actions/setup-dotnet@v4 ; azure-devops → UseDotNet@2   (this file)
+#
+# Nothing here is .NET-specific: composing this pack with a node stack pack emits NodeTool@0, with a
+# python stack pack UsePythonVersion@0. The task's version-input NAME differs per toolchain
+# (UseDotNet@2 → `version`; NodeTool@0 / UsePythonVersion@0 → `versionSpec`), which is exactly why
+# toolchain_map carries `input` alongside `action`.
+#
+# Only the version input is set; every other input keeps its documented default (UseDotNet@2 defaults
+# packageType: 'sdk'), which is what lets one template serve every toolchain. A repo needing a
+# task-specific input (a runtime-only install, an architecture) wires it here by hand.
+
+parameters:
+  - name: version
+    type: string
+    default: '<<CI_TOOLCHAIN_VERSION>>'   # «stack pack: ci-profile.toolchain.version»
+
+steps:
+  - task: <<CI_TOOLCHAIN_ACTION>>         # «stack pack: ci-profile.toolchain.id» via toolchain_map
+    displayName: 'Setup toolchain (ci-profile.toolchain)'
+    inputs:
+      <<CI_TOOLCHAIN_INPUT>>: ${{ parameters.version }}

@@ -13,7 +13,7 @@ Packs compose along axes that are **orthogonal** — you pick from each:
 
 | Axis | Folder | Answers | Select | Examples |
 |---|---|---|---|---|
-| **Stack** | `packs/stacks/<id>` | *How do we build in this technology?* | one | `dotnet`, `angular`, `python` |
+| **Stack** | `packs/stacks/<id>` | *How do we build in this technology?* | one | `dotnet`, `node-typescript`, `python` |
 | **CI/CD** | `packs/cicd/<id>` | *Which pipeline platform runs the rails?* | one | `github`, `azure-devops` |
 | **Frontend** | `packs/frontend/<id>` | *Does this repo have screens, and in what framework?* | generic + one | `generic`, `react` |
 | **Tools** | `packs/tools/<id>` | *Which optional tools does the team wire in?* | any (0+) | `gitnexus` |
@@ -48,10 +48,69 @@ that consent prompt is Claude Code's, not ours.
 
 ## The seam between the two
 
-The stack pack **declares its commands** in `ci-profile.yaml` (restore / build / test / lint /
-coverage, plus the toolchain). A CI/CD pack **realizes** those commands into its platform's syntax
-(GitHub Actions YAML, Azure Pipelines YAML). This is what keeps the axes independent: add a new
+The stack pack **declares** its toolchain and commands in `ci-profile.yaml`. A CI/CD pack
+**realizes** them into its platform's syntax. This is what keeps the axes independent: add a new
 stack and every CI/CD pack can run it; add a new CI platform and every stack works on it.
+
+The join is **mechanical** — the installer does it, not a human with a copy buffer.
+
+**The two halves.** Each side owns exactly what it knows:
+
+| Half | Lives in | Knows |
+| --- | --- | --- |
+| `ci-profile.yaml` | `packs/stacks/<id>/` | *Which* toolchain (`toolchain.id` + `version`) and *what* the commands are (`commands.{restore,build,test,lint}`, `coverage.floor_percent`, `eval_gate.test_filter`) |
+| `toolchain_map:` | `packs/cicd/<id>/pack.yaml` | *How this platform installs* a given `toolchain.id` — its setup action/task and that action's version-input name |
+
+Neither knows the other. `dotnet` says "I need dotnet 10.x"; the github pack says "on me, `dotnet`
+means `actions/setup-dotnet@v4` and the input is called `dotnet-version`"; the ADO pack says
+"`UseDotNet@2`, input `version`". The input name is genuinely not uniform across platforms
+(`version` vs `versionSpec` on ADO), which is why it is **mapped, not assumed**.
+
+**The tokens.** A CI/CD pack's workflows reference every stack value as a `<<CI_*>>` token. At
+install time (`install_harness.py`, `ci_tokens.py`) the two halves are joined into a token table and
+substituted into **every file the CI/CD pack overlays**, as it is copied:
+
+| Token | Filled from |
+| --- | --- |
+| `<<CI_TOOLCHAIN_ACTION>>` | CI/CD pack `toolchain_map[<toolchain.id>].action` |
+| `<<CI_TOOLCHAIN_INPUT>>` | CI/CD pack `toolchain_map[<toolchain.id>].input` |
+| `<<CI_TOOLCHAIN_VERSION>>` | `ci-profile` `toolchain.version` |
+| `<<CI_RESTORE_CMD>>` / `<<CI_BUILD_CMD>>` / `<<CI_TEST_CMD>>` / `<<CI_LINT_CMD>>` | `ci-profile` `commands.*` |
+| `<<CI_COVERAGE_FLOOR>>` | `ci-profile` `coverage.floor_percent` |
+| `<<CI_EVAL_TEST_FILTER>>` | `ci-profile` `eval_gate.test_filter` |
+
+Those nine are the **whole** compose-time vocabulary — it is a closed list, **not** the `<<CI_*>>`
+prefix. The prefix is not free: `deploy-dev.yml` in both packs already carries `<<CI_WORKFLOW_NAME>>`
+/ `<<CI_PIPELINE_NAME>>` / `<<CI_PIPELINE_RESOURCE>>`, which name the CI *pipeline* and are ordinary
+Phase-3 blanks. Those, `{{SOLUTION_OR_PROJECT}}`, `<<EVAL_TEST_PROJECT>>`, `<<DEFAULT_BRANCH>>` and
+every other blank are **Phase-3 repo adaptation** and pass through untouched — including when they
+ride *inside* a substituted command (`dotnet restore {{SOLUTION_OR_PROJECT}}` lands exactly like
+that). Adding a seam token means adding it to `ci_tokens.SEAM_TOKENS` and to the table above.
+
+`ci-profile.yaml` is a compose-time **input**, not an installed artifact: nothing copies it into the
+target repo. What lands there is the realized pipeline carrying its values.
+
+**The rules.**
+
+- **Fail closed on an unmapped toolchain.** A `toolchain.id` with no entry in the resolved CI/CD
+  pack's `toolchain_map` aborts the install (rc 2), naming the id and the pack. Installing a
+  pipeline that sets up the wrong runtime is worse than installing none.
+- **Fail closed on a surviving token.** After substitution, any remaining `<<CI_*>>` in a file the
+  installer wrote aborts the install, naming file and token. A literal token never reaches a repo.
+- **Commands must be single-line.** Each is spliced verbatim into one `run:`/`script:` **block
+  scalar**, so an embedded newline would emit an extra, unreviewed shell line — the installer
+  rejects it. (A folded `>-` scalar is single-line once loaded; that is the authoring escape hatch.)
+  Block scalars are also why a value containing quotes or colons — `--collect:"XPlat Code
+  Coverage"` — can never break the emitted YAML.
+- **The axes still degrade independently.** A CI/CD pack with **no stack pack** (a language with no
+  pack built yet) does **not** substitute: the `<<CI_*>>` tokens are deliberately **left in place**
+  and the installer prints a WARNING listing the affected files and tokens as Phase-3 work. Setup
+  still exits 0 — a missing stack pack never breaks setup, exactly as before.
+
+**Known gap.** The optional eval-gate job binds only its `--filter` to the stack; the runner
+invocation around it is still written in .NET's vocabulary in both CI/CD packs, because `ci-profile`
+declares no eval-runner command. That job is hand-adapted per repo regardless (it carries a
+`<<EVAL_TEST_PROJECT>>` blank and is deleted unless `eval_gate.enabled` is true).
 
 ## Composition order (who wins)
 

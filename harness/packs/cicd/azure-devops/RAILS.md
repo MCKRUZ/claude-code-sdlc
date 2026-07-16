@@ -114,7 +114,7 @@ when **both its block and its escape** have been seen to work.
 
 - **CI / eval-gate** — introduce a failing test (and a sub-threshold coverage change), open a PR. The
   `build-and-test` build validation must go red and block completion — the coverage miss goes red at the
-  `Enforce coverage floor` step (dotnet-restore-build-test.yml), which names the measured percentage and
+  `Enforce coverage floor` step (restore-build-test.yml), which names the measured percentage and
   the floor it missed. Already exercised by every real PR.
 - **spec-gate** — open a throwaway PR that touches a file under `src/` with **no spec in the diff**. The
   `spec-gate` stage must go **red** (failing the `build-and-test` build validation), listing the touched

@@ -1,0 +1,96 @@
+# Step template: restore + build + test with coverage — the mechanical half of the CI rail.
+#
+# Every `script:` step below is a REALIZATION of a command the stack pack declared in ci-profile.yaml.
+# The pipeline hard-codes no stack command: each is a `<<CI_*_CMD>>` token the installer fills at
+# compose time from the selected stack pack, so composing this pack with a node stack pack emits npm
+# commands here. The installer FAILS CLOSED if any token survives.
+#
+# The commands arrive whole (`dotnet restore {{SOLUTION_OR_PROJECT}}`, `npm ci`, ...), so this
+# template takes NO `solution` parameter: which path a command builds is the stack pack's business
+# (ci-profile.solution), and `{{SOLUTION_OR_PROJECT}}` rides inside the substituted command as the
+# repo's Phase-3 blank.
+#
+# Each command is spliced into a BLOCK scalar (`script: |`) so quotes/colons in a substituted value
+# (e.g. --collect:"XPlat Code Coverage") can never break the YAML.
+#
+# Coverage floor: «ci-profile.coverage.floor_percent» is enforced by an explicit post-test gate step
+# that parses the cobertura report and exits non-zero below the floor. That step is stack-AGNOSTIC
+# (cobertura XML is a cross-ecosystem format); only the threshold is a seam. For .NET it also cannot
+# be enforced via collector runsettings: the XPlat `coverlet.collector` supports Format/Include/
+# Exclude but NOT threshold validation — that is a coverlet.msbuild feature (coverlet docs, "Coverlet
+# integration with VSTest": "VSTest integration doesn't support ... threshold validation").
+
+parameters:
+  - name: coverageThreshold
+    type: string
+    default: '<<CI_COVERAGE_FLOOR>>'      # «stack pack: ci-profile.coverage.floor_percent»
+  - name: publishCoverage
+    type: boolean
+    default: true
+
+steps:
+  - script: |
+      <<CI_RESTORE_CMD>>
+    displayName: 'Restore (ci-profile.commands.restore)'
+    # «stack pack: ci-profile.commands.restore»
+
+  - script: |
+      <<CI_BUILD_CMD>>
+    displayName: 'Build (ci-profile.commands.build)'
+    # «stack pack: ci-profile.commands.build»
+
+  # Must FAIL the job on any failing test. Coverage is COLLECTED here; the floor is enforced by the
+  # next step (see the header note on why collection and enforcement are separate steps).
+  - script: |
+      <<CI_TEST_CMD>>
+    displayName: 'Test with coverage (ci-profile.commands.test)'
+    # «stack pack: ci-profile.commands.test»
+
+  # Coverage floor gate («stack pack: ci-profile.coverage.floor_percent»). Parses every cobertura
+  # report the test command produced and exits 1 if any line-rate is below the floor — a coverage miss
+  # is a non-zero exit, never a passing run with a low number in a report the pipeline ignores.
+  #
+  # COUPLING (deliberate, shared with the github twin): the reports are read from `coverage/`
+  # relative to the sources dir, because that is the results directory ci-profile.commands.test
+  # declares. A stack pack whose test command writes coverage elsewhere must say so in that command
+  # AND this path must follow it. Fails closed if nothing is found, so a drift here is loud, not silent.
+  # KEEP IN SYNC with the github twin: packs/cicd/github/workflows/ci.yml "Enforce coverage floor".
+  - bash: |
+      set -euo pipefail
+      FLOOR='${{ parameters.coverageThreshold }}'
+      found=0; fail=0
+      while IFS= read -r report; do
+        found=1
+        rate="$(sed -n 's/.*<coverage[^>]*line-rate="\([0-9.]*\)".*/\1/p' "$report" | head -n1)"
+        if [ -z "$rate" ]; then
+          echo "##vso[task.logissue type=error]Could not read line-rate from $report"
+          fail=1
+          continue
+        fi
+        pct="$(awk -v r="$rate" 'BEGIN{printf "%.2f", r*100}')"
+        if awk -v p="$pct" -v t="$FLOOR" 'BEGIN{exit !(p+0 < t+0)}'; then
+          echo "##vso[task.logissue type=error]Coverage ${pct}% is below the ${FLOOR}% floor ($report)"
+          fail=1
+        else
+          echo "Coverage ${pct}% >= ${FLOOR}% floor ($report)"
+        fi
+      done < <(find coverage -name 'coverage.cobertura.xml' 2>/dev/null)
+      if [ "$found" -eq 0 ]; then
+        echo "##vso[task.logissue type=error]No coverage.cobertura.xml produced — the coverage gate cannot pass without a report (fail closed)."
+        exit 1
+      fi
+      exit "$fail"
+    displayName: 'Enforce coverage floor (ci-profile.coverage.floor_percent)'
+
+  - script: |
+      <<CI_LINT_CMD>>
+    displayName: 'Lint (ci-profile.commands.lint)'
+    # «stack pack: ci-profile.commands.lint»
+
+  - ${{ if eq(parameters.publishCoverage, true) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish coverage'
+        condition: always()
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)/coverage'   # the results dir ci-profile.commands.test declares
+          artifact: 'coverage'

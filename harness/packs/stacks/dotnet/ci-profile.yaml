@@ -1,35 +1,62 @@
 # .NET CI command profile — the interface a CI/CD pack consumes.
 #
-# A CI/CD pack (packs/cicd/github, packs/cicd/azure-devops) reads these values and realizes them
-# into its platform's pipeline syntax. The repo fills {{SOLUTION_OR_PROJECT}} during Phase 3
-# adaptation. Values here are the .NET reference commands, harvested from a realized .NET pipeline
-# (see HARVEST.md) and aligned to the standard's 80% coverage floor.
+# A CI/CD pack (packs/cicd/github, packs/cicd/azure-devops) reads these values and realizes them into
+# its platform's pipeline syntax. This is MECHANICAL, not a copy-by-hand: the installer builds a
+# `<<CI_*>>` token table from this file plus the CI/CD pack's `toolchain_map:` and substitutes it into
+# every file that pack overlays. An unfilled token fails the install closed. The exact token each key
+# fills is noted below; the full contract is packs/README.md "The seam between the two".
+#
+# This file is a COMPOSE-TIME INPUT — it is never installed into the target repo. What lands there is
+# the realized pipeline carrying these values.
+#
+# The repo fills {{SOLUTION_OR_PROJECT}} during Phase 3 adaptation: it rides INSIDE the commands
+# below and passes through substitution untouched. Values here are the .NET reference commands,
+# harvested from a realized .NET pipeline (see HARVEST.md) and aligned to the standard's 80% floor.
+#
+# This is the REFERENCE profile: a new stack pack copies this shape, not these commands.
 
 toolchain:
-  # github → actions/setup-dotnet ; azure-devops → UseDotNet@2 (the CI/CD pack maps this)
-  id: dotnet
-  version: "10.x"
+  # Which toolchain — NOT how to install it. Each CI/CD pack maps this id to its own platform's setup
+  # step via `toolchain_map:` in its pack.yaml (github → actions/setup-dotnet@v4 + `dotnet-version`;
+  # azure-devops → UseDotNet@2 + `version`). An id no CI/CD pack maps fails the install closed.
+  id: dotnet             # -> <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>> (via toolchain_map)
+  version: "10.x"        # -> <<CI_TOOLCHAIN_VERSION>>
 
 solution: "{{SOLUTION_OR_PROJECT}}"   # e.g. src/YourApp.slnx — repo adaptation fills this
 
+# Each command MUST be a single line: the CI/CD pack splices it verbatim into one `run:`/`script:`
+# block scalar, so an embedded newline would emit an extra, unreviewed shell line. The installer
+# rejects a multi-line command. A folded '>-' scalar (see `test`) is single-line once loaded — the
+# line breaks are authoring convenience and fold back to spaces.
+#
+# `--results-directory coverage` is load-bearing: the CI/CD pack's coverage-floor step reads the
+# cobertura reports from `coverage/`. Change it here and that step must follow.
 commands:
-  restore: dotnet restore {{SOLUTION_OR_PROJECT}}
-  build:   dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --configuration Release
+  restore: dotnet restore {{SOLUTION_OR_PROJECT}}                                      # -> <<CI_RESTORE_CMD>>
+  build:   dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --configuration Release   # -> <<CI_BUILD_CMD>>
   test:    >-
     dotnet test {{SOLUTION_OR_PROJECT}}
     --no-build --configuration Release
     --collect:"XPlat Code Coverage" --results-directory coverage
-  lint:    dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes
+  lint:    dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes                   # -> <<CI_LINT_CMD>>
 
 coverage:
-  floor_percent: 80        # the standard's floor; enforce in the runner so a miss is a non-zero exit
-  tool: coverlet           # threshold via coverlet args, not a report the pipeline reads and ignores
+  # The standard's floor. ENFORCED BY THE PIPELINE: each CI/CD pack has an explicit post-test gate
+  # step that parses the cobertura reports and exits non-zero below this number (github ci.yml
+  # "Enforce coverage floor"; the ADO restore-build-test template's twin). It is NOT enforced via
+  # coverlet args — the XPlat collector supports Format/Include/Exclude but NOT threshold validation
+  # (that is a coverlet.msbuild feature), which is exactly why the pipeline owns the gate.
+  floor_percent: 80        # -> <<CI_COVERAGE_FLOOR>>
+  tool: coverlet           # informational: what produces the cobertura report the gate reads
 
 # Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
-# Realized by the CI/CD pack as an extra job. Filter/convention harvested from the reference repo.
+# Realized by the CI/CD pack as an extra job/stage. Filter harvested from the reference repo.
+# PARTIAL SEAM: only the filter is bound. The eval job's runner invocation around it is still written
+# in .NET's vocabulary in both CI/CD packs — that job is hand-adapted per repo anyway (it carries a
+# repo-level <<EVAL_TEST_PROJECT>> blank and is deleted unless `enabled` is true).
 eval_gate:
   enabled: false
-  test_filter: "Category=OwaspAgentic"
+  test_filter: "Category=OwaspAgentic"   # -> <<CI_EVAL_TEST_FILTER>>
 
 # Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
 session_health:

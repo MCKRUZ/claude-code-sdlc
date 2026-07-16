@@ -1,8 +1,10 @@
 # CI rail (the-rails.md §3): build + test + lint + coverage, plus the spec-gate — the mechanical,
 # deterministic gate. HARD BLOCK. Nothing here calls an LLM; it answers only what a machine can answer
 # definitively (does it compile, do the tests pass, is coverage met, does a source PR carry its spec).
-# Consumes the stack pack's ci-profile.yaml via the templates below (UseDotNet@2 + the
-# restore/build/test commands) — no stack commands are hard-coded as policy in this file.
+# Consumes the stack pack's ci-profile.yaml via the templates below (setup-toolchain +
+# restore-build-test) — no stack commands are hard-coded as policy in this file. The templates carry
+# `<<CI_*>>` tokens the installer fills at compose time from the selected stack pack's ci-profile
+# joined with this pack's toolchain_map (pack.yaml); the install FAILS CLOSED on an unfilled token.
 #
 # HOW IT BLOCKS ON AZURE: for Azure Repos, `pr:` YAML triggers are ignored — PR runs are driven by a
 # **build validation branch policy**. scripts/configure-branch-policies.sh registers this pipeline
@@ -14,15 +16,19 @@
 #   <<DEFAULT_BRANCH>>          protected branch (reference: main).
 #   <<VARIABLE_GROUP>>          variable group (ideally Key-Vault-backed) — only needed if you keep the
 #                               eval-gate stage or wire secrets; the mechanical stage needs none.
-#   <<SOLUTION_OR_PROJECT>>     path passed to the dotnet-restore-build-test template.
-#   <<COVERAGE_THRESHOLD>>      the standard's 80% floor (default carried by the template).
 #   <<SPEC_GATE_SRC_RE>>        regex for what counts as source in the spec-gate stage (default: ^src/).
 #                               A PR matching it must carry a committed spec in its diff.
 #   <<SERVICE_PROVISIONING>>    a `services`/sidecar container + schema/seed if integration tests need a
 #                               DB/cache/broker. Azure Pipelines runs service containers differently from
 #                               GitHub; the reference shows a Postgres sidecar. DELETE if not needed.
-#   <<EVAL_TEST_PROJECT>> / <<EVAL_FILTER>>  the optional agentic eval-fixture hard gate. Keep only if you
-#                               ship agent behavior that must not regress; else delete the eval-gate stage.
+#   <<EVAL_TEST_PROJECT>>       the test project holding the eval fixtures, for the optional agentic
+#                               eval-fixture hard gate. Keep only if you ship agent behavior that must
+#                               not regress; else delete the eval-gate stage. (The eval FILTER is NOT a
+#                               repo blank — it is the seam «ci-profile.eval_gate.test_filter».)
+#
+# NOT placeholders any more — these are STACK SEAMS the installer fills from ci-profile.yaml:
+#   the toolchain + its version, the restore/build/test/lint commands (which carry the repo's own
+#   {{SOLUTION_OR_PROJECT}} blank inside them), and the coverage floor.
 # ───────────────────────────────────────────────────────────────────────────────
 
 trigger:
@@ -135,7 +141,7 @@ stages:
               rm -f gitleaks gitleaks.tar.gz
             displayName: 'Secret scan (gitleaks)'
 
-          - template: templates/use-dotnet.yml              # «UseDotNet@2» — ci-profile.toolchain
+          - template: templates/setup-toolchain.yml         # ci-profile.toolchain via toolchain_map
 
           # <<SERVICE_PROVISIONING>> — apply schema/seed once the service is healthy. Service containers do
           # not run an image's init scripts. DELETE if no external service.
@@ -146,10 +152,9 @@ stages:
           #     done
           #   displayName: 'Apply database schema'
 
-          - template: templates/dotnet-restore-build-test.yml   # ci-profile.commands + coverage.floor_percent
-            parameters:
-              solution: '<<SOLUTION_OR_PROJECT>>'
-              coverageThreshold: '80'                       # <<COVERAGE_THRESHOLD>>
+          # ci-profile.commands + coverage.floor_percent. Both defaults come from the stack pack via
+          # the template's own seam tokens, so this site passes no parameters.
+          - template: templates/restore-build-test.yml
 
   # ── OPTIONAL: eval-gate ─────────────────────────────────────────────────────────
   # A second HARD gate for repos that ship agentic behavior with an eval-fixture suite that must not
@@ -166,20 +171,29 @@ stages:
       - job: eval_gate
         displayName: 'eval-gate'
         steps:
-          - template: templates/use-dotnet.yml
-          - script: dotnet restore <<SOLUTION_OR_PROJECT>>
+          - template: templates/setup-toolchain.yml
+          - script: |
+              <<CI_RESTORE_CMD>>
             displayName: 'Restore'
-          - script: dotnet build <<SOLUTION_OR_PROJECT>> --no-restore --configuration Release
+            # «stack pack: ci-profile.commands.restore»
+          - script: |
+              <<CI_BUILD_CMD>>
             displayName: 'Build'
-          - script: >
-              dotnet test <<EVAL_TEST_PROJECT>>
-              --no-build
-              --configuration Release
-              --filter "<<EVAL_FILTER>>"
-              --logger "trx;LogFileName=eval-gate.trx"
-              --results-directory $(Agent.TempDirectory)/eval-results
+            # «stack pack: ci-profile.commands.build»
+          # PARTIAL SEAM (known gap, mirrors the github twin): the FILTER binds to the stack pack,
+          # but the runner invocation around it is written in .NET's vocabulary — ci-profile declares
+          # no eval-runner command, only the filter. This stage is already hand-adapted per repo (it
+          # carries <<EVAL_TEST_PROJECT>> and is kept only when ci-profile.eval_gate.enabled is true,
+          # which the .NET reference sets to false), so a non-.NET stack rewrites these flags.
+          - script: |
+              dotnet test <<EVAL_TEST_PROJECT>> \
+                --no-build \
+                --configuration Release \
+                --filter "<<CI_EVAL_TEST_FILTER>>" \
+                --logger "trx;LogFileName=eval-gate.trx" \
+                --results-directory $(Agent.TempDirectory)/eval-results
             displayName: 'Run eval fixtures (hard gate)'
-            # «stack pack: ci-profile.eval_gate.test_filter»  ->  Category=OwaspAgentic (reference)
+            # «stack pack: ci-profile.eval_gate.test_filter» fills the --filter above.
           - task: PublishPipelineArtifact@1
             displayName: 'Upload eval results'
             condition: always()

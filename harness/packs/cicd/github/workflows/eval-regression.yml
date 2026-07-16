@@ -7,10 +7,10 @@
 #
 # ── PACK NOTE (github CI/CD pack) ────────────────────────────────────────────
 # Carried AS-IS from the core workflow. The only stack seam is the "Setup runtime"
-# step (marked «stack pack: ci-profile.toolchain») — the toolchain that runs your
-# eval runner. The eval-runner commands/flags themselves are eval-tool specific,
-# NOT stack specific, and stay as <PLACEHOLDER>. The DOTNET_* env vars below are the
-# .NET reference default; a non-.NET stack drops them.
+# step: its action, version-input name and version are `<<CI_*>>` tokens the installer
+# fills from the selected stack pack's ci-profile.toolchain (via this pack's
+# toolchain_map). The eval-runner commands/flags themselves are eval-tool specific,
+# NOT stack specific, and stay as <PLACEHOLDER>.
 #
 # This workflow runs the FAST regression suite (~30 deterministic-first cases,
 # target < 5 min) on PRs that touch the HIGH-risk surface, scores per metric,
@@ -66,8 +66,6 @@ jobs:
                                     # figure (~3pp) — calibrate, do not trust blindly.
       MIN_TRIALS: '3'               # trials per case; each in a clean isolated env.
       SUITE_TAG: 'regression'       # selects the fast subset from the golden sets.
-      DOTNET_NOLOGO: 'true'                 # «stack pack: ci-profile.toolchain» (.NET default env)
-      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'   # «stack pack: ci-profile.toolchain» (.NET default env)
 
     steps:
       - name: Checkout PR head
@@ -75,12 +73,11 @@ jobs:
         with:
           fetch-depth: 0   # need base history to score the baseline
 
-      # --- Toolchain. Swap for your runner's runtime (node/python/etc). ---
+      # --- Toolchain: the github realization of the stack pack's declared toolchain. ---
       - name: Setup runtime
-        # «stack pack: ci-profile.toolchain» — the github realization of the declared
-        # toolchain (dotnet → actions/setup-dotnet@v4 with dotnet-version 10.x).
-        # <PLACEHOLDER> e.g. actions/setup-dotnet@v4 / setup-node / setup-python
-        run: echo "TODO install the eval-runner toolchain"
+        uses: <<CI_TOOLCHAIN_ACTION>>          # «stack pack: ci-profile.toolchain.id» via toolchain_map
+        with:
+          <<CI_TOOLCHAIN_INPUT>>: '<<CI_TOOLCHAIN_VERSION>>'   # «stack pack: ci-profile.toolchain.version»
 
       # --- Score the BASE branch first to get the comparison baseline. ---
       # Skip the rebuild by caching base scores keyed on the base SHA if your

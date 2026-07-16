@@ -44,10 +44,6 @@ parameters:
 
 variables:
   - group: <<VARIABLE_GROUP>>     # exposes EVAL_LLM_API_KEY
-  - name: DOTNET_NOLOGO
-    value: 'true'
-  - name: DOTNET_CLI_TELEMETRY_OPTOUT
-    value: 'true'
 
 jobs:
   - job: benchmark
@@ -57,8 +53,10 @@ jobs:
     steps:
       - checkout: self
 
-      - bash: echo "TODO install the eval-runner toolchain"
-        displayName: 'Setup runtime'   # <PLACEHOLDER>
+      # The toolchain is a stack SEAM: the task and its version input are filled from the stack
+      # pack's ci-profile.toolchain via this pack's toolchain_map. The eval-runner COMMANDS below
+      # stay <PLACEHOLDER> — they are eval-tool specific, not stack specific.
+      - template: templates/setup-toolchain.yml
 
       - bash: |
           set -euo pipefail

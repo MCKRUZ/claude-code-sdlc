@@ -8,9 +8,10 @@
 #
 # ── PACK NOTE (github CI/CD pack) ────────────────────────────────────────────
 # Carried AS-IS from the core workflow. The only stack seam is the "Setup runtime"
-# step (marked «stack pack: ci-profile.toolchain»). The eval-runner commands/flags
-# are eval-tool specific, NOT stack specific, and stay as <PLACEHOLDER>. The DOTNET_*
-# env vars are the .NET reference default; a non-.NET stack drops them.
+# step: its action, version-input name and version are `<<CI_*>>` tokens the installer
+# fills from the selected stack pack's ci-profile.toolchain (via this pack's
+# toolchain_map). The eval-runner commands/flags are eval-tool specific, NOT stack
+# specific, and stay as <PLACEHOLDER>.
 #
 # Cost: every llm_rubric case hits the configured judge model. Off by default.
 # Opt a repo in: Settings -> Secrets and variables -> Actions -> Variables ->
@@ -61,19 +62,15 @@ jobs:
     # Skip non-dispatch runs unless the repo opts in.
     if: ${{ github.event_name == 'workflow_dispatch' || vars.EVAL_ENABLED == 'true' }}
 
-    env:
-      DOTNET_NOLOGO: 'true'                 # «stack pack: ci-profile.toolchain» (.NET default env)
-      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'   # «stack pack: ci-profile.toolchain» (.NET default env)
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Toolchain: the github realization of the stack pack's declared toolchain.
       - name: Setup runtime
-        # «stack pack: ci-profile.toolchain» — the github realization of the declared
-        # toolchain (dotnet → actions/setup-dotnet@v4 with dotnet-version 10.x).
-        # <PLACEHOLDER> install the eval-runner toolchain
-        run: echo "TODO install the eval-runner toolchain"
+        uses: <<CI_TOOLCHAIN_ACTION>>          # «stack pack: ci-profile.toolchain.id» via toolchain_map
+        with:
+          <<CI_TOOLCHAIN_INPUT>>: '<<CI_TOOLCHAIN_VERSION>>'   # «stack pack: ci-profile.toolchain.version»
 
       - name: Run full benchmark (JUnit + JSON)
         env:

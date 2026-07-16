@@ -24,10 +24,24 @@ provides:
                                      # (auth is per-developer OAuth — never a committed token)
 
 # The stack-pack interface this pack reads to fill its build/test/toolchain slots.
-# Every «stack pack: ci-profile.<path>» marker in the workflows resolves against this.
-# Not installed as a file — it lives in the selected stack pack.
+# Every «stack pack: ci-profile.<path>» marker in the workflows names the value that the
+# <<CI_*>> token on that line is filled from. Not installed as a file — it is a COMPOSE-TIME
+# INPUT that lives in the selected stack pack; the installer reads it and substitutes.
 consumes:
   stack_ci_profile: ci-profile.yaml
+
+# The PLATFORM half of the seam: ci-profile.toolchain.id -> this platform's setup action and the
+# name of that action's version input. The stack pack declares WHICH toolchain; this pack knows
+# how GitHub Actions installs it. Fills <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>>;
+# <<CI_TOOLCHAIN_VERSION>> comes from ci-profile.toolchain.version.
+# A toolchain.id absent from this map FAILS THE INSTALL CLOSED naming the id and this pack —
+# a pipeline that sets up the wrong runtime is worse than no pipeline.
+# Verified against each action's action.yml `inputs:` on main (input names) and its
+# /releases/latest (major pin) — 2026-07-16.
+toolchain_map:
+  dotnet: { action: "actions/setup-dotnet@v4", input: "dotnet-version" }
+  node:   { action: "actions/setup-node@v7",   input: "node-version" }
+  python: { action: "actions/setup-python@v6", input: "python-version" }
 
 # Overlay map: pack-relative source -> repo destination. Workflows land in
 # .github/workflows/; the rails guide lands at .github/RAILS.md.
@@ -56,7 +70,8 @@ depends_on:
       - security-review
       # - eval-gate   # add if ci-profile.eval_gate.enabled and the job is kept
 
-# Requires a stack pack to fill the command SEAM (the «stack pack: ci-profile.*» markers).
-# Any of these satisfies it; this pack knows how to run whatever ci-profile.yaml declares.
+# Requires a stack pack to fill the command SEAM (the <<CI_*>> tokens). Any of these satisfies it;
+# this pack knows how to run whatever ci-profile.yaml declares, provided toolchain_map above has an
+# entry for its toolchain.id. These are STACK PACK ids (packs/stacks/<id>), not toolchain ids.
 # Reciprocal of the stack pack's requires_cicd_pack: [github, azure-devops].
-requires_stack_pack: [dotnet, angular, python]
+requires_stack_pack: [dotnet, node-typescript, python]

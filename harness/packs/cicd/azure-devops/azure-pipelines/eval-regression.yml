@@ -36,10 +36,6 @@ variables:
     value: '3'
   - name: SUITE_TAG
     value: 'regression'
-  - name: DOTNET_NOLOGO
-    value: 'true'
-  - name: DOTNET_CLI_TELEMETRY_OPTOUT
-    value: 'true'
 
 jobs:
   - job: regression_gate
@@ -57,8 +53,10 @@ jobs:
         env:
           SYSTEM_PULLREQUEST_TARGETBRANCHNAME: $(System.PullRequest.TargetBranchName)
 
-      - bash: echo "TODO install the eval-runner toolchain"
-        displayName: 'Setup runtime'   # <PLACEHOLDER> UseDotNet@2 / UseNode@1 / UsePythonVersion@0
+      # The toolchain is a stack SEAM: the task and its version input are filled from the stack
+      # pack's ci-profile.toolchain via this pack's toolchain_map. The eval-runner COMMANDS below
+      # stay <PLACEHOLDER> — they are eval-tool specific, not stack specific.
+      - template: templates/setup-toolchain.yml
 
       - bash: |
           set -euo pipefail
