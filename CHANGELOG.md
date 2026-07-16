@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-07-16
+
+- **Angular frontend pack.** The flagship microsoft-enterprise profile declares `angular-17`, which
+  until now degraded to the framework-agnostic UX reviewer plus a warning. It now composes an
+  Angular-aware `ux-reviewer` over the generic one — checks for the states the async pipe swallows,
+  `OnPush` subtrees that never repaint after an in-place mutation, NG0100 (dev-only, so it goes
+  silent rather than away in production), resolver-blocked navigation, `[disabled]` vs `disable()`,
+  subscription teardown, and focus management on navigation. Version-gated: the reviewer reads
+  `@angular/core` from `package.json` before citing syntax, because a v17 repo should not be
+  reviewed against v20 features.
+- **`angularjs` is explicitly unsupported** rather than merely unlisted — AngularJS 1.x is a
+  different framework, and it degrades with a warning instead of quietly pulling the Angular pack
+  (the same distinction that keeps `react-native` off the React web pack).
+- **Every axis the flagship profile declares now has a pack**: a warning-free install is now pinned
+  by a test, so any future axis that silently degrades fails the suite.
+
 ## 0.7.0 — 2026-07-16
 
 - **Two new stack packs: `node-typescript` and `python`.** Every shipped profile now composes a

@@ -190,6 +190,14 @@ FRONTEND_REACT_YAML = {
     "requires": {},
 }
 
+FRONTEND_ANGULAR_YAML = {
+    "pack": {"id": "angular", "axis": "frontend", "name": "Frontend (Angular)", "version": "0.1.0"},
+    "overlays": [
+        {"src": "agents/ux-reviewer.md", "dest": ".claude/agents/ux-reviewer.md"},
+    ],
+    "requires": {},
+}
+
 TOOLS_PACK_YAML = {
     "pack": {"id": "gitnexus", "axis": "tools", "name": "GitNexus code intelligence", "version": "0.1.0"},
     "provides": {"config": "gitnexusignore", "setup_guide": "SETUP.md"},
@@ -274,6 +282,12 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     fr = payload / "packs" / "frontend" / "react"
     _write(fr / "pack.yaml", yaml.dump(FRONTEND_REACT_YAML))
     _write(fr / "agents" / "ux-reviewer.md", "# React ux reviewer\nhooks, keys, suspense states\n")
+    # Every framework the alias map can resolve needs a pack here: a MAPPED pack absent from the
+    # payload fails the install closed (deliberately — that is real breakage, not a missing pack).
+    fa = payload / "packs" / "frontend" / "angular"
+    _write(fa / "pack.yaml", yaml.dump(FRONTEND_ANGULAR_YAML))
+    _write(fa / "agents" / "ux-reviewer.md",
+           "# Angular ux reviewer\nOnPush, async pipe states, teardown\n")
     return payload
 
 
@@ -852,13 +866,27 @@ class TestTools:
 
 
 class TestFrontend:
-    def test_declared_frontend_installs_generic_reviewer(self, payload, target, tmp_path, valid_profile, capsys):
-        # valid_profile declares angular-17, which has no pack yet -> generic + warning.
+    def test_angular_framework_overlays_generic(self, payload, target, tmp_path, valid_profile, capsys):
+        # valid_profile declares angular-17 -> generic composes first, the angular pack overlays it.
+        # (This test asserted the degrade path until the angular frontend pack shipped.)
         rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
         assert rc == 0
         agent = (target / ".claude" / "agents" / "ux-reviewer.md").read_text(encoding="utf-8")
+        assert "Angular ux reviewer" in agent
+        assert "generic ux reviewer" not in agent, "generic must be overlaid, not kept"
+        assert "no frontend pack for framework" not in capsys.readouterr().err
+
+    def test_unmapped_framework_still_degrades_to_generic(self, payload, target, tmp_path,
+                                                          valid_profile, capsys):
+        # The degrade path must survive the arrival of new packs: a framework nobody built a pack
+        # for keeps the generic reviewer and says so.
+        prof = {**valid_profile, "stack": {**valid_profile["stack"],
+                                           "frontend": {"language": "typescript", "framework": "svelte-5"}}}
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, prof))
+        assert rc == 0
+        agent = (target / ".claude" / "agents" / "ux-reviewer.md").read_text(encoding="utf-8")
         assert "generic ux reviewer" in agent
-        assert "no frontend pack for framework 'angular'" in capsys.readouterr().err
+        assert "no frontend pack for framework 'svelte'" in capsys.readouterr().err
 
     def test_react_framework_overlays_generic(self, payload, target, tmp_path, valid_profile):
         prof = {**valid_profile, "stack": {**valid_profile["stack"],
@@ -1016,7 +1044,7 @@ class TestManifest:
         install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
         m = _read_manifest(target)
         assert m["profile_id"] == "test-profile"
-        assert m["packs"] == ["stacks/dotnet", "cicd/github", "frontend/generic"]
+        assert m["packs"] == ["stacks/dotnet", "cicd/github", "frontend/generic", "frontend/angular"]
 
     def test_core_only_profile_id_null_and_no_packs(self, payload, target):
         install(payload, target, force=False)

@@ -89,13 +89,21 @@ class TestGoldenRepo:
         servers = set(mcp["mcpServers"])
         assert {"context7", "sequential-thinking", "playwright", "microsoft-learn"} <= servers
 
-    def test_frontend_degrades_to_generic_with_one_warning(self, golden_repo):
-        target, _, err = golden_repo
-        reviewer = target / ".claude" / "agents" / "ux-reviewer.md"
-        assert reviewer.is_file(), "generic ux-reviewer missing on the degrade path"
-        assert "React" not in reviewer.read_text(encoding="utf-8"), "React pack composed for angular-17"
+    def test_frontend_composes_the_angular_pack(self, golden_repo):
+        # The profile declares angular-17; the frontend axis installs generic then overlays the
+        # angular pack (same dest, last wins). Until the angular pack existed this degraded to the
+        # generic reviewer plus a WARNING — this test used to assert exactly that.
+        target, _, _ = golden_repo
+        reviewer = (target / ".claude" / "agents" / "ux-reviewer.md").read_text(encoding="utf-8")
+        assert "Angular" in reviewer, "angular pack did not overlay the generic reviewer"
+        assert "React" not in reviewer, "React pack composed for an angular-17 profile"
+
+    def test_flagship_install_is_warning_free(self, golden_repo):
+        # Every axis the flagship profile declares now has a pack. A warning here means an axis
+        # silently degraded — the thing a client would never notice until CI ran the wrong stack.
+        _, _, err = golden_repo
         warnings = [l for l in err.splitlines() if "WARNING" in l]
-        assert len(warnings) == 1, f"expected exactly one degrade warning, got: {warnings}"
+        assert warnings == [], f"flagship profile degraded on an axis: {warnings}"
 
     def test_manifest_written_for_profile(self, golden_repo):
         target, _, _ = golden_repo

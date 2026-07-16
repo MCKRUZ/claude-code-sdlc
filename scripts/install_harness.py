@@ -128,11 +128,12 @@ FRONTEND_FRAMEWORK_ALIASES: dict[str, str | None] = {
     "react.js": "react",
     "react-native": None,   # native UI, never the React WEB pack
     "preact": None,         # react-adjacent, but not React
-    # add "angular": "angular" (and its alias forms) when that frontend pack exists.
+    "angular": "angular",
+    "angularjs": None,      # AngularJS 1.x is a different framework, not Angular 2+
 }
 FRONTEND_PACK_BY_FRAMEWORK = {
     "react": "react",
-    # add "angular": "angular" when that frontend pack exists.
+    "angular": "angular",
 }
 
 # The section heading in CLAUDE.md the stack pack replaces. Everything from this line to the next
