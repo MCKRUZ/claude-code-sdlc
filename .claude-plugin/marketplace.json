@@ -9,7 +9,7 @@
     {
       "name": "claude-code-sdlc",
       "source": ".",
-      "version": "0.6.0",
+      "version": "0.7.0",
       "description": "SDLC orchestration + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters).",
       "category": "sdlc",
       "keywords": ["sdlc", "harness", "gates", "quality", "enterprise"]

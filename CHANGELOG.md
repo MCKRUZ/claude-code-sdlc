@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 — 2026-07-16
+
+- **Two new stack packs: `node-typescript` and `python`.** Every shipped profile now composes a
+  realized stack instead of degrading to the neutral core: starter (typescript/node) and
+  creative-tooling (python/uv) join microsoft-enterprise (csharp). Each pack brings its stack
+  standards (spliced into `CLAUDE.md`), deep rules, an `api-pattern` skill, tooling permissions
+  merged into `settings.json`, and a `ci-profile.yaml` — so its pipeline is realized through the
+  mechanical seam rather than hand-adapted. Both are authored, not harvested; each README says so.
+- **starter and creative-tooling now declare `ci_cd.platform: github-actions`.** Without it the
+  CI/CD axis degraded and those repos kept the core's placeholder pipelines — which carry .NET
+  reference commands. The core installs the same workflow files either way; declaring the platform
+  replaces placeholders with realized ones.
+- **The customer profile's `quality.coverage_minimum` now sets the CI coverage floor**, overriding
+  the stack pack's declared default (the profile is the later, more specific layer). starter states
+  60; its gate now enforces 60, where the pack's default would have imposed 80.
+- The coverage gate accepts any cobertura report under `coverage/` (`coverage.cobertura.xml`,
+  `cobertura-coverage.xml`, `coverage.xml`) — report names differ per stack and none is wrong, so
+  the platform adapts instead of each stack renaming its output.
+
 ## 0.6.0 — 2026-07-16
 
 - **The stack↔CI/CD seam is now mechanical.** It was documentation-only: the CI/CD packs hardcoded
