@@ -79,6 +79,12 @@ properties:
             type: string
             enum: [github-actions, azure-devops, gitlab-ci, jenkins, circleci]
 
+  tools:
+    type: array
+    description: "Optional tools packs to compose (the third pack axis, packs/tools/<id>). Multi-select and additive; each id is a pack directory name, e.g. 'gitnexus'. A tools pack integrates an optional, often self-installing tool: the installer overlays its small static surface and prints its manual setup steps. An id with no pack is warned and skipped, never a setup failure."
+    items:
+      type: string
+
   quality:
     type: object
     required: [coverage_minimum]

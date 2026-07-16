@@ -86,6 +86,14 @@ def validate_profile(profile: dict, schema: dict) -> list[str]:
             allowed = ["github-actions", "azure-devops", "gitlab-ci", "jenkins", "circleci"]
             errors.extend(validate_enum(stack["ci_cd"]["platform"], allowed, "stack.ci_cd.platform"))
 
+    # Tools (optional third pack axis — list of pack ids)
+    if "tools" in profile:
+        if not isinstance(profile["tools"], list):
+            errors.append("tools: expected array of pack ids")
+        else:
+            for i, t in enumerate(profile["tools"]):
+                errors.extend(validate_type(t, "string", f"tools[{i}]"))
+
     # Quality
     if "quality" in profile:
         q = profile["quality"]

@@ -50,9 +50,21 @@ the repo. This lays down the governance `CLAUDE.md`, `.claude/{settings,hooks,ag
 five CI gates in `.github/workflows/`, the `profile/` rubrics + branch-protection ruleset, and the
 `infra/` starters. Idempotent — existing files are left in place and reported as SKIPPED (pass
 `--force` only when you intend to overwrite).
+
+Pass `--profile .sdlc/profile.yaml` so the installer **composes the stack + CI/CD packs the profile
+selects** on top of the neutral core: the profile's `stack.backend.language` picks the stack pack
+(realized `CLAUDE.md` standards, `.claude/rules`, the stack skill, .NET tooling permissions merged
+into `settings.json`) and `stack.ci_cd.platform` picks the CI/CD pack (the platform's realized
+pipeline workflows, which overlay the core placeholders). A profile may also list `tools: [id, ...]`
+(the third, multi-select pack axis) to compose optional tools packs — e.g. `gitnexus`; those overlay a
+small static surface and the installer PRINTS their manual setup steps (self-installing tools are never
+run by the installer). Each axis degrades independently: if no pack exists yet for the repo's language,
+platform, or a named tool, that axis prints a `WARNING:` and the neutral core is left in place to adapt
+by hand — setup never fails for lack of a pack. If the output shows a "MANUAL SETUP" block, run those
+commands (and read the referenced `SETUP.md`) after setup completes.
 ```bash
 uv run --project <plugin-root>/scripts <plugin-root>/scripts/install_harness.py \
-  --payload <plugin-root>/harness --target .
+  --payload <plugin-root>/harness --target . --profile .sdlc/profile.yaml
 ```
 Run this BEFORE Step 6 so the governance `CLAUDE.md` exists before the SDLC section is appended.
 
