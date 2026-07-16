@@ -1,0 +1,9 @@
+{
+  "//": "Merged into the repo's .mcp.json by the installer (never overwrites core entries).",
+  "mcpServers": {
+    "microsoft-learn": {
+      "type": "http",
+      "url": "https://learn.microsoft.com/api/mcp"
+    }
+  }
+}

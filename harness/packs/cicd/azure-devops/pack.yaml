@@ -31,6 +31,9 @@ provides:
     - scripts/run-claude-review.sh          # headless Claude Code CLI invocation (no action exists on ADO)
     - scripts/post-pr-thread.sh             # POST/PATCH a PR thread via the ADO REST API
   branch_policies: branch-policies/policies.json   # desired-state consumed by configure-branch-policies.sh
+  mcp_fragment: mcp.fragment.json                  # Azure DevOps MCP server, merged into .mcp.json
+                                                   # (<<ADO_ORGANIZATION>> is a Phase-3 token; auth is
+                                                   # per-developer via az login — never a committed PAT)
 
 # The SEAM. This pack REALIZES the stack pack's declared commands into Azure Pipelines syntax.
 # It does not know .NET; it knows how to run whatever ci-profile.yaml declares.
@@ -64,6 +67,7 @@ overlays:
   - { src: scripts/run-claude-review.sh,                        dest: scripts/rails/run-claude-review.sh }
   - { src: scripts/post-pr-thread.sh,                           dest: scripts/rails/post-pr-thread.sh }
   - { src: branch-policies/policies.json,                       dest: .azuredevops/rails/branch-policies.json }
+  - { src: mcp.fragment.json,                                   dest: .mcp.json, merge: true }
   # Installed by the core/profile layer, referenced here (NOT shipped by this pack — see `consumes`):
   #   scripts/rails/diff-anchors.sh          <- kit/profile/scripts/diff-anchors.sh
   #   .azuredevops/rails/rubrics/{grader,correctness,security}.md  <- kit/profile/rubrics/*.md

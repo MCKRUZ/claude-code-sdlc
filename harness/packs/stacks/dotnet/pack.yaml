@@ -18,6 +18,7 @@ provides:
     - skills/api-pattern-dotnet
   ci_profile: ci-profile.yaml                     # the command interface a CI/CD pack consumes
   settings_fragment: settings.fragment.json       # .NET tooling perms, merged into settings.json
+  mcp_fragment: mcp.fragment.json                 # stack MCP servers, merged into .mcp.json
 
 # Overlay map: pack-relative source -> repo destination. `merge: true` means the installer
 # shallow-merges JSON rather than overwriting (so core + pack permissions combine).
@@ -26,6 +27,7 @@ overlays:
   - { src: rules/testing.md,                     dest: .claude/rules/testing.md }
   - { src: skills/api-pattern-dotnet/SKILL.md,   dest: .claude/skills/api-pattern-dotnet/SKILL.md }
   - { src: settings.fragment.json,               dest: .claude/settings.json, merge: true }
+  - { src: mcp.fragment.json,                    dest: .mcp.json, merge: true }
 
 # Consumed by CI/CD packs; not installed directly as files.
 exposes:

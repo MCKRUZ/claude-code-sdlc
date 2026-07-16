@@ -1,0 +1,18 @@
+# React frontend pack — manifest.
+# Framework specialization of the frontend axis. Composes ON TOP of packs/frontend/generic
+# (installed first) and overlays the UX reviewer with a React-aware version — last wins.
+
+pack:
+  id: react
+  axis: frontend
+  name: "Frontend (React)"
+  version: "0.1.0"
+
+provides:
+  agents:
+    - agents/ux-reviewer.md    # React-aware UX review — replaces the generic reviewer
+
+overlays:
+  - { src: agents/ux-reviewer.md, dest: .claude/agents/ux-reviewer.md }
+
+requires: {}

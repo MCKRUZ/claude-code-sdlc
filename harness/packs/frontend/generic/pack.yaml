@@ -1,0 +1,19 @@
+# Generic frontend pack — manifest.
+# The framework-agnostic base of the frontend axis (packs/frontend/<id>). Installed whenever the
+# profile declares a frontend (stack.frontend present). A framework-specific pack (react, angular)
+# composes ON TOP of this one and overlays what it specializes — last wins.
+
+pack:
+  id: generic
+  axis: frontend
+  name: "Frontend (framework-agnostic)"
+  version: "0.1.0"
+
+provides:
+  agents:
+    - agents/ux-reviewer.md    # UX review: states, a11y, house pattern, driven flows — advisory
+
+overlays:
+  - { src: agents/ux-reviewer.md, dest: .claude/agents/ux-reviewer.md }
+
+requires: {}

@@ -20,6 +20,8 @@ provides:
     - workflows/eval-regression.yml  # §11 per-PR blocking eval-regression gate
     - workflows/eval-suite.yml       # §11 periodic advisory full benchmark
   rails_guide: RAILS.md              # operator's guide + shakedown drills
+  mcp_fragment: mcp.fragment.json    # GitHub hosted MCP server, merged into .mcp.json
+                                     # (auth is per-developer OAuth — never a committed token)
 
 # The stack-pack interface this pack reads to fill its build/test/toolchain slots.
 # Every «stack pack: ci-profile.<path>» marker in the workflows resolves against this.
@@ -38,6 +40,7 @@ overlays:
   - { src: workflows/eval-regression.yml, dest: .github/workflows/eval-regression.yml }
   - { src: workflows/eval-suite.yml,      dest: .github/workflows/eval-suite.yml }
   - { src: RAILS.md,                      dest: .github/RAILS.md }
+  - { src: mcp.fragment.json,             dest: .mcp.json, merge: true }
 
 # Branch protection makes the blocking checks mandatory. The ruleset + apply script
 # live in the profile layer, not in this pack; the required status-check contexts must

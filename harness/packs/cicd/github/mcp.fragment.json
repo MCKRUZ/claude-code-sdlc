@@ -1,0 +1,9 @@
+{
+  "//": "Merged into the repo's .mcp.json by the installer. GitHub's hosted MCP server: authentication is PER DEVELOPER (OAuth sign-in on first use) — never commit a token.",
+  "mcpServers": {
+    "github": {
+      "type": "http",
+      "url": "https://api.githubcopilot.com/mcp/"
+    }
+  }
+}

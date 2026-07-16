@@ -1,0 +1,9 @@
+{
+  "//": "Merged into the repo's .mcp.json by the installer. <<ADO_ORGANIZATION>> is a Phase-3 token: replace with the Azure DevOps organization name (public config, safe to commit). Authentication is PER DEVELOPER — the server uses each developer's own Azure credentials (az login); never commit a PAT.",
+  "mcpServers": {
+    "azure-devops": {
+      "command": "npx",
+      "args": ["-y", "@azure-devops/mcp@2.8.1", "<<ADO_ORGANIZATION>>"]
+    }
+  }
+}
