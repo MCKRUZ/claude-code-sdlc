@@ -15,7 +15,7 @@ Render all artifacts for the current (or specified) phase into a self-contained 
 
    For a single phase:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml \
      --phase <phase-number> \
      --output .sdlc/reports/phase<NN>-report.html
@@ -23,12 +23,12 @@ Render all artifacts for the current (or specified) phase into a self-contained 
 
    For all phases (produces individual reports **and** `index.html`):
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml \
      --all
    ```
 
-   Where `<plugin-root>` is the directory containing this plugin's files.
+   Where `${CLAUDE_PLUGIN_ROOT}` is the environment variable Claude Code sets to the plugin's install directory.
 
 4. **Handle output:**
    - On success: automatically open the report in the user's default browser:

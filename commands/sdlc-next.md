@@ -10,7 +10,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
 
 3. **Run gate checks:** Execute the gate checker for the current phase:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_gates.py --state .sdlc/state.yaml
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_gates.py --state .sdlc/state.yaml
    ```
 
 4. **Evaluate results:**
@@ -19,7 +19,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
    - Display the failure report
    - List specific blockers with remediation suggestions
    - Do NOT advance the phase
-   - Generate the phase HTML report anyway (shows what's missing): `uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py --state .sdlc/state.yaml --phase <phase-number>`
+   - Generate the phase HTML report anyway (shows what's missing): `uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py --state .sdlc/state.yaml --phase <phase-number>`
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
    - Suggest actions: create missing artifacts, fix incomplete content, etc.
    - **Offer smart repair:** "Would you like me to attempt auto-repair on the fixable issues?" If yes, spawn the `gate-repair` agent, then re-run gates. See `references/smart-repair.md` for what's repairable.
@@ -29,7 +29,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
    - Show any SHOULD/MAY warnings
    - Generate the final phase HTML report before advancing:
      ```bash
-     uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
        --state .sdlc/state.yaml --phase <phase-number>
      ```
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
@@ -46,7 +46,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
 
 5. **Generate Frozen Layer:** After HITL sign-off, before advancing state:
    1. Read ALL artifacts in `.sdlc/artifacts/{NN}-{phase-name}/`
-   2. Read the frozen layer template from `<plugin-root>/templates/frozen-layer.md`
+   2. Read the frozen layer template from `${CLAUDE_PLUGIN_ROOT}/templates/frozen-layer.md`
    3. Condense all artifact content into the template structure, targeting 1500–2000 tokens:
       - Extract locked metrics (budget, timeline, scope, stakeholders) with explicit values
       - Summarize constraints, risks, and key outcomes
@@ -56,7 +56,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
    5. Write the frozen layer to `.sdlc/context/layers/phase{N}-{name}.md`
    6. Validate:
       ```bash
-      uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_frozen_layer.py \
+      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/validate_frozen_layer.py \
         --state .sdlc/state.yaml --phase <phase-number>
       ```
    7. If validation fails, fix issues and re-validate before proceeding
@@ -65,7 +65,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
 6. **Advance phase:** Perform the advance via `advance_phase.py` (it applies the state updates below
    and records any discipline sign-offs captured in step 4 on the phase's existing sign-off record):
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/advance_phase.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/advance_phase.py \
      --state .sdlc/state.yaml --confirmed \
      [--signed-by "<name>"] \
      [--discipline-signoff "Design:interaction-specs:<name>"]   # repeatable; omit both if none

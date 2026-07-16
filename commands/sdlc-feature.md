@@ -50,7 +50,7 @@ Rule). Works inside an SDLC project or standalone against any repo.
    standalone writes `<repo>/decision-log.md` (or `--output`'s directory). Surface the open + overdue
    items (the command owns this read):
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_decisions.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/track_decisions.py \
      --state .sdlc/state.yaml --json
    ```
    In standalone mode pass `--repo <repo-root>` instead of `--state`. The script is advisory (exit 0);

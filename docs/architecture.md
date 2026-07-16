@@ -195,7 +195,7 @@ When Claude Code activates the plugin, it loads components in this order:
 **Commands call Python scripts via `uv run`.** Slash commands instruct Claude to execute Python automation. The invocation pattern is:
 
 ```bash
-uv run --project <plugin-root>/scripts <script-name>.py --arg value
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts <script-name>.py --arg value
 ```
 
 The `--project` flag ensures `uv` resolves dependencies from the scripts' `pyproject.toml` regardless of the current working directory.
@@ -620,12 +620,12 @@ All Python scripts receive explicit paths to both directories:
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 
 # Target project paths come from CLI arguments:
-uv run --project <plugin-root>/scripts check_gates.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts check_gates.py \
     --state /path/to/target/.sdlc/state.yaml \
     --phase 0
 ```
 
-The `--project <plugin-root>/scripts` flag tells `uv` where `pyproject.toml` lives, ensuring correct dependency resolution regardless of the shell's current working directory.
+The `--project ${CLAUDE_PLUGIN_ROOT}/scripts` flag tells `uv` where `pyproject.toml` lives (`${CLAUDE_PLUGIN_ROOT}` is the environment variable Claude Code sets to the plugin's install directory), ensuring correct dependency resolution regardless of the shell's current working directory.
 
 ### 6.4 Path Resolution in Hooks
 

@@ -55,14 +55,14 @@ spec is missing). Works inside an SDLC project or standalone.
 
 7. **Run the advisory channel check beside the unchanged spec check** (the command owns `check_channel.py`):
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_channel.py \
-     --spec <repo-root>/specs/NNNN-name.md --channels-dir <plugin-root>/channels [--state .sdlc/state.yaml]
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_channel.py \
+     --spec <repo-root>/specs/NNNN-name.md --channels-dir ${CLAUDE_PLUGIN_ROOT}/channels [--state .sdlc/state.yaml]
    ```
    `check_channel.py` is **advisory — exit 0 always, SHOULD-only**; it flags any descriptor dimension not
    covered by an acceptance check and can never change a ready/not-ready verdict. Then re-run the
    **unchanged** `check_spec.py` to confirm the spec is still READY with the channel bound:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_spec.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_spec.py \
      --spec <repo-root>/specs/NNNN-name.md [--state .sdlc/state.yaml]
    ```
 

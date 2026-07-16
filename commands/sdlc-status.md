@@ -10,7 +10,7 @@ Display the current SDLC progress for this project.
 
 3. **Generate dashboard:** Run the status generator:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_status.py --state .sdlc/state.yaml
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_status.py --state .sdlc/state.yaml
    ```
 
 4. **Display:** Show the generated dashboard to the user. Include:
@@ -24,7 +24,7 @@ Display the current SDLC progress for this project.
 
    - **By-channel spec backlog** — derive the per-channel rollup from spec frontmatter:
      ```bash
-     uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_specs.py --state .sdlc/state.yaml --json
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/track_specs.py --state .sdlc/state.yaml --json
      ```
      Render the `by_channel` block (spec counts per delivery surface; `channel-agnostic` and
      `unassigned` are first-class buckets). If the JSON has no `by_channel` key or every spec is
@@ -32,7 +32,7 @@ Display the current SDLC progress for this project.
 
    - **Open + overdue decisions** — surface the phase-spanning decision-log:
      ```bash
-     uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_decisions.py --state .sdlc/state.yaml --json
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/track_decisions.py --state .sdlc/state.yaml --json
      ```
      List **open** decisions and flag those **overdue** past the 2-business-day clock (owner + due
      shown). If `track_decisions.py` or `.sdlc/decision-log.md` is absent, read `.sdlc/decision-log.md`

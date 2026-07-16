@@ -35,7 +35,7 @@ Run a structured review of the current phase's artifacts from multiple perspecti
 6. **Record the findings** so they survive the next review (the report itself is overwritten each run):
 
    ```bash
-   uv run --project scripts python scripts/record_findings.py record \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/record_findings.py record \
      --report .sdlc/artifacts/{NN}-{phase}/review-report.md --state .sdlc/state.yaml
    ```
 
@@ -44,7 +44,7 @@ Run a structured review of the current phase's artifacts from multiple perspecti
    recurring class of finding becomes visible over time. Then surface the standing picture:
 
    ```bash
-   uv run --project scripts python scripts/record_findings.py report --state .sdlc/state.yaml
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/record_findings.py report --state .sdlc/state.yaml
    ```
 
    Show the **open HIGH+ debt count** and any **FIXED_CLAIM_MISMATCH** (a finding marked fixed whose

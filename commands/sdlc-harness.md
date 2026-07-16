@@ -10,8 +10,8 @@ latest harness after a plugin update (the harvest loop).
 Run the installer from the plugin's bundled payload. Idempotent by default — existing files are
 left in place and reported as SKIPPED.
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/install_harness.py \
-  --payload <plugin-root>/harness --target .
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/install_harness.py \
+  --payload ${CLAUDE_PLUGIN_ROOT}/harness --target .
 ```
 - To overwrite existing harness files with the plugin's current version (e.g. after an update),
   add `--force`. Review the diff before committing — `--force` will replace local edits.

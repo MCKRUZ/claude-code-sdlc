@@ -10,7 +10,7 @@ Analyze gate results across completed phases in the current project's `state.yam
 
 3. **Run audit analysis:** Execute the audit script:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/audit_gates.py --state .sdlc/state.yaml
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_gates.py --state .sdlc/state.yaml
    ```
 
 4. **Display results:** Show the audit report with:

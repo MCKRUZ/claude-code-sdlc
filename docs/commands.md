@@ -75,8 +75,8 @@ The user is prompted for:
 **Step 4: Initialize .sdlc/ Directory**
 The init script is invoked:
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/init_project.py \
-  --profile <plugin-root>/profiles/<selected-profile>/profile.yaml \
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/init_project.py \
+  --profile ${CLAUDE_PLUGIN_ROOT}/profiles/<selected-profile>/profile.yaml \
   --target . \
   --name "<project-name>"
 ```
@@ -112,7 +112,7 @@ Next steps:
 **Step 7: Post-Init Validation**
 The profile validator runs against the frozen copy to confirm setup health:
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_profile.py .sdlc/profile.yaml
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/validate_profile.py .sdlc/profile.yaml
 ```
 
 ### State Changes
@@ -219,7 +219,7 @@ None.
 2. **Read state:** Load current phase, all phase statuses, and transition history.
 3. **Generate dashboard:** Execute:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_status.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_status.py \
      --state .sdlc/state.yaml
    ```
 4. **Display dashboard** with:
@@ -289,14 +289,14 @@ Each gate also has a severity level:
 2. **Read state:** Determine the current phase (or use the argument-specified phase).
 3. **Run gate checks:**
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_gates.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_gates.py \
      --state .sdlc/state.yaml
    ```
    Optionally with `--phase <N>` for a specific phase.
 4. **Display results:** For each of the 7 gates, show: gate name, PASS/FAIL/MANUAL status, severity (MUST/SHOULD/MAY), and specific details.
 5. **Generate HTML report:**
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml --phase <phase-number>
    ```
 6. **Open report** in the default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux).
@@ -342,7 +342,7 @@ Standard state file lookup from `.sdlc/state.yaml`.
 
 **Step 3: Run Gate Checks**
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_gates.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_gates.py \
   --state .sdlc/state.yaml
 ```
 
@@ -466,7 +466,7 @@ Renders all artifacts for a specified phase (or all phases) into a self-containe
 
    For a single phase:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml \
      --phase <phase-number> \
      --output .sdlc/reports/phase<NN>-report.html
@@ -474,7 +474,7 @@ Renders all artifacts for a specified phase (or all phases) into a self-containe
 
    For all phases:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml \
      --all
    ```
@@ -530,7 +530,7 @@ Analyzes gate pass/fail patterns across all completed phases to identify which g
 2. **Read state:** Extract `gate_results` from every completed phase.
 3. **Run audit analysis:**
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/audit_gates.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_gates.py \
      --state .sdlc/state.yaml
    ```
 4. **Display results** with the following sections:
@@ -763,10 +763,10 @@ A typical work session begins with:
 All commands invoke Python scripts through `uv`, a fast Python package manager and runner. The invocation pattern is:
 
 ```bash
-uv run --project <plugin-root>/scripts <script-path> [arguments]
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts <script-path> [arguments]
 ```
 
-The `--project <plugin-root>/scripts` flag tells `uv` to use the `pyproject.toml` in the plugin's `scripts/` directory for dependency resolution. This ensures scripts have access to their required packages (PyYAML, Jinja2, etc.) without polluting the target project's environment.
+`${CLAUDE_PLUGIN_ROOT}` is the environment variable Claude Code sets to the plugin's install directory. The `--project ${CLAUDE_PLUGIN_ROOT}/scripts` flag tells `uv` to use the `pyproject.toml` in the plugin's `scripts/` directory for dependency resolution. This ensures scripts have access to their required packages (PyYAML, Jinja2, etc.) without polluting the target project's environment.
 
 ### How Scripts Find state.yaml
 

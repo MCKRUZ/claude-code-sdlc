@@ -27,8 +27,8 @@ Ask the user for:
 ### Step 4: Initialize .sdlc/
 Run the init script:
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/init_project.py \
-  --profile <plugin-root>/profiles/<selected-profile>/profile.yaml \
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/init_project.py \
+  --profile ${CLAUDE_PLUGIN_ROOT}/profiles/<selected-profile>/profile.yaml \
   --target . \
   --name "<project-name>"
 ```
@@ -70,8 +70,8 @@ platform, or a named tool, that axis prints a `WARNING:` and the neutral core is
 by hand — setup never fails for lack of a pack. If the output shows a "MANUAL SETUP" block, run those
 commands (and read the referenced `SETUP.md`) after setup completes.
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/install_harness.py \
-  --payload <plugin-root>/harness --target . --profile .sdlc/profile.yaml
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/install_harness.py \
+  --payload ${CLAUDE_PLUGIN_ROOT}/harness --target . --profile .sdlc/profile.yaml
 ```
 Run this BEFORE Step 6 so the governance `CLAUDE.md` exists before the SDLC section is appended.
 
@@ -111,11 +111,14 @@ Next steps:
 ### Step 9: Validate
 Run the profile validator to confirm the setup is healthy:
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_profile.py .sdlc/profile.yaml
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/validate_profile.py .sdlc/profile.yaml
 ```
 
 ## Error Handling
 - If uv is not installed: tell the user to install it (`pip install uv` or `brew install uv`)
 - If profile validation fails: show errors and suggest fixes
 - If directory permissions prevent creation: report the error clearly
-- If the harness install reports SKIPPED files you wanted replaced: re-run install_harness.py with `--force`
+- If the harness install reports SKIPPED files you wanted replaced: re-run install_harness.py with `--force`.
+  **`--force` rewrites `CLAUDE.md` from the pristine template** — the appended SDLC section (Step 6) and any
+  local edits to it are lost and must be re-applied. Prefer deleting just the specific files you want
+  re-installed and re-running without `--force`.

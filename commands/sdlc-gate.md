@@ -14,7 +14,7 @@ Run the 7-gate validation system for the current (or specified) SDLC phase witho
 
 4. **Run gate checks:** Execute the gate checker:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_gates.py --state .sdlc/state.yaml
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_gates.py --state .sdlc/state.yaml
    ```
    Optionally specify a phase: `--phase <N>`
 
@@ -26,7 +26,7 @@ Run the 7-gate validation system for the current (or specified) SDLC phase witho
 
 6. **Generate phase report:** Always generate the HTML report after running gates, regardless of pass/fail status:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/generate_phase_report.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml --phase <phase-number>
    ```
    After generating, automatically open the report in the user's default browser:
@@ -60,7 +60,7 @@ Gate checks use artifact checksums to skip re-validation of unchanged files. The
 
 To manually snapshot checksums (create a baseline without advancing):
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/track_artifacts.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/track_artifacts.py \
   --state .sdlc/state.yaml --snapshot
 ```
 

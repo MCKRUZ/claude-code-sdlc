@@ -17,7 +17,7 @@ workflow wrapped as one command, so no one runs the cataloger script by hand.
 
 3. **Run the cataloger:** Execute the intake script — the user never calls it directly:
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/intake_documents.py --state .sdlc/state.yaml
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/intake_documents.py --state .sdlc/state.yaml
    ```
    This produces `.sdlc/context/intake/catalog.json` with document metadata (DOC-NNN IDs,
    types, token estimates, checksums). Pass `--rescan` through when the user runs

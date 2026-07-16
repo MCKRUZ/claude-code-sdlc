@@ -40,7 +40,7 @@ session and the grader grades against it.
 
 4. **Scaffold the file** (the command owns the script — the user never calls it directly):
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/new_spec.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/new_spec.py \
      --repo <repo-root> --name "<short name>" --risk <CONFIRMED_TIER> --source "<story/REQ-id>"
    ```
    In workflow mode pass `--state .sdlc/state.yaml` instead of `--repo`. Then write the gathered
@@ -49,7 +49,7 @@ session and the grader grades against it.
 
 5. **Enforce the Definition of Ready** (the mechanical floor + vague-line lint):
    ```bash
-   uv run --project <plugin-root>/scripts <plugin-root>/scripts/check_spec.py \
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_spec.py \
      --spec <repo-root>/specs/NNNN-name.md [--state .sdlc/state.yaml]
    ```
    - **BLOCK (MUST)** findings — fix them. The spec is not ready until they clear.

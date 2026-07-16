@@ -44,7 +44,7 @@ All scripts in this project share a common design philosophy:
 Commands invoke scripts using:
 
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/<script>.py [args]
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/<script>.py [args]
 ```
 
 ---
@@ -81,7 +81,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 Before first use (or after updating `pyproject.toml`):
 
 ```bash
-cd <plugin-root>/scripts
+cd ${CLAUDE_PLUGIN_ROOT}/scripts
 uv sync
 ```
 
@@ -226,7 +226,7 @@ uv run scripts/init_project.py --profile <profile.yaml> --target <project-dir> [
 **Key Constants:**
 
 - `PLUGIN_ROOT` -- Resolved plugin directory (`Path(__file__).resolve().parent.parent`)
-- `TEMPLATES_DIR` -- `<plugin-root>/templates`
+- `TEMPLATES_DIR` -- `templates/` under the plugin root (`${CLAUDE_PLUGIN_ROOT}`)
 - `PHASE_DIRS` -- Ordered list of 9 phase directory names (the phase slugs from `phase-registry.yaml`; not derived by zero-padding ints -- `build` and `close` are non-numeric)
 
 **Output on success:**

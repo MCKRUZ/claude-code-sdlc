@@ -75,7 +75,7 @@ Priority order when approaching the token budget:
 
 After generating, run:
 ```bash
-uv run --project <plugin-root>/scripts <plugin-root>/scripts/validate_frozen_layer.py \
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/validate_frozen_layer.py \
   --state .sdlc/state.yaml --phase <N>
 ```
 
