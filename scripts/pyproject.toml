@@ -8,8 +8,10 @@ dependencies = [
     "jsonschema>=4.20",
 ]
 
-[project.optional-dependencies]
-test = [
+# Installed by default by `uv run` — so the documented invocation
+# (`uv run --project scripts pytest scripts/tests -q`) works on a clean machine and in CI.
+[dependency-groups]
+dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
 ]

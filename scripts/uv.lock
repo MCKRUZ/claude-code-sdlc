@@ -20,8 +20,8 @@ dependencies = [
     { name = "pyyaml" },
 ]
 
-[package.optional-dependencies]
-test = [
+[package.dev-dependencies]
+dev = [
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
@@ -29,11 +29,14 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "jsonschema", specifier = ">=4.20" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=7.0" },
-    { name = "pytest-cov", marker = "extra == 'test'", specifier = ">=4.0" },
     { name = "pyyaml", specifier = ">=6.0" },
 ]
-provides-extras = ["test"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=7.0" },
+    { name = "pytest-cov", specifier = ">=4.0" },
+]
 
 [[package]]
 name = "colorama"
