@@ -13,11 +13,13 @@ Look for `.sdlc/state.yaml` in the current directory.
 ### Step 2: Profile Selection
 List available profiles from the plugin's `profiles/` directory (exclude `_schema.yaml`):
 
-Present choices to the user:
+Present every profile found there to the user. The current built-ins:
 - **microsoft-enterprise** — C#/.NET 8 + Angular 17 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required
 - **starter** — Minimal profile, no compliance gates, quick start for any stack
+- **creative-tooling** — Python/uv-scripts + pytest for creative pipelines (ComfyUI registry/inventory tooling); 80% coverage, TDD + code/security review required, schema- and cross-reference-integrity evaluation criteria, no compliance frameworks
 
-Ask the user to select a profile.
+If the directory listing shows profiles not in this list, present those too (describe them from their
+`profile.yaml`). Ask the user to select a profile.
 
 ### Step 3: Project Configuration
 Ask the user for:
@@ -41,15 +43,19 @@ This creates:
 ├── constitution.md     # Project constitution
 ├── context/            # Cross-phase context (frozen layers)
 │   └── layers/         # Phase completion summaries
-└── artifacts/          # Per-phase artifact directories (00–09)
+└── artifacts/          # Per-phase artifact directories, one per registry slug
+                        # (00-discovery … 03-foundation, build, 07-documentation … 09-monitoring, close)
 ```
 
 ### Step 5: Install the delivery harness
 Install the standard-aligned harness (the kit) from the plugin's bundled `harness/` payload into
 the repo. This lays down the governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, the
-five CI gates in `.github/workflows/`, the `profile/` rubrics + branch-protection ruleset, and the
+CI workflows in `.github/workflows/` (7 files: 5 rail gates — ci, grader, correctness, security,
+deploy-dev — plus 2 eval workflows), the `profile/` rubrics + branch-protection ruleset, and the
 `infra/` starters. Idempotent — existing files are left in place and reported as SKIPPED (pass
-`--force` only when you intend to overwrite).
+`--force` only when you intend to overwrite). One exception: the JSON merge targets (`.mcp.json`
+and `.claude/settings.json`) are re-merged on every run by design — the installer deep-merges the
+payload's entries into them rather than skipping, so pack additions always land.
 
 Pass `--profile .sdlc/profile.yaml` so the installer **composes the stack + CI/CD packs the profile
 selects** on top of the neutral core: the profile's `stack.backend.language` picks the stack pack
@@ -76,10 +82,32 @@ uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/ins
 Run this BEFORE Step 6 so the governance `CLAUDE.md` exists before the SDLC section is appended.
 
 ### Step 6: Update CLAUDE.md
-Read the profile's `claude-md-template.md` and append its contents to the project's `CLAUDE.md`
-(the governance base written in Step 5):
+Read the profile's `claude-md-template.md` (at `${CLAUDE_PLUGIN_ROOT}/profiles/<selected-profile>/claude-md-template.md`)
+and append its contents to the project's `CLAUDE.md` (the governance base written in Step 5):
 - If `CLAUDE.md` exists: append the SDLC section
 - If `CLAUDE.md` doesn't exist: create it with the SDLC section
+
+If the profile has no `claude-md-template.md`, print a WARNING naming the missing file and append
+this generic SDLC section instead (fill in the selected profile id) — never stop the setup over a
+missing template:
+
+```markdown
+# SDLC Configuration (auto-injected by /sdlc-setup)
+
+## SDLC Plugin Active
+This project uses the claude-code-sdlc plugin for lifecycle management.
+- State: `.sdlc/state.yaml`
+- Profile: `<selected-profile>`
+- Commands: `/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`
+
+## Phase Awareness
+Before making changes, check the current SDLC phase with `/sdlc`. Gated opening phases
+(0 Discovery – 3 Foundation) produce documents; the continuous Build loop builds one spec at a
+time (Intent → Delegate → Discern — checking happens per change, and the author never approves
+their own work); gated closing phases (7 Documentation – 9 Monitoring, then Close & Transfer)
+prove the system can be operated and handed over. Quality thresholds and conventions live in
+`.sdlc/profile.yaml`.
+```
 
 ### Step 7: Apply branch protection (optional — needs GitHub + `gh`)
 The harness ships a branch-protection ruleset (`.github/rulesets/branch-protection.json`) and an
@@ -87,8 +115,9 @@ applier. If the repo is on GitHub and `gh` is authenticated, offer to apply it:
 ```bash
 bash scripts/rails/apply-branch-protection.sh
 ```
-This makes the five gates + a non-author approval mandatory at merge. Skip if the repo isn't on
-GitHub yet; the ruleset stays in the repo to apply later.
+This makes the four blocking checks (build-and-test, grader, correctness-review, security-review)
++ a non-author approval mandatory at merge; deploy-dev runs post-merge and is not a merge check.
+Skip if the repo isn't on GitHub yet; the ruleset stays in the repo to apply later.
 
 ### Step 8: Confirmation
 Display:
@@ -97,7 +126,7 @@ SDLC + delivery harness installed!
 
 Profile: <profile-id>
 Phase: 0 — Discovery (active)
-Harness: CLAUDE.md, .claude/, .github/workflows (5 gates), infra/
+Harness: CLAUDE.md, .claude/, .github/workflows (7 workflows: 5 rails + 2 eval), infra/
 
 Next steps:
 1. Fill the {{PLACEHOLDER}} tokens in CLAUDE.md (stack, glossary, gated paths);

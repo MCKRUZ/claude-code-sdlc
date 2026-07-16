@@ -505,12 +505,12 @@ uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --all
 | `--state` | Yes | Path to `.sdlc/state.yaml` |
 | `--phase` | No | Phase number to render (0-9); mutually exclusive with `--all` |
 | `--all` | No | Generate reports for all phases plus an index page |
-| `--output` | No | Custom output path (defaults to `.sdlc/reports/phaseNN-report.html`) |
+| `--output` | No | Custom output path (defaults to `.sdlc/reports/<slug>-report.html`, e.g. `00-discovery-report.html`, `build-report.html`) |
 
 **Process:**
 
 1. **Load state** to determine project metadata and phase statuses
-2. **Resolve artifact directory** using multiple naming conventions (`phaseNN/`, `NN-phasename/`, `phase-NN/`)
+2. **Resolve artifact directory** from the registry slug (`.sdlc/artifacts/<slug>/`), falling back to the project root and `docs/` when an artifact is not there
 3. **For each phase:**
    - Look up required and optional artifacts from `PHASE_INFO` metadata
    - Find each artifact file via `find_artifact()` (searches `.sdlc/artifacts/`, project root, `docs/`)

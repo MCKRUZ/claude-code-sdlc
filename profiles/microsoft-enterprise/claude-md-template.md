@@ -29,11 +29,11 @@ This project uses the claude-code-sdlc plugin for lifecycle management.
 ## Compliance: SOC 2
 - Audit trail maintained in `.sdlc/state.yaml`
 - Change approval: peer review required
-- Security review at Phase 5 gate
-- Documentation current at Phase 7 gate
+- Security review per change inside the Build loop (the security rail blocks at merge)
+- Documentation current at the Phase 7 (Documentation) gate
 
 ## Phase Awareness
 Before making changes, check the current SDLC phase with `/sdlc`:
-- During Implementation (Phase 4): follow section plans, use TDD
-- During Quality (Phase 5): focus on review findings, not new features
-- During Testing (Phase 6): fill coverage gaps, don't change architecture
+- Opening phases (0 Discovery – 3 Foundation): produce and gate the documents; no feature code before Foundation
+- Build loop: one spec at a time — Intent → Delegate → Discern; TDD required, checking happens per change, the author never approves their own work
+- Closing phases (7 Documentation – 9 Monitoring, then Close & Transfer): prove docs by cold use, deploy through the existing pipeline, alerts from measured baselines

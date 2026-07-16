@@ -53,8 +53,10 @@ One marketplace add, one install — brings the orchestration commands **and** t
 ```
 
 Then, per project: `/sdlc-setup` initializes `.sdlc/` **and installs the full delivery harness**
-(governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, the five CI gates in
-`.github/workflows/`, branch-protection ruleset, and `infra/` starters). To add or refresh just the
+(governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, 7 CI workflows in
+`.github/workflows/` — 5 rail gates plus 2 eval workflows — of which four checks (build-and-test,
+grader, correctness-review, security-review) block at merge via the
+branch-protection ruleset, and `infra/` starters). To add or refresh just the
 harness in an existing repo, use `/sdlc-harness`. Requires Claude Code v2.1.196+ (`source: "."`).
 
 ### As a Claude Code Skill (local dev)
@@ -157,6 +159,14 @@ Minimal profile for quick start:
 - **Quality:** 60% coverage minimum, no TDD requirement
 - **Compliance:** None
 - **Conventions:** Conventional commits
+
+### creative-tooling
+Python profile for creative-pipeline tooling (ComfyUI technique registry / inventory projects):
+- **Stack:** Python (uv-run scripts), pytest
+- **Quality:** 80% coverage minimum, TDD + code review + security review required, 400-line file cap
+- **Compliance:** None (audit trail kept)
+- **Evaluation criteria:** Registry/profile schema compliance, skill prompt clarity, inventory
+  resolution via `inventory.resolve()`, cross-reference integrity, data freshness
 
 ### Creating Custom Profiles
 Copy `profiles/starter/profile.yaml` and modify for your stack. Validate with:

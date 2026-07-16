@@ -309,7 +309,7 @@ Each gate also has a severity level:
 ### State Changes
 
 - Writes `gate_results` to the current phase entry in `state.yaml`.
-- Generates `.sdlc/reports/phaseNN-report.html`.
+- Generates `.sdlc/reports/<slug>-report.html` (registry slug, e.g. `00-discovery-report.html`, `build-report.html`).
 - Does NOT modify `current_phase`.
 
 ### Python Scripts Called
@@ -427,7 +427,7 @@ When the terminal phase (Phase C: Close & Transfer) passes its close gate, the p
 - Advances `current_phase` to the next phase by registry order and updates `phase_name`.
 - Appends to the `history` array.
 - Updates handoff documents with resolved questions.
-- Generates `.sdlc/reports/phaseNN-report.html`.
+- Generates `.sdlc/reports/<slug>-report.html` (registry slug, e.g. `00-discovery-report.html`, `build-report.html`).
 
 ### Python Scripts Called
 
@@ -468,9 +468,10 @@ Renders all artifacts for a specified phase (or all phases) into a self-containe
    ```bash
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml \
-     --phase <phase-number> \
-     --output .sdlc/reports/phase<NN>-report.html
+     --phase <phase-id>
    ```
+
+   Output defaults to `.sdlc/reports/<slug>-report.html` (registry slug, e.g. `00-discovery-report.html`).
 
    For all phases:
    ```bash
@@ -488,7 +489,7 @@ Renders all artifacts for a specified phase (or all phases) into a self-containe
 ### Output Location
 
 Reports are written to `.sdlc/reports/` in the target project:
-- `phaseNN-report.html` -- Individual phase report.
+- `<slug>-report.html` -- Individual phase report (registry slug, e.g. `00-discovery-report.html`, `build-report.html`).
 - `index.html` -- Full project report (generated with `--all`).
 
 ### Report Characteristics

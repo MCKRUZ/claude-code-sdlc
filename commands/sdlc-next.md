@@ -124,13 +124,13 @@ Run exit gate checks for the current phase and advance to the next phase if all 
       This creates a durable audit trail of every decision. For team projects, others can review and fill answers asynchronously.
    7. **WAIT for the user to respond.** Do NOT continue to step 8.
    8. If the user confirms or provides answers, update `open-questions.md` with answers and set Status to RESOLVED. Also record in the handoff document under a "Resolved Questions" section with timestamps.
-   9. Only after EVERY open question has a confirmed resolution may you proceed to step 10.
+   9. Only after EVERY open question has a confirmed resolution may you proceed to step 8.
 
-   **If there are no open questions** in the handoff document, explicitly state: "No open questions found in the handoff. Proceeding to phase guidance." Then continue to step 10.
+   **If there are no open questions** in the handoff document, explicitly state: "No open questions found in the handoff. Proceeding to phase guidance." Then continue to step 8.
 
    **NEVER skip this gate.** NEVER start Phase N artifacts while open questions remain unresolved. Violating this gate undermines the entire HITL workflow.
 
-10. **Show next phase guidance:** After advancing AND after the HITL gate in step 7 is fully resolved, display:
+8. **Show next phase guidance:** After advancing AND after the HITL gate in step 7 is fully resolved, display:
     - New phase name and description
     - Primary skills to use
     - Required artifacts to produce
@@ -139,7 +139,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
 
     **Reminder: Do NOT begin writing any of these artifacts until the HITL gate (step 7) is fully resolved.** If you skipped step 7 or the user has not confirmed answers to all open questions, STOP and go back to step 7 now.
 
-11. **Edge case — Phase 9:** If already at Phase 9 (Monitoring) and gates pass, mark the project as complete. Congratulate the user and mention the post-SDLC re-entry points for future work.
+9. **Edge case — end of lifecycle:** Phase 9 (Monitoring) is NOT the last phase. When Phase 9's gates pass, advance normally — `advance_phase.py` moves the project to Phase C (`close`, Close & Transfer), which has its own exit criteria (final-handoff-report.md, harness-audit.md, close-gate-evidence.md, access-revocation-checklist.md, plus the observed close-gate, access-revocation, and harvest-PR checks). The project is complete only when the `close` phase's own exit criteria pass. If the project is already at `close` (the terminal phase — `terminal: true` in the registry), `advance_phase.py` reports "Engagement complete" and exits without changing state; congratulate the user and mention the post-SDLC re-entry points for future work.
 
 ## Important
 - This command modifies state — it advances `current_phase` in state.yaml.

@@ -429,9 +429,9 @@ target-project/                            User's project (where code lives)
     |-- state.yaml                         Phase tracking, history, gate results
     |-- profile.yaml                       Immutable copy of selected profile
     |-- constitution.md                    Project constitution (scope, constraints)
-    |-- reports/                           Generated HTML reports
-    |   |-- phase0-report.html
-    |   |-- phase1-report.html
+    |-- reports/                           Generated HTML reports (named by registry slug)
+    |   |-- 00-discovery-report.html
+    |   |-- 01-requirements-report.html
     |   +-- ...
     +-- artifacts/                          Phase work products (one dir per phase slug)
         |-- 00-discovery/

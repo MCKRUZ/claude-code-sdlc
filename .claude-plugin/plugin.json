@@ -1,7 +1,7 @@
 {
   "name": "claude-code-sdlc",
-  "version": "0.2.0",
-  "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, five CI gates, Stop/review hooks, build-loop agents & skills, IaC starters).",
+  "version": "0.3.0",
+  "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters).",
   "author": {
     "name": "Matt Kruczek",
     "url": "https://github.com/MCKRUZ"
@@ -22,26 +22,5 @@
     "azure",
     "dotnet",
     "angular"
-  ],
-  "profiles": {
-    "microsoft-enterprise": {
-      "description": "C#/.NET 8 + Angular 17 + Azure + SOC 2 compliance",
-      "source": "profiles/microsoft-enterprise",
-      "skills": [
-        "azure-entra-auth",
-        "azure-app-service",
-        "azure-sql",
-        "azure-key-vault",
-        "azure-app-insights"
-      ]
-    },
-    "starter": {
-      "description": "Minimal profile, no compliance, quick start for any stack",
-      "source": "profiles/starter"
-    }
-  },
-  "scripts": {
-    "runtime": "uv",
-    "root": "scripts/"
-  }
+  ]
 }

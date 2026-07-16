@@ -142,8 +142,8 @@ Understand the problem space, quantify impact, map stakeholders, and define scop
 | 4 | Scope Boundaries | Draw explicit lines around what is in scope and what is out of scope. Document non-negotiable constraints. |
 | 5 | Write Project Constitution | Produce the constitution -- the single document that anchors all future decisions. |
 | 6 | Phase Handoff | Package findings into `phase1-handoff.md` with summary, decisions, open questions, risks, and recommended starting point. |
-| 7 | Generate Visual Report | Generate self-contained HTML report at `.sdlc/reports/phase00-visual.html`. |
-| 8 | Generate Phase Report | Run `generate_phase_report.py` to produce `.sdlc/reports/phase00-report.html`. |
+| 7 | Generate Visual Report | Generate self-contained HTML report at `.sdlc/reports/00-discovery-visual.html`. |
+| 8 | Generate Phase Report | Run `generate_phase_report.py` to produce `.sdlc/reports/00-discovery-report.html`. |
 
 ### HITL Gates
 
@@ -226,7 +226,7 @@ Decompose the problem into functional and non-functional requirements with user 
 | 3 | Epics | Group requirements into epics with clear boundaries and dependencies. |
 | 4 | Stakeholder Review | Present requirements to the human for validation and gap analysis. |
 | 5 | Phase Handoff | Package into `phase2-handoff.md`. |
-| 6 | Generate Visual Report | Generate `.sdlc/reports/phase01-visual.html`. |
+| 6 | Generate Visual Report | Generate `.sdlc/reports/01-requirements-visual.html`. |
 | 7 | Generate Phase Report | Run `generate_phase_report.py`. |
 
 ### HITL Gates
@@ -400,8 +400,8 @@ Build the factory and prove it on real software. Install and adapt the harness, 
 | 6 | Prove the Rails by Forcing Their Failure | Make each rail fail deliberately and catch it: a failing test proves the Stop hook blocks; a planted spec mismatch proves the grader posts; a planted logic defect proves correctness blocks-and-overrides; a known-bad deploy proves deploy-dev rolls back; a probe PR proves the security gate fires. Record in `pipeline-proof.md`. |
 | 7 | The Cadence Plan and the Build Tripwires | Produce `cadence-plan.md`: schedule the Build cadences (daily flow check, weekly intent triage, retro+, setup review) and agree two numbers -- the **WIP cap** and the **review-wait tripwire**. |
 | 8 | Phase Handoff | Draft `build-handoff.md` and `foundation-report.md`: the ordered spec backlog, the risk-tier map, the cadence calendar, and open questions. The exit demo runs in the client's own dev environment through the real pipeline. |
-| 9 | Generate Visual Report | Generate `.sdlc/reports/phase03-visual.html`. |
-| 10 | Generate Phase Report | Run `/sdlc-gate` to validate and produce `.sdlc/reports/phase03-report.html`. |
+| 9 | Generate Visual Report | Generate `.sdlc/reports/03-foundation-visual.html`. |
+| 10 | Generate Phase Report | Run `/sdlc-gate` to validate and produce `.sdlc/reports/03-foundation-report.html`. |
 
 ### HITL Gates
 
@@ -585,7 +585,7 @@ Prove that someone who isn't the pod can understand, run, and operate the system
 | 4 | ADR Finalization | Review all ADRs from Phase 2. Update status (accepted/superseded/deprecated). Add any new ADRs for decisions made during Build. |
 | 5 | Cold-Use Verification | Have someone new to the repo run the README checkout unassisted, and have the ops engineer execute the RUNBOOK deploy + rollback + one failure scenario cold. These cold runs are exit conditions, not nice-to-haves. |
 | 6 | Phase Handoff | Package into `phase8-handoff.md`. |
-| 7 | Generate Reports | Generate `.sdlc/reports/phase07-visual.html` and run `generate_phase_report.py`. |
+| 7 | Generate Reports | Generate `.sdlc/reports/07-documentation-visual.html` and run `generate_phase_report.py`. |
 
 ### HITL Gates
 
@@ -672,7 +672,7 @@ Promote to production through the pipeline that has existed since Foundation. Ph
 | 3 | Production Promotion | Promote to production through the existing pipeline. Verify production health. |
 | 4 | Production Smoke Tests | Run smoke tests against production. Verify critical paths work end-to-end. |
 | 5 | Phase Handoff | Package into `phase9-handoff.md`. |
-| 6 | Generate Reports | Generate `.sdlc/reports/phase08-visual.html` and run `generate_phase_report.py`. |
+| 6 | Generate Reports | Generate `.sdlc/reports/08-deployment-visual.html` and run `generate_phase_report.py`. |
 
 ### HITL Gates
 
@@ -761,7 +761,7 @@ Make production observable, make alerts real (thresholds from measured baselines
 | 4 | Alert Drill | Execute the alert drill: every critical alert fired and answered from the playbook. |
 | 5 | Project Retrospective | Structured retrospective covering what went well, what did not, what to improve, key learnings, and the harvest raw material for the standard. |
 | 6 | Phase Handoff | Package into `close-handoff.md` for Phase C. |
-| 7 | Generate Reports | Generate `.sdlc/reports/phase09-visual.html` and run `generate_phase_report.py`. |
+| 7 | Generate Reports | Generate `.sdlc/reports/09-monitoring-visual.html` and run `generate_phase_report.py`. |
 
 ### HITL Gates
 

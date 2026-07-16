@@ -8,7 +8,7 @@ Run the 7-gate validation system for the current (or specified) SDLC phase witho
 
 2. **Read state:** Load `.sdlc/state.yaml` to determine the current phase.
 
-3. **Check visual report exists:** Before running gates, verify that the phase visual report exists at `.sdlc/reports/phaseNN-visual.html` (or equivalent named report like `phaseNN-discovery.html`). Also verify that artifact sub-pages exist and are linked from the main report.
+3. **Check visual report exists:** Before running gates, verify that the phase visual report exists at `.sdlc/reports/<slug>-visual.html`, where `<slug>` is the phase's registry slug (e.g. `00-discovery-visual.html`, `build-visual.html`). Also verify that artifact sub-pages exist and are linked from the main report.
    - If the visual report is **missing**: STOP. Tell the user: "The phase visual report has not been generated yet. The visual report is the primary stakeholder review artifact and must exist before running gate checks. Generate it now?" If yes, generate the visual report with artifact sub-pages first, then proceed with gates.
    - If sub-pages are **missing**: WARN but proceed. Note which artifacts lack sub-pages in the gate output.
 
@@ -29,11 +29,12 @@ Run the 7-gate validation system for the current (or specified) SDLC phase witho
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml --phase <phase-number>
    ```
-   After generating, automatically open the report in the user's default browser:
+   The script writes `.sdlc/reports/<slug>-report.html` (registry slug, e.g. `00-discovery-report.html`,
+   `build-report.html`). After generating, automatically open the report in the user's default browser:
    ```bash
-   start .sdlc/reports/phaseNN-report.html   # Windows
-   open .sdlc/reports/phaseNN-report.html    # macOS
-   xdg-open .sdlc/reports/phaseNN-report.html # Linux
+   start .sdlc/reports/<slug>-report.html    # Windows
+   open .sdlc/reports/<slug>-report.html     # macOS
+   xdg-open .sdlc/reports/<slug>-report.html # Linux
    ```
    This is the artifact stakeholders review before the manual gate sign-off.
 

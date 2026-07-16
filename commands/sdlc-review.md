@@ -64,8 +64,8 @@ Run a structured review of the current phase's artifacts from multiple perspecti
 ## When to Use
 
 - **Phase 2 (Design):** `--council` to validate architecture from multiple angles
-- **Phase 3 (Planning):** `--edge-cases` to find gaps in section plans
-- **Phase 5 (Quality):** `--adversarial` + `--edge-cases` for thorough quality review
+- **Phase 3 (Foundation):** `--edge-cases` to find gaps in the walking-skeleton spec and the risk-tier map
+- **Build loop:** `--adversarial` + `--edge-cases` on a spec or hardening pass — there is no separate Quality phase; checking happens per change inside the loop
 - **Any phase:** before running `/sdlc-gate` to catch issues early
 
 ## Important

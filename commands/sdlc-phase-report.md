@@ -8,8 +8,8 @@ Render all artifacts for the current (or specified) phase into a self-contained 
 
 2. **Determine target phase:**
    - No argument → use `current_phase` from state file
-   - Numeric argument (e.g., `/sdlc-phase-report 2`) → use that phase number
-   - Validate phase number is 0–9
+   - Phase-id argument (e.g., `/sdlc-phase-report 2`) → use that phase id
+   - Validate the id against the registry (`0`, `1`, `2`, `3`, `build`, `7`, `8`, `9`, `close`)
 
 3. **Run report generator:**
 
@@ -17,9 +17,11 @@ Render all artifacts for the current (or specified) phase into a self-contained 
    ```bash
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/generate_phase_report.py \
      --state .sdlc/state.yaml \
-     --phase <phase-number> \
-     --output .sdlc/reports/phase<NN>-report.html
+     --phase <phase-id>
    ```
+
+   The output defaults to `.sdlc/reports/<slug>-report.html`, where `<slug>` is the phase's registry
+   slug (e.g. `00-discovery-report.html`, `build-report.html`); pass `--output` only to override it.
 
    For all phases (produces individual reports **and** `index.html`):
    ```bash
@@ -33,9 +35,9 @@ Render all artifacts for the current (or specified) phase into a self-contained 
 4. **Handle output:**
    - On success: automatically open the report in the user's default browser:
      ```bash
-     start .sdlc/reports/phaseNN-report.html   # Windows
-     open .sdlc/reports/phaseNN-report.html    # macOS
-     xdg-open .sdlc/reports/phaseNN-report.html # Linux
+     start .sdlc/reports/<slug>-report.html    # Windows
+     open .sdlc/reports/<slug>-report.html     # macOS
+     xdg-open .sdlc/reports/<slug>-report.html # Linux
      ```
    - On failure: display the error from the script and suggest checking that artifact files exist
 
@@ -52,13 +54,13 @@ Render all artifacts for the current (or specified) phase into a self-contained 
 ## Arguments
 
 - No argument: generate report for current phase
-- `<phase-number>`: generate report for a specific phase (0–9)
-- `--all`: generate reports for all phases (0–9) and output an index HTML
+- `<phase-id>`: generate report for a specific phase (`0`–`3`, `build`, `7`–`9`, `close`)
+- `--all`: generate reports for all phases and output an index HTML
 
 ## Output Location
 
 Reports are written to `.sdlc/reports/` in the target project directory:
-- `phaseNN-report.html` for individual phase reports
+- `<slug>-report.html` for individual phase reports (e.g. `00-discovery-report.html`, `build-report.html`)
 - `index.html` for the full project report (with `--all`)
 
 ## Notes
