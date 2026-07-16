@@ -16,7 +16,7 @@ sonnet for build/test/debug).
 | `planner` | opus | On request (MEDIUM/HIGH, 5+ files) | Delegate — plan before code |
 | `architect` | opus | On request (HIGH design) | Design decisions feeding a HIGH spec |
 | `grader` | sonnet | No (run pre-PR / in CI) | Discern — grades code vs the spec (advisory) |
-| `security-reviewer` | opus | **Auto** on auth/payments/identity/secrets | Discern — blocks on HIGH |
+| `security-reviewer` | opus | **Auto** on auth/payments/identity/secrets | Discern — flags findings during the session; the CI security gate is what blocks a merge on HIGH |
 | `build-error-resolver` | sonnet | **Auto** on build/lint failure | Clears the Stop hook's block |
 | `debugger` | sonnet | On request (non-obvious failures) | Root-cause, returns a distilled diagnosis |
 
@@ -38,7 +38,9 @@ These ship with current Claude Code; the kit assumes them rather than duplicatin
 - **`/code-review`** and **`/simplify`** — the `review-gate` hook **blocks a push until both have
   run** for HEAD (tune via `RAILS_REVIEW_KINDS`). If a client's Claude Code build lacks them,
   install equivalents before enabling the gate.
-- **`/update-docs`** — the companion to the `docs-drift` workflow.
+- **`/update-docs`** — pairs with a drift-check workflow that is **planned, not shipped** (a
+  tracked harvest item — [intent-driven-development#5](https://github.com/MCKRUZ/intent-driven-development/issues/5));
+  until it lands, run `/update-docs` on its own when docs drift.
 
 ## Install-on-demand menu (curated — NOT shipped)
 Pull per project only when a spec needs it. Cherry-pick vetted components; **never bulk-install a

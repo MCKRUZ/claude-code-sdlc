@@ -127,8 +127,9 @@ jobs:
   # A second HARD gate for projects that ship agentic behavior with an eval-fixture
   # suite that must not regress (the source repo gated the OWASP Agentic Top-10
   # fixtures here). Any failing fixture exits non-zero and BLOCKS the merge. A
-  # legitimate, time-boxed bypass is RECORDED in profile/eval-bypasses.md — the gate
-  # still runs; the ledger only documents why a known failure was accepted.
+  # legitimate, time-boxed bypass is RECORDED in .github/eval-bypasses.md (source:
+  # profile/eval-bypasses.md) — the gate still runs; the ledger only documents why a
+  # known failure was accepted.
   # DELETE this whole job if you have no such suite.
   eval-gate:
     name: eval-gate               # <-- required status-check context if kept
@@ -150,7 +151,8 @@ jobs:
 
       - name: Run eval fixtures (hard gate)
         # Any failing eval fixture causes a non-zero exit and blocks the merge.
-        # Document a legitimate bypass in profile/eval-bypasses.md (the gate still runs).
+        # Document a legitimate bypass in .github/eval-bypasses.md (source:
+        # profile/eval-bypasses.md); the gate still runs.
         run: >
           dotnet test <<EVAL_TEST_PROJECT>>
           --no-build

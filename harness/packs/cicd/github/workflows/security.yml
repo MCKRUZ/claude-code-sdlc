@@ -72,7 +72,8 @@ jobs:
           # (e.g. /Auth/, not a bare substring). Adapt to your repo's danger zones:
           # auth/identity/security surfaces, data migrations, IaC, and the pipeline
           # itself (.github/) — a defect in the rails ships in every later change.
-          GATED_RE='(^\.github/|/Auth/|/Identity/|/Security/|/Migrations/|^infra/)'
+          # keep in sync with CODEOWNERS + settings.json ask-list
+          GATED_RE='(^\.github/|^\.claude/settings\.json|^\.claude/hooks/|^scripts/rails/|/Auth/|/Identity/|/Security/|/SecurityAttributes/|/Migrations/|^infra/)'
           if echo "$CHANGED" | grep -Eq "$GATED_RE"; then
             GATED=true
           else
@@ -112,7 +113,7 @@ jobs:
           claude_args: |
             --model opus
             --max-turns 25
-            --allowedTools Bash,Read,Grep,Glob,Write,Edit
+            --allowedTools Bash,Read,Grep,Glob,Write
 
       - name: Enforce verdict (block on HIGH)
         if: steps.detect.outputs.review_required == 'true'

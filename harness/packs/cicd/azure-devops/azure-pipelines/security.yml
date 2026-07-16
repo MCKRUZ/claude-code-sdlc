@@ -53,7 +53,8 @@ jobs:
           # rubric. Every segment is slash-anchored so it matches a directory COMPONENT (e.g. /Auth/, not a
           # bare substring). The pipeline dir (.azuredevops/) is gated: a defect in the rails ships in every
           # later change.
-          GATED_RE='(^\.azuredevops/|/Auth/|/Identity/|/Security/|/Migrations/|^infra/)'
+          # keep in sync with CODEOWNERS + settings.json ask-list
+          GATED_RE='(^\.azuredevops/|^\.claude/settings\.json|^\.claude/hooks/|^scripts/rails/|/Auth/|/Identity/|/Security/|/SecurityAttributes/|/Migrations/|^infra/)'
           GATED=false
           echo "$CHANGED" | grep -Eq "$GATED_RE" && GATED=true
 
@@ -86,7 +87,7 @@ jobs:
           displayName: 'security-review'
           model: 'opus'                            # <<REVIEW_MODEL>>
           maxTurns: '25'
-          allowedTools: 'Bash Read Grep Glob Write Edit'
+          allowedTools: 'Bash Read Grep Glob Write'
           verdictToken: 'SECURITY_VERDICT'
           verdictFile: '$(Agent.TempDirectory)/security-verdict.txt'
           prompt: |

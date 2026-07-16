@@ -84,7 +84,7 @@ honest.
 | `planner` | when asked | plans bigger features before any code is written |
 | `architect` | when asked | weighs design decisions that are expensive to reverse |
 | `grader` | before a PR | scores the code against the requirements — advice, not a veto |
-| `security-reviewer` | **automatically** | reviews any change to login, payments, identity, or secrets — and can block |
+| `security-reviewer` | **automatically** | reviews any change to login, payments, identity, or secrets — it flags findings during the session; the server-side security check is what blocks a merge |
 | `build-error-resolver` | **automatically** | fixes a broken build with minimal changes |
 | `debugger` | when asked | tracks down the root cause of a weird failure |
 

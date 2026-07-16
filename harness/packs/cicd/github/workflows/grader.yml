@@ -8,8 +8,8 @@ name: Grader
 # NO stack seam. This rail runs no build/test commands — it calls Claude to read a
 # diff against a spec. Nothing here is sourced from ci-profile.yaml; the LLM
 # invocation (anthropics/claude-code-action@v1 + prompt/claude_args) is carried
-# VERBATIM from the core workflow. Its placeholders (<<DEFAULT_BRANCH>>, <<SPEC_DIR>>,
-# <<MODEL>>) are methodology/repo-level, not stack-level.
+# VERBATIM from the core workflow. Its placeholders (<<SPEC_DIR>>, <<MODEL>>) are
+# methodology/repo-level, not stack-level.
 #
 # ADVISES, never blocks. This workflow is REQUIRED TO RUN (add `grader` to the
 # branch ruleset's required checks so a PR can't merge until the grader has run),
@@ -24,9 +24,10 @@ name: Grader
 # Until then this workflow runs but the Claude step no-ops on the missing key.
 #
 # ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
-#   <<DEFAULT_BRANCH>>   Base branch (reference: main).
 #   <<SPEC_DIR>>         Directory holding committed spec files (reference: specs/).
 #   <<MODEL>>            Grader model (reference: sonnet).
+#   (No <<DEFAULT_BRANCH>> here — this workflow diffs against `github.base_ref`,
+#   which needs no adaptation.)
 # ───────────────────────────────────────────────────────────────────────────────
 
 on:

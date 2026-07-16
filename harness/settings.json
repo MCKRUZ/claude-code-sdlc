@@ -18,8 +18,7 @@
       "Bash(gh pr list:*)",
       "Bash(gh pr diff:*)",
       "Bash(gh run list:*)",
-      "Bash(gh run view:*)",
-      "Bash(gh api repos/:*)"
+      "Bash(gh run view:*)"
     ],
     "ask": [
       "Bash(git push:*)",

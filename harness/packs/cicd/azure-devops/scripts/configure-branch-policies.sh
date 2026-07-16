@@ -96,21 +96,23 @@ jq -c '.build_validation[]' "$POLICIES_FILE" | while read -r bv; do
   fi
 
   EXISTING_ID="$(jq -r --argjson d "$DEF_ID" 'map(select(.type.id=="0609b952-1397-4640-95ec-e00a01b2c241" and .settings.buildDefinitionId==$d)) | .[0].id // empty' <<<"$EXISTING")"
-  ARGS=(repos policy build "${COMMON[@]}"
-        --repository-id "$REPO_ID" --branch "$BRANCH" --branch-match-type "$MATCH"
+  # One COMPLETE parameter set, shared verbatim by create and update, so an update
+  # never silently drops display-name / path filters / valid-duration / queue
+  # settings. `az repos policy build update` accepts the full set (verified against
+  # the az CLI reference for `az repos policy build`).
+  POLICY_ARGS=(--repository-id "$REPO_ID" --branch "$BRANCH" --branch-match-type "$MATCH"
         --build-definition-id "$DEF_ID" --display-name "$DISPLAY"
         --blocking "$BLOCKING" --enabled true
         --queue-on-source-update-only true --manual-queue-only false --valid-duration "$DURATION")
   if [ "${#PATHS[@]}" -gt 0 ]; then
-    ARGS+=(--path-filter "$(IFS=';'; echo "${PATHS[*]}")")
+    POLICY_ARGS+=(--path-filter "$(IFS=';'; echo "${PATHS[*]}")")
   fi
   if [ -n "$EXISTING_ID" ]; then
     echo "  UPDATE build policy '$DISPLAY' (id=$EXISTING_ID)"
-    run "${AZ[@]}" "${ARGS[@]}" --policy-id "$EXISTING_ID" >/dev/null || run "${AZ[@]}" repos policy build update "${COMMON[@]}" --policy-id "$EXISTING_ID" --build-definition-id "$DEF_ID" --blocking "$BLOCKING" >/dev/null
+    run "${AZ[@]}" repos policy build update "${COMMON[@]}" --id "$EXISTING_ID" "${POLICY_ARGS[@]}" >/dev/null
   else
     echo "  CREATE build policy '$DISPLAY'"
-    run "${AZ[@]}" "${ARGS[@]/repos policy build/repos policy build create}" >/dev/null 2>&1 || \
-      run "${AZ[@]}" repos policy build create "${COMMON[@]}" --repository-id "$REPO_ID" --branch "$BRANCH" --branch-match-type "$MATCH" --build-definition-id "$DEF_ID" --display-name "$DISPLAY" --blocking "$BLOCKING" --enabled true --queue-on-source-update-only true --manual-queue-only false --valid-duration "$DURATION" ${PATHS:+--path-filter "$(IFS=';'; echo "${PATHS[*]}")"} >/dev/null
+    run "${AZ[@]}" repos policy build create "${COMMON[@]}" "${POLICY_ARGS[@]}" >/dev/null
   fi
 done
 

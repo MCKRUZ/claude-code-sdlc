@@ -5,9 +5,11 @@
 # default and marks each seam slot with a «stack pack: ...» comment. A repo on a different stack swaps
 # this whole template for its own (the seam is the ci-profile.yaml interface, not this file).
 #
-# Coverage floor: ci-profile.coverage.floor_percent (80) is enforced IN the runner via coverlet
-# threshold args, so a sub-threshold run is a non-zero exit — never a passing run with a low number in
-# a report the pipeline reads and ignores.
+# Coverage floor: ci-profile.coverage.floor_percent (80) is enforced by an explicit post-test gate
+# step that parses the cobertura report and exits non-zero below the floor. It CANNOT be enforced via
+# collector runsettings: the XPlat `coverlet.collector` supports Format/Include/Exclude but NOT
+# threshold validation — that is a coverlet.msbuild feature (coverlet docs, "Coverlet integration with
+# VSTest": "VSTest integration doesn't support ... threshold validation").
 
 parameters:
   - name: solution
@@ -29,19 +31,47 @@ steps:
     displayName: 'Build (ci-profile.commands.build)'
     # «stack pack: ci-profile.commands.build»  ->  dotnet build {{...}} --no-restore --configuration Release
 
-  # Must FAIL the job on any failing test OR sub-threshold coverage. The coverlet threshold turns a
-  # coverage miss into a non-zero exit — <<COVERAGE_THRESHOLD>> is the standard's 80% floor.
+  # Must FAIL the job on any failing test. Coverage is COLLECTED here; the floor is enforced by the
+  # next step (the XPlat collector cannot fail a run on a threshold — see the header note).
   - script: >
       dotnet test ${{ parameters.solution }}
       --no-build
       --configuration Release
       --collect:"XPlat Code Coverage"
       --results-directory $(Agent.TempDirectory)/coverage
-      -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Threshold=${{ parameters.coverageThreshold }}
-      DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.ThresholdType=line
-    displayName: 'Test with coverage (ci-profile.commands.test + coverage.floor_percent)'
+    displayName: 'Test with coverage (ci-profile.commands.test)'
     # «stack pack: ci-profile.commands.test»  ->  dotnet test {{...}} --no-build --configuration Release
     #                                             --collect:"XPlat Code Coverage" --results-directory coverage
+
+  # Coverage floor gate («stack pack: ci-profile.coverage.floor_percent»). Parses every cobertura
+  # report the collector produced and exits 1 if any line-rate is below the floor — a coverage miss is
+  # a non-zero exit, never a passing run with a low number in a report the pipeline ignores.
+  - bash: |
+      set -euo pipefail
+      FLOOR='${{ parameters.coverageThreshold }}'
+      found=0; fail=0
+      while IFS= read -r report; do
+        found=1
+        rate="$(sed -n 's/.*<coverage[^>]*line-rate="\([0-9.]*\)".*/\1/p' "$report" | head -n1)"
+        if [ -z "$rate" ]; then
+          echo "##vso[task.logissue type=error]Could not read line-rate from $report"
+          fail=1
+          continue
+        fi
+        pct="$(awk -v r="$rate" 'BEGIN{printf "%.2f", r*100}')"
+        if awk -v p="$pct" -v t="$FLOOR" 'BEGIN{exit !(p+0 < t+0)}'; then
+          echo "##vso[task.logissue type=error]Coverage ${pct}% is below the ${FLOOR}% floor ($report)"
+          fail=1
+        else
+          echo "Coverage ${pct}% >= ${FLOOR}% floor ($report)"
+        fi
+      done < <(find "$(Agent.TempDirectory)/coverage" -name 'coverage.cobertura.xml' 2>/dev/null)
+      if [ "$found" -eq 0 ]; then
+        echo "##vso[task.logissue type=error]No coverage.cobertura.xml produced — the coverage gate cannot pass without a report (fail closed)."
+        exit 1
+      fi
+      exit "$fail"
+    displayName: 'Enforce coverage floor (ci-profile.coverage.floor_percent)'
 
   - script: dotnet format ${{ parameters.solution }} --verify-no-changes
     displayName: 'Lint (ci-profile.commands.lint)'

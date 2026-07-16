@@ -3,7 +3,8 @@ name: eval-builder
 description: >-
   Build a golden set for an agentic (LLM-powered) spec — the acceptance criteria for probabilistic
   behavior. Use when a spec's deliverable is an agent/prompt/tool and needs evals before build, or
-  when adding cases from a production failure. Produces a versioned golden-set.yaml next to the spec.
+  when adding cases from a production failure. Produces a versioned golden-set.yaml under
+  eval-datasets/specs/<feature>/, referencing the spec file.
 allowed-tools: [Read, Grep, Glob, Write]
 ---
 
@@ -23,7 +24,8 @@ test. This skill builds one that actually tracks quality.
    path** — don't assert an exact tool-call sequence; agents find valid routes you didn't predict.
 3. **Compose multidimensional success** where needed (state + transcript + rubric), with partial
    credit for multi-part tasks instead of all-or-nothing.
-4. **Write it next to the spec**, versioned: `eval-datasets/specs/<feature>/golden-set.yaml` (use
+4. **Write it under `eval-datasets/specs/<feature>/`, referencing the spec file**, versioned:
+   `eval-datasets/specs/<feature>/golden-set.yaml` with `spec: specs/NNNN-<feature>.md` (use
    `kit/eval-datasets/golden-set.template.yaml` as the shape). Set the **threshold** the spec
    requires (e.g. ">= 95%").
 5. **Plan for variance.** Agents are stochastic — the suite runs multiple trials per task from a
@@ -35,6 +37,7 @@ test. This skill builds one that actually tracks quality.
   suite's measured variance before it becomes a required check.
 
 ## Done when
-- A versioned `golden-set.yaml` exists next to the spec with 20–50 grounded cases.
+- A versioned `golden-set.yaml` exists under `eval-datasets/specs/<feature>/` (referencing the
+  spec file) with 20–50 grounded cases.
 - Graders are deterministic where possible; LLM rubrics grade output, not trajectory.
 - The threshold and trial count are set; the judge has been sanity-checked against human grades.

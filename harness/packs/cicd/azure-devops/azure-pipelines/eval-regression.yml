@@ -7,8 +7,9 @@
 #
 # This pipeline runs the FAST regression suite on PRs that touch the HIGH-risk surface, scores per
 # metric, and EXITS NON-ZERO if any key metric drops below its floor or falls more than the trip-wire vs
-# the base branch. Register it as a REQUIRED build validation with the SAME path filters as the `paths`
-# list below (Azure Repos scopes PR builds via the policy's path filters, not the pipeline's `paths`).
+# the base branch. Register it as a REQUIRED build validation whose HIGH-risk path filters live on the
+# branch policy (branch-policies.json) — Azure Repos scopes PR builds via the policy's path filters,
+# not via anything in this file.
 #
 # MATURITY FLAG: per-PR eval-regression gating is an EMERGING practice. REGRESSION_TRIPWIRE (0.03 = 3pp)
 # is a PRACTITIONER figure, NOT an Anthropic-published constant. Calibrate it to your measured run-to-run
@@ -19,8 +20,9 @@
 # =============================================================================
 
 trigger: none
-# The `paths` here scope PUSH builds; for the PR gate, set the SAME filters on the build validation
-# policy (branch-policies.json). Only gate PRs that touch the HIGH-risk agentic surface.
+# This pipeline declares no path filters of its own. The PR gate's scoping — only PRs that touch the
+# HIGH-risk agentic surface (prompts, eval-datasets, model configs, tool defs, agent specs) — is set
+# on the build validation policy's path filters in branch-policies.json.
 pr: none
 
 pool:

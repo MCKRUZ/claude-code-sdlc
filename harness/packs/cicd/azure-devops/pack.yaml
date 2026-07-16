@@ -31,6 +31,7 @@ provides:
     - scripts/run-claude-review.sh          # headless Claude Code CLI invocation (no action exists on ADO)
     - scripts/post-pr-thread.sh             # POST/PATCH a PR thread via the ADO REST API
   branch_policies: branch-policies/policies.json   # desired-state consumed by configure-branch-policies.sh
+  rails_guide: RAILS.md                            # operator's guide + shakedown drills (ADO realization)
   mcp_fragment: mcp.fragment.json                  # Azure DevOps MCP server, merged into .mcp.json
                                                    # (<<ADO_ORGANIZATION>> is a Phase-3 token; auth is
                                                    # per-developer via az login — never a committed PAT)
@@ -67,6 +68,9 @@ overlays:
   - { src: scripts/run-claude-review.sh,                        dest: scripts/rails/run-claude-review.sh }
   - { src: scripts/post-pr-thread.sh,                           dest: scripts/rails/post-pr-thread.sh }
   - { src: branch-policies/policies.json,                       dest: .azuredevops/rails/branch-policies.json }
+  # Overlays the core's GitHub-flavored guide (last wins) so the documented path
+  # (.github/RAILS.md, referenced by /sdlc-setup Step 8) holds the ADO realization.
+  - { src: RAILS.md,                                            dest: .github/RAILS.md }
   - { src: mcp.fragment.json,                                   dest: .mcp.json, merge: true }
   # Installed by the core/profile layer, referenced here (NOT shipped by this pack — see `consumes`):
   #   scripts/rails/diff-anchors.sh          <- kit/profile/scripts/diff-anchors.sh

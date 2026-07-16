@@ -10,7 +10,7 @@ safely — read [`RAILS.md`](./RAILS.md).
 
 | Workflow | File | Fires on | Block or advise | Source |
 | --- | --- | --- | --- | --- |
-| **CI** | `ci.yml` | every PR + push to main | **BLOCKS** (build/test/coverage; optional eval-gate) | generalized from source `ci.yml` |
+| **CI** | `ci.yml` | every PR + push to main | **BLOCKS** (secret scan/build/test/coverage; optional eval-gate) | generalized from source `ci.yml` |
 | **Grader** | `grader.yml` | every PR | **ADVISES** — required to RUN, verdict never blocks | generalized from source `grader.yml` |
 | **Correctness Review** | `correctness.yml` | every PR (reviews when source changed) | **BLOCKS** on a high-confidence defect (override label) | generalized from source `correctness-review.yml` |
 | **Security Review** | `security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH | generalized from source `security-review.yml` |
@@ -27,10 +27,14 @@ when consciously accepted.
 
 All client/repo-specific values are marked `<<LIKE_THIS>>` in the files (plus the
 `@your-org/your-team` owner handle in CODEOWNERS). Replace them before go-live.
+**Two marker styles exist:** the `<<DOUBLE_ANGLE>>` values below, and single-angle
+`<PLACEHOLDER>` markers on the eval-runner wiring in `eval-suite.yml` /
+`eval-regression.yml` and in `infra/main.bicep` — search for both styles when
+adapting.
 
 | Placeholder | Where | What to set |
 | --- | --- | --- |
-| `<<DEFAULT_BRANCH>>` | ci, grader, deploy-dev, diff-anchors.sh | base/protected branch (reference: `main`) |
+| `<<DEFAULT_BRANCH>>` | ci, diff-anchors.sh | base/protected branch (reference: `main`). grader.yml lists it for reference only — its body uses `github.base_ref` at runtime |
 | `~DEFAULT_BRANCH` | ruleset JSON | resolves to the repo default branch on apply |
 | `<<BUILD_TOOLCHAIN>>` | ci | setup-* action + version (reference: .NET 10) |
 | `<<RESTORE_CMD>>` / `<<BUILD_CMD>>` / `<<TEST_CMD>>` | ci | your stack's commands |
@@ -38,9 +42,9 @@ All client/repo-specific values are marked `<<LIKE_THIS>>` in the files (plus th
 | `<<SERVICE_PROVISIONING>>` | ci | `services:` block + schema/seed (or delete) |
 | `<<COVERAGE_THRESHOLD>>` | ci | enforce the 80% floor in the test runner |
 | `<<EVAL_GATE>>` / `<<EVAL_TEST_PROJECT>>` / `<<EVAL_FILTER>>` | ci | the optional eval-fixture hard gate (or delete the job) |
-| `<<SPEC_DIR>>` | grader | committed-spec directory (reference: `specs/`) |
+| `<<SPEC_DIR>>` | grader + grader rubric | committed-spec directory (reference: `specs/`) |
 | `<<MODEL>>` | grader / security / correctness | reviewer model (sonnet / opus) |
-| `<<GATED_PATHS>>` | security (+ CODEOWNERS, security rubric) | slash-anchored guarded-dir regex — keep all three in sync |
+| `<<GATED_PATHS>>` | security + CODEOWNERS header | slash-anchored guarded-dir regex — keep both, and the security rubric's prose path list, in sync |
 | `<<SOURCE_PATHS>>` | correctness | source root pathspec (reference: `src/`) |
 | `<<CI_WORKFLOW_NAME>>` | deploy-dev | must equal `ci.yml`'s `name:` |
 | `<<ARTIFACT_NAME>>` | deploy-dev | the deployable artifact CI uploads (CI must upload it) |
@@ -68,21 +72,9 @@ required-check context.
   commit (via `workflow_run` download), and restores the last known-good version on a
   failed deploy or health check.
 
-## Known drift — flag for the standard's owner
+## Drift note — resolved
 
-`GOLD-STANDARD.md` §6 ("What a delivery repo contains") shows a `.github/workflows/`
-tree listing only **four** workflows:
-
-```
-ci.yml · grader.yml · security.yml · deploy-dev.yml
-```
-
-It **omits `correctness.yml`**. But `docs/the-rails.md` is explicit and authoritative
-that there are **five** rails — its §1 banner ("All five…"), its §3 gates table, and
-its §4 merge bar all name **correctness** as a distinct, blocking rail separate from
-the grader. This kit ships the **five-workflow** set, treating `the-rails.md` as the
-source of truth.
-
-**Action for the standard's owner:** update the GOLD-STANDARD §6 tree to include
-`correctness.yml` (blocks on a high-confidence defect) so the two documents agree. This
-is a documentation drift in the standard, not a defect in the kit.
+`GOLD-STANDARD.md` §6 previously listed four workflows and omitted `correctness.yml`.
+**Reconciled 2026-06-30** — §6 and §10 now list all five (see `kit/README.md`,
+"Drift this kit corrects"). `docs/the-rails.md` remains the authoritative rails
+deep-dive.

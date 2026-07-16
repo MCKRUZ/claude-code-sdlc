@@ -1,8 +1,9 @@
 # =============================================================================
 # Golden-set template — §11 "evals as acceptance criteria"
 # =============================================================================
-# Copy this file next to the spec it grades (e.g. specs/<feature>/golden-set.yaml)
-# and version it IN THE REPO. It is the acceptance criteria for an agentic spec:
+# Copy this file to eval-datasets/specs/<feature>/golden-set.yaml (its `spec:`
+# field points at the flat spec file it grades, specs/NNNN-<feature>.md) and
+# version it IN THE REPO. It is the acceptance criteria for an agentic spec:
 # CI runs it like a test suite, and a regression on it blocks a merge the same
 # way a failing unit test does.
 #
@@ -31,7 +32,7 @@
 
 name: <feature>-golden-set            # e.g. "invoice-extractor-golden-set"
 version: "1.0.0"                       # bump on any case change; this file is versioned
-spec: specs/<feature>/spec.md          # the spec these cases are the acceptance criteria for
+spec: specs/NNNN-<feature>.md          # the flat spec file these cases are the acceptance criteria for
 description: >
   Golden set for <feature>. Cases are drawn from REAL observed failures and
   representative production traffic (target 20-50 cases). Deterministic graders

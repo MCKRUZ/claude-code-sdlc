@@ -64,8 +64,10 @@ in `deny` in this shared file** — `ask` is for "stop and confirm", `allow` is 
 
 - `allow` — auto-runs without a prompt: `dotnet build/test/restore/run/format`, and
   read-only `git`/`gh` (status, diff, log, show, branch, fetch, stash list, pr view/list/diff,
-  run list/view, api repos/).
-- `ask` — prompts every time: `git push`, `gh api` (write-capable), and edits/writes to
+  run list/view).
+- `ask` — prompts every time: `git push`, **all** `gh api` calls (even read-only ones —
+  ask wins over allow regardless of rule specificity, so a narrower `gh api repos/` allow
+  rule would be dead; the kit deliberately doesn't carry one), and edits/writes to
   sensitive trees (see placeholders below).
 - `deny` — hard refusal, no exception: force-push (`--force` / `--force-with-lease` / `-f`),
   `git reset --hard`, and reading secrets (`.env`, `.env.*`, `secrets/**`, `*.pfx`, `*.pem`).
@@ -129,9 +131,10 @@ The bash twins require **`jq`** (payload parsing) and `git`; the .NET gates also
 
 Both hooks are registered in the exec (array) form —
 `{"command":"pwsh","args":["-NoProfile","-ExecutionPolicy","Bypass","-File","${CLAUDE_PROJECT_DIR}/…"]}` —
-which avoids shell re-quoting of the script path. The array form requires Claude Code
-CLI v2.1.139+ (the plugin already requires ≥ 2.1.196, so this is never the binding
-constraint). On an older standalone CLI, fall back to the single-string form shown above.
+which spawns the executable directly, with no shell re-quoting of the script path. Exec
+form requires a real executable on PATH (`pwsh.exe` qualifies; shell shims like `.cmd`
+don't). The single-string form instead runs through a shell — use it when you need
+shell features, or with the `.sh` twins as shown above.
 
 ## Maturity
 

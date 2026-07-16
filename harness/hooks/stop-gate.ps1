@@ -91,20 +91,52 @@ if (-not (Get-Command dotnet -ErrorAction SilentlyContinue)) {
   Allow
 }
 
+# --- Bounded invocation: mirror the sh twin's `timeout 540`. A hung build must
+#     BLOCK (fail closed), not run into the hook-level 600s kill — which Claude
+#     Code treats as a non-blocking error, i.e. fails OPEN.
+$script:GateTimeoutSeconds = 540
+function Invoke-Bounded([string[]]$argv) {
+  # Returns @{ TimedOut = bool; ExitCode = int; Output = string[] }.
+  $psi = [System.Diagnostics.ProcessStartInfo]::new()
+  $psi.FileName = $argv[0]
+  foreach ($a in $argv[1..($argv.Count - 1)]) { [void]$psi.ArgumentList.Add($a) }
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.WorkingDirectory = (Get-Location).Path
+  $proc = [System.Diagnostics.Process]::Start($psi)
+  # Async reads so a chatty child can't fill the pipe and deadlock WaitForExit.
+  $outTask = $proc.StandardOutput.ReadToEndAsync()
+  $errTask = $proc.StandardError.ReadToEndAsync()
+  if (-not $proc.WaitForExit($script:GateTimeoutSeconds * 1000)) {
+    try { $proc.Kill($true) } catch { try { $proc.Kill() } catch { } }
+    return @{ TimedOut = $true; ExitCode = -1; Output = @() }
+  }
+  $lines = (($outTask.Result + "`n" + $errTask.Result) -split "`r?`n") | Where-Object { $_ }
+  return @{ TimedOut = $false; ExitCode = $proc.ExitCode; Output = @($lines) }
+}
+
 # --- Prove the build.
-$buildOut = & dotnet build $solution --nologo --configuration Debug -clp:ErrorsOnly 2>&1
-$buildExit = $LASTEXITCODE
-if ($buildExit -ne 0) {
-  $errLines = ($buildOut | Select-String -Pattern 'error' | Select-Object -First 15) -join "`n"
+$build = Invoke-Bounded @('dotnet', 'build', $solution, '--nologo', '--configuration', 'Debug', '-clp:ErrorsOnly')
+if ($build.TimedOut) {
+  Block("Build timed out after ${script:GateTimeoutSeconds}s — a hung build counts as red (Stop gate). " +
+        "Investigate why the build hangs (or set RAILS_SOLUTION to a smaller target) before ending the turn.")
+}
+if ($build.ExitCode -ne 0) {
+  $errLines = ($build.Output | Select-String -Pattern 'error' | Select-Object -First 15) -join "`n"
   Block("Build is red — you cannot finish on a broken build (Stop gate). " +
         "Fix the build before ending the turn. First errors:`n$errLines")
 }
 
 # --- Optionally prove the tests.
 if ($env:RAILS_STOP_RUN_TESTS -eq '1') {
-  $testOut = & dotnet test $solution --nologo --no-build --configuration Debug 2>&1
-  if ($LASTEXITCODE -ne 0) {
-    $failLines = ($testOut | Select-String -Pattern 'Failed|error' | Select-Object -First 15) -join "`n"
+  $test = Invoke-Bounded @('dotnet', 'test', $solution, '--nologo', '--no-build', '--configuration', 'Debug')
+  if ($test.TimedOut) {
+    Block("Tests timed out after ${script:GateTimeoutSeconds}s — a hung test run counts as red (Stop gate). " +
+          "Investigate the hang before ending the turn.")
+  }
+  if ($test.ExitCode -ne 0) {
+    $failLines = ($test.Output | Select-String -Pattern 'Failed|error' | Select-Object -First 15) -join "`n"
     Block("Tests are red — you cannot finish with failing tests (Stop gate). " +
           "Fix them before ending the turn. Summary:`n$failLines")
   }

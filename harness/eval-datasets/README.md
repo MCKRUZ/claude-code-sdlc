@@ -2,7 +2,8 @@
 
 This directory holds the **golden sets** that are the acceptance criteria for
 agentic specs (delivery standard §11). A golden set is versioned in the repo
-next to the spec it grades, and CI runs it like a test suite. Changing a prompt,
+under `eval-datasets/specs/<feature>/`, referencing the spec file it grades
+(`specs/NNNN-<feature>.md`), and CI runs it like a test suite. Changing a prompt,
 a model selection, or a tool definition is HIGH risk and trips the
 [eval-regression gate](../workflows/eval-regression.yml).
 
@@ -96,13 +97,14 @@ workflow runs everything.
 
 ```
 eval-datasets/
-  golden-set.template.yaml     # start here — copy next to the spec
+  golden-set.template.yaml     # start here — copy to specs/<feature>/ below
   README.md                    # this file
   specs/<feature>/golden-set.yaml   # one golden set per agentic spec (your copies)
 ```
 
-Place a feature's golden set **next to its spec**, not in a central dumping
-ground — the set and the spec version together.
+Place a feature's golden set **under `eval-datasets/specs/<feature>/`, referencing
+the spec file** (`spec: specs/NNNN-<feature>.md` — the repo's spec files are flat) —
+the set and the spec version together.
 
 ---
 

@@ -36,7 +36,8 @@ on:
       - '**/model-config*.yml'
       - '**/tools/**'                     # tool definitions
       - 'specs/**/agent*.md'              # agent specs
-      - 'specs/**/golden-set.yaml'
+      # NOTE: golden sets live under eval-datasets/specs/<feature>/golden-set.yaml,
+      # already covered by the 'eval-datasets/**' entry above.
 
 permissions:
   contents: read

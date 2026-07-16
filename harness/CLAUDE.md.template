@@ -102,7 +102,10 @@ seven parts: **Goal · Why · Scope in/out · Acceptance checks · Risk tier · 
 - Secrets live in {{CLIENT}}'s Key Vault and GitHub secrets. **Never in code, never in this file,
   never in specs.** A key in a commit is the one unrecoverable mistake.
 - The {{LLM_PROVIDER}} key is {{CLIENT}}-procured under their own agreement.
-- Tag genuinely sensitive material out of agent context. See `docs/data-flow-brief.md`.
+- Tag genuinely sensitive material out of agent context. If the engagement handles regulated or
+  client-sensitive data, write `docs/data-flow-brief.md` during setup — a one-pager covering what
+  data agents may see, where it flows, and what stays out of context — and reference it here.
+  (The kit does not ship this file; it is engagement-specific.)
 
 ---
 

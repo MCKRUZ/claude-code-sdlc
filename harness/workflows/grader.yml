@@ -17,9 +17,10 @@ name: Grader
 # Until then this workflow runs but the Claude step no-ops on the missing key.
 #
 # ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
-#   <<DEFAULT_BRANCH>>   Base branch (reference: main).
 #   <<SPEC_DIR>>         Directory holding committed spec files (reference: specs/).
 #   <<MODEL>>            Grader model (reference: sonnet).
+#   (No <<DEFAULT_BRANCH>> here — this workflow diffs against `github.base_ref`,
+#   which needs no adaptation.)
 # ───────────────────────────────────────────────────────────────────────────────
 
 on:

@@ -50,7 +50,7 @@ so install here unless you also repoint the references.
 | `CLAUDE.md.template` | `./CLAUDE.md` | Replace every `{{TOKEN}}`; delete guidance comments. |
 | `spec-template.md` | `./specs/spec-template.md` | Copy per feature to `specs/NNNN-name.md`. |
 | `settings.json` | `./.claude/settings.json` | Shared, committed. Leans on `deny` (see below). |
-| `mcp.json` | `./.mcp.json` | Team MCP servers (context7, sequential-thinking, playwright); packs merge additions (dotnet → microsoft-learn, github → github, azure-devops → azure-devops). Versions pinned; no secrets — auth is always per-developer. Each developer approves the set once on first open. |
+| `mcp.json` | `./.mcp.json` | Team MCP servers (context7, sequential-thinking, playwright); packs merge additions (dotnet → microsoft-learn, github → github, azure-devops → azure-devops). npx-launched servers are version-pinned; the HTTP-hosted ones (context7, microsoft-learn, github) run server-side and cannot be pinned. No secrets — auth is always per-developer. Each developer approves the set once on first open. |
 | `HARNESS.md` | `./docs/harness.md` | The developer-facing tour: what each installed piece does and why, per layer. Point new team members here first. |
 | `hooks/*` | `./.claude/hooks/` | `stop-gate`, `review-gate`, `save-review-receipt` (`.ps1` + `.sh`). |
 | `agents/*` | `./.claude/agents/` | `planner`, `architect`, `grader`, `security-reviewer`, `build-error-resolver`, `debugger` — model-tiered; see `agents/README.md`. |
@@ -61,7 +61,7 @@ so install here unless you also repoint the references.
 | `profile/eval-bypasses.md` | `./.github/eval-bypasses.md` | Override/bypass ledger. |
 | `profile/CODEOWNERS` | `./.github/CODEOWNERS` | |
 | `profile/scripts/*` | `./scripts/rails/` | Workflows call `scripts/rails/diff-anchors.sh`. |
-| `profile/rulesets/branch-protection.json` | *applied, not copied* | Run `scripts/rails/apply-branch-protection.sh`. |
+| `profile/rulesets/branch-protection.json` | `./.github/rulesets/` | Copied on install; `scripts/rails/apply-branch-protection.sh` reads it from there and applies it to GitHub. |
 | `eval-datasets/*` | `./eval-datasets/` | Golden-set template + how-to (§11 work only). |
 | `prompts/*` | `./prompts/` | Versioned judge prompts (§11 work only). |
 | `infra/*` | `./infra/` | Bicep dev-env **starter** — adapt to the client landing zone. |
@@ -118,8 +118,12 @@ guarded path (security fires). *A rail that has only ever seen green has not bee
 
 ## Placeholder index
 Search-and-replace targets across the kit:
-- `{{TOKEN}}` — in `CLAUDE.md.template`, `spec-template.md`, the skills, and rubrics (human prose).
-- `<<PLACEHOLDER>>` — in workflows and `infra/` (build/test/deploy commands, runners, gated paths).
+- `{{TOKEN}}` — in `CLAUDE.md.template`, `spec-template.md`, and the skills (human prose).
+- `<<PLACEHOLDER>>` — in workflows, the grader rubric (`<<SPEC_DIR>>`), and `infra/`
+  (build/test/deploy commands, runners, gated paths).
+- Single-angle `<PLACEHOLDER>` — on the eval-runner wiring in `eval-suite.yml` /
+  `eval-regression.yml` and in `infra/main.bicep`. Search for **both** angle styles, not just
+  `<<…>>`.
 - `RAILS_*` env vars — hook knobs (`RAILS_SRC_GLOB`, `RAILS_SOLUTION`, `RAILS_STOP_RUN_TESTS`,
   `RAILS_REVIEW_BASE`, `RAILS_REVIEW_SRC_REGEX`, `RAILS_REVIEW_KINDS`, `RAILS_SKIP_REVIEW_GATE`).
 - `@your-org/your-team` — in `profile/CODEOWNERS`.

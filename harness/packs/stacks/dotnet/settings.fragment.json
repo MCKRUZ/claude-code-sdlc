@@ -2,7 +2,6 @@
   "//": "Merged (not overwritten) into .claude/settings.json by the installer (pack.yaml: merge: true). Adds .NET-specific tool permissions and gated paths on top of the core file. Kept minimal — the core settings.json already carries the dotnet build/test/restore allow-list and the Auth/Identity/Security/Migrations gated paths; this fragment adds only what is .NET-tooling-specific and not already there.",
   "permissions": {
     "allow": [
-      "Bash(dotnet format:*)",
       "Bash(dotnet list package:*)",
       "Bash(dotnet sln:*)",
       "Bash(dotnet user-secrets list:*)"
