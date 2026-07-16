@@ -43,9 +43,12 @@ evidence exists."
 These are subtle and easy to get wrong. They are the load-bearing part of the kit.
 
 - **Stop hook block:** write top-level JSON `{"decision":"block","reason":"..."}` to
-  stdout **and `exit 2`**. `exit 1` is *silently ignored*. `hookSpecificOutput` is
-  **invalid** on Stop hooks and silently drops the block. `reason` is the only text
-  surfaced back to the model.
+  stdout **and `exit 0`** — JSON output is only parsed on exit 0, and `reason` is what
+  gets fed back to the model. `exit 2` also blocks, but stdout (and any JSON in it) is
+  **ignored** on exit 2 — only stderr is surfaced, so a stdout JSON reason would be
+  silently dropped. `exit 1` is a non-blocking error. (Verified against the hooks
+  reference, 2026-07-15; Stop also accepts `hookSpecificOutput.additionalContext` for
+  non-blocking feedback, which these gates don't use.)
 - **PreToolUse block:** write
   `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}`
   to stdout, then `exit 0`. (`hookSpecificOutput` *is* valid here — the opposite of Stop.)

@@ -1,0 +1,59 @@
+# github CI/CD pack — manifest.
+# Realizes the core kit's rails as GitHub Actions workflows. One of two pack axes
+# (packs/cicd/<id>); pairs with any one stack pack (packs/stacks/<id>). Read by the
+# profile-aware installer to overlay this pack after the core + the chosen stack pack.
+
+pack:
+  id: github
+  axis: cicd
+  name: "GitHub Actions rails"
+  version: "0.1.0"
+
+# What this pack provides to the composition.
+provides:
+  workflows:
+    - workflows/ci.yml               # build/test/coverage hard gate (+ optional eval-gate)
+    - workflows/grader.yml           # advisory spec grader (required to RUN)
+    - workflows/correctness.yml      # blocks on a high-confidence defect (override label)
+    - workflows/security.yml         # blocks on a HIGH finding, path-triggered
+    - workflows/deploy-dev.yml       # promote-never-rebuild; rolls back on failure (starter)
+    - workflows/eval-regression.yml  # §11 per-PR blocking eval-regression gate
+    - workflows/eval-suite.yml       # §11 periodic advisory full benchmark
+  rails_guide: RAILS.md              # operator's guide + shakedown drills
+
+# The stack-pack interface this pack reads to fill its build/test/toolchain slots.
+# Every «stack pack: ci-profile.<path>» marker in the workflows resolves against this.
+# Not installed as a file — it lives in the selected stack pack.
+consumes:
+  stack_ci_profile: ci-profile.yaml
+
+# Overlay map: pack-relative source -> repo destination. Workflows land in
+# .github/workflows/; the rails guide lands at .github/RAILS.md.
+overlays:
+  - { src: workflows/ci.yml,              dest: .github/workflows/ci.yml }
+  - { src: workflows/grader.yml,          dest: .github/workflows/grader.yml }
+  - { src: workflows/correctness.yml,     dest: .github/workflows/correctness.yml }
+  - { src: workflows/security.yml,        dest: .github/workflows/security.yml }
+  - { src: workflows/deploy-dev.yml,      dest: .github/workflows/deploy-dev.yml }
+  - { src: workflows/eval-regression.yml, dest: .github/workflows/eval-regression.yml }
+  - { src: workflows/eval-suite.yml,      dest: .github/workflows/eval-suite.yml }
+  - { src: RAILS.md,                      dest: .github/RAILS.md }
+
+# Branch protection makes the blocking checks mandatory. The ruleset + apply script
+# live in the profile layer, not in this pack; the required status-check contexts must
+# match this pack's workflow job names.
+depends_on:
+  branch_protection:
+    ruleset: profile/rulesets/branch-protection.json
+    apply_via: scripts/rails/apply-branch-protection.sh
+    required_status_checks:
+      - build-and-test
+      - grader
+      - correctness-review
+      - security-review
+      # - eval-gate   # add if ci-profile.eval_gate.enabled and the job is kept
+
+# Requires a stack pack to fill the command SEAM (the «stack pack: ci-profile.*» markers).
+# Any of these satisfies it; this pack knows how to run whatever ci-profile.yaml declares.
+# Reciprocal of the stack pack's requires_cicd_pack: [github, azure-devops].
+requires_stack_pack: [dotnet, angular, python]

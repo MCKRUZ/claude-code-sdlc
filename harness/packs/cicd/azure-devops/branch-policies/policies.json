@@ -1,0 +1,84 @@
+{
+  "_comment": "Desired-state branch policies for the protected branch — the Azure DevOps analogue of the GitHub ruleset (branch-protection.json). Consumed by scripts/configure-branch-policies.sh, which turns each entry into an `az repos policy` call. The check contexts here are Azure BUILD VALIDATION policies (one per gate pipeline), replacing GitHub required status checks; the approver-count + required-reviewer entries replace GitHub's required non-author approval + CODEOWNERS.",
+  "branch": "main",
+  "branchMatchType": "exact",
+
+  "build_validation": [
+    {
+      "pipelineName": "build-and-test",
+      "displayName": "build-and-test",
+      "isBlocking": true,
+      "pathFilters": [],
+      "validDurationMinutes": 720,
+      "note": "CI — hard block. The mechanical gate."
+    },
+    {
+      "pipelineName": "eval-gate",
+      "displayName": "eval-gate",
+      "isBlocking": true,
+      "pathFilters": [],
+      "validDurationMinutes": 720,
+      "note": "OPTIONAL — keep only if ci.yml still contains the eval-gate stage AND you split it into its own pipeline, OR drop this entry and rely on the build-and-test policy (the eval-gate stage runs inside CI)."
+    },
+    {
+      "pipelineName": "grader",
+      "displayName": "grader",
+      "isBlocking": true,
+      "pathFilters": [],
+      "validDurationMinutes": 720,
+      "note": "ADVISES. Blocking here only enforces 'the grader ran' — the grader pipeline always concludes success, so its verdict never blocks. Set isBlocking:false if you only want the advisory comment without gating on it having run."
+    },
+    {
+      "pipelineName": "correctness-review",
+      "displayName": "correctness-review",
+      "isBlocking": true,
+      "pathFilters": [],
+      "validDurationMinutes": 720,
+      "note": "BLOCKS on a high-confidence defect. Passes trivially when no source changed."
+    },
+    {
+      "pipelineName": "security-review",
+      "displayName": "security-review",
+      "isBlocking": true,
+      "pathFilters": [],
+      "validDurationMinutes": 720,
+      "note": "BLOCKS on HIGH. Passes trivially when no gated path changed and no risk:high label."
+    },
+    {
+      "pipelineName": "eval-regression",
+      "displayName": "eval-regression",
+      "isBlocking": true,
+      "pathFilters": [
+        "/prompts",
+        "/eval-datasets",
+        "/specs"
+      ],
+      "validDurationMinutes": 720,
+      "note": "BLOCKS on degradation. Path-scoped to the HIGH-risk agentic surface — keep these filters in sync with eval-regression.yml's `paths`."
+    }
+  ],
+
+  "approver_count": {
+    "minimumApproverCount": 1,
+    "creatorVoteCounts": false,
+    "allowDownvotes": false,
+    "resetOnSourcePush": true,
+    "note": "Non-author approval: creatorVoteCounts:false means the PR author's own vote does not satisfy the requirement — the Azure analogue of GitHub's required non-author approval. On a single-maintainer repo, see RAILS.md 'Solo-repo accommodation' (bypass via the 'Bypass policies when completing pull requests' permission)."
+  },
+
+  "required_reviewers": [
+    {
+      "reviewerIds": ["<<CODE_OWNER>>"],
+      "pathFilters": [
+        "/.azuredevops",
+        "*/Auth/*",
+        "*/Identity/*",
+        "*/Security/*",
+        "*/Migrations/*",
+        "/infra"
+      ],
+      "message": "Code-owner review required on gated paths (the CODEOWNERS analogue). Keep in sync with the <<GATED_PATHS>> regex in security.yml and the security rubric.",
+      "note": "<<CODE_OWNER>> — a user or group descriptor/email. Azure required-reviewer policy is the CODEOWNERS analogue; path filters mirror the gated-path regex."
+    }
+  ]
+}

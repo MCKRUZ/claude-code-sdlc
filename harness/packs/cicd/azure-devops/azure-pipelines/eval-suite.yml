@@ -1,0 +1,97 @@
+# =============================================================================
+# Eval SUITE — full benchmark, periodic (manual + scheduled)
+# =============================================================================
+# The LARGE suite: runs the whole golden set for a quality signal and trend tracking. Distinct from
+# eval-regression.yml — this one does NOT gate PRs. It is the slow, comprehensive counterpart: complete
+# coverage, JUnit output, advisory rather than blocking.
+#
+# Cost: every llm_rubric case hits the configured judge model. Off by default. Opt a repo in by setting
+# the pipeline variable EVAL_ENABLED = true (Pipeline → Edit → Variables), which the schedule condition
+# below checks. Manual runs (the "Run pipeline" button) are always available.
+#
+# <PLACEHOLDER> commands must be wired to your eval runner. Flags shown are the contract; adapt names.
+# =============================================================================
+
+trigger: none
+pr: none
+
+# Manual runs are always available (Run pipeline). The schedule fires daily; the job condition gates it on
+# EVAL_ENABLED so a repo that hasn't opted in pays nothing.
+schedules:
+  - cron: '0 6 * * *'            # daily 06:00 UTC
+    displayName: 'Daily full benchmark'
+    branches:
+      include:
+        - main
+    always: true                 # run even with no code change; the job condition enforces opt-in
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+parameters:
+  - name: datasetGlob
+    displayName: 'Glob of golden sets to run'
+    type: string
+    default: 'eval-datasets/specs/**/golden-set.yaml'
+  - name: trials
+    displayName: 'Trials per case (track variance)'
+    type: string
+    default: '3'
+  - name: failRate
+    displayName: 'Max acceptable failure fraction (0.0-1.0)'
+    type: string
+    default: '0.10'
+
+variables:
+  - group: <<VARIABLE_GROUP>>     # exposes EVAL_LLM_API_KEY
+  - name: DOTNET_NOLOGO
+    value: 'true'
+  - name: DOTNET_CLI_TELEMETRY_OPTOUT
+    value: 'true'
+
+jobs:
+  - job: benchmark
+    displayName: 'Run full benchmark suite'
+    # Skip scheduled runs unless the repo opts in; manual runs always proceed.
+    condition: or(eq(variables['Build.Reason'], 'Manual'), eq(variables['EVAL_ENABLED'], 'true'))
+    steps:
+      - checkout: self
+
+      - bash: echo "TODO install the eval-runner toolchain"
+        displayName: 'Setup runtime'   # <PLACEHOLDER>
+
+      - bash: |
+          set -euo pipefail
+          # Validate inputs before passing to the shell or the runner (untrusted parameter values).
+          if ! [[ "$TRIALS_INPUT" =~ ^[0-9]+$ ]]; then echo "Invalid trials: $TRIALS_INPUT" >&2; exit 2; fi
+          if ! [[ "$FAIL_RATE_INPUT" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then echo "Invalid fail-rate: $FAIL_RATE_INPUT" >&2; exit 2; fi
+
+          mapfile -t DATASETS < <(compgen -G "$DATASET_GLOB" || true)
+          if [ "${#DATASETS[@]}" -eq 0 ]; then echo "No golden sets matched glob: $DATASET_GLOB" >&2; exit 2; fi
+
+          # <PLACEHOLDER> One run, both outputs (JUnit for CI views, JSON for a dashboard) — no double LLM cost.
+          #   eval-runner "${DATASETS[@]}" --trials "$TRIALS_INPUT" --isolate clean-per-trial --parallel 4 \
+          #     --fail-rate "$FAIL_RATE_INPUT" --out junit:eval-results.junit.xml --out json:eval-results.json
+          echo "TODO: invoke eval-runner over: ${DATASETS[*]}"
+        displayName: 'Run full benchmark (JUnit + JSON)'
+        env:
+          EVAL_LLM_API_KEY: $(EVAL_LLM_API_KEY)
+          # Route untrusted parameter inputs through env to avoid shell injection via crafted values.
+          DATASET_GLOB: ${{ parameters.datasetGlob }}
+          TRIALS_INPUT: ${{ parameters.trials }}
+          FAIL_RATE_INPUT: ${{ parameters.failRate }}
+
+      - task: PublishTestResults@2
+        displayName: 'Publish JUnit results'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: 'eval-results.junit.xml'
+          failTaskOnFailedTests: false
+
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish JSON report'
+        condition: always()
+        inputs:
+          targetPath: 'eval-results.json'
+          artifact: 'eval-results-json'

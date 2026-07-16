@@ -1,0 +1,101 @@
+# CI rail (the-rails.md §3): build + test + lint + coverage — the mechanical, deterministic gate.
+# HARD BLOCK. Nothing here calls an LLM; it answers only what a machine can answer definitively (does it
+# compile, do the tests pass, is coverage met). Consumes the stack pack's ci-profile.yaml via the
+# templates below (UseDotNet@2 + the restore/build/test commands) — no stack commands are hard-coded as
+# policy in this file.
+#
+# HOW IT BLOCKS ON AZURE: for Azure Repos, `pr:` YAML triggers are ignored — PR runs are driven by a
+# **build validation branch policy**. scripts/configure-branch-policies.sh registers this pipeline
+# ("build-and-test") as a REQUIRED (blocking) build validation on the protected branch; a red run there
+# is what stops the merge. It also runs on push to the protected branch (the `trigger:` below) to feed
+# deploy-dev.
+#
+# ── PLACEHOLDERS (adapt per repo, then delete this block) ──────────────────────
+#   <<DEFAULT_BRANCH>>          protected branch (reference: main).
+#   <<VARIABLE_GROUP>>          variable group (ideally Key-Vault-backed) — only needed if you keep the
+#                               eval-gate stage or wire secrets; the mechanical stage needs none.
+#   <<SOLUTION_OR_PROJECT>>     path passed to the dotnet-restore-build-test template.
+#   <<COVERAGE_THRESHOLD>>      the standard's 80% floor (default carried by the template).
+#   <<SERVICE_PROVISIONING>>    a `services`/sidecar container + schema/seed if integration tests need a
+#                               DB/cache/broker. Azure Pipelines runs service containers differently from
+#                               GitHub; the reference shows a Postgres sidecar. DELETE if not needed.
+#   <<EVAL_TEST_PROJECT>> / <<EVAL_FILTER>>  the optional agentic eval-fixture hard gate. Keep only if you
+#                               ship agent behavior that must not regress; else delete the eval-gate stage.
+# ───────────────────────────────────────────────────────────────────────────────
+
+trigger:
+  branches:
+    include:
+      - main                    # <<DEFAULT_BRANCH>> — push builds feed deploy-dev; PR builds come from the branch policy
+pr: none                        # Azure Repos PR runs are driven by the build-validation policy, not by `pr:`
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+  - stage: build_and_test
+    displayName: 'build-and-test'   # <-- register this pipeline as a REQUIRED build validation policy
+    jobs:
+      - job: build_and_test
+        displayName: 'build-and-test'
+        # <<SERVICE_PROVISIONING>> — Azure Pipelines can run sidecar service containers on a container job.
+        # The reference shows Postgres. DELETE this `services:`/schema step pairing if not needed.
+        # services:
+        #   database: postgres16
+        # container: {}   # a container job is required to attach `services`; see RAILS.md.
+        variables:
+          # Setting this both points tests at the service AND (by convention) makes the fixture fail hard
+          # on a bad connection rather than skip. <<SERVICE_PROVISIONING>>
+          TEST_DB_CONN: 'Host=localhost;Port=5432;Database=appdb;Username=appdb;Password=appdb'
+        steps:
+          - template: templates/use-dotnet.yml              # «UseDotNet@2» — ci-profile.toolchain
+
+          # <<SERVICE_PROVISIONING>> — apply schema/seed once the service is healthy. Service containers do
+          # not run an image's init scripts. DELETE if no external service.
+          # - bash: |
+          #     set -euo pipefail
+          #     for f in db/init/*.sql; do
+          #       PGPASSWORD=appdb psql -h localhost -p 5432 -U appdb -d appdb -v ON_ERROR_STOP=1 -f "$f"
+          #     done
+          #   displayName: 'Apply database schema'
+
+          - template: templates/dotnet-restore-build-test.yml   # ci-profile.commands + coverage.floor_percent
+            parameters:
+              solution: '<<SOLUTION_OR_PROJECT>>'
+              coverageThreshold: '80'                       # <<COVERAGE_THRESHOLD>>
+
+  # ── OPTIONAL: eval-gate ─────────────────────────────────────────────────────────
+  # A second HARD gate for repos that ship agentic behavior with an eval-fixture suite that must not
+  # regress (the source repo's "OWASP Agentic Top-10 Gate"). Realized from ci-profile.eval_gate. Any
+  # failing fixture exits non-zero and BLOCKS the merge. A legitimate, time-boxed bypass is RECORDED in a
+  # ledger (the gate still runs; the ledger documents why a known failure was accepted).
+  # DELETE this whole stage if you have no such suite. If you keep it, register it as a REQUIRED build
+  # validation policy too (branch-policies.json).
+  - stage: eval_gate
+    displayName: 'eval-gate'
+    dependsOn: build_and_test
+    condition: succeeded()
+    jobs:
+      - job: eval_gate
+        displayName: 'eval-gate'
+        steps:
+          - template: templates/use-dotnet.yml
+          - script: dotnet restore <<SOLUTION_OR_PROJECT>>
+            displayName: 'Restore'
+          - script: dotnet build <<SOLUTION_OR_PROJECT>> --no-restore --configuration Release
+            displayName: 'Build'
+          - script: >
+              dotnet test <<EVAL_TEST_PROJECT>>
+              --no-build
+              --configuration Release
+              --filter "<<EVAL_FILTER>>"
+              --logger "trx;LogFileName=eval-gate.trx"
+              --results-directory $(Agent.TempDirectory)/eval-results
+            displayName: 'Run eval fixtures (hard gate)'
+            # «stack pack: ci-profile.eval_gate.test_filter»  ->  Category=OwaspAgentic (reference)
+          - task: PublishPipelineArtifact@1
+            displayName: 'Upload eval results'
+            condition: always()
+            inputs:
+              targetPath: '$(Agent.TempDirectory)/eval-results'
+              artifact: 'eval-gate-results'

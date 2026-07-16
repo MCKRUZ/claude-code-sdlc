@@ -1,0 +1,114 @@
+# ⚠️ STARTER PIPELINE — adapt before relying on it. ⚠️
+# The source harness deferred deploy/promotion entirely, so this is BUILT FRESH to the standard's §5
+# rules. It encodes the PRINCIPLES correctly; the actual deploy and rollback steps are placeholders you
+# MUST wire to your platform and then REHEARSE (deploy → roll back → redeploy) before trusting it.
+#
+# Two §5 rules are baked into the structure — do not undo them when adapting:
+#
+#   1. PROMOTE THE ARTIFACT; NEVER REBUILD IT. This pipeline runs no build. It downloads the EXACT
+#      artifact CI already built and tested for this commit and ships that. That is why it triggers off a
+#      SUCCESSFUL CI run (a `resources.pipelines` trigger — the Azure analogue of GitHub's
+#      workflow_run) and `download:`s from that run, not a fresh compile.
+#
+#   2. A ROLLBACK THAT HAS NEVER RUN IS A WISH. On a failed deploy or health check, the deployment
+#      strategy's `on.failure` RESTORES the last known-good version. That path is rehearsed deliberately
+#      in the §9 shakedown, not invented mid-incident.
+#
+# Merge → dev is automatic and has no human in the loop — the merge already cleared the merge bar, and
+# dev is the safe place for the rails to be exercised constantly. Promotion BEYOND dev is deliberate and
+# human-gated (Azure DevOps Environment approvals/checks) and is NOT this pipeline.
+#
+# ── PLACEHOLDERS (every one is adapt-per-repo) ─────────────────────────────────
+#   <<CI_PIPELINE_RESOURCE>>  the pipeline resource name (alias) for the CI pipeline.
+#   <<CI_PIPELINE_NAME>>      the CI pipeline's name in this project (must match exactly).
+#   <<DEFAULT_BRANCH>>        the protected branch whose successful CI promotes (reference: main).
+#   <<ARTIFACT_NAME>>         the deployable artifact CI published (CI must publish the deployable package,
+#                             not just coverage).
+#   <<DEV_ENVIRONMENT>>       the Azure DevOps Environment name (reference: dev) — attach approvals/checks
+#                             and env secrets to it.
+#   <<DEPLOY_STEP>> / <<HEALTH_CHECK>> / <<CAPTURE_LAST_GOOD>> / <<RESTORE_LAST_GOOD>>  the real deploy,
+#                             health probe, live-version capture, and rollback for your platform.
+# ───────────────────────────────────────────────────────────────────────────────
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# Promote the proven bytes: fire on a SUCCESSFUL CI run (the workflow_run analogue).
+resources:
+  pipelines:
+    - pipeline: ci                # <<CI_PIPELINE_RESOURCE>>
+      source: 'CI'                # <<CI_PIPELINE_NAME>> — must match the CI pipeline's name exactly
+      trigger:
+        branches:
+          include:
+            - main                # <<DEFAULT_BRANCH>> — only a successful CI run on the protected branch promotes
+
+jobs:
+  - deployment: deploy_dev
+    displayName: 'deploy-dev'
+    environment: 'dev'            # <<DEV_ENVIRONMENT>>
+    # Only promote a SUCCESSFUL CI run on the protected branch. A CI run on a PR branch must never deploy.
+    # A pipeline-resource completion trigger fires on a SUCCESSFUL source run by default (Azure DevOps), so
+    # this condition only has to pin the branch — the trigger already pins "succeeded". The
+    # `resources.pipeline.ci.sourceBranch` variable is populated from the TRIGGERING CI run.
+    condition: eq(variables['resources.pipeline.ci.sourceBranch'], 'refs/heads/main')
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            # ── Promote, never rebuild: fetch the artifact CI already produced, from the TRIGGERING run.
+            - download: ci                 # <<CI_PIPELINE_RESOURCE>>
+              artifact: '<<ARTIFACT_NAME>>' # the proven bytes CI published (CI must publish a deployable, not just coverage)
+              displayName: 'Download the CI-built artifact'
+
+            # ── Record the current live version so we can put it back on failure.
+            - bash: |
+                set -euo pipefail
+                # <<CAPTURE_LAST_GOOD>> — record what is live in dev RIGHT NOW (slot name, current revision,
+                # deployed image tag, release id...). Emit it so the rollback step can read it. Reference
+                # (Azure Web App slot model):
+                #   PREV="$(az webapp deployment slot list ... --query '...' -o tsv)"
+                PREV="REPLACE_ME"
+                echo "##vso[task.setvariable variable=previousVersion]$PREV"
+                echo "Last known-good version: $PREV"
+              displayName: 'Capture last known-good version'
+
+            # ── Deploy the promoted artifact.
+            - bash: |
+                set -euo pipefail
+                # <<DEPLOY_STEP>> — ship $(Pipeline.Workspace)/ci/<<ARTIFACT_NAME>> (the promoted bytes) to dev.
+                # Replace with AzureWebApp@1 / AzureCLI@2 (`az deployment` / `az containerapp update`) /
+                # kubectl. Must exit non-zero on a failed deploy so on.failure fires.
+                echo "Deploying $(Pipeline.Workspace)/ci/<<ARTIFACT_NAME>> to dev..."
+                echo "##vso[task.logissue type=error]<<DEPLOY_STEP>> not yet wired — this starter intentionally fails until adapted."
+                exit 1
+              displayName: 'Deploy to dev'
+
+            # ── Prove the new version actually serves.
+            - bash: |
+                set -euo pipefail
+                # <<HEALTH_CHECK>> — hit the dev health endpoint and FAIL (non-zero) if the new version is not
+                # serving. The rollback trigger condition is written down HERE, in advance. Reference:
+                #   curl --fail --retry 5 --retry-delay 10 "https://<<DEV_URL>>/health"
+                echo "Health check placeholder — wire <<HEALTH_CHECK>>."
+              displayName: 'Health check'
+        # ── Rollback: restore the last known-good version on ANY failure above.
+        # A rollback that has never run is a wish. This path is REHEARSED in the §9 shakedown with a
+        # deliberately known-bad deploy, before it is ever needed live.
+        on:
+          failure:
+            steps:
+              - bash: |
+                  set -euo pipefail
+                  echo "##vso[task.logissue type=warning]Deploy or health check failed — restoring last known-good version: $(previousVersion)"
+                  # <<RESTORE_LAST_GOOD>> — put $(previousVersion) back (swap the slot back, route to the
+                  # previous revision, redeploy the previous image tag, roll back the release). Reference:
+                  #   az webapp deployment slot swap ...
+                  echo "Rollback placeholder — wire <<RESTORE_LAST_GOOD>>."
+                  # Keep the job RED so the failed promotion is visible even though service was restored — a
+                  # rolled-back deploy is still a deploy that did not land.
+                  exit 1
+                displayName: 'Restore last known-good version (rollback)'

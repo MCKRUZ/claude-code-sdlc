@@ -1,0 +1,140 @@
+# Step template: the common tail of every LLM rail — run Claude, post its verdict as a PR thread, and
+# (for the blocking rails) enforce the machine verdict fail-closed.
+#
+# The gate-specific SCOPE detection (changed-line anchors for grader/correctness, gated-path regex for
+# security, spec-file detection for grader) and the PROMPT are built by each gate pipeline and passed in.
+# This template reproduces the shared machinery the GitHub rails got from claude-code-action + the
+# workflow's enforce step:
+#   * run Claude with the rail's model / max-turns / allowed-tools           (run-claude-review.sh)
+#   * publish the verdict as a PR comment, updated in place on re-runs        (post-pr-thread.sh)
+#   * for blocking rails, read the verdict file written OUTSIDE the work tree and match the token as an
+#     EXACT first-line prefix — a buried or attacker-planted PASS cannot satisfy the gate (anti-tamper).
+#
+# Fail posture:
+#   grader (verdictToken: '')            -> advisory: run + post are continueOnError; the job succeeds
+#                                           regardless, so "the grader ran" is enforced, its verdict never
+#                                           blocks (fail SOFT).
+#   correctness / security (verdictToken set) -> the enforce step decides pass/fail and FAILS CLOSED: a
+#                                           gated change whose review could not produce a verdict BLOCKS.
+
+parameters:
+  - name: gateId
+    type: string                 # marker + thread id, e.g. grader / correctness-review / security-review
+  - name: displayName
+    type: string
+  - name: model
+    type: string                 # sonnet | opus
+  - name: maxTurns
+    type: string
+  - name: allowedTools
+    type: string                 # space-separated, e.g. "Bash Read Grep Glob"
+  - name: prompt
+    type: string                 # the full rail prompt, built by the gate pipeline
+  - name: reviewRequiredVar
+    type: string
+    default: 'reviewRequired'    # name of a pipeline variable ('true'/'false') gating whether Claude runs
+  - name: verdictToken
+    type: string
+    default: ''                  # '' = advisory grader; else CORRECTNESS_VERDICT / SECURITY_VERDICT
+  - name: verdictFile
+    type: string
+    default: ''                  # absolute path Claude writes the verdict to (outside the work tree)
+  - name: acceptedRiskLabel
+    type: string
+    default: ''                  # e.g. accepted-risk:correctness — audited PR label override (or '')
+
+steps:
+  # ── Anti-tamper: clear any verdict a PR may have COMMITTED into the tree, and any stale run output.
+  - ${{ if ne(parameters.verdictToken, '') }}:
+      - bash: |
+          set -euo pipefail
+          rm -f "${{ parameters.verdictFile }}" "$(Build.SourcesDirectory)/$(basename "${{ parameters.verdictFile }}")" || true
+        displayName: 'Reset verdict (${{ parameters.gateId }})'
+        condition: eq(variables['${{ parameters.reviewRequiredVar }}'], 'true')
+
+  # ── Run Claude (headless CLI — the Azure stand-in for claude-code-action).
+  - bash: |
+      set -euo pipefail
+      "$(Build.SourcesDirectory)/scripts/rails/run-claude-review.sh"
+    displayName: 'Run ${{ parameters.displayName }}'
+    condition: eq(variables['${{ parameters.reviewRequiredVar }}'], 'true')
+    continueOnError: true       # ENFORCE step (or job success, for the grader) decides the outcome
+    env:
+      PROMPT: ${{ parameters.prompt }}
+      MODEL: ${{ parameters.model }}
+      MAX_TURNS: ${{ parameters.maxTurns }}
+      ALLOWED_TOOLS: ${{ parameters.allowedTools }}
+      COMMENT_FILE: $(Agent.TempDirectory)/${{ parameters.gateId }}-comment.md
+      ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+
+  # ── Publish the verdict as a PR thread (the grader's "post a check-by-check verdict" behavior).
+  - bash: |
+      set -euo pipefail
+      [ -s "$(Agent.TempDirectory)/${{ parameters.gateId }}-comment.md" ] || {
+        echo "No comment body produced; skipping post."; exit 0; }
+      "$(Build.SourcesDirectory)/scripts/rails/post-pr-thread.sh"
+    displayName: 'Post PR thread (${{ parameters.gateId }})'
+    condition: eq(variables['${{ parameters.reviewRequiredVar }}'], 'true')
+    continueOnError: true       # posting must never add false red to a PR
+    env:
+      ORG_URL: $(System.CollectionUri)
+      PROJECT: $(System.TeamProject)
+      REPO_ID: $(Build.Repository.ID)
+      PR_ID: $(System.PullRequest.PullRequestId)
+      SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+      MARKER: ${{ parameters.gateId }}
+      COMMENT_FILE: $(Agent.TempDirectory)/${{ parameters.gateId }}-comment.md
+
+  # ── Enforce the machine verdict (blocking rails only) — FAIL CLOSED.
+  - ${{ if ne(parameters.verdictToken, '') }}:
+      - bash: |
+          set -euo pipefail
+          VERDICT_FILE="${{ parameters.verdictFile }}"
+          TOKEN="${{ parameters.verdictToken }}"
+          ACCEPTED_LABEL="${{ parameters.acceptedRiskLabel }}"
+
+          if [ ! -f "$VERDICT_FILE" ]; then
+            echo "##vso[task.logissue type=error]${{ parameters.displayName }} did not produce a verdict on a gated change. Failing closed."
+            echo "If ANTHROPIC_API_KEY is not yet configured, see RAILS.md."
+            exit 1
+          fi
+          echo "Verdict file:"; cat "$VERDICT_FILE"
+          FIRST="$(head -n1 "$VERDICT_FILE" || true)"
+
+          # Optional audited override: is the accepted-risk PR label present? (queried via REST)
+          HAS_ACCEPTED="false"
+          if [ -n "$ACCEPTED_LABEL" ]; then
+            BASE="${SYSTEM_COLLECTIONURI%/}/${SYSTEM_TEAMPROJECT}/_apis/git/repositories/${BUILD_REPOSITORY_ID}/pullRequests/${SYSTEM_PULLREQUEST_PULLREQUESTID}"
+            LABELS="$(curl -sf -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" "${BASE}/labels?api-version=7.1" || echo '{}')"
+            if printf '%s' "$LABELS" | jq -e --arg l "$ACCEPTED_LABEL" '.value[]? | select(.name == $l)' >/dev/null 2>&1; then
+              HAS_ACCEPTED="true"
+            fi
+          fi
+
+          case "$FIRST" in
+            "${TOKEN}: BLOCK"*)
+              if [ "$HAS_ACCEPTED" = "true" ]; then
+                echo "##vso[task.logissue type=warning]${{ parameters.displayName }} found a blocking issue, but the '${ACCEPTED_LABEL}' label records an audited accepted-risk override. The branch policy's required non-author approval still gates the merge."
+                exit 0
+              fi
+              echo "##vso[task.logissue type=error]${{ parameters.displayName }} found a blocking issue. Fix it${ACCEPTED_LABEL:+, or apply the '${ACCEPTED_LABEL}' PR label to record an audited override}."
+              exit 1 ;;
+            "${TOKEN}: PASS"*)
+              echo "${{ parameters.displayName }} passed (no blocking findings)."
+              exit 0 ;;
+            *)
+              echo "##vso[task.logissue type=error]Unrecognized verdict ('$FIRST'). Failing closed."
+              exit 1 ;;
+          esac
+        displayName: 'Enforce verdict (${{ parameters.gateId }})'
+        condition: eq(variables['${{ parameters.reviewRequiredVar }}'], 'true')
+        env:
+          SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+          SYSTEM_TEAMPROJECT: $(System.TeamProject)
+          BUILD_REPOSITORY_ID: $(Build.Repository.ID)
+          SYSTEM_PULLREQUEST_PULLREQUESTID: $(System.PullRequest.PullRequestId)
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+      - bash: echo "No review required — ${{ parameters.gateId }} passes trivially."
+        displayName: 'No review required (${{ parameters.gateId }})'
+        condition: ne(variables['${{ parameters.reviewRequiredVar }}'], 'true')

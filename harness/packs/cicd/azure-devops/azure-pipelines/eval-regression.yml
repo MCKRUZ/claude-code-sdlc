@@ -1,0 +1,106 @@
+# =============================================================================
+# Eval REGRESSION gate — per-PR, BLOCKING
+# =============================================================================
+# Delivery standard §11: prompts, model selections, and tool definitions are HIGH risk. Any change to
+# them is a spec whose acceptance is an eval-regression gate — degradation blocks the merge the same way
+# a failing test does.
+#
+# This pipeline runs the FAST regression suite on PRs that touch the HIGH-risk surface, scores per
+# metric, and EXITS NON-ZERO if any key metric drops below its floor or falls more than the trip-wire vs
+# the base branch. Register it as a REQUIRED build validation with the SAME path filters as the `paths`
+# list below (Azure Repos scopes PR builds via the policy's path filters, not the pipeline's `paths`).
+#
+# MATURITY FLAG: per-PR eval-regression gating is an EMERGING practice. REGRESSION_TRIPWIRE (0.03 = 3pp)
+# is a PRACTITIONER figure, NOT an Anthropic-published constant. Calibrate it to your measured run-to-run
+# variance before trusting it.
+#
+# Commands marked <PLACEHOLDER> must be wired to your eval runner. The flags shown are the contract this
+# gate expects; adapt names to your tool.
+# =============================================================================
+
+trigger: none
+# The `paths` here scope PUSH builds; for the PR gate, set the SAME filters on the build validation
+# policy (branch-policies.json). Only gate PRs that touch the HIGH-risk agentic surface.
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: <<VARIABLE_GROUP>>     # exposes EVAL_LLM_API_KEY
+  - name: REGRESSION_TRIPWIRE
+    value: '0.03'                 # max allowed per-metric drop vs base. PRACTITIONER figure (~3pp).
+  - name: MIN_TRIALS
+    value: '3'
+  - name: SUITE_TAG
+    value: 'regression'
+  - name: DOTNET_NOLOGO
+    value: 'true'
+  - name: DOTNET_CLI_TELEMETRY_OPTOUT
+    value: 'true'
+
+jobs:
+  - job: regression_gate
+    displayName: 'Fast eval-regression suite (blocking)'
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    steps:
+      - checkout: self
+        fetchDepth: 0             # need base history to score the baseline
+
+      - bash: |
+          BASE_REF="${SYSTEM_PULLREQUEST_TARGETBRANCHNAME:-main}"
+          git fetch --no-tags origin "$BASE_REF"
+          echo "##vso[task.setvariable variable=baseSha]$(git merge-base "origin/$BASE_REF" HEAD)"
+        displayName: 'Resolve baseline SHA'
+        env:
+          SYSTEM_PULLREQUEST_TARGETBRANCHNAME: $(System.PullRequest.TargetBranchName)
+
+      - bash: echo "TODO install the eval-runner toolchain"
+        displayName: 'Setup runtime'   # <PLACEHOLDER> UseDotNet@2 / UseNode@1 / UsePythonVersion@0
+
+      - bash: |
+          set -euo pipefail
+          git worktree add ../base "$(baseSha)"
+          # <PLACEHOLDER> run the fast suite against the BASE checkout:
+          #   eval-runner --suite "$SUITE_TAG" --path ../base/eval-datasets --trials "$MIN_TRIALS" \
+          #     --isolate clean-per-trial --out json:baseline-scores.json
+          echo "TODO: produce baseline-scores.json"
+        displayName: 'Score baseline (base branch)'
+        env:
+          EVAL_LLM_API_KEY: $(EVAL_LLM_API_KEY)
+
+      - bash: |
+          set -euo pipefail
+          # <PLACEHOLDER> run the fast suite against the PR checkout:
+          #   eval-runner --suite "$SUITE_TAG" --path ./eval-datasets --trials "$MIN_TRIALS" \
+          #     --isolate clean-per-trial --out json:head-scores.json --out junit:eval-regression.junit.xml
+          echo "TODO: produce head-scores.json + eval-regression.junit.xml"
+        displayName: 'Score PR head'
+        env:
+          EVAL_LLM_API_KEY: $(EVAL_LLM_API_KEY)
+
+      # THE GATE. Compare head vs baseline; exit non-zero on regression.
+      - bash: |
+          set -euo pipefail
+          # <PLACEHOLDER> eval-runner compare --baseline baseline-scores.json --head head-scores.json \
+          #   --tripwire "$REGRESSION_TRIPWIRE" --fail-on-regression
+          # The runner MUST exit non-zero when a key metric drops below its floor or by more than the
+          # trip-wire. This step's exit code is the gate.
+          echo "TODO: wire eval-runner compare; it must exit non-zero on regression."
+          exit 1   # fail-closed until wired — a stub gate must never report green.
+        displayName: 'Regression gate (blocks on degradation)'
+
+      - task: PublishTestResults@2
+        displayName: 'Publish scorecard (JUnit)'
+        condition: always()
+        inputs:
+          testResultsFormat: 'JUnit'
+          testResultsFiles: 'eval-regression.junit.xml'
+          failTaskOnFailedTests: false
+
+      - bash: |
+          # <PLACEHOLDER> render a head-vs-baseline per-metric table and post it as a PR comment thread via
+          # scripts/rails/post-pr-thread.sh, so the human checker sees WHICH metric moved, not just pass/fail.
+          echo "TODO render baseline-vs-head metric table and post as PR comment"
+        displayName: 'Comment per-metric scorecard on PR'
+        condition: always()

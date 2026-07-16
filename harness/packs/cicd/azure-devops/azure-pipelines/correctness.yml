@@ -1,0 +1,85 @@
+# Correctness rail (the-rails.md §3): a fresh agent — NOT the author, and separate from the grader —
+# hunts the changed lines for plain logic/correctness defects (off-by-ones, null paths, inverted
+# conditions). CI proves it compiles and existing tests pass; security covers exploitability; the grader
+# checks intent. None asks "is this code correct?" — this rail does.
+#
+# BLOCKS (like security, unlike the grader). It runs on every PR but SHORT-CIRCUITS to success when no
+# source changed, so it can be a REQUIRED build validation without leaving the merge stuck. When source
+# IS touched it runs the reviewer and FAILS on a high-confidence defect (CORRECTNESS_VERDICT: BLOCK)
+# unless a named human records the `accepted-risk:correctness` PR label (audited in the PR timeline).
+#
+# Fail-safe (FAIL CLOSED): a source change whose review cannot complete (e.g. missing ANTHROPIC_API_KEY
+# before go-live) BLOCKS rather than passes.
+#
+# ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
+#   <<DEFAULT_BRANCH>>   protected branch (reference: main).
+#   <<VARIABLE_GROUP>>   variable group exposing ANTHROPIC_API_KEY (ideally Key-Vault-backed).
+#   <<SOURCE_PATHS>>     pathspec(s) that count as compilable source (reference: src/).
+#   <<REVIEW_MODEL>>     reviewer model (reference: opus).
+#   <<RUBRIC_DIR>>       where the neutral rubrics were installed (reference: .azuredevops/rails/rubrics).
+# ───────────────────────────────────────────────────────────────────────────────
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: <<VARIABLE_GROUP>>
+  - name: RUBRIC_DIR
+    value: '.azuredevops/rails/rubrics'   # <<RUBRIC_DIR>>
+
+jobs:
+  - job: correctness_review
+    displayName: 'correctness-review'   # <-- required build validation context
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    steps:
+      - template: templates/checkout-with-base.yml
+
+      - task: UseNode@1
+        displayName: 'Setup Node (for the Claude CLI)'
+        inputs:
+          version: '20.x'
+
+      # Detect source changes and compute anchors. The anchor set IS the scope: if it is empty, no
+      # compilable source changed and review is not required. FAIL CLOSED if the helper itself errors.
+      - bash: |
+          set -euo pipefail
+          BASE_REF="$(baseRef)"
+          ANCHORS_FILE="$(Agent.TempDirectory)/correctness-anchors.txt"
+          if ! scripts/rails/diff-anchors.sh --base "$BASE_REF" -- 'src/' > "$ANCHORS_FILE"; then
+            echo "##vso[task.logissue type=error]Correctness review could not compute the changed-line scope (diff-anchors.sh failed). Failing closed."
+            exit 1
+          fi
+          echo "##vso[task.setvariable variable=anchorsFile]$ANCHORS_FILE"
+          echo "Changed-line anchors under source:"; cat "$ANCHORS_FILE" || true
+          if [ -s "$ANCHORS_FILE" ]; then
+            echo "##vso[task.setvariable variable=reviewRequired]true"
+            echo "Correctness review REQUIRED ($(grep -c . "$ANCHORS_FILE") changed-line range(s))."
+          else
+            echo "##vso[task.setvariable variable=reviewRequired]false"
+            echo "No source changed — correctness review not required."
+          fi
+        displayName: 'Detect source changes + compute anchors'   # <<SOURCE_PATHS>> — adapt 'src/'
+
+      - template: templates/claude-review.yml
+        parameters:
+          gateId: 'correctness-review'
+          displayName: 'correctness-review'
+          model: 'opus'                            # <<REVIEW_MODEL>>
+          maxTurns: '25'
+          allowedTools: 'Bash Read Grep Glob Write'
+          verdictToken: 'CORRECTNESS_VERDICT'
+          verdictFile: '$(Agent.TempDirectory)/correctness-verdict.txt'
+          acceptedRiskLabel: 'accepted-risk:correctness'
+          prompt: |
+            You are running as the correctness-reviewer for PR #$(System.PullRequest.PullRequestId).
+            Read the rubric at $(RUBRIC_DIR)/correctness.md and follow it exactly.
+            The changed-line anchor set is at $(anchorsFile) — review ONLY those lines and the code they
+            directly touch, and anchor every finding to a line from that file. The diff base is
+            origin/$(baseRef).
+            Write your findings as your FINAL message (the pipeline captures it and posts it as the PR
+            comment thread) AND write the machine verdict to the absolute path
+            $(Agent.TempDirectory)/correctness-verdict.txt (its first line must be exactly
+            "CORRECTNESS_VERDICT: PASS" or "CORRECTNESS_VERDICT: BLOCK").

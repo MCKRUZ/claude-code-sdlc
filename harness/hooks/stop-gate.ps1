@@ -27,10 +27,11 @@
 #   * Never wedges the session on missing tooling: if dotnet is absent it warns and
 #     allows the stop rather than trapping the agent.
 #
-# CONTRACT (verified, do not change):
-#   * Block: write top-level JSON {"decision":"block","reason":"..."} to stdout AND
-#     `exit 2`. `exit 1` is silently IGNORED by Claude Code. `hookSpecificOutput` is
-#     INVALID on Stop hooks and silently drops the block — never use it here.
+# CONTRACT (verified against https://code.claude.com/docs/en/hooks, 2026-07-15):
+#   * Block: write top-level JSON {"decision":"block","reason":"..."} to stdout and
+#     `exit 0`. JSON output is only parsed on exit 0; `reason` is fed back to the agent.
+#     (`exit 2` also blocks, but then stdout is IGNORED and only stderr is surfaced —
+#     a stdout JSON reason would be silently dropped. `exit 1` is a non-blocking error.)
 #   * Allow: emit nothing and `exit 0`.
 #   * `reason` is the ONLY text surfaced back to the model — make it actionable.
 
@@ -47,7 +48,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 function Allow { exit 0 }
 function Block([string]$reason) {
   @{ decision = 'block'; reason = $reason } | ConvertTo-Json -Compress
-  exit 2
+  exit 0
 }
 
 # --- Read the Stop event payload from stdin.

@@ -1,0 +1,147 @@
+name: Deploy Dev
+
+# ⚠️ STARTER WORKFLOW — adapt before relying on it. ⚠️
+# The source harness deferred deploy/promotion entirely (no cloud environment existed
+# yet), so this file is BUILT FRESH to the standard's §5 rules. It is a skeleton that
+# encodes the PRINCIPLES correctly; the actual deploy and rollback steps are
+# placeholders you MUST wire to your client's platform and then REHEARSE (deploy →
+# roll back → redeploy) in a real environment before trusting it (the-rails.md §5, §9).
+#
+# ── PACK NOTE (github CI/CD pack) ──────────────────────────────────────────────
+# NO stack seam. Per §5 this workflow does NOT build — it PROMOTES the exact artifact
+# CI already built, so no ci-profile command is consumed here. Its placeholders
+# (<<ARTIFACT_NAME>>, <<DEPLOY_STEP>>, <<HEALTH_CHECK>>, <<CAPTURE/RESTORE_LAST_GOOD>>,
+# <<DEV_ENVIRONMENT>>) are deploy-platform/repo level, not stack level.
+# <<CI_WORKFLOW_NAME>> must equal THIS pack's ci.yml `name:` ("CI").
+#
+# Two §5 rules are baked into the structure here — do not undo them when adapting:
+#
+#   1. PROMOTE THE ARTIFACT; NEVER REBUILD IT. This workflow does NOT run a build.
+#      It downloads the EXACT artifact that CI already built and tested for this
+#      commit, and ships that. A rebuilt artifact is something no environment ever
+#      verified. That is why the trigger is `workflow_run` on a SUCCESSFUL CI run:
+#      we deploy the proven bytes, not a fresh compile.
+#
+#   2. A ROLLBACK THAT HAS NEVER RUN IS A WISH. On a failed deploy or a failed
+#      post-deploy health check, this workflow RESTORES the last known-good version.
+#      The restore path is rehearsed deliberately in §9's shakedown (a known-bad
+#      deploy must be caught and rolled back), not invented mid-incident.
+#
+# Merge → dev is automatic and has no human in the loop — the merge already cleared
+# the merge bar, and dev is the safe place for the rails to be exercised constantly.
+# Promotion BEYOND dev (dev→test, test→prod) is deliberate and human-gated; it is NOT
+# this workflow (the-rails.md §5).
+#
+# ── PLACEHOLDERS (every one is adapt-per-client) ───────────────────────────────
+#   <<CI_WORKFLOW_NAME>>   The `name:` of the CI workflow whose success triggers this
+#                          (reference: "CI", from ci.yml). Must match exactly.
+#   <<ARTIFACT_NAME>>      The build artifact CI uploaded that this deploys (CI must
+#                          upload the deployable package, not just coverage).
+#   <<DEPLOY_STEP>>        The real deploy: azure/webapps-deploy@v3, `az deployment
+#                          group create`, `az containerapp update`, kubectl, etc.
+#   <<HEALTH_CHECK>>       How you confirm the new version is actually serving.
+#   <<CAPTURE_LAST_GOOD>> / <<RESTORE_LAST_GOOD>>
+#                          How you record the currently-live version BEFORE deploy and
+#                          put it back on failure (deployment slot swap, previous
+#                          revision, image tag, release rollback...).
+#   <<DEV_ENVIRONMENT>>    The GitHub Environment name (reference: dev) — attach env
+#                          secrets / protection rules to it.
+# ───────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_run:
+    workflows: ["CI"]            # <<CI_WORKFLOW_NAME>>
+    types: [completed]
+
+# Least privilege. `actions: read` lets us pull the artifact from the triggering run.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  # One deploy to dev at a time; a newer merge supersedes an in-flight deploy.
+  group: deploy-dev
+  cancel-in-progress: false
+
+jobs:
+  deploy-dev:
+    name: deploy-dev
+    runs-on: ubuntu-latest
+    environment: dev             # <<DEV_ENVIRONMENT>>
+    # Promote ONLY a successful CI run on the default branch. A failed CI run, or a
+    # CI run on a PR branch, must never deploy. This is the gate that keeps us
+    # promoting proven bytes.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+
+    steps:
+      - name: Checkout (deploy scripts only — NOT for building)
+        uses: actions/checkout@v4
+
+      # ── Promote, never rebuild: fetch the artifact CI already produced ──────────
+      - name: Download the CI-built artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: <<ARTIFACT_NAME>>
+          path: ./artifact
+          # Pull from the triggering CI run, not this run — these are the proven bytes.
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+
+      # ── Record the current live version so we can put it back on failure ────────
+      - name: Capture last known-good version
+        id: lastgood
+        run: |
+          set -euo pipefail
+          # <<CAPTURE_LAST_GOOD>> — record what is live in dev RIGHT NOW (slot name,
+          # current revision id, deployed image tag, release id...). Emit it as an
+          # output the rollback step reads. Reference example (Azure slot model):
+          #   PREV="$(az webapp deployment slot list ... --query '...' -o tsv)"
+          PREV="REPLACE_ME"
+          echo "previous=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Last known-good version: ${PREV}"
+
+      # ── Deploy the promoted artifact ────────────────────────────────────────────
+      - name: Deploy to dev
+        id: deploy
+        run: |
+          set -euo pipefail
+          # <<DEPLOY_STEP>> — ship ./artifact (the promoted bytes) to <<DEV_ENVIRONMENT>>.
+          # Replace with azure/webapps-deploy@v3 (as a `uses:` step) or an `az` /
+          # kubectl / release command. Must exit non-zero on a failed deploy so the
+          # rollback below fires.
+          echo "Deploying ./artifact to dev..."
+          echo "::error::<<DEPLOY_STEP>> not yet wired — this starter intentionally fails until adapted."
+          exit 1
+
+      # ── Prove the new version actually serves ───────────────────────────────────
+      - name: Health check
+        id: health
+        run: |
+          set -euo pipefail
+          # <<HEALTH_CHECK>> — hit the dev health endpoint and FAIL (non-zero) if the
+          # new version is not serving. The rollback trigger condition ("roll back if
+          # X") is written down HERE, in advance — not invented during an incident.
+          # Reference:
+          #   curl --fail --retry 5 --retry-delay 10 "https://<<DEV_URL>>/health"
+          echo "Health check placeholder — wire <<HEALTH_CHECK>>."
+
+      # ── Rollback: restore the last known-good version on any failure above ───────
+      # A rollback that has never run is a wish. This path is REHEARSED in the §9
+      # shakedown with a deliberately known-bad deploy, before it is ever needed live.
+      - name: Restore last known-good version (rollback)
+        if: failure()
+        env:
+          PREVIOUS: ${{ steps.lastgood.outputs.previous }}
+        run: |
+          set -euo pipefail
+          echo "::warning::Deploy or health check failed — restoring last known-good version: ${PREVIOUS}"
+          # <<RESTORE_LAST_GOOD>> — put ${PREVIOUS} back (swap the slot back, route to
+          # the previous revision, redeploy the previous image tag, roll back the
+          # release). Must restore service to the proven prior version. Reference:
+          #   az webapp deployment slot swap ...   # swap the good slot back in
+          echo "Rollback placeholder — wire <<RESTORE_LAST_GOOD>>."
+          # Keep the job RED so the failed promotion is visible even though service
+          # was restored — a rolled-back deploy is still a deploy that did not land.
+          exit 1

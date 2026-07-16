@@ -1,0 +1,14 @@
+# .gitnexusignore — paths GitNexus skips when it indexes the repo (like .gitignore, for the graph).
+# Curated default; tune per repo. Excluding build output and vendored code keeps the index focused
+# on YOUR source and makes impact analysis accurate.
+**/dist/
+**/build/
+**/node_modules/
+**/bin/
+**/obj/
+**/.vs/
+**/.vscode/
+**/TestResults/
+**/coverage/
+**/*.min.js
+**/*.map

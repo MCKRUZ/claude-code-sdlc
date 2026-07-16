@@ -1,0 +1,37 @@
+# .NET CI command profile — the interface a CI/CD pack consumes.
+#
+# A CI/CD pack (packs/cicd/github, packs/cicd/azure-devops) reads these values and realizes them
+# into its platform's pipeline syntax. The repo fills {{SOLUTION_OR_PROJECT}} during Phase 3
+# adaptation. Values here are the .NET reference commands, harvested from a realized .NET pipeline
+# (see HARVEST.md) and aligned to the standard's 80% coverage floor.
+
+toolchain:
+  # github → actions/setup-dotnet ; azure-devops → UseDotNet@2 (the CI/CD pack maps this)
+  id: dotnet
+  version: "10.x"
+
+solution: "{{SOLUTION_OR_PROJECT}}"   # e.g. src/YourApp.slnx — repo adaptation fills this
+
+commands:
+  restore: dotnet restore {{SOLUTION_OR_PROJECT}}
+  build:   dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --configuration Release
+  test:    >-
+    dotnet test {{SOLUTION_OR_PROJECT}}
+    --no-build --configuration Release
+    --collect:"XPlat Code Coverage" --results-directory coverage
+  lint:    dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes
+
+coverage:
+  floor_percent: 80        # the standard's floor; enforce in the runner so a miss is a non-zero exit
+  tool: coverlet           # threshold via coverlet args, not a report the pipeline reads and ignores
+
+# Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
+# Realized by the CI/CD pack as an extra job. Filter/convention harvested from the reference repo.
+eval_gate:
+  enabled: false
+  test_filter: "Category=OwaspAgentic"
+
+# Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
+session_health:
+  command: dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --verbosity quiet
+  timeout_seconds: 120

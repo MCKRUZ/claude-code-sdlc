@@ -1,0 +1,166 @@
+name: Correctness Review
+
+# The correctness rail (the-rails.md §3): a fresh agent — NOT the author, and
+# separate from the grader — hunts the changed lines for plain logic/correctness
+# defects (off-by-ones, null paths, inverted conditions). The bug class the other
+# rails miss: CI proves it compiles and existing tests pass; security covers
+# exploitability; the grader checks intent. None asks "is this code correct?" — this
+# rail does.
+#
+# ── PACK NOTE (github CI/CD pack) ──────────────────────────────────────────────
+# NO stack seam. This rail runs no build/test commands; it diffs source and calls
+# Claude. Nothing here is sourced from ci-profile.yaml; the LLM invocation
+# (anthropics/claude-code-action@v1 + prompt/claude_args) is carried VERBATIM from
+# the core workflow. Its placeholders (<<SOURCE_PATHS>>, <<MODEL>>) are repo-level.
+#
+# Why this is a GATE (like security, unlike the grader):
+# A local review hook only fires for pushes made THROUGH the agent harness; a human
+# pushing from their own terminal gets no bug review. This job is the server-side
+# backstop — a rail that only holds when the well-behaved actor cooperates is not a
+# rail. It runs on every PR but SHORT-CIRCUITS to success when no source changed, so
+# it can be a required status check without leaving the merge stuck "pending". When
+# source IS touched it runs the reviewer and FAILS on a high-confidence defect
+# (CORRECTNESS_VERDICT: BLOCK) unless a named human records the
+# `accepted-risk:correctness` label.
+#
+# Fail-safe (FAIL CLOSED): a source change whose review cannot complete (e.g. missing
+# ANTHROPIC_API_KEY before go-live) BLOCKS rather than passes.
+#
+# ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
+#   <<SOURCE_PATHS>>   The pathspec(s) that count as compilable source for this repo
+#                      (reference: src/). A change under these triggers a real review;
+#                      anything else (docs, config) passes trivially.
+#   <<MODEL>>          Reviewer model (reference: opus).
+# ───────────────────────────────────────────────────────────────────────────────
+
+on:
+  pull_request:
+    # labeled/unlabeled are included so applying `accepted-risk:correctness` re-runs
+    # the gate and unblocks the merge promptly. The verdict lives in the runner's temp
+    # dir and does not survive across runs, so a label change re-reviews from scratch
+    # rather than re-reading a cached verdict — an accepted token cost for a responsive
+    # override (concurrency below cancels any in-flight run).
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+
+# Least privilege: read the code, write a PR comment. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: correctness-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  correctness-review:
+    name: correctness-review      # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    # Skip drafts; they aren't ready for a verdict.
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect source changes and compute anchors
+        id: detect
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Full (non-shallow) fetch of the base so the merge-base exists; a
+          # --depth=1 fetch leaves no common ancestor and breaks the diff.
+          git fetch --no-tags origin "$BASE_REF"
+
+          # The anchor set IS the scope: compute the changed-line ranges under the
+          # source pathspec(s) once, with the same deterministic helper the grader
+          # uses. If it is empty, no compilable source changed and review is not
+          # required. <<SOURCE_PATHS>> — adapt 'src/' to your repo's source root(s).
+          ANCHORS_FILE="${RUNNER_TEMP}/correctness-anchors.txt"
+          if ! scripts/rails/diff-anchors.sh --base "$BASE_REF" -- 'src/' > "$ANCHORS_FILE"; then
+            echo "::error::Correctness review could not compute the changed-line scope (diff-anchors.sh failed). Failing closed."
+            exit 1
+          fi
+          echo "anchors_file=${ANCHORS_FILE}" >> "$GITHUB_OUTPUT"
+
+          echo "Changed-line anchors under source:"
+          cat "$ANCHORS_FILE" || true
+
+          if [ -s "$ANCHORS_FILE" ]; then
+            echo "review_required=true" >> "$GITHUB_OUTPUT"
+            echo "Correctness review REQUIRED ($(grep -c . "$ANCHORS_FILE") changed-line range(s))."
+          else
+            echo "review_required=false" >> "$GITHUB_OUTPUT"
+            echo "No source changed — correctness review not required."
+          fi
+
+      # Clear any verdict a PR may have COMMITTED into the tree. The verdict must come
+      # from THIS run, not from attacker-supplied content; we write/read it under the
+      # runner temp dir (OUTSIDE the workspace) so a committed correctness-verdict.txt
+      # can never satisfy the gate. (Anti-tamper.)
+      - name: Reset verdict
+        if: steps.detect.outputs.review_required == 'true'
+        run: rm -f "${{ runner.temp }}/correctness-verdict.txt" correctness-verdict.txt
+
+      - name: Run correctness-reviewer
+        if: steps.detect.outputs.review_required == 'true'
+        continue-on-error: true     # the ENFORCE step below decides pass/fail, fail-closed
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            You are running as the correctness-reviewer for PR #${{ github.event.pull_request.number }}.
+            Read the rubric at .github/profile/rubrics/correctness.md and follow it exactly.
+            The changed-line anchor set is at ${{ steps.detect.outputs.anchors_file }} —
+            review ONLY those lines and the code they directly touch, and anchor every finding
+            to a line from that file. The diff base is origin/${{ github.base_ref }}.
+            POST your findings as a PR comment AND write the machine verdict to the absolute
+            path ${{ runner.temp }}/correctness-verdict.txt (its first line must be exactly
+            "CORRECTNESS_VERDICT: PASS" or "CORRECTNESS_VERDICT: BLOCK").
+          claude_args: |
+            --model opus
+            --max-turns 25
+            --allowedTools Bash,Read,Grep,Glob,Write
+
+      - name: Enforce verdict (block on high-confidence defect)
+        if: steps.detect.outputs.review_required == 'true'
+        env:
+          VERDICT_FILE: ${{ runner.temp }}/correctness-verdict.txt
+          # The label is an AUDITED manual override (who applied it is in the PR
+          # timeline), NOT an authorization check — this step cannot reliably tell the
+          # applier from the author across every trigger type. The "a non-author signs
+          # off" guarantee is enforced by the branch ruleset's required non-author
+          # approval, which still gates the merge after this passes.
+          HAS_ACCEPTED_RISK: ${{ contains(github.event.pull_request.labels.*.name, 'accepted-risk:correctness') }}
+        run: |
+          set -euo pipefail
+          if [ ! -f "$VERDICT_FILE" ]; then
+            echo "::error::Correctness review did not produce a verdict on a source change. Failing closed."
+            echo "If ANTHROPIC_API_KEY / the Claude GitHub App are not yet configured, see RAILS.md."
+            exit 1
+          fi
+          echo "Verdict file:"; cat "$VERDICT_FILE"
+          # Exact prefix match on the FIRST line — a model that buries the token in
+          # prose, or text like "PASS (1 BLOCK pending)", must not pass.
+          FIRST="$(head -n1 "$VERDICT_FILE" || true)"
+          case "$FIRST" in
+            "CORRECTNESS_VERDICT: BLOCK"*)
+              if [ "$HAS_ACCEPTED_RISK" = "true" ]; then
+                echo "::warning::Correctness review found a high-confidence defect, but the 'accepted-risk:correctness' label records an accepted-risk override (audited in the PR timeline). The branch ruleset's required non-author approval still gates the merge."
+                exit 0
+              fi
+              echo "::error::Correctness review found a high-confidence defect. Fix it, or apply the 'accepted-risk:correctness' label to record an accepted-risk override (audited; the merge still needs the ruleset's non-author approval)."
+              exit 1 ;;
+            "CORRECTNESS_VERDICT: PASS"*)
+              echo "Correctness review passed (no blocking defects)."
+              exit 0 ;;
+            *)
+              echo "::error::Unrecognized correctness verdict ('$FIRST'). Failing closed."
+              exit 1 ;;
+          esac
+
+      - name: No review required
+        if: steps.detect.outputs.review_required != 'true'
+        run: echo "No source changed — correctness-review check passes trivially."

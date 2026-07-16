@@ -1,0 +1,140 @@
+name: Grader
+
+# The grader rail (the-rails.md §3): a fresh agent that did NOT write the change
+# reads it against its committed spec and posts a check-by-check verdict as a PR
+# comment.
+#
+# ── PACK NOTE (github CI/CD pack) ──────────────────────────────────────────────
+# NO stack seam. This rail runs no build/test commands — it calls Claude to read a
+# diff against a spec. Nothing here is sourced from ci-profile.yaml; the LLM
+# invocation (anthropics/claude-code-action@v1 + prompt/claude_args) is carried
+# VERBATIM from the core workflow. Its placeholders (<<DEFAULT_BRANCH>>, <<SPEC_DIR>>,
+# <<MODEL>>) are methodology/repo-level, not stack-level.
+#
+# ADVISES, never blocks. This workflow is REQUIRED TO RUN (add `grader` to the
+# branch ruleset's required checks so a PR can't merge until the grader has run),
+# but its VERDICT never gates the merge — "the grader ran" is what the methodology
+# requires; *what* it said is the human Checker's input, not a gate. The job always
+# concludes successfully; the Claude step is `continue-on-error` so a missing key or
+# a transient API failure never adds false red to a PR (fail-soft).
+#
+# Prerequisites to go live (see RAILS.md):
+#   * Claude GitHub App installed on the repo.
+#   * ANTHROPIC_API_KEY repository secret set.
+# Until then this workflow runs but the Claude step no-ops on the missing key.
+#
+# ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
+#   <<DEFAULT_BRANCH>>   Base branch (reference: main).
+#   <<SPEC_DIR>>         Directory holding committed spec files (reference: specs/).
+#   <<MODEL>>            Grader model (reference: sonnet).
+# ───────────────────────────────────────────────────────────────────────────────
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Least privilege: read the code, write a PR comment. Nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: grader-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  grade:
+    name: grader                  # <-- required-to-RUN status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    # Skip drafts; they aren't ready for a verdict.
+    if: github.event.pull_request.draft == false
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute changed-line anchors
+        id: anchors
+        # The grader NEVER adds red to a PR (it advises). Anchors are a best-effort
+        # aid: if the fetch hiccups or the helper exits non-zero, swallow it and let
+        # the grade step fall back to inspecting the diff directly.
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Full fetch of the base so the merge-base (and thus the diff) resolves.
+          git fetch --no-tags origin "$BASE_REF"
+          # Deterministic changed-line set, shared with the correctness rail, so the
+          # grader's evidence pins to exact lines instead of drifting prose.
+          ANCHORS_FILE="${RUNNER_TEMP}/grader-anchors.txt"
+          scripts/rails/diff-anchors.sh --base "$BASE_REF" > "$ANCHORS_FILE"
+          echo "anchors_file=${ANCHORS_FILE}" >> "$GITHUB_OUTPUT"
+          echo "Changed-line anchors:"; cat "$ANCHORS_FILE" || true
+
+      - name: Identify the committed spec file in this PR's diff
+        id: spec
+        # The spec is a FILE in the diff (the-rails.md: "one spec = one branch = one
+        # PR"; the spec file rides in the PR so the reviewer sees intent and
+        # implementation in one view). Find any specs/NNNN-*.md the PR adds or
+        # changes; that file is the authoritative intent. If the PR touches none,
+        # fall back to the PR description and flag it as a WARNING (advisory rail —
+        # never blocks). Best-effort: never fail the job here.
+        continue-on-error: true
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          SPEC_DIR: specs   # <<SPEC_DIR>>
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$BASE_REF"
+          BASE_SHA="$(git merge-base FETCH_HEAD HEAD)"
+          # New-or-modified spec files in this PR's diff (not deleted).
+          SPEC_FILES="$(git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- "${SPEC_DIR}/" \
+            | grep -E "^${SPEC_DIR}/[0-9]+.*\.md$" || true)"
+          if [ -n "$SPEC_FILES" ]; then
+            # If several, the lowest-numbered is the primary (one spec per PR is the
+            # norm; list the rest for the grader to consider).
+            PRIMARY="$(printf '%s\n' "$SPEC_FILES" | sort | head -n1)"
+            echo "spec_present=true" >> "$GITHUB_OUTPUT"
+            echo "spec_file=${PRIMARY}" >> "$GITHUB_OUTPUT"
+            echo "Spec file in diff: ${PRIMARY}"
+          else
+            echo "spec_present=false" >> "$GITHUB_OUTPUT"
+            echo "spec_file=" >> "$GITHUB_OUTPUT"
+            echo "::warning::No ${SPEC_DIR}/NNNN-*.md spec file found in this PR's diff. The grader will fall back to the PR description as the spec and note that a committed spec file is missing."
+          fi
+
+      - name: Grade the change against its spec
+        id: grade
+        continue-on-error: true     # fail-soft: never red on missing key / API hiccup
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          prompt: |
+            You are running as the grader for PR #${{ github.event.pull_request.number }}.
+            Read the grading rubric at .github/profile/rubrics/grader.md and follow it exactly.
+
+            THE SPEC — read this carefully:
+            - spec_present = "${{ steps.spec.outputs.spec_present }}"
+            - If spec_present is "true", the authoritative spec is the committed FILE
+              "${{ steps.spec.outputs.spec_file }}" — it is part of this PR's diff. Read
+              that file and grade the change against the acceptance criteria IN it. The PR
+              description and any linked issue are secondary context only.
+            - If spec_present is "false", NO committed spec file is in the diff. Fall back
+              to grading against the PR description and linked issue, and OPEN your verdict
+              with a clear warning that this PR has no committed spec file (a missing
+              specs/NNNN-*.md is itself a finding under this standard).
+
+            The changed-line anchor set is at ${{ steps.anchors.outputs.anchors_file }} —
+            cite a `path:line` from it as the evidence for each check, and treat it as the
+            authoritative list of what this PR changed.
+
+            Inspect the PR diff (the base is origin/${{ github.base_ref }}) and the changed
+            files, then POST your verdict as a single PR comment. Update the same comment on
+            re-runs rather than stacking new ones.
+          claude_args: |
+            --model sonnet
+            --max-turns 20
+            --allowedTools Bash,Read,Grep,Glob

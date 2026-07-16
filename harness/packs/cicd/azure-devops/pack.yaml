@@ -1,0 +1,72 @@
+# Azure DevOps CI/CD pack — manifest.
+# Realizes the core kit's rails (the-rails.md §3–§6) as Azure Pipelines, consuming the stack pack's
+# ci-profile.yaml (the SEAM). Read by the profile-aware installer to overlay this pack after the core
+# and after the chosen stack pack. Pair with any stack pack (dotnet, angular, python) — the technology
+# conventions live in the stack pack; only the pipeline platform changes here.
+
+pack:
+  id: azure-devops
+  axis: cicd
+  name: "Azure Pipelines rails (Azure DevOps / Azure Repos)"
+  version: "0.1.0"
+
+# What this pack provides to the composition: one pipeline per gate + shared step templates + the
+# branch-policy-as-code tooling that replaces GitHub branch protection.
+provides:
+  pipelines:
+    - azure-pipelines/ci.yml               # build-and-test (+ optional eval-gate stage) — BLOCKS
+    - azure-pipelines/grader.yml           # grader — ADVISES (required to RUN, verdict never blocks)
+    - azure-pipelines/correctness.yml      # correctness-review — BLOCKS on a high-confidence defect
+    - azure-pipelines/security.yml         # security-review — BLOCKS on HIGH
+    - azure-pipelines/deploy-dev.yml        # deployment job + environment + rollback (STARTER)
+    - azure-pipelines/eval-regression.yml  # per-PR eval-regression gate — BLOCKS
+    - azure-pipelines/eval-suite.yml       # full benchmark — manual + scheduled, ADVISORY
+  templates:
+    - azure-pipelines/templates/use-dotnet.yml            # UseDotNet@2 (consumes ci-profile.toolchain)
+    - azure-pipelines/templates/dotnet-restore-build-test.yml  # consumes ci-profile.commands
+    - azure-pipelines/templates/checkout-with-base.yml    # checkout + full base fetch for diff scope
+    - azure-pipelines/templates/claude-review.yml         # run Claude CLI → post PR thread → enforce
+  scripts:
+    - scripts/configure-branch-policies.sh  # branch-policy-as-code (analogue of apply-branch-protection.sh)
+    - scripts/run-claude-review.sh          # headless Claude Code CLI invocation (no action exists on ADO)
+    - scripts/post-pr-thread.sh             # POST/PATCH a PR thread via the ADO REST API
+  branch_policies: branch-policies/policies.json   # desired-state consumed by configure-branch-policies.sh
+
+# The SEAM. This pack REALIZES the stack pack's declared commands into Azure Pipelines syntax.
+# It does not know .NET; it knows how to run whatever ci-profile.yaml declares.
+consumes:
+  stack_ci_profile: ci-profile.yaml        # packs/stacks/<id>/ci-profile.yaml — toolchain + commands + coverage
+  # Neutral, platform-agnostic governance assets shared with the github pack. They are NOT re-authored
+  # here (the whole point of the two-axis model — governance content is neutral, only the platform
+  # realization changes). The core/profile layer installs them; this pack references the installed paths.
+  governance_rubrics:                       # kit/profile/rubrics/*.md
+    - grader.md
+    - correctness.md
+    - security.md
+  diff_anchors: diff-anchors.sh             # kit/profile/scripts/diff-anchors.sh — stack- and platform-neutral
+
+# Overlay map: pack-relative source -> repo destination in an Azure DevOps repo.
+# The installed pipeline prompts reference the `.azuredevops/...` and `scripts/rails/...` paths below;
+# adjust the overlay if the target repo's layout differs.
+overlays:
+  - { src: azure-pipelines/ci.yml,                              dest: .azuredevops/pipelines/ci.yml }
+  - { src: azure-pipelines/grader.yml,                          dest: .azuredevops/pipelines/grader.yml }
+  - { src: azure-pipelines/correctness.yml,                     dest: .azuredevops/pipelines/correctness.yml }
+  - { src: azure-pipelines/security.yml,                        dest: .azuredevops/pipelines/security.yml }
+  - { src: azure-pipelines/deploy-dev.yml,                      dest: .azuredevops/pipelines/deploy-dev.yml }
+  - { src: azure-pipelines/eval-regression.yml,                 dest: .azuredevops/pipelines/eval-regression.yml }
+  - { src: azure-pipelines/eval-suite.yml,                      dest: .azuredevops/pipelines/eval-suite.yml }
+  - { src: azure-pipelines/templates/use-dotnet.yml,            dest: .azuredevops/pipelines/templates/use-dotnet.yml }
+  - { src: azure-pipelines/templates/dotnet-restore-build-test.yml, dest: .azuredevops/pipelines/templates/dotnet-restore-build-test.yml }
+  - { src: azure-pipelines/templates/checkout-with-base.yml,    dest: .azuredevops/pipelines/templates/checkout-with-base.yml }
+  - { src: azure-pipelines/templates/claude-review.yml,         dest: .azuredevops/pipelines/templates/claude-review.yml }
+  - { src: scripts/configure-branch-policies.sh,                dest: scripts/rails/configure-branch-policies.sh }
+  - { src: scripts/run-claude-review.sh,                        dest: scripts/rails/run-claude-review.sh }
+  - { src: scripts/post-pr-thread.sh,                           dest: scripts/rails/post-pr-thread.sh }
+  - { src: branch-policies/policies.json,                       dest: .azuredevops/rails/branch-policies.json }
+  # Installed by the core/profile layer, referenced here (NOT shipped by this pack — see `consumes`):
+  #   scripts/rails/diff-anchors.sh          <- kit/profile/scripts/diff-anchors.sh
+  #   .azuredevops/rails/rubrics/{grader,correctness,security}.md  <- kit/profile/rubrics/*.md
+
+# Requires a stack pack to fill the command SEAM. Any of these satisfies it.
+requires_stack_pack: [dotnet, angular, python]

@@ -1,0 +1,24 @@
+# Step template: check out the PR head with FULL history and fetch the target branch.
+#
+# The LLM gates all need the merge-base with the target branch to compute a real diff. Azure's default
+# checkout is shallow (fetchDepth defaults to a shallow clone on many agents), and a --depth=1 fetch
+# leaves no common ancestor — exactly the failure diff-anchors.sh guards against. This template forces a
+# full checkout and fetches the PR target branch so `git merge-base` resolves.
+#
+# GitHub equivalent: `actions/checkout@v4 with: fetch-depth: 0` + `git fetch --no-tags origin "$BASE_REF"`.
+
+steps:
+  - checkout: self
+    fetchDepth: 0            # full history, so the merge-base with the target branch exists
+    persistCredentials: true
+
+  - bash: |
+      set -euo pipefail
+      # System.PullRequest.TargetBranchName is bare (e.g. "main"); TargetBranch is "refs/heads/main".
+      BASE_REF="${SYSTEM_PULLREQUEST_TARGETBRANCHNAME:-main}"   # «DEFAULT_BRANCH» fallback
+      echo "Fetching target branch: $BASE_REF"
+      git fetch --no-tags origin "$BASE_REF"
+      echo "##vso[task.setvariable variable=baseRef]$BASE_REF"
+    displayName: 'Fetch PR target branch (for diff scope)'
+    env:
+      SYSTEM_PULLREQUEST_TARGETBRANCHNAME: $(System.PullRequest.TargetBranchName)

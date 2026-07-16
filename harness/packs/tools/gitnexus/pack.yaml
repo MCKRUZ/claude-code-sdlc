@@ -1,0 +1,45 @@
+# GitNexus tools pack — manifest.
+# The THIRD pack axis: packs/tools/<id>. Unlike a stack or CI/CD pack (which OVERLAY realized
+# files), a tools pack integrates a self-installing third-party tool. GitNexus generates its own
+# footprint (agent skills, PreToolUse/PostToolUse hooks, the CLAUDE.md/AGENTS.md context blocks, and
+# the .gitnexus/ index) via `npx gitnexus analyze`, and registers its MCP server via
+# `npx gitnexus setup`. So this pack does NOT copy those — copying tool-generated files ships stale
+# content and never registers the MCP server. It ships only what the tool does NOT generate (a
+# curated .gitnexusignore) plus a SETUP guide, and the installer surfaces the manual setup step.
+#
+# Tools compose INDEPENDENTLY of the stack/CI axes and are MULTI-SELECT: a profile lists them
+# explicitly under `tools: [gitnexus, ...]` (the id IS the pack dir — no derivation).
+
+pack:
+  id: gitnexus
+  axis: tools
+  name: "GitNexus code intelligence"
+  version: "0.1.0"
+
+# What this pack contributes (the small static surface; the tool owns the rest).
+provides:
+  config: gitnexusignore          # curated index-ignore, lands as .gitnexusignore
+  setup_guide: SETUP.md           # the operator-run install steps
+
+# Overlay map: pack-relative source -> repo destination. Deliberately minimal — the tool generates
+# its skills, hooks, and CLAUDE.md/AGENTS.md blocks itself; we never copy those.
+overlays:
+  - { src: gitnexusignore, dest: .gitnexusignore }
+  - { src: SETUP.md,       dest: .claude/tools/gitnexus/SETUP.md }
+
+# Self-installing tool: the installer PRINTS these as a manual next step and does NOT run them
+# (install_harness.py stays a pure file composer — it never executes third-party binaries).
+setup:
+  summary: "GitNexus installs itself; run its setup + analyze after the harness install."
+  commands:
+    - "npx gitnexus setup -c claude   # register the MCP server (writes the global MCP config)"
+    - "npx gitnexus analyze           # index + install skills/hooks + generate CLAUDE.md/AGENTS.md blocks"
+    - "# restart Claude Code to load the gitnexus MCP server, then verify:  npx gitnexus status"
+  note: >
+    GitNexus generates its own skills, hooks, and CLAUDE.md/AGENTS.md context blocks (refreshed by
+    `analyze`, which a PostToolUse hook re-runs after commit/merge). Do NOT commit-and-copy those into
+    the kit — they go stale and carry one repo's index counts. The .gitnexus/ index is machine-local
+    and gitignored.
+
+# Tools compose on their own axis; no stack/CI pack is required to satisfy this pack.
+requires: {}

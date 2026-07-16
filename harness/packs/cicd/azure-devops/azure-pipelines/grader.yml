@@ -1,0 +1,102 @@
+# Grader rail (the-rails.md §3): a fresh agent that did NOT write the change reads it against its
+# committed spec and posts a check-by-check verdict as a PR comment thread.
+#
+# ADVISES, never blocks. On Azure this is a build-validation policy that is REQUIRED TO RUN but whose
+# pipeline always CONCLUDES SUCCESSFULLY (the Claude step is continueOnError; the job never fails). So
+# requiring it gates "did the grader run", never "what did it say" — the faithful analogue of GitHub
+# adding `grader` to required checks while the job always concludes success. Register it as a REQUIRED
+# build validation, or as a non-blocking one if you only want the advisory comment (see RAILS.md).
+#
+# Prerequisites to go live (RAILS.md): Node available on the agent; ANTHROPIC_API_KEY as a pipeline
+# secret (ideally Key-Vault-backed). Until then the Claude step no-ops on the missing key (fail-soft).
+#
+# ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
+#   <<DEFAULT_BRANCH>>   protected branch (reference: main).
+#   <<VARIABLE_GROUP>>   variable group exposing ANTHROPIC_API_KEY (ideally Key-Vault-backed).
+#   <<SPEC_DIR>>         directory holding committed spec files (reference: specs).
+#   <<GRADER_MODEL>>     grader model (reference: sonnet).
+#   <<RUBRIC_DIR>>       where the neutral rubrics were installed (reference: .azuredevops/rails/rubrics).
+# ───────────────────────────────────────────────────────────────────────────────
+
+trigger: none                   # runs only on PRs, via the build-validation branch policy
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: <<VARIABLE_GROUP>>   # exposes ANTHROPIC_API_KEY
+  - name: SPEC_DIR
+    value: 'specs'              # <<SPEC_DIR>>
+  - name: RUBRIC_DIR
+    value: '.azuredevops/rails/rubrics'   # <<RUBRIC_DIR>>
+
+jobs:
+  - job: grader
+    displayName: 'grader'       # <-- required-to-RUN build validation context
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    steps:
+      - template: templates/checkout-with-base.yml
+
+      - task: UseNode@1
+        displayName: 'Setup Node (for the Claude CLI)'
+        inputs:
+          version: '20.x'
+
+      # Scope: compute the changed-line anchor set (best-effort — the grader never adds red) and find the
+      # committed spec file in this PR's diff. Mirrors the GitHub grader's two prep steps.
+      - bash: |
+          set -euo pipefail
+          BASE_REF="$(baseRef)"
+          ANCHORS_FILE="$(Agent.TempDirectory)/grader-anchors.txt"
+          # Best-effort: swallow failure and let the grader fall back to inspecting the diff directly.
+          scripts/rails/diff-anchors.sh --base "$BASE_REF" > "$ANCHORS_FILE" || : > "$ANCHORS_FILE"
+          echo "##vso[task.setvariable variable=anchorsFile]$ANCHORS_FILE"
+          echo "Changed-line anchors:"; cat "$ANCHORS_FILE" || true
+
+          BASE_SHA="$(git merge-base "origin/$BASE_REF" HEAD)"
+          SPEC_FILES="$(git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- "$(SPEC_DIR)/" \
+            | grep -E "^$(SPEC_DIR)/[0-9]+.*\.md$" || true)"
+          if [ -n "$SPEC_FILES" ]; then
+            PRIMARY="$(printf '%s\n' "$SPEC_FILES" | sort | head -n1)"
+            echo "##vso[task.setvariable variable=specPresent]true"
+            echo "##vso[task.setvariable variable=specFile]$PRIMARY"
+            echo "Spec file in diff: $PRIMARY"
+          else
+            echo "##vso[task.setvariable variable=specPresent]false"
+            echo "##vso[task.setvariable variable=specFile]"
+            echo "##vso[task.logissue type=warning]No $(SPEC_DIR)/NNNN-*.md spec file in this PR's diff. The grader falls back to the PR description and notes the missing spec file."
+          fi
+        displayName: 'Compute anchors + identify committed spec'
+        continueOnError: true    # advisory rail — never fail the job here
+
+      - bash: echo "##vso[task.setvariable variable=reviewRequired]true"
+        displayName: 'Grader always reviews'
+
+      - template: templates/claude-review.yml
+        parameters:
+          gateId: 'grader'
+          displayName: 'grader'
+          model: 'sonnet'                          # <<GRADER_MODEL>>
+          maxTurns: '20'
+          allowedTools: 'Bash Read Grep Glob'
+          verdictToken: ''                         # advisory — no machine verdict, no enforce step
+          prompt: |
+            You are running as the grader for PR #$(System.PullRequest.PullRequestId).
+            Read the grading rubric at $(RUBRIC_DIR)/grader.md and follow it exactly.
+
+            THE SPEC — read this carefully:
+            - spec_present = "$(specPresent)"
+            - If spec_present is "true", the authoritative spec is the committed FILE "$(specFile)" — it is
+              part of this PR's diff. Read that file and grade the change against the acceptance criteria IN
+              it. The PR description and any linked work item are secondary context only.
+            - If spec_present is "false", NO committed spec file is in the diff. Fall back to grading against
+              the PR description and linked work item, and OPEN your verdict with a clear warning that this PR
+              has no committed spec file (a missing specs/NNNN-*.md is itself a finding under this standard).
+
+            The changed-line anchor set is at $(anchorsFile) — cite a `path:line` from it as the evidence for
+            each check, and treat it as the authoritative list of what this PR changed.
+
+            Inspect the PR diff (the base is origin/$(baseRef)) and the changed files, then write your
+            check-by-check verdict as your FINAL message. Do NOT attempt to post it yourself — the pipeline
+            captures your final message and posts it as the PR comment thread.

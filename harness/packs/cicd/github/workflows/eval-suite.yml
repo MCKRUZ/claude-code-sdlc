@@ -1,0 +1,131 @@
+# =============================================================================
+# Eval SUITE — full benchmark, periodic (manual + scheduled)
+# =============================================================================
+# The LARGE suite: runs the whole golden set for a quality signal and trend
+# tracking. Distinct from eval-regression.yml — this one does NOT gate PRs. It
+# is the slow, comprehensive counterpart: complete coverage, JUnit output,
+# advisory rather than blocking.
+#
+# ── PACK NOTE (github CI/CD pack) ────────────────────────────────────────────
+# Carried AS-IS from the core workflow. The only stack seam is the "Setup runtime"
+# step (marked «stack pack: ci-profile.toolchain»). The eval-runner commands/flags
+# are eval-tool specific, NOT stack specific, and stay as <PLACEHOLDER>. The DOTNET_*
+# env vars are the .NET reference default; a non-.NET stack drops them.
+#
+# Cost: every llm_rubric case hits the configured judge model. Off by default.
+# Opt a repo in: Settings -> Secrets and variables -> Actions -> Variables ->
+#   New repository variable -> EVAL_ENABLED = true
+#
+# Triggers:
+#   - workflow_dispatch : always available (manual "Run workflow" button)
+#   - schedule          : fires only when EVAL_ENABLED == "true"
+#
+# <PLACEHOLDER> commands must be wired to your eval runner. Flags shown
+# (--path, --suite, --trials, --out) are the contract; adapt names to your tool.
+# =============================================================================
+name: Eval Suite (full benchmark)
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_glob:
+        description: 'Glob of golden sets to run'
+        required: false
+        default: 'eval-datasets/specs/**/golden-set.yaml'
+      trials:
+        description: 'Trials per case for stability (track variance)'
+        required: false
+        default: '3'
+      fail_rate:
+        description: 'Max acceptable failure fraction for overall Pass (0.0-1.0)'
+        required: false
+        default: '0.10'
+  schedule:
+    # Daily 06:00 UTC. Only runs if the EVAL_ENABLED repo variable is "true".
+    - cron: '0 6 * * *'
+
+permissions:
+  contents: read
+  checks: write
+  actions: read
+
+concurrency:
+  group: eval-suite-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  benchmark:
+    name: Run full benchmark suite
+    runs-on: ubuntu-latest
+
+    # Skip non-dispatch runs unless the repo opts in.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.EVAL_ENABLED == 'true' }}
+
+    env:
+      DOTNET_NOLOGO: 'true'                 # «stack pack: ci-profile.toolchain» (.NET default env)
+      DOTNET_CLI_TELEMETRY_OPTOUT: 'true'   # «stack pack: ci-profile.toolchain» (.NET default env)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup runtime
+        # «stack pack: ci-profile.toolchain» — the github realization of the declared
+        # toolchain (dotnet → actions/setup-dotnet@v4 with dotnet-version 10.x).
+        # <PLACEHOLDER> install the eval-runner toolchain
+        run: echo "TODO install the eval-runner toolchain"
+
+      - name: Run full benchmark (JUnit + JSON)
+        env:
+          EVAL_LLM_API_KEY: ${{ secrets.EVAL_LLM_API_KEY }}
+          # Route untrusted workflow_dispatch inputs through env to avoid shell
+          # injection via crafted dataset_glob / trials / fail_rate.
+          DATASET_GLOB: ${{ github.event.inputs.dataset_glob || 'eval-datasets/specs/**/golden-set.yaml' }}
+          TRIALS_INPUT: ${{ github.event.inputs.trials || '3' }}
+          FAIL_RATE_INPUT: ${{ github.event.inputs.fail_rate || '0.10' }}
+        run: |
+          set -euo pipefail
+
+          # Validate inputs before passing to the shell or the runner.
+          if ! [[ "$TRIALS_INPUT" =~ ^[0-9]+$ ]]; then
+            echo "Invalid trials input: $TRIALS_INPUT" >&2; exit 2
+          fi
+          if ! [[ "$FAIL_RATE_INPUT" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "Invalid fail-rate input: $FAIL_RATE_INPUT" >&2; exit 2
+          fi
+
+          # Expand the glob safely without word-splitting untrusted input.
+          mapfile -t DATASETS < <(compgen -G "$DATASET_GLOB" || true)
+          if [ "${#DATASETS[@]}" -eq 0 ]; then
+            echo "No golden sets matched glob: $DATASET_GLOB" >&2; exit 2
+          fi
+
+          # <PLACEHOLDER> One run, both outputs (JUnit for CI views, JSON for a
+          # dashboard) from the same in-memory report — no double LLM cost.
+          # eval-runner \
+          #   "${DATASETS[@]}" \
+          #   --trials "$TRIALS_INPUT" \
+          #   --isolate clean-per-trial \
+          #   --parallel 4 \
+          #   --fail-rate "$FAIL_RATE_INPUT" \
+          #   --out junit:eval-results.junit.xml \
+          #   --out json:eval-results.json
+          echo "TODO: invoke eval-runner over: ${DATASETS[*]}"
+
+      - name: Publish JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-junit
+          path: eval-results.junit.xml
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Publish JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-json
+          path: eval-results.json
+          retention-days: 30
+          if-no-files-found: ignore

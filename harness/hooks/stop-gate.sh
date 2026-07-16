@@ -12,10 +12,11 @@
 #                           *.slnx / *.sln found under the project root is used.
 #   RAILS_STOP_RUN_TESTS  — set to 1 to also run the test suite after a green build.
 #
-# CONTRACT (verified, do not change):
-#   * Block: print top-level JSON {"decision":"block","reason":"..."} to stdout AND
-#     `exit 2`. `exit 1` is silently IGNORED by Claude Code. `hookSpecificOutput` is
-#     INVALID on Stop hooks — never use it here.
+# CONTRACT (verified against https://code.claude.com/docs/en/hooks, 2026-07-15):
+#   * Block: print top-level JSON {"decision":"block","reason":"..."} to stdout and
+#     `exit 0`. JSON output is only parsed on exit 0; `reason` is fed back to the agent.
+#     (`exit 2` also blocks, but then stdout is IGNORED and only stderr is surfaced —
+#     a stdout JSON reason would be silently dropped. `exit 1` is a non-blocking error.)
 #   * Allow: print nothing and `exit 0`.
 #   * `reason` is the only text surfaced back to the model — keep it actionable.
 #
@@ -28,7 +29,7 @@ allow() { exit 0; }
 # Emit a block decision. jq builds the JSON so the reason is safely escaped.
 block() {
   jq -nc --arg reason "$1" '{decision:"block", reason:$reason}'
-  exit 2
+  exit 0
 }
 
 raw="$(cat)"

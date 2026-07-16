@@ -1,0 +1,23 @@
+# Step template: install the toolchain.
+#
+# This is the Azure Pipelines realization of the stack pack's toolchain declaration. It is the
+# «UseDotNet@2» half of the seam: GitHub's actions/setup-dotnet maps to UseDotNet@2 here, and the
+# version default carries the ci-profile reference value.
+#
+#   github → actions/setup-dotnet ; azure-devops → UseDotNet@2   (this file)
+#
+# The repo overrides `version` only if its ci-profile.toolchain.version differs from the .NET
+# reference. A non-.NET stack pack ships its own equivalent (UseNode@1, UsePythonVersion@0) and this
+# template is not used.
+
+parameters:
+  - name: version
+    type: string
+    default: '10.x'      # «stack pack: ci-profile.toolchain.version» (.NET reference)
+
+steps:
+  - task: UseDotNet@2
+    displayName: 'Setup toolchain (ci-profile.toolchain)'
+    inputs:
+      packageType: 'sdk'
+      version: ${{ parameters.version }}

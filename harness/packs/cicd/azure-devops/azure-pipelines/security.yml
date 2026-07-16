@@ -1,0 +1,99 @@
+# Security rail (the-rails.md §3): the security-reviewer agent, path-triggered.
+#
+# A REQUIRED build validation that runs on EVERY PR but SHORT-CIRCUITS to success when no gated path
+# changed — so it can be required without leaving low-risk PRs stuck. When a gated path IS touched (or
+# the `risk:high` PR label is present) it runs the reviewer and FAILS on a HIGH finding
+# (SECURITY_VERDICT: BLOCK) — that failure is what blocks the merge.
+#
+# Fail-safe (FAIL CLOSED): a gated change whose review cannot complete (e.g. missing ANTHROPIC_API_KEY
+# before go-live) BLOCKS rather than passes.
+#
+# ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
+#   <<DEFAULT_BRANCH>>   protected branch (reference: main).
+#   <<VARIABLE_GROUP>>   variable group exposing ANTHROPIC_API_KEY (ideally Key-Vault-backed).
+#   <<GATED_PATHS>>      slash-anchored guarded-dir regex below. Keep in sync with the required-reviewer
+#                        path filters in branch-policies.json and with the security rubric.
+#   <<REVIEW_MODEL>>     reviewer model (reference: opus).
+#   <<RUBRIC_DIR>>       where the neutral rubrics were installed (reference: .azuredevops/rails/rubrics).
+# ───────────────────────────────────────────────────────────────────────────────
+
+trigger: none
+pr: none
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - group: <<VARIABLE_GROUP>>
+  - name: RUBRIC_DIR
+    value: '.azuredevops/rails/rubrics'   # <<RUBRIC_DIR>>
+
+jobs:
+  - job: security_review
+    displayName: 'security-review'   # <-- required build validation context
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    steps:
+      - template: templates/checkout-with-base.yml
+
+      - task: UseNode@1
+        displayName: 'Setup Node (for the Claude CLI)'
+        inputs:
+          version: '20.x'
+
+      # Detect gated-path changes (and the risk:high PR label, via REST). If neither, review is not
+      # required and the gate passes trivially.
+      - bash: |
+          set -euo pipefail
+          BASE_REF="$(baseRef)"
+          BASE_SHA="$(git merge-base "origin/$BASE_REF" HEAD)"
+          CHANGED="$(git diff --name-only "$BASE_SHA" HEAD)"
+          echo "Base: $BASE_SHA"; echo "Changed files:"; echo "$CHANGED"
+
+          # <<GATED_PATHS>> — keep in sync with branch-policies.json required-reviewer path filters and the
+          # rubric. Every segment is slash-anchored so it matches a directory COMPONENT (e.g. /Auth/, not a
+          # bare substring). The pipeline dir (.azuredevops/) is gated: a defect in the rails ships in every
+          # later change.
+          GATED_RE='(^\.azuredevops/|/Auth/|/Identity/|/Security/|/Migrations/|^infra/)'
+          GATED=false
+          echo "$CHANGED" | grep -Eq "$GATED_RE" && GATED=true
+
+          # risk:high PR label (Azure PR label = tag), queried via REST.
+          HAS_RISK=false
+          BASE="${SYSTEM_COLLECTIONURI%/}/${SYSTEM_TEAMPROJECT}/_apis/git/repositories/${BUILD_REPOSITORY_ID}/pullRequests/${SYSTEM_PULLREQUEST_PULLREQUESTID}"
+          LABELS="$(curl -sf -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" "${BASE}/labels?api-version=7.1" || echo '{}')"
+          if printf '%s' "$LABELS" | jq -e '.value[]? | select(.name == "risk:high")' >/dev/null 2>&1; then
+            HAS_RISK=true
+          fi
+
+          if [ "$GATED" = "true" ] || [ "$HAS_RISK" = "true" ]; then
+            echo "##vso[task.setvariable variable=reviewRequired]true"
+            echo "Security review REQUIRED (gated=$GATED, risk:high=$HAS_RISK)."
+          else
+            echo "##vso[task.setvariable variable=reviewRequired]false"
+            echo "No gated paths changed and no risk:high label — security review not required."
+          fi
+        displayName: 'Detect gated-path changes'
+        env:
+          SYSTEM_COLLECTIONURI: $(System.CollectionUri)
+          SYSTEM_TEAMPROJECT: $(System.TeamProject)
+          BUILD_REPOSITORY_ID: $(Build.Repository.ID)
+          SYSTEM_PULLREQUEST_PULLREQUESTID: $(System.PullRequest.PullRequestId)
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+
+      - template: templates/claude-review.yml
+        parameters:
+          gateId: 'security-review'
+          displayName: 'security-review'
+          model: 'opus'                            # <<REVIEW_MODEL>>
+          maxTurns: '25'
+          allowedTools: 'Bash Read Grep Glob Write Edit'
+          verdictToken: 'SECURITY_VERDICT'
+          verdictFile: '$(Agent.TempDirectory)/security-verdict.txt'
+          prompt: |
+            You are running as the security-reviewer for PR #$(System.PullRequest.PullRequestId).
+            Read the rubric at $(RUBRIC_DIR)/security.md and follow it exactly.
+            Review the PR diff (base is origin/$(baseRef)), focusing on the gated files that triggered this
+            run. Write your findings as your FINAL message (the pipeline captures it and posts it as the PR
+            comment thread) AND write the machine verdict to the absolute path
+            $(Agent.TempDirectory)/security-verdict.txt (its first line must be exactly
+            "SECURITY_VERDICT: PASS" or "SECURITY_VERDICT: BLOCK").

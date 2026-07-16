@@ -1,0 +1,35 @@
+# .NET stack pack — manifest.
+# Realizes the core kit's <<...>> / {{STACK}} blanks for a .NET / Microsoft Agent Framework repo.
+# Read by the profile-aware installer to overlay this pack after the core.
+
+pack:
+  id: dotnet
+  axis: stack
+  name: ".NET 10 / Microsoft Agent Framework"
+  version: "0.1.0"
+
+# What this pack provides to the composition.
+provides:
+  claude_standards: claude/stack-standards.md   # fills CLAUDE.md "Stack standards — {{STACK}}"
+  rules:                                          # the @imports the core CLAUDE.md references
+    - rules/clean-architecture.md
+    - rules/testing.md
+  skills:
+    - skills/api-pattern-dotnet
+  ci_profile: ci-profile.yaml                     # the command interface a CI/CD pack consumes
+  settings_fragment: settings.fragment.json       # .NET tooling perms, merged into settings.json
+
+# Overlay map: pack-relative source -> repo destination. `merge: true` means the installer
+# shallow-merges JSON rather than overwriting (so core + pack permissions combine).
+overlays:
+  - { src: rules/clean-architecture.md,          dest: .claude/rules/clean-architecture.md }
+  - { src: rules/testing.md,                     dest: .claude/rules/testing.md }
+  - { src: skills/api-pattern-dotnet/SKILL.md,   dest: .claude/skills/api-pattern-dotnet/SKILL.md }
+  - { src: settings.fragment.json,               dest: .claude/settings.json, merge: true }
+
+# Consumed by CI/CD packs; not installed directly as files.
+exposes:
+  ci_commands: ci-profile.yaml
+
+# Requires a CI/CD pack to realize the pipeline. Any of these satisfies it.
+requires_cicd_pack: [github, azure-devops]
