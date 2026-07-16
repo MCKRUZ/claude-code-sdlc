@@ -12,6 +12,7 @@ from install_harness import (
     _resolve_frontend,
     _resolve_packs,
     _resolve_tools,
+    _splice_claude_stack_section,
     install,
 )
 
@@ -370,6 +371,95 @@ class TestIdempotency:
         ci.write_text("hand edit\n", encoding="utf-8")
         install(payload, target, force=True, profile_path=pf)
         assert "realized github pack ci" in ci.read_text(encoding="utf-8")
+
+
+# ── splice scope (the stack section only — never the content around it) ─────────
+
+SDLC_SECTION = "## SDLC lifecycle\n\nManaged by /sdlc-setup. Phases live in .sdlc/state.yaml.\n"
+
+
+class TestSpliceScope:
+    """The splice must replace ONLY the stack-standards section (heading to the next '## '
+    heading, or EOF). Content appended below it — e.g. the SDLC section /sdlc-setup Step 6
+    adds — must survive every re-run."""
+
+    def _append_sdlc(self, target):
+        claude = target / "CLAUDE.md"
+        claude.write_text(claude.read_text(encoding="utf-8") + "\n" + SDLC_SECTION,
+                          encoding="utf-8")
+
+    def test_core_then_profile_rerun_preserves_appended_section(
+        self, payload, target, tmp_path, valid_profile
+    ):
+        # Path A: core-only install, setup appends an SDLC section, a later --profile re-run
+        # splices (the {{STACK}} marker survives in the heading) — the SDLC section must survive.
+        install(payload, target, force=False)
+        self._append_sdlc(target)
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        claude = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "## SDLC lifecycle" in claude                             # appended section survives
+        assert "Phases live in .sdlc/state.yaml." in claude
+        assert claude.count(".NET 10 / Microsoft Agent Framework") == 1  # spliced exactly once
+        assert "{{STACK}}" not in claude                                 # section itself realized
+
+    def test_force_splice_preserves_content_below_section(self, payload, target):
+        # Path B: a --force splice fires even on an adapted section; content below must survive.
+        _write(target / "CLAUDE.md",
+               "# repo\n\n## Stack standards — .NET (adapted, marker gone)\n\n- house rules\n\n"
+               + SDLC_SECTION)
+        log: list[str] = []
+        _splice_claude_stack_section(payload / "packs" / "stacks" / "dotnet", STACK_PACK_YAML,
+                                     target, force=True, log=log)
+        text = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        assert any(line.startswith("SPLICE") for line in log)
+        assert "## SDLC lifecycle" in text                               # tail survives the splice
+        assert "Phases live in .sdlc/state.yaml." in text
+        assert text.count(".NET 10 / Microsoft Agent Framework") == 1
+        assert "house rules" not in text                                 # old section body replaced
+
+    def test_content_above_section_preserved(self, payload, target, tmp_path, valid_profile):
+        install(payload, target, force=False)
+        self._append_sdlc(target)
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        claude = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        assert claude.startswith("# {{PROJECT_NAME}}")
+        assert "## What this is" in claude
+
+    def test_force_splice_with_tail_is_idempotent(self, payload, target):
+        pack_dir = payload / "packs" / "stacks" / "dotnet"
+        _write(target / "CLAUDE.md",
+               "# repo\n\n## Stack standards — {{STACK}} profile\n\n- placeholder\n\n" + SDLC_SECTION)
+        _splice_claude_stack_section(pack_dir, STACK_PACK_YAML, target, force=True, log=[])
+        first = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        _splice_claude_stack_section(pack_dir, STACK_PACK_YAML, target, force=True, log=[])
+        second = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        assert first == second                                           # run twice -> identical file
+        assert "## SDLC lifecycle" in second
+        assert second.count(".NET 10 / Microsoft Agent Framework") == 1
+
+    def test_force_splice_last_section_is_idempotent(self, payload, target):
+        # Stack section is the LAST section (empty tail): no spurious newlines, no duplication.
+        pack_dir = payload / "packs" / "stacks" / "dotnet"
+        _write(target / "CLAUDE.md", "# repo\n\n## Stack standards — {{STACK}} profile\n\n- placeholder\n")
+        _splice_claude_stack_section(pack_dir, STACK_PACK_YAML, target, force=True, log=[])
+        first = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        _splice_claude_stack_section(pack_dir, STACK_PACK_YAML, target, force=True, log=[])
+        second = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        assert first == second
+        assert second.count(".NET 10 / Microsoft Agent Framework") == 1
+        assert second.endswith(".claude/rules/testing.md.\n")            # single trailing newline
+
+    def test_missing_heading_skips_and_leaves_file_untouched(
+        self, payload, target, tmp_path, valid_profile, capsys
+    ):
+        install(payload, target, force=False)
+        no_heading = "# repo\n\n## Something else\n\ncontent\n"
+        (target / "CLAUDE.md").write_text(no_heading, encoding="utf-8")
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        assert (target / "CLAUDE.md").read_text(encoding="utf-8") == no_heading
+        assert "no '## Stack standards' heading" in capsys.readouterr().out
 
 
 # ── tools axis (third, multi-select, self-installing) ───────────────────────────

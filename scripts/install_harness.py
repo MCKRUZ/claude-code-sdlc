@@ -28,8 +28,8 @@ Two modes:
   knows. The profile drives which packs compose, not repo-specific values.
 
 Usage:
-  uv run --project <plugin-root>/scripts <plugin-root>/scripts/install_harness.py \
-    --payload <plugin-root>/harness --target . [--profile <profile.yaml>] [--force]
+  uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/install_harness.py \
+    --payload ${CLAUDE_PLUGIN_ROOT}/harness --target . [--profile <profile.yaml>] [--force]
 """
 from __future__ import annotations
 
@@ -96,9 +96,10 @@ FRONTEND_PACK_BY_FRAMEWORK = {
     # add "angular": "angular" when that frontend pack exists.
 }
 
-# The section heading in CLAUDE.md the stack pack replaces. Everything from this line to EOF is
-# swapped for the pack's realized standards — but only while the {{STACK}} marker survives (i.e.
-# the section is still the untouched template; a repo's Phase-3 adaptation is never clobbered).
+# The section heading in CLAUDE.md the stack pack replaces. Everything from this line to the next
+# '## ' heading (or EOF) is swapped for the pack's realized standards — but only while the {{STACK}}
+# marker survives (i.e. the section is still the untouched template; a repo's Phase-3 adaptation is
+# never clobbered). Content around the section — e.g. the SDLC section setup appends — is preserved.
 CLAUDE_STACK_HEADING = "## Stack standards"
 CLAUDE_STACK_MARKER = "{{STACK}}"
 
@@ -337,8 +338,9 @@ def _overlay_pack(pack_dir: Path, manifest: dict, target: Path, force: bool,
 
 def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: Path,
                                  force: bool, log: list[str]) -> None:
-    """Replace CLAUDE.md's stack-standards section (heading to EOF) with the pack's realized one.
-    Only fires while the {{STACK}} template marker survives, so a repo's Phase-3 edits are safe."""
+    """Replace CLAUDE.md's stack-standards section (heading to the next '## ' heading, or EOF)
+    with the pack's realized one; everything before and after the section is preserved. Only
+    fires while the {{STACK}} marker survives IN THE SECTION, so Phase-3 edits are safe."""
     claude = target / "CLAUDE.md"
     provides = manifest.get("provides", {}) or {}
     rel = provides.get("claude_standards")
@@ -356,7 +358,10 @@ def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: P
         log.append("MISS    CLAUDE.md stack section  (no '## Stack standards' heading)")
         return
 
-    already_adapted = CLAUDE_STACK_MARKER not in "".join(lines[heading_idx:])
+    # The section ends at the next same-level heading (or EOF if it is the last section).
+    end_idx = next((i for i in range(heading_idx + 1, len(lines)) if lines[i].startswith("## ")),
+                   len(lines))
+    already_adapted = CLAUDE_STACK_MARKER not in "".join(lines[heading_idx:end_idx])
     if already_adapted and not force:
         log.append("SKIP    CLAUDE.md stack section  (already adapted)")
         return
@@ -367,7 +372,11 @@ def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: P
     if section.lstrip().startswith("<!--") and "-->" in section:
         section = section.split("-->", 1)[1].lstrip("\n")
     head = "".join(lines[:heading_idx]).rstrip("\n")
-    claude.write_text(f"{head}\n\n{section.rstrip()}\n", encoding="utf-8")
+    tail = "".join(lines[end_idx:]).strip("\n")
+    out = f"{head}\n\n{section.rstrip()}\n"
+    if tail:
+        out += f"\n{tail}\n"
+    claude.write_text(out, encoding="utf-8")
     log.append(f"SPLICE  CLAUDE.md stack section  (<- {marker})")
 
 
