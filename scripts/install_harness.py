@@ -10,7 +10,9 @@ Two modes:
     workflows. The base case a repo adapts by hand.
   * profile-aware (--profile <profile.yaml>): compose core + the stack pack + the CI/CD pack + any
     tools packs the profile selects. The packs' realized files OVERLAY the core placeholders (last
-    wins), the .NET tooling permissions are MERGED into settings.json, and the stack pack's standards
+    wins), the .NET tooling permissions are MERGED into settings.json, pack MCP fragments are MERGED
+    into the repo's .mcp.json (core ships context7 / sequential-thinking / playwright; the stack and
+    CI/CD packs add their own, e.g. microsoft-learn, azure-devops), and the stack pack's standards
     are spliced into CLAUDE.md's "## Stack standards — {{STACK}}" section. Tools packs (the third axis,
     multi-select via a top-level `tools: [id, ...]`) integrate optional, often self-installing tools:
     they overlay only a small static surface (config + a SETUP guide) and the installer PRINTS their
@@ -33,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -49,6 +52,8 @@ FILE_MAP: list[tuple[str, str]] = [
     ("CLAUDE.md.template", "CLAUDE.md"),            # governance base; SDLC section appended by setup
     ("spec-template.md", "specs/spec-template.md"),
     ("settings.json", ".claude/settings.json"),
+    ("mcp.json", ".mcp.json"),                      # team MCP servers; packs merge their fragments in
+    ("HARNESS.md", "docs/harness.md"),              # the developer-facing tour of what's installed
 ]
 DIR_MAP: list[tuple[str, str]] = [
     ("hooks/", ".claude/hooks/"),
@@ -80,6 +85,15 @@ STACK_PACK_BY_LANGUAGE = {
 CICD_PACK_BY_PLATFORM = {
     "github-actions": "github",
     "azure-devops": "azure-devops",
+}
+# Frontend axis (packs/frontend/<id>): whenever the profile declares stack.frontend, the
+# framework-agnostic 'generic' pack composes first, then a framework pack ON TOP (last wins).
+# Keys are the first alphabetic token of stack.frontend.framework, lowercased — so
+# "React 18" / "react-18" both resolve to "react", "angular-17" will resolve to "angular"
+# when that pack exists.
+FRONTEND_PACK_BY_FRAMEWORK = {
+    "react": "react",
+    # add "angular": "angular" when that frontend pack exists.
 }
 
 # The section heading in CLAUDE.md the stack pack replaces. Everything from this line to EOF is
@@ -215,6 +229,34 @@ def _resolve_packs(profile: dict, payload: Path):
     return stack_pack, cicd_pack, warnings
 
 
+def _resolve_frontend(profile: dict, payload: Path):
+    """Resolve the frontend axis. If the profile declares a frontend (stack.frontend present),
+    the 'generic' pack (framework-agnostic UX reviewer) composes first; a mapped framework pack
+    composes on top and overlays what it specializes (last wins). A declared framework with no
+    pack yet degrades to generic + a warning — the repo still gets a UX reviewer, just not a
+    framework-aware one. A payload missing packs/frontend/generic fails closed (stale sync),
+    like any mapped-but-absent pack. Returns (list, warnings) of (dir, manifest) tuples."""
+    frontend = (profile.get("stack", {}) or {}).get("frontend")
+    resolved: list[tuple[Path, dict]] = []
+    warnings: list[str] = []
+    if not isinstance(frontend, dict) or not frontend:
+        return resolved, warnings
+    resolved.append(_resolve_pack("frontend", "generic", payload))
+    raw = frontend.get("framework")
+    framework = None
+    if raw:
+        tokens = [t for t in re.split(r"[^a-z]+", str(raw).strip().lower()) if t]
+        framework = tokens[0] if tokens else None
+    if framework in FRONTEND_PACK_BY_FRAMEWORK:
+        resolved.append(_resolve_pack("frontend", FRONTEND_PACK_BY_FRAMEWORK[framework], payload))
+    elif framework:
+        warnings.append(
+            f"no frontend pack for framework {framework!r}; installed the generic UX reviewer "
+            f"only (supported: {sorted(FRONTEND_PACK_BY_FRAMEWORK)})"
+        )
+    return resolved, warnings
+
+
 def _resolve_tools(profile: dict, payload: Path):
     """Resolve the optional tools packs a profile opts into via a top-level `tools: [id, ...]` list.
     Tools are the third axis: they compose INDEPENDENTLY of stack/CI and are MULTI-SELECT, and the id
@@ -337,6 +379,7 @@ def install(payload: Path, target: Path, force: bool, profile_path: Path | None 
     log: list[str] = []
     written: set[Path] = set()
     stack_pack = cicd_pack = None
+    frontend_packs: list[tuple[Path, dict]] = []
     tools_packs: list[tuple[Path, dict]] = []
     warnings: list[str] = []
 
@@ -344,17 +387,19 @@ def install(payload: Path, target: Path, force: bool, profile_path: Path | None 
         try:
             profile = _load_profile(profile_path)
             stack_pack, cicd_pack, warnings = _resolve_packs(profile, payload)
+            frontend_packs, fe_warnings = _resolve_frontend(profile, payload)
             tools_packs, tool_warnings = _resolve_tools(profile, payload)
-            warnings = warnings + tool_warnings
+            warnings = warnings + fe_warnings + tool_warnings
         except InstallError as exc:
             print(f"ERROR: {exc}", file=sys.stderr)
             return 2
 
     _copy_core(payload, target, force, written, log)
 
-    if stack_pack or cicd_pack or tools_packs:
+    if stack_pack or cicd_pack or frontend_packs or tools_packs:
         parts = [f"stack pack '{p[0].name}'" for p in (stack_pack,) if p]
         parts += [f"CI/CD pack '{p[0].name}'" for p in (cicd_pack,) if p]
+        parts += [f"frontend pack '{d.name}'" for d, _ in frontend_packs]
         parts += [f"tools pack '{d.name}'" for d, _ in tools_packs]
         log.append(f"\n-- composing {' + '.join(parts)} --")
         if stack_pack:
@@ -362,6 +407,8 @@ def install(payload: Path, target: Path, force: bool, profile_path: Path | None 
             _splice_claude_stack_section(stack_pack[0], stack_pack[1], target, force, log)
         if cicd_pack:
             _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log)
+        for fe_dir, fe_manifest in frontend_packs:
+            _overlay_pack(fe_dir, fe_manifest, target, force, written, log)
         for tool_dir, tool_manifest in tools_packs:
             _overlay_pack(tool_dir, tool_manifest, target, force, written, log)
 

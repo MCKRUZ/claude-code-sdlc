@@ -9,6 +9,7 @@ import yaml
 from install_harness import (
     InstallError,
     _deep_merge,
+    _resolve_frontend,
     _resolve_packs,
     _resolve_tools,
     install,
@@ -40,6 +41,17 @@ CORE_SETTINGS = {
     "hooks": {"Stop": [{"hooks": [{"type": "command", "command": "stop-gate"}]}]},
 }
 
+CORE_MCP = {
+    "mcpServers": {
+        "context7": {"type": "http", "url": "https://mcp.context7.com/mcp"},
+        "sequential-thinking": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-sequential-thinking@2026.7.4"],
+        },
+        "playwright": {"command": "npx", "args": ["-y", "@playwright/mcp@0.0.78"]},
+    }
+}
+
 CORE_CI = "name: CI\n# PLACEHOLDER core ci — run: dotnet build {{SOLUTION_OR_PROJECT}}\n"
 REALIZED_CI = "name: CI\n# realized github pack ci\njobs:\n  build-and-test:\n    runs-on: ubuntu-latest\n"
 
@@ -61,6 +73,7 @@ STACK_PACK_YAML = {
         {"src": "rules/clean-architecture.md", "dest": ".claude/rules/clean-architecture.md"},
         {"src": "rules/testing.md", "dest": ".claude/rules/testing.md"},
         {"src": "settings.fragment.json", "dest": ".claude/settings.json", "merge": True},
+        {"src": "mcp.fragment.json", "dest": ".mcp.json", "merge": True},
     ],
     "requires_cicd_pack": ["github", "azure-devops"],
 }
@@ -73,13 +86,43 @@ STACK_FRAGMENT = {
     },
 }
 
+STACK_MCP_FRAGMENT = {
+    "//": "merged into .mcp.json",
+    "mcpServers": {
+        "microsoft-learn": {"type": "http", "url": "https://learn.microsoft.com/api/mcp"},
+    },
+}
+
 CICD_PACK_YAML = {
     "pack": {"id": "github", "axis": "cicd", "name": "GitHub Actions", "version": "0.1.0"},
     "overlays": [
         {"src": "workflows/ci.yml", "dest": ".github/workflows/ci.yml"},
         {"src": "RAILS.md", "dest": ".github/RAILS.md"},
+        {"src": "mcp.fragment.json", "dest": ".mcp.json", "merge": True},
     ],
     "requires_stack_pack": ["dotnet", "angular", "python"],
+}
+
+CICD_MCP_FRAGMENT = {
+    "mcpServers": {
+        "github": {"type": "http", "url": "https://api.githubcopilot.com/mcp/"},
+    },
+}
+
+FRONTEND_GENERIC_YAML = {
+    "pack": {"id": "generic", "axis": "frontend", "name": "Frontend (framework-agnostic)", "version": "0.1.0"},
+    "overlays": [
+        {"src": "agents/ux-reviewer.md", "dest": ".claude/agents/ux-reviewer.md"},
+    ],
+    "requires": {},
+}
+
+FRONTEND_REACT_YAML = {
+    "pack": {"id": "react", "axis": "frontend", "name": "Frontend (React)", "version": "0.1.0"},
+    "overlays": [
+        {"src": "agents/ux-reviewer.md", "dest": ".claude/agents/ux-reviewer.md"},
+    ],
+    "requires": {},
 }
 
 TOOLS_PACK_YAML = {
@@ -110,6 +153,7 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     _write(payload / "CLAUDE.md.template", CLAUDE_TEMPLATE)
     _write(payload / "spec-template.md", "# spec template\n")
     _write(payload / "settings.json", json.dumps(CORE_SETTINGS, indent=2) + "\n")
+    _write(payload / "mcp.json", json.dumps(CORE_MCP, indent=2) + "\n")
     _write(payload / "workflows" / "ci.yml", CORE_CI)
 
     stack = dict(STACK_PACK_YAML)
@@ -121,18 +165,27 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     _write(sp / "rules" / "clean-architecture.md", "# clean architecture\n")
     _write(sp / "rules" / "testing.md", "# testing\n")
     _write(sp / "settings.fragment.json", json.dumps(STACK_FRAGMENT, indent=2) + "\n")
+    _write(sp / "mcp.fragment.json", json.dumps(STACK_MCP_FRAGMENT, indent=2) + "\n")
 
     if cicd_present:
         cp = payload / "packs" / "cicd" / "github"
         _write(cp / "pack.yaml", yaml.dump(CICD_PACK_YAML))
         _write(cp / "workflows" / "ci.yml", REALIZED_CI)
         _write(cp / "RAILS.md", "# rails guide\n")
+        _write(cp / "mcp.fragment.json", json.dumps(CICD_MCP_FRAGMENT, indent=2) + "\n")
 
     if tools_present:
         tp = payload / "packs" / "tools" / "gitnexus"
         _write(tp / "pack.yaml", yaml.dump(TOOLS_PACK_YAML))
         _write(tp / "gitnexusignore", "**/bin/\n**/obj/\n")
         _write(tp / "SETUP.md", "# GitNexus setup\nnpx gitnexus analyze\n")
+
+    fg = payload / "packs" / "frontend" / "generic"
+    _write(fg / "pack.yaml", yaml.dump(FRONTEND_GENERIC_YAML))
+    _write(fg / "agents" / "ux-reviewer.md", "# generic ux reviewer\nstates, a11y, house pattern\n")
+    fr = payload / "packs" / "frontend" / "react"
+    _write(fr / "pack.yaml", yaml.dump(FRONTEND_REACT_YAML))
+    _write(fr / "agents" / "ux-reviewer.md", "# React ux reviewer\nhooks, keys, suspense states\n")
     return payload
 
 
@@ -211,6 +264,32 @@ class TestCompose:
         assert settings["permissions"]["deny"] == ["Bash(git push --force:*)"]  # untouched
         assert "Edit(./**/*.csproj)" in settings["permissions"]["ask"]
         assert "//" not in settings                  # JSON-comment key dropped
+
+    def test_mcp_core_lands_without_profile(self, payload, target):
+        install(payload, target, force=False)
+        mcp = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+        assert set(mcp["mcpServers"]) == {"context7", "sequential-thinking", "playwright"}
+
+    def test_mcp_fragment_merged_not_overwritten(self, payload, target, tmp_path, valid_profile):
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        mcp = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+        servers = mcp["mcpServers"]
+        assert "microsoft-learn" in servers               # from the stack pack fragment
+        assert "github" in servers                        # from the CI/CD pack fragment
+        assert "context7" in servers                      # core entries preserved
+        assert "playwright" in servers
+        assert servers["microsoft-learn"]["url"] == "https://learn.microsoft.com/api/mcp"
+        assert "//" not in mcp                            # fragment's comment key dropped
+
+    def test_mcp_preexisting_file_gains_fragment_but_keeps_own_servers(
+        self, payload, target, tmp_path, valid_profile
+    ):
+        own = {"mcpServers": {"team-custom": {"type": "http", "url": "https://example.test/mcp"}}}
+        (target / ".mcp.json").write_text(json.dumps(own), encoding="utf-8")
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        mcp = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
+        assert "team-custom" in mcp["mcpServers"]         # repo's own server preserved (no --force)
+        assert "microsoft-learn" in mcp["mcpServers"]     # fragment still merged in
 
 
 # ── graceful degrade (valid stack, no pack built for it yet) ────────────────────
@@ -337,6 +416,52 @@ class TestTools:
         install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
         assert not (target / ".gitnexusignore").exists()
         assert "MANUAL SETUP" not in capsys.readouterr().out
+
+
+class TestFrontend:
+    def test_declared_frontend_installs_generic_reviewer(self, payload, target, tmp_path, valid_profile, capsys):
+        # valid_profile declares angular-17, which has no pack yet -> generic + warning.
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        agent = (target / ".claude" / "agents" / "ux-reviewer.md").read_text(encoding="utf-8")
+        assert "generic ux reviewer" in agent
+        assert "no frontend pack for framework 'angular'" in capsys.readouterr().err
+
+    def test_react_framework_overlays_generic(self, payload, target, tmp_path, valid_profile):
+        prof = {**valid_profile, "stack": {**valid_profile["stack"],
+                                           "frontend": {"language": "typescript", "framework": "React 18"}}}
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, prof))
+        agent = (target / ".claude" / "agents" / "ux-reviewer.md").read_text(encoding="utf-8")
+        assert "React ux reviewer" in agent          # framework pack wins (last overlay)
+        assert "generic ux reviewer" not in agent
+
+    def test_no_frontend_block_installs_no_reviewer(self, payload, target, tmp_path, valid_profile):
+        prof = {**valid_profile, "stack": {k: v for k, v in valid_profile["stack"].items()
+                                           if k != "frontend"}}
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, prof))
+        assert not (target / ".claude" / "agents" / "ux-reviewer.md").exists()
+
+
+class TestResolveFrontend:
+    def test_react_resolves_generic_then_react(self, payload, valid_profile):
+        prof = {**valid_profile, "stack": {**valid_profile["stack"],
+                                           "frontend": {"framework": "react-18"}}}
+        resolved, warnings = _resolve_frontend(prof, payload)
+        assert [d.name for d, _ in resolved] == ["generic", "react"]
+        assert warnings == []
+
+    def test_unmapped_framework_degrades_to_generic(self, payload, valid_profile):
+        prof = {**valid_profile, "stack": {**valid_profile["stack"],
+                                           "frontend": {"framework": "vue"}}}
+        resolved, warnings = _resolve_frontend(prof, payload)
+        assert [d.name for d, _ in resolved] == ["generic"]
+        assert len(warnings) == 1 and "vue" in warnings[0]
+
+    def test_absent_frontend_resolves_nothing(self, payload, valid_profile):
+        prof = {**valid_profile, "stack": {k: v for k, v in valid_profile["stack"].items()
+                                           if k != "frontend"}}
+        resolved, warnings = _resolve_frontend(prof, payload)
+        assert resolved == [] and warnings == []
 
 
 class TestResolveTools:

@@ -58,7 +58,14 @@ into `settings.json`) and `stack.ci_cd.platform` picks the CI/CD pack (the platf
 pipeline workflows, which overlay the core placeholders). A profile may also list `tools: [id, ...]`
 (the third, multi-select pack axis) to compose optional tools packs — e.g. `gitnexus`; those overlay a
 small static surface and the installer PRINTS their manual setup steps (self-installing tools are never
-run by the installer). Each axis degrades independently: if no pack exists yet for the repo's language,
+run by the installer). The install also writes `.mcp.json` at the repo root — the team's shared MCP
+servers (core: context7, sequential-thinking, playwright; the dotnet pack adds microsoft-learn; the
+azure-devops pack adds the Azure DevOps server with an `<<ADO_ORGANIZATION>>` token to fill). Each
+developer approves the set once when they first open the repo; auth-requiring servers authenticate
+per developer (e.g. `az login`) — no credentials ever go in the file. If the profile declares a
+frontend (`stack.frontend`), the frontend axis also composes: the generic `ux-reviewer` agent, plus
+a framework-aware version on top when a pack exists for the declared framework (currently `react`;
+an unmapped framework keeps the generic reviewer and prints a WARNING). Each axis degrades independently: if no pack exists yet for the repo's language,
 platform, or a named tool, that axis prints a `WARNING:` and the neutral core is left in place to adapt
 by hand — setup never fails for lack of a pack. If the output shows a "MANUAL SETUP" block, run those
 commands (and read the referenced `SETUP.md`) after setup completes.
@@ -93,7 +100,9 @@ Phase: 0 — Discovery (active)
 Harness: CLAUDE.md, .claude/, .github/workflows (5 gates), infra/
 
 Next steps:
-1. Fill the {{PLACEHOLDER}} tokens in CLAUDE.md (stack, glossary, gated paths)
+1. Fill the {{PLACEHOLDER}} tokens in CLAUDE.md (stack, glossary, gated paths);
+   on Azure DevOps, also replace <<ADO_ORGANIZATION>> in .mcp.json
+   (docs/harness.md explains every installed piece — point the team there)
 2. PROVE THE RAILS before trusting them — run the shakedown drills in .github/RAILS.md
 3. Run /sdlc to start the Phase 0 discovery interview
 4. Run /sdlc-gate when ready to check exit criteria; /sdlc-next to advance
