@@ -163,14 +163,19 @@ never seen catch anything is decoration.
 - **`.github/profile/rubrics/`** — the written standards the AI reviewers judge against.
 - **`scripts/rails/`** — helper scripts the checks use (branch protection, change scoping).
 - **`infra/`** — an infrastructure starting point. Adapt it; don't use it as-is.
+- **`.claude/harness-manifest.json`** — the install receipt: which harness version this repo
+  has and a fingerprint of every file *as installed*. It's how an upgrade can tell "still
+  factory-original, safe to update" from "this repo adapted it, hands off."
 - **`docs/harness.md`** — this page.
 
 ## Where it came from, how it updates
 
 The harness was installed once from a plugin and then adapted to this repo. There's no live
 connection back: nothing upstream can change this repo behind your back. Updating is a
-deliberate act — update the plugin, re-run the installer — and it never overwrites files this
-repo has adapted.
+deliberate act — update the plugin, run `/sdlc-upgrade` — and the manifest above is what
+keeps it safe: files you never touched are brought forward; files this repo adapted are left
+alone; a file that changed on *both* sides is reported side-by-side for a person (or the AI,
+with a person watching) to merge deliberately. Nothing is ever silently overwritten.
 
 A few things are personal-machine only and stay out of the repo on purpose: review evidence,
 your personal settings, and self-installing tools' data.

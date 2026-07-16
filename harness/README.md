@@ -64,6 +64,7 @@ so install here unless you also repoint the references.
 | `profile/rulesets/branch-protection.json` | `./.github/rulesets/` | Copied on install; `scripts/rails/apply-branch-protection.sh` reads it from there and applies it to GitHub. |
 | `eval-datasets/*` | `./eval-datasets/` | Golden-set template + how-to (§11 work only). |
 | `prompts/*` | `./prompts/` | Versioned judge prompts (§11 work only). |
+| *(generated)* | `./.claude/harness-manifest.json` | Not a kit file — the installer writes it: plugin version + sha256 of every file as installed. `/sdlc-upgrade` reads it to tell factory-original files (safe to update) from repo-adapted ones (left alone). Commit it. |
 | `infra/*` | `./infra/` | Bicep dev-env **starter** — adapt to the client landing zone. |
 
 **Add to `.gitignore`:**
