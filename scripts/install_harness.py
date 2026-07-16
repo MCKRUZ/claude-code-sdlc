@@ -32,6 +32,12 @@ overlay src missing from its pack, still logs a MISS line for EVERY missing item
 completes; it never stops at the first), then the run exits 2 — a partial install never exits 0.
 Files the maps deliberately leave unmapped are simply not installed; that is not a MISS.
 
+Every successful run ends by writing .claude/harness-manifest.json in the target: the composed
+PRISTINE state (sha256 of the final on-disk content) of every dest the run touched, plus the
+plugin version, profile id, and composed pack ids. upgrade_harness.py reads it to three-way
+classify local adaptation vs. upstream change. SKIPPED files are never recorded; on re-runs,
+entries for untouched dests are preserved. See harness_manifest.py for the schema.
+
 Usage:
   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/install_harness.py \
     --payload ${CLAUDE_PLUGIN_ROOT}/harness --target . [--profile <profile.yaml>] [--force]
@@ -49,6 +55,13 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
+from harness_manifest import (  # noqa: E402
+    MANIFEST_REL,
+    build_manifest,
+    file_digest,
+    load_manifest,
+    write_manifest,
+)
 from validate_profile import SCHEMA_PATH, load_yaml, validate_profile  # noqa: E402
 
 # (source-relative-to-payload, dest-relative-to-repo). Directories end with "/".
@@ -355,18 +368,22 @@ def _deep_merge(base, overlay):
     return _strip_comments(overlay)
 
 
-def _merge_json(fragment: Path, dest: Path, log: list[str]) -> None:
+def _merge_json(fragment: Path, dest: Path, log: list[str],
+                touched: set[Path] | None = None) -> None:
     if not dest.exists():
         raise InstallError(f"cannot merge {fragment.name}: {dest} does not exist (core not copied?)")
     base = json.loads(dest.read_text(encoding="utf-8"))
     frag = json.loads(fragment.read_text(encoding="utf-8"))
     merged = _deep_merge(base, frag)
     dest.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    if touched is not None:  # a merged dest is touched even when the core copy SKIPped it
+        touched.add(dest)
     log.append(f"MERGE   {dest}  (+{fragment.name})")
 
 
 def _overlay_pack(pack_dir: Path, manifest: dict, target: Path, force: bool,
-                  written: set[Path], log: list[str], missing: list[str]) -> None:
+                  written: set[Path], log: list[str], missing: list[str],
+                  touched: set[Path] | None = None) -> None:
     for entry in manifest.get("overlays", []):
         src = pack_dir / entry["src"]
         dest = target / entry["dest"]
@@ -375,13 +392,14 @@ def _overlay_pack(pack_dir: Path, manifest: dict, target: Path, force: bool,
             missing.append(f"{entry['src']} (not in pack {pack_dir.name})")
             continue
         if entry.get("merge"):
-            _merge_json(src, dest, log)
+            _merge_json(src, dest, log, touched)
         else:
             _copy(src, dest, force, written, log)
 
 
 def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: Path,
-                                 force: bool, log: list[str]) -> None:
+                                 force: bool, log: list[str],
+                                 touched: set[Path] | None = None) -> None:
     """Replace CLAUDE.md's stack-standards section (heading to the next '## ' heading, or EOF)
     with the pack's realized one; everything before and after the section is preserved. Only
     fires while the {{STACK}} marker survives IN THE SECTION, so Phase-3 edits are safe."""
@@ -421,6 +439,8 @@ def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: P
     if tail:
         out += f"\n{tail}\n"
     claude.write_text(out, encoding="utf-8")
+    if touched is not None:  # a spliced dest is touched even when the core copy SKIPped it
+        touched.add(claude)
     log.append(f"SPLICE  CLAUDE.md stack section  (<- {marker})")
 
 
@@ -439,12 +459,14 @@ def install(payload: Path, target: Path, force: bool, profile_path: Path | None 
 
 
 def _install(payload: Path, target: Path, force: bool, profile_path: Path | None,
-             log: list[str]) -> int:
+             log: list[str], *, quiet: bool = False) -> int:
     if not payload.is_dir():
         raise InstallError(f"payload not found: {payload}")
 
     written: set[Path] = set()
+    touched: set[Path] = set()
     missing: list[str] = []
+    profile: dict | None = None
     stack_pack = cicd_pack = None
     frontend_packs: list[tuple[Path, dict]] = []
     tools_packs: list[tuple[Path, dict]] = []
@@ -460,26 +482,69 @@ def _install(payload: Path, target: Path, force: bool, profile_path: Path | None
     _copy_core(payload, target, force, written, log, missing)
     _raise_if_missing(missing)  # after the FULL core scan, so every core miss is reported
 
-    if stack_pack or cicd_pack or frontend_packs or tools_packs:
-        parts = [f"stack pack '{p[0].name}'" for p in (stack_pack,) if p]
-        parts += [f"CI/CD pack '{p[0].name}'" for p in (cicd_pack,) if p]
-        parts += [f"frontend pack '{d.name}'" for d, _ in frontend_packs]
-        parts += [f"tools pack '{d.name}'" for d, _ in tools_packs]
-        log.append(f"\n-- composing {' + '.join(parts)} --")
-        if stack_pack:
-            _overlay_pack(stack_pack[0], stack_pack[1], target, force, written, log, missing)
-            _splice_claude_stack_section(stack_pack[0], stack_pack[1], target, force, log)
-        if cicd_pack:
-            _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log, missing)
-        for fe_dir, fe_manifest in frontend_packs:
-            _overlay_pack(fe_dir, fe_manifest, target, force, written, log, missing)
-        for tool_dir, tool_manifest in tools_packs:
-            _overlay_pack(tool_dir, tool_manifest, target, force, written, log, missing)
-        _raise_if_missing(missing)  # after ALL packs are scanned, so every pack miss is reported
-
+    packs = _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs,
+                           target, force, written, touched, log, missing)
     _ensure_gitignore(target, log)
-    _print_summary(log, warnings, tools_packs)
+
+    touched |= written  # copies; merge/splice dests were collected as they happened
+    profile_id = (profile or {}).get("company", {}).get("profile_id")
+    _write_manifest(payload, target, touched, profile_id, packs, log)
+    if not quiet:
+        _print_summary(log, warnings, tools_packs)
     return 0
+
+
+def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: Path,
+                   force: bool, written: set[Path], touched: set[Path],
+                   log: list[str], missing: list[str]) -> list[str]:
+    """Overlay every resolved pack (stack -> CI/CD -> frontend -> tools; last wins) and return
+    the composed pack ids as '<axis-dir>/<id>' for the manifest."""
+    if not (stack_pack or cicd_pack or frontend_packs or tools_packs):
+        return []
+    parts = [f"stack pack '{p[0].name}'" for p in (stack_pack,) if p]
+    parts += [f"CI/CD pack '{p[0].name}'" for p in (cicd_pack,) if p]
+    parts += [f"frontend pack '{d.name}'" for d, _ in frontend_packs]
+    parts += [f"tools pack '{d.name}'" for d, _ in tools_packs]
+    log.append(f"\n-- composing {' + '.join(parts)} --")
+    if stack_pack:
+        _overlay_pack(stack_pack[0], stack_pack[1], target, force, written, log, missing, touched)
+        _splice_claude_stack_section(stack_pack[0], stack_pack[1], target, force, log, touched)
+    if cicd_pack:
+        _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log, missing, touched)
+    for fe_dir, fe_manifest in frontend_packs:
+        _overlay_pack(fe_dir, fe_manifest, target, force, written, log, missing, touched)
+    for tool_dir, tool_manifest in tools_packs:
+        _overlay_pack(tool_dir, tool_manifest, target, force, written, log, missing, touched)
+    _raise_if_missing(missing)  # after ALL packs are scanned, so every pack miss is reported
+
+    packs = [f"stacks/{p[0].name}" for p in (stack_pack,) if p]
+    packs += [f"cicd/{p[0].name}" for p in (cicd_pack,) if p]
+    packs += [f"frontend/{d.name}" for d, _ in frontend_packs]
+    packs += [f"tools/{d.name}" for d, _ in tools_packs]
+    return packs
+
+
+def _write_manifest(payload: Path, target: Path, touched: set[Path],
+                    profile_id: str | None, packs: list[str], log: list[str]) -> None:
+    """Record the composed pristine state: hash the FINAL on-disk content of every dest this
+    run touched. On re-runs the existing manifest's entries for untouched dests are preserved
+    (they still hold the pristine hash a later upgrade classifies against); touched entries
+    are refreshed. The manifest write is part of the run — a failure fails the install."""
+    try:
+        existing = load_manifest(target)
+    except ValueError as exc:
+        raise InstallError(str(exc)) from exc
+    files: dict[str, str] = dict(existing["files"]) if existing else {}
+    for dest in touched:
+        rel = dest.relative_to(target).as_posix()
+        if rel == MANIFEST_REL:  # the manifest never lists itself
+            continue
+        files[rel] = file_digest(dest)
+    try:
+        write_manifest(target, build_manifest(payload, profile_id, packs, files))
+    except OSError as exc:
+        raise InstallError(f"failed to write {MANIFEST_REL}: {exc}") from exc
+    log.append(f"MANIFEST {MANIFEST_REL} ({len(files)} files)")
 
 
 def _raise_if_missing(missing: list[str]) -> None:

@@ -1,5 +1,6 @@
 """Tests for install_harness.py — core-only copy and profile-aware pack composition."""
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -726,6 +727,99 @@ class TestEnsureGitignore:
         (target / ".gitignore").write_text(content, encoding="utf-8")
         install(payload, target, force=False)
         assert (target / ".gitignore").read_text(encoding="utf-8") == content
+
+
+# ── install manifest (.claude/harness-manifest.json) ────────────────────────────
+
+MANIFEST_REL = ".claude/harness-manifest.json"
+
+
+def _read_manifest(target: Path) -> dict:
+    return json.loads((target / MANIFEST_REL).read_text(encoding="utf-8"))
+
+
+def _sha(path: Path) -> str:
+    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+class TestManifest:
+    """A successful run ends by recording the composed PRISTINE state (final on-disk hash of
+    every dest it touched) so upgrade_harness.py can three-way classify later."""
+
+    def test_full_profile_install_records_correct_hashes(self, payload, target, tmp_path, valid_profile):
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        m = _read_manifest(target)
+        assert m["manifest_version"] == 1
+        for rel in ("CLAUDE.md", ".claude/rules/testing.md", ".github/workflows/ci.yml"):
+            assert m["files"][rel] == _sha(target / rel)  # recomputed from final content
+
+    def test_profile_id_and_packs_recorded(self, payload, target, tmp_path, valid_profile):
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        m = _read_manifest(target)
+        assert m["profile_id"] == "test-profile"
+        assert m["packs"] == ["stacks/dotnet", "cicd/github", "frontend/generic"]
+
+    def test_core_only_profile_id_null_and_no_packs(self, payload, target):
+        install(payload, target, force=False)
+        m = _read_manifest(target)
+        assert m["profile_id"] is None
+        assert m["packs"] == []
+
+    def test_plugin_version_read_from_plugin_json(self, tmp_path, target):
+        payload = make_payload(tmp_path)
+        _write(tmp_path / ".claude-plugin" / "plugin.json", json.dumps({"version": "9.9.9"}) + "\n")
+        install(payload, target, force=False)
+        assert _read_manifest(target)["plugin_version"] == "9.9.9"
+
+    def test_plugin_version_unknown_when_absent(self, payload, target):
+        install(payload, target, force=False)
+        assert _read_manifest(target)["plugin_version"] == "unknown"
+
+    def test_merged_mcp_hash_reflects_merged_content(self, payload, target, tmp_path, valid_profile):
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        mcp = target / ".mcp.json"
+        assert "microsoft-learn" in mcp.read_text(encoding="utf-8")  # fragments really merged
+        assert _read_manifest(target)["files"][".mcp.json"] == _sha(mcp)
+
+    def test_merged_preexisting_dest_is_recorded_even_though_copy_skipped(
+        self, payload, target, tmp_path, valid_profile
+    ):
+        # core copy SKIPs the pre-existing .mcp.json, but the pack fragments still MERGE into
+        # it — a merged dest is touched and must land in the manifest with its merged hash.
+        own = {"mcpServers": {"team-custom": {"type": "http", "url": "https://example.test/mcp"}}}
+        (target / ".mcp.json").write_text(json.dumps(own), encoding="utf-8")
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert _read_manifest(target)["files"][".mcp.json"] == _sha(target / ".mcp.json")
+
+    def test_skipped_preexisting_file_not_recorded(self, payload, target):
+        _write(target / "specs" / "spec-template.md", "# my own template\n")
+        install(payload, target, force=False)
+        assert "specs/spec-template.md" not in _read_manifest(target)["files"]
+
+    def test_manifest_never_lists_itself(self, payload, target, tmp_path, valid_profile):
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert MANIFEST_REL not in _read_manifest(target)["files"]  # even on a re-run
+
+    def test_rerun_preserves_entries_for_untouched_dests(self, payload, target, tmp_path, valid_profile):
+        pf = _profile_file(tmp_path, valid_profile)
+        install(payload, target, force=False, profile_path=pf)
+        first = _read_manifest(target)
+        # Phase-3 adaptation: the re-run SKIPs this dest, so its PRISTINE hash must survive
+        # (never rehashed from the adapted content — that is what makes ADAPTED detectable).
+        (target / ".claude" / "rules" / "testing.md").write_text("# adapted\n", encoding="utf-8")
+        rc = install(payload, target, force=False, profile_path=pf)
+        assert rc == 0
+        second = _read_manifest(target)
+        assert second["files"][".claude/rules/testing.md"] == first["files"][".claude/rules/testing.md"]
+        assert set(second["files"]) == set(first["files"])  # nothing dropped, nothing new
+
+    def test_manifest_log_line_printed(self, payload, target, capsys):
+        install(payload, target, force=False)
+        out = capsys.readouterr().out
+        assert "MANIFEST .claude/harness-manifest.json (" in out
+        assert " files)" in out
 
 
 class TestResolvePacks:
