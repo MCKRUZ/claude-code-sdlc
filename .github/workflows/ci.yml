@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.2
       - run: uv run --project scripts pytest scripts/tests -q
 
   sync-check:
@@ -42,7 +42,7 @@ jobs:
           repository: MCKRUZ/intent-driven-development
           ref: main
           path: kit-source
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.2
       # harness/ is generated — never hand-edited. If this is red, the kit's main branch
       # moved without a plugin sync. Fix locally:
       #   uv run --project scripts scripts/sync_kit.py --kit <delivery-standard>/kit
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.2
       - name: Compose the flagship install
         run: |
           uv run --project scripts scripts/install_harness.py \
