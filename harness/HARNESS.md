@@ -95,7 +95,7 @@ spawning helpers you didn't ask for.
 **Repos with a user interface get a seventh specialist: `ux-reviewer`.** It reviews screens
 the way the grader reviews code — do all the states exist (loading, empty, error, success), is
 it keyboard-reachable, does it follow the house pattern — and drives the changed flow in a
-real browser when it can. On React repos it arrives React-aware (it also catches the
+real browser when it can. On React and Angular repos it arrives framework-aware (it also catches the
 framework's own UX failure modes). Advisory, like the grader: it reports, a human decides.
 
 ## .claude/skills/ — the runbooks

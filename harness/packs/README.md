@@ -15,7 +15,7 @@ Packs compose along axes that are **orthogonal** — you pick from each:
 |---|---|---|---|---|
 | **Stack** | `packs/stacks/<id>` | *How do we build in this technology?* | one | `dotnet`, `node-typescript`, `python` |
 | **CI/CD** | `packs/cicd/<id>` | *Which pipeline platform runs the rails?* | one | `github`, `azure-devops` |
-| **Frontend** | `packs/frontend/<id>` | *Does this repo have screens, and in what framework?* | generic + one | `generic`, `react` |
+| **Frontend** | `packs/frontend/<id>` | *Does this repo have screens, and in what framework?* | generic + one | `generic`, `react`, `angular` |
 | **Tools** | `packs/tools/<id>` | *Which optional tools does the team wire in?* | any (0+) | `gitnexus` |
 
 A repo pulls **one stack pack + one CI/CD pack + frontend packs when it has a frontend + any number
@@ -24,7 +24,7 @@ technology conventions don't change because the pipeline platform did.
 
 **The frontend axis is layered within itself:** whenever the profile declares `stack.frontend`, the
 framework-agnostic `generic` pack installs first (the `ux-reviewer` agent), then the framework pack
-(`react`; `angular` when built) composes on top and overlays what it specializes — last wins. A
+(`react`, `angular`) composes on top and overlays what it specializes — last wins. A
 framework with no pack yet gets the generic reviewer plus a warning, never a failed setup.
 
 **Stack and CI/CD packs OVERLAY realized files** (they replace the core's placeholder blanks). A **tools
