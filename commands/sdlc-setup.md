@@ -55,7 +55,9 @@ deploy-dev — plus 2 eval workflows), the `profile/` rubrics + branch-protectio
 `infra/` starters. Idempotent — existing files are left in place and reported as SKIPPED (pass
 `--force` only when you intend to overwrite). One exception: the JSON merge targets (`.mcp.json`
 and `.claude/settings.json`) are re-merged on every run by design — the installer deep-merges the
-payload's entries into them rather than skipping, so pack additions always land.
+payload's entries into them rather than skipping, so pack additions always land. The install
+finishes by writing `.claude/harness-manifest.json` — the install receipt (`/sdlc-upgrade` reads
+it later to upgrade the repo without clobbering its adaptations). Commit it with the rest.
 
 Pass `--profile .sdlc/profile.yaml` so the installer **composes the stack + CI/CD packs the profile
 selects** on top of the neutral core: the profile's `stack.backend.language` picks the stack pack
@@ -147,7 +149,8 @@ uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/val
 - If uv is not installed: tell the user to install it (`pip install uv` or `brew install uv`)
 - If profile validation fails: show errors and suggest fixes
 - If directory permissions prevent creation: report the error clearly
-- If the harness install reports SKIPPED files you wanted replaced: re-run install_harness.py with `--force`.
+- If the harness install reports SKIPPED files you wanted replaced: prefer `/sdlc-upgrade` (manifest-aware,
+  never clobbers adaptations). `--force` is the blunt fallback:
   **`--force` rewrites `CLAUDE.md` from the pristine template** — the appended SDLC section (Step 6) and any
   local edits to it are lost and must be re-applied. Prefer deleting just the specific files you want
   re-installed and re-running without `--force`.

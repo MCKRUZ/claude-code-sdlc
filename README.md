@@ -109,7 +109,7 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 9 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
 | [Gate System](docs/gate-system.md) | 7-gate validation — integrity, completeness, metrics, compliance, consistency, quality, exit criteria — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 19 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Commands](docs/commands.md) | All 21 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
 | [Agents](docs/agents.md) | 13 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
 | [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, the spec backlog |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
@@ -228,7 +228,7 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # 19 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals)
+├── commands/                # 21 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals, /sdlc-harness, /sdlc-upgrade)
 ├── agents/                  # 13 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst, feature-architect, visual-designer, conversation-designer, data-analyst, bizreq-analyst)
 ├── profiles/                # Company/stack YAML profiles
 ├── channels/                # Channel descriptor library (ag-ui, voice, chat) + schema

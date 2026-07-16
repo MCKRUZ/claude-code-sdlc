@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0 — 2026-07-16
+
+- Install manifest: `install_harness.py` writes `.claude/harness-manifest.json` — plugin version,
+  composed packs, and a sha256 of every file *as installed* (the pristine baseline that makes
+  adaptation detectable later).
+- `/sdlc-upgrade` + `scripts/upgrade_harness.py`: safe upgrades for installed harnesses. Files
+  still factory-original are replaced with the new version; repo-adapted files are left alone;
+  files changed on both sides are written beside the original as `<file>.harness-new` for a
+  deliberate merge. Dry-run by default; `--apply` to execute. Legacy installs (no manifest) are
+  adopted on first apply.
+
 ## 0.3.0 — 2026-07-16
 
 - Profile-aware pack composition: the harness installer composes packs along four axes — stack

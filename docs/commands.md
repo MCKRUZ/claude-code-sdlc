@@ -20,6 +20,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 - [/sdlc-intake -- Document Corpus Intake](#sdlc-intake----document-corpus-intake)
 - [/sdlc-brief -- Discovery Workshop Brief](#sdlc-brief----discovery-workshop-brief)
 - [/sdlc-spec -- Author a Ready Spec](#sdlc-spec----author-a-ready-spec)
+- [Additional Commands (summaries)](#additional-commands-summaries)
 - [Command Interaction Flow](#command-interaction-flow)
 - [Python Script Invocation](#python-script-invocation)
 - [Cross-References](#cross-references)
@@ -709,6 +710,24 @@ Writes `specs/NNNN-name.md` to the repo. In workflow mode (`--state`), each `che
 ### When to Use
 
 The Build loop's Intent beat — before building any change. A spec that `check_spec.py` reports as NOT READY must not enter the Delegate beat (that is the "skipping Intent" failure the loop exists to kill). When behavior changes later, the spec changes in the **same PR** as the code.
+
+---
+
+## Additional Commands (summaries)
+
+Eight commands have their full flow documented in their command files rather than here. One
+line each; see `commands/<name>.md` for the complete instructions.
+
+| Command | What it does |
+|---|---|
+| `/sdlc-harness` | Install or refresh the delivery harness independent of a full `/sdlc-setup` |
+| `/sdlc-upgrade` | Bring an installed harness forward safely using the install manifest — updates factory-original files, preserves adaptations, surfaces both-sides changes as `.harness-new` siblings to merge |
+| `/sdlc-feature` | Decompose an epic into channel-aware features and specs |
+| `/sdlc-channel` | Bind a spec to its channel and inject the acceptance dimensions |
+| `/sdlc-experience` | Author the channel-shaped experience for a surface |
+| `/sdlc-data` | Author the data contract, readiness, and lineage for a feature |
+| `/sdlc-rules` | Author business rules and golden scenarios |
+| `/sdlc-evals` | Author the versioned golden set for an LLM-powered spec |
 
 ---
 
