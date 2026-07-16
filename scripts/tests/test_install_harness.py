@@ -1,6 +1,7 @@
 """Tests for install_harness.py — core-only copy and profile-aware pack composition."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -147,15 +148,28 @@ def _write(path: Path, content: str) -> None:
 
 
 def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, tools_present=True) -> Path:
-    """Build a minimal but structurally-real payload: core files + a dotnet stack pack + a
-    github CI/CD pack + a gitnexus tools pack. Knobs let a test force an incompatible pair or a
-    missing pack."""
+    """Build a minimal but structurally-real payload: EVERY core FILE_MAP/DIR_MAP/EXTRA_FILES
+    source (the installer fails closed on a missing one) + a dotnet stack pack + a github CI/CD
+    pack + a gitnexus tools pack. Knobs let a test force an incompatible pair or a missing pack."""
     payload = root / "harness"
     _write(payload / "CLAUDE.md.template", CLAUDE_TEMPLATE)
     _write(payload / "spec-template.md", "# spec template\n")
     _write(payload / "settings.json", json.dumps(CORE_SETTINGS, indent=2) + "\n")
     _write(payload / "mcp.json", json.dumps(CORE_MCP, indent=2) + "\n")
+    _write(payload / "HARNESS.md", "# harness tour\n")
     _write(payload / "workflows" / "ci.yml", CORE_CI)
+    _write(payload / "workflows" / "RAILS.md", "# rails guide (core)\n")
+    _write(payload / "hooks" / "stop-gate.sh", "#!/bin/sh\n")
+    _write(payload / "agents" / "code-reviewer.md", "# reviewer\n")
+    _write(payload / "skills" / "spec" / "SKILL.md", "# skill\n")
+    _write(payload / "profile" / "rubrics" / "grader.md", "# rubric\n")
+    _write(payload / "profile" / "rulesets" / "main.json", "{}\n")
+    _write(payload / "profile" / "scripts" / "diff-anchors.sh", "#!/bin/sh\n")
+    _write(payload / "profile" / "eval-bypasses.md", "# bypasses\n")
+    _write(payload / "profile" / "CODEOWNERS", "* @team\n")
+    _write(payload / "eval-datasets" / "cases.jsonl", "{}\n")
+    _write(payload / "prompts" / "review.md", "# prompt\n")
+    _write(payload / "infra" / "main.bicep", "// infra\n")
 
     stack = dict(STACK_PACK_YAML)
     if stack_requires_cicd is not None:
@@ -347,6 +361,76 @@ class TestFailClosed:
         rc = install(payload, target, force=False, profile_path=bad)
         assert rc == 2
         assert "validation" in capsys.readouterr().err
+
+
+# ── fail-closed MISS (a mapped source absent from the payload/pack is breakage) ──
+
+class TestFailClosedMiss:
+    def test_missing_core_file_fails_closed_and_reports_all(self, tmp_path, target, capsys):
+        payload = make_payload(tmp_path)
+        (payload / "HARNESS.md").unlink()
+        (payload / "spec-template.md").unlink()
+        rc = install(payload, target, force=False)
+        assert rc == 2
+        cap = capsys.readouterr()
+        assert "MISS    HARNESS.md" in cap.out                # every miss still printed
+        assert "MISS    spec-template.md" in cap.out
+        assert "ERROR:" in cap.err
+        assert "HARNESS.md" in cap.err and "spec-template.md" in cap.err  # all, not just the first
+
+    def test_missing_dir_map_source_fails_closed(self, tmp_path, target, capsys):
+        payload = make_payload(tmp_path)
+        shutil.rmtree(payload / "hooks")
+        rc = install(payload, target, force=False)
+        assert rc == 2
+        assert "hooks/" in capsys.readouterr().err
+
+    def test_missing_pack_overlay_src_fails_closed(self, tmp_path, target, valid_profile, capsys):
+        payload = make_payload(tmp_path)
+        (payload / "packs" / "stacks" / "dotnet" / "rules" / "testing.md").unlink()
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "ERROR:" in err and "rules/testing.md" in err
+
+    def test_unmapped_payload_file_is_still_optional(self, tmp_path, target):
+        # A payload file deliberately absent from every map installs nowhere — and that is fine.
+        payload = make_payload(tmp_path)
+        _write(payload / "unmapped-notes.md", "# not in any map\n")
+        rc = install(payload, target, force=False)
+        assert rc == 0
+        assert not (target / "unmapped-notes.md").exists()
+
+
+# ── error contract (every InstallError -> clean "ERROR:" + rc 2, never a traceback) ──
+
+class TestErrorContract:
+    def test_merge_into_missing_dest_is_clean_error(self, payload, target, tmp_path, valid_profile, capsys):
+        sp = payload / "packs" / "stacks" / "dotnet"
+        manifest = yaml.safe_load((sp / "pack.yaml").read_text(encoding="utf-8"))
+        manifest["overlays"].append(
+            {"src": "mcp.fragment.json", "dest": ".claude/never-shipped.json", "merge": True})
+        (sp / "pack.yaml").write_text(yaml.dump(manifest), encoding="utf-8")
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "ERROR:" in err and "cannot merge" in err
+
+    @pytest.mark.parametrize("field,value", [
+        ("stack", "csharp"),
+        ("stack", ["backend"]),
+        ("company", "acme"),
+        ("quality", [80]),
+        ("tools", "gitnexus"),
+    ])
+    def test_malformed_section_shape_is_clean_error(
+        self, payload, target, tmp_path, valid_profile, field, value, capsys
+    ):
+        bad = {**valid_profile, field: value}
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, bad))
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "ERROR:" in err and field in err
 
 
 # ── idempotency ────────────────────────────────────────────────────────────────
@@ -553,6 +637,34 @@ class TestResolveFrontend:
         resolved, warnings = _resolve_frontend(prof, payload)
         assert resolved == [] and warnings == []
 
+    def _with_framework(self, valid_profile, raw):
+        return {**valid_profile, "stack": {**valid_profile["stack"],
+                                           "frontend": {"framework": raw}}}
+
+    @pytest.mark.parametrize("raw", ["react", "reactjs", "react.js", "React 18", "react-18",
+                                     "react@18.2", "React.js"])
+    def test_react_alias_forms_resolve_react_pack(self, payload, valid_profile, raw):
+        resolved, warnings = _resolve_frontend(self._with_framework(valid_profile, raw), payload)
+        assert [d.name for d, _ in resolved] == ["generic", "react"]
+        assert warnings == []
+
+    def test_react_native_never_matches_react_pack(self, payload, valid_profile):
+        resolved, warnings = _resolve_frontend(
+            self._with_framework(valid_profile, "react-native"), payload)
+        assert [d.name for d, _ in resolved] == ["generic"]     # degrade, not the React WEB pack
+        assert len(warnings) == 1 and "react-native" in warnings[0]
+
+    def test_react_native_with_version_still_degrades(self, payload, valid_profile):
+        resolved, warnings = _resolve_frontend(
+            self._with_framework(valid_profile, "React Native 0.73"), payload)
+        assert [d.name for d, _ in resolved] == ["generic"]
+        assert len(warnings) == 1 and "react-native" in warnings[0]
+
+    def test_preact_degrades_to_generic(self, payload, valid_profile):
+        resolved, warnings = _resolve_frontend(self._with_framework(valid_profile, "preact"), payload)
+        assert [d.name for d, _ in resolved] == ["generic"]     # never fuzzy-matched to react
+        assert len(warnings) == 1 and "preact" in warnings[0]
+
 
 class TestResolveTools:
     def test_resolves_gitnexus(self, payload, valid_profile):
@@ -590,6 +702,30 @@ class TestDeepMerge:
 
     def test_scalar_overlay_wins(self):
         assert _deep_merge({"a": 1}, {"a": 2}) == {"a": 2}
+
+    def test_nested_comment_keys_stripped_in_overlay_only_subtree(self):
+        merged = _deep_merge({}, {"a": {"//": "note", "b": {"//": "nested note", "c": 1}}})
+        assert merged == {"a": {"b": {"c": 1}}}
+
+    def test_nested_comment_keys_stripped_in_base_only_subtree(self):
+        merged = _deep_merge({"a": {"//": "note", "b": 1}}, {})
+        assert merged == {"a": {"b": 1}}
+
+
+class TestEnsureGitignore:
+    def test_preexisting_entry_without_trailing_slash_not_duplicated(self, payload, target):
+        (target / ".gitignore").write_text(".claude/.review-receipts\n", encoding="utf-8")
+        install(payload, target, force=False)
+        lines = [ln.strip() for ln in (target / ".gitignore").read_text(encoding="utf-8").splitlines()]
+        receipts = [ln for ln in lines if ln.rstrip("/") == ".claude/.review-receipts"]
+        assert len(receipts) == 1                                # no near-duplicate appended
+        assert ".claude/settings.local.json" in lines            # the genuinely-missing line added
+
+    def test_all_entries_present_is_noop(self, payload, target):
+        content = ".claude/.review-receipts/\n.claude/settings.local.json\n"
+        (target / ".gitignore").write_text(content, encoding="utf-8")
+        install(payload, target, force=False)
+        assert (target / ".gitignore").read_text(encoding="utf-8") == content
 
 
 class TestResolvePacks:

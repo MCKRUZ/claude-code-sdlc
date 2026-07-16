@@ -1,10 +1,12 @@
 """Tests for init_project.py."""
 
+import sys
 from pathlib import Path
 
 import pytest
 import yaml
 
+import init_project
 from init_project import create_sdlc_dir, init_state, load_profile, PHASE_DIRS
 
 
@@ -99,6 +101,52 @@ class TestCreateSdlcDir:
         state_path = target / ".sdlc" / "state.yaml"
         state = yaml.safe_load(state_path.read_text())
         assert state["project_name"] == "my-cool-project"
+
+
+class TestMainValidatesProfile:
+    """main() validates the profile with the same rules as validate_profile.py and exits 2
+    with the errors BEFORE writing anything (init runs first in the setup wizard)."""
+
+    def _run_main(self, monkeypatch, profile_path, target):
+        monkeypatch.setattr(sys, "argv",
+                            ["init_project.py", "--profile", str(profile_path),
+                             "--target", str(target)])
+        init_project.main()
+
+    def _write_profile(self, tmp_path, profile):
+        path = tmp_path / "profile.yaml"
+        path.write_text(yaml.dump(profile), encoding="utf-8")
+        return path
+
+    def test_invalid_profile_exits_2_before_writing(self, tmp_path, monkeypatch, capsys):
+        bad = {"version": "1.0", "company": {"name": "X", "profile_id": "x"}}  # no stack/quality
+        profile_path = self._write_profile(tmp_path, bad)
+        target = tmp_path / "proj"
+        with pytest.raises(SystemExit) as si:
+            self._run_main(monkeypatch, profile_path, target)
+        assert si.value.code == 2
+        assert not target.exists()                       # nothing written — not even the dir
+        out = capsys.readouterr().out
+        assert "stack" in out and "quality" in out       # the errors are reported
+
+    def test_wrong_shape_section_exits_2(self, tmp_path, monkeypatch, capsys):
+        bad = {"version": "1.0", "company": "acme",
+               "stack": {"backend": {"language": "csharp", "framework": "dotnet"}},
+               "quality": {"coverage_minimum": 80}}
+        profile_path = self._write_profile(tmp_path, bad)
+        target = tmp_path / "proj"
+        with pytest.raises(SystemExit) as si:
+            self._run_main(monkeypatch, profile_path, target)
+        assert si.value.code == 2
+        assert not (target / ".sdlc").exists()
+        assert "company" in capsys.readouterr().out
+
+    def test_valid_profile_creates_sdlc(self, tmp_path, monkeypatch, valid_profile):
+        profile_path = self._write_profile(tmp_path, valid_profile)
+        target = tmp_path / "proj"
+        target.mkdir()
+        self._run_main(monkeypatch, profile_path, target)
+        assert (target / ".sdlc" / "state.yaml").is_file()
 
 
 class TestPhaseDirs:

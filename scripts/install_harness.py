@@ -27,6 +27,11 @@ Two modes:
   reviewer models): those are genuinely repo-level Phase-3 adaptation, not something a profile
   knows. The profile drives which packs compose, not repo-specific values.
 
+Fail-closed: a FILE_MAP/DIR_MAP/EXTRA_FILES source missing from the payload, or a pack.yaml
+overlay src missing from its pack, still logs a MISS line for EVERY missing item (the scan
+completes; it never stops at the first), then the run exits 2 — a partial install never exits 0.
+Files the maps deliberately leave unmapped are simply not installed; that is not a MISS.
+
 Usage:
   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/install_harness.py \
     --payload ${CLAUDE_PLUGIN_ROOT}/harness --target . [--profile <profile.yaml>] [--force]
@@ -88,9 +93,19 @@ CICD_PACK_BY_PLATFORM = {
 }
 # Frontend axis (packs/frontend/<id>): whenever the profile declares stack.frontend, the
 # framework-agnostic 'generic' pack composes first, then a framework pack ON TOP (last wins).
-# Keys are the first alphabetic token of stack.frontend.framework, lowercased — so
-# "React 18" / "react-18" both resolve to "react", "angular-17" will resolve to "angular"
-# when that pack exists.
+# stack.frontend.framework is normalized (lowercased, separators collapsed, trailing version
+# noise stripped — "React 18" / "react-18" / "react@18.2" all become "react") and looked up in
+# FRONTEND_FRAMEWORK_ALIASES. An alias mapping to None is a framework we RECOGNIZE but have no
+# web pack for (react-native is native, preact is not React) — it degrades to generic with a
+# warning instead of ever fuzzy-matching a web pack. An unlisted framework degrades the same way.
+FRONTEND_FRAMEWORK_ALIASES: dict[str, str | None] = {
+    "react": "react",
+    "reactjs": "react",
+    "react.js": "react",
+    "react-native": None,   # native UI, never the React WEB pack
+    "preact": None,         # react-adjacent, but not React
+    # add "angular": "angular" (and its alias forms) when that frontend pack exists.
+}
 FRONTEND_PACK_BY_FRAMEWORK = {
     "react": "react",
     # add "angular": "angular" when that frontend pack exists.
@@ -126,11 +141,15 @@ def _copy(src: Path, dest: Path, force: bool, written: set[Path], log: list[str]
         log.append(f"{'FORCE ' if existed else 'WRITE '}  {rel}")
 
 
-def _copy_core(payload: Path, target: Path, force: bool, written: set[Path], log: list[str]) -> None:
+def _copy_core(payload: Path, target: Path, force: bool, written: set[Path], log: list[str],
+               missing: list[str]) -> None:
+    """Copy the core maps. A mapped source absent from the payload is logged AND collected in
+    `missing` — the scan keeps going so every miss is reported, then the caller fails closed."""
     for src_rel, dest_rel in FILE_MAP + EXTRA_FILES:
         src = payload / src_rel
         if not src.is_file():
             log.append(f"MISS    {src_rel}  (not in payload)")
+            missing.append(f"{src_rel} (not in payload)")
             continue
         _copy(src, target / dest_rel, force, written, log)
 
@@ -140,6 +159,7 @@ def _copy_core(payload: Path, target: Path, force: bool, written: set[Path], log
         src_dir = payload / src_rel
         if not src_dir.is_dir():
             log.append(f"MISS    {src_rel}  (not in payload)")
+            missing.append(f"{src_rel} (not in payload)")
             continue
         for src in sorted(p for p in src_dir.rglob("*") if p.is_file()):
             key = src.relative_to(payload).as_posix()
@@ -230,13 +250,23 @@ def _resolve_packs(profile: dict, payload: Path):
     return stack_pack, cicd_pack, warnings
 
 
+def _normalize_framework(raw) -> str | None:
+    """Normalize stack.frontend.framework for the alias lookup: lowercase, collapse runs of
+    whitespace/underscores to hyphens, strip trailing version noise ("React 18" / "react-18" /
+    "react@18.2" -> "react"). Alphabetic qualifiers survive ("react-native" stays itself)."""
+    name = re.sub(r"[\s_]+", "-", str(raw).strip().lower())
+    name = re.sub(r"[-.@]*v?\d[\d.]*$", "", name)
+    return name.rstrip("-.@") or None
+
+
 def _resolve_frontend(profile: dict, payload: Path):
     """Resolve the frontend axis. If the profile declares a frontend (stack.frontend present),
-    the 'generic' pack (framework-agnostic UX reviewer) composes first; a mapped framework pack
-    composes on top and overlays what it specializes (last wins). A declared framework with no
-    pack yet degrades to generic + a warning — the repo still gets a UX reviewer, just not a
-    framework-aware one. A payload missing packs/frontend/generic fails closed (stale sync),
-    like any mapped-but-absent pack. Returns (list, warnings) of (dir, manifest) tuples."""
+    the 'generic' pack (framework-agnostic UX reviewer) composes first; a framework pack —
+    matched via FRONTEND_FRAMEWORK_ALIASES on the normalized framework name, never by prefix —
+    composes on top and overlays what it specializes (last wins). A recognized-but-unsupported
+    framework (alias -> None, e.g. react-native) or an unlisted one degrades to generic + a
+    warning. A payload missing packs/frontend/generic fails closed (stale sync), like any
+    mapped-but-absent pack. Returns (list, warnings) of (dir, manifest) tuples."""
     frontend = (profile.get("stack", {}) or {}).get("frontend")
     resolved: list[tuple[Path, dict]] = []
     warnings: list[str] = []
@@ -244,12 +274,15 @@ def _resolve_frontend(profile: dict, payload: Path):
         return resolved, warnings
     resolved.append(_resolve_pack("frontend", "generic", payload))
     raw = frontend.get("framework")
-    framework = None
-    if raw:
-        tokens = [t for t in re.split(r"[^a-z]+", str(raw).strip().lower()) if t]
-        framework = tokens[0] if tokens else None
-    if framework in FRONTEND_PACK_BY_FRAMEWORK:
-        resolved.append(_resolve_pack("frontend", FRONTEND_PACK_BY_FRAMEWORK[framework], payload))
+    framework = _normalize_framework(raw) if raw else None
+    canonical = FRONTEND_FRAMEWORK_ALIASES.get(framework) if framework else None
+    if canonical in FRONTEND_PACK_BY_FRAMEWORK:
+        resolved.append(_resolve_pack("frontend", FRONTEND_PACK_BY_FRAMEWORK[canonical], payload))
+    elif framework in FRONTEND_FRAMEWORK_ALIASES:  # recognized, explicitly unsupported
+        warnings.append(
+            f"frontend framework {framework!r} is not supported by a frontend pack (no web pack "
+            f"applies); installed the generic UX reviewer only"
+        )
     elif framework:
         warnings.append(
             f"no frontend pack for framework {framework!r}; installed the generic UX reviewer "
@@ -297,19 +330,29 @@ def _merge_list(base: list, overlay: list) -> list:
     return out
 
 
+def _strip_comments(value):
+    """Recursively drop '//'-prefixed keys (JSON-comment convention) from dicts at any depth."""
+    if isinstance(value, dict):
+        return {k: _strip_comments(v) for k, v in value.items() if not str(k).startswith("//")}
+    if isinstance(value, list):
+        return [_strip_comments(x) for x in value]
+    return value
+
+
 def _deep_merge(base, overlay):
     """Recursively merge overlay into base: dicts merge key-wise, lists concat with de-dup, scalars
-    take the overlay. Keys starting with '//' (JSON-comment convention) are dropped."""
+    take the overlay. Keys starting with '//' (JSON-comment convention) are dropped at every
+    depth — including subtrees copied wholesale from only one side."""
     if isinstance(base, dict) and isinstance(overlay, dict):
-        result = {k: v for k, v in base.items() if not str(k).startswith("//")}
+        result = {k: _strip_comments(v) for k, v in base.items() if not str(k).startswith("//")}
         for k, v in overlay.items():
             if str(k).startswith("//"):
                 continue
-            result[k] = _deep_merge(result[k], v) if k in result else v
+            result[k] = _deep_merge(result[k], v) if k in result else _strip_comments(v)
         return result
     if isinstance(base, list) and isinstance(overlay, list):
         return _merge_list(base, overlay)
-    return overlay
+    return _strip_comments(overlay)
 
 
 def _merge_json(fragment: Path, dest: Path, log: list[str]) -> None:
@@ -323,12 +366,13 @@ def _merge_json(fragment: Path, dest: Path, log: list[str]) -> None:
 
 
 def _overlay_pack(pack_dir: Path, manifest: dict, target: Path, force: bool,
-                  written: set[Path], log: list[str]) -> None:
+                  written: set[Path], log: list[str], missing: list[str]) -> None:
     for entry in manifest.get("overlays", []):
         src = pack_dir / entry["src"]
         dest = target / entry["dest"]
         if not src.is_file():
             log.append(f"MISS    {entry['src']}  (not in pack {pack_dir.name})")
+            missing.append(f"{entry['src']} (not in pack {pack_dir.name})")
             continue
         if entry.get("merge"):
             _merge_json(src, dest, log)
@@ -381,29 +425,40 @@ def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: P
 
 
 def install(payload: Path, target: Path, force: bool, profile_path: Path | None = None) -> int:
-    if not payload.is_dir():
-        print(f"ERROR: payload not found: {payload}", file=sys.stderr)
+    """Run the install. Every InstallError raised anywhere — bad profile, unresolved pack, failed
+    merge, missing mapped source — lands here as a clean "ERROR: ..." + rc 2, never a traceback.
+    The log so far (including every MISS line) is still printed on the error path."""
+    log: list[str] = []
+    try:
+        return _install(payload, target, force, profile_path, log)
+    except InstallError as exc:
+        if log:
+            print("\n".join(log))
+        print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
-    log: list[str] = []
+
+def _install(payload: Path, target: Path, force: bool, profile_path: Path | None,
+             log: list[str]) -> int:
+    if not payload.is_dir():
+        raise InstallError(f"payload not found: {payload}")
+
     written: set[Path] = set()
+    missing: list[str] = []
     stack_pack = cicd_pack = None
     frontend_packs: list[tuple[Path, dict]] = []
     tools_packs: list[tuple[Path, dict]] = []
     warnings: list[str] = []
 
     if profile_path is not None:
-        try:
-            profile = _load_profile(profile_path)
-            stack_pack, cicd_pack, warnings = _resolve_packs(profile, payload)
-            frontend_packs, fe_warnings = _resolve_frontend(profile, payload)
-            tools_packs, tool_warnings = _resolve_tools(profile, payload)
-            warnings = warnings + fe_warnings + tool_warnings
-        except InstallError as exc:
-            print(f"ERROR: {exc}", file=sys.stderr)
-            return 2
+        profile = _load_profile(profile_path)
+        stack_pack, cicd_pack, warnings = _resolve_packs(profile, payload)
+        frontend_packs, fe_warnings = _resolve_frontend(profile, payload)
+        tools_packs, tool_warnings = _resolve_tools(profile, payload)
+        warnings = warnings + fe_warnings + tool_warnings
 
-    _copy_core(payload, target, force, written, log)
+    _copy_core(payload, target, force, written, log, missing)
+    _raise_if_missing(missing)  # after the FULL core scan, so every core miss is reported
 
     if stack_pack or cicd_pack or frontend_packs or tools_packs:
         parts = [f"stack pack '{p[0].name}'" for p in (stack_pack,) if p]
@@ -412,17 +467,31 @@ def install(payload: Path, target: Path, force: bool, profile_path: Path | None 
         parts += [f"tools pack '{d.name}'" for d, _ in tools_packs]
         log.append(f"\n-- composing {' + '.join(parts)} --")
         if stack_pack:
-            _overlay_pack(stack_pack[0], stack_pack[1], target, force, written, log)
+            _overlay_pack(stack_pack[0], stack_pack[1], target, force, written, log, missing)
             _splice_claude_stack_section(stack_pack[0], stack_pack[1], target, force, log)
         if cicd_pack:
-            _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log)
+            _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log, missing)
         for fe_dir, fe_manifest in frontend_packs:
-            _overlay_pack(fe_dir, fe_manifest, target, force, written, log)
+            _overlay_pack(fe_dir, fe_manifest, target, force, written, log, missing)
         for tool_dir, tool_manifest in tools_packs:
-            _overlay_pack(tool_dir, tool_manifest, target, force, written, log)
+            _overlay_pack(tool_dir, tool_manifest, target, force, written, log, missing)
+        _raise_if_missing(missing)  # after ALL packs are scanned, so every pack miss is reported
 
     _ensure_gitignore(target, log)
+    _print_summary(log, warnings, tools_packs)
+    return 0
 
+
+def _raise_if_missing(missing: list[str]) -> None:
+    """Fail closed on mapped-but-absent sources. Called only after a full scan so the error
+    (and the MISS log lines) name every missing item, not just the first."""
+    if not missing:
+        return
+    items = "\n".join(f"  - {m}" for m in missing)
+    raise InstallError(f"{len(missing)} mapped source(s) missing (fail-closed):\n{items}")
+
+
+def _print_summary(log: list[str], warnings: list[str], tools_packs: list[tuple[Path, dict]]) -> None:
     written_n = sum(1 for line in log if line.startswith(("WRITE", "FORCE", "OVERLAY", "SPLICE")))
     merged_n = sum(1 for line in log if line.startswith("MERGE"))
     skipped_n = sum(1 for line in log if line.startswith("SKIP"))
@@ -436,7 +505,6 @@ def install(payload: Path, target: Path, force: bool, profile_path: Path | None 
             print(f"  - {w}", file=sys.stderr)
     print("NEXT: review CLAUDE.md placeholders, then prove the rails "
           "(.github/RAILS.md shakedown drills) before trusting them.")
-    return 0
 
 
 def _print_tool_setup(tools_packs: list[tuple[Path, dict]]) -> None:
@@ -461,7 +529,10 @@ def _print_tool_setup(tools_packs: list[tuple[Path, dict]]) -> None:
 def _ensure_gitignore(target: Path, log: list[str]) -> None:
     gi = target / ".gitignore"
     existing = gi.read_text(encoding="utf-8").splitlines() if gi.exists() else []
-    missing = [ln for ln in GITIGNORE_LINES if ln not in existing]
+    # Compare normalized (whitespace and trailing slash stripped) so a pre-existing entry
+    # without the trailing slash doesn't get a near-duplicate appended.
+    have = {ln.strip().rstrip("/") for ln in existing}
+    missing = [ln for ln in GITIGNORE_LINES if ln.strip().rstrip("/") not in have]
     if not missing:
         return
     with gi.open("a", encoding="utf-8") as fh:

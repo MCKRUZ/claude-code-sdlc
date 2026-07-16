@@ -12,6 +12,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = PLUGIN_ROOT / "templates"
 sys.path.insert(0, str(Path(__file__).parent))
 import phase_model as pm
+from validate_profile import SCHEMA_PATH, load_yaml, validate_profile
 
 # Artifact directories, derived from the phase registry (single source of truth)
 PHASE_DIRS = [p["slug"] for p in pm.all_phases()]
@@ -86,11 +87,20 @@ def main():
         print(f"Error: Profile not found: {profile_path}")
         sys.exit(1)
 
+    # Validate the profile (same rules as validate_profile.py) BEFORE writing anything —
+    # init runs first in the setup wizard, so a bad profile must stop here, not downstream.
+    profile = load_profile(profile_path)
+    errors = validate_profile(profile, load_yaml(SCHEMA_PATH))
+    if errors:
+        print(f"Error: profile failed validation ({len(errors)} error(s)):")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(2)
+
     if not target_path.exists():
         print(f"Creating target directory: {target_path}")
         target_path.mkdir(parents=True)
 
-    profile = load_profile(profile_path)
     project_name = args.name or target_path.name
 
     create_sdlc_dir(target_path, profile, project_name)
