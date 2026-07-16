@@ -1,0 +1,76 @@
+name: CI
+
+# The plugin's own rail — the same checks RELEASING.md requires before any release.
+#
+#   test        — full pytest suite, incl. the golden-repo compose test (real payload +
+#                 flagship profile, snapshot-asserted tree) and the payload<->install-map
+#                 completeness tripwire. BLOCKS.
+#   sync-check  — harness/ is GENERATED from delivery-standard/kit and must never drift.
+#                 BLOCKS. A red here means the kit's main moved without a plugin sync.
+#   actionlint  — lints the workflows the harness EMITS, composed and token-stubbed the
+#                 way a real repo would run them. BLOCKS (verified clean at adoption).
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: pytest (suite + golden repo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8
+      - run: uv run --project scripts pytest scripts/tests -q
+
+  sync-check:
+    name: harness == kit (generated-copy invariant)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The kit source of truth (public repo, no token needed).
+      - uses: actions/checkout@v4
+        with:
+          repository: MCKRUZ/intent-driven-development
+          ref: main
+          path: kit-source
+      - uses: astral-sh/setup-uv@v8
+      # harness/ is generated — never hand-edited. If this is red, the kit's main branch
+      # moved without a plugin sync. Fix locally:
+      #   uv run --project scripts scripts/sync_kit.py --kit <delivery-standard>/kit
+      # then commit the regenerated payload (chore: sync harness payload ...).
+      - run: uv run --project scripts scripts/sync_kit.py --kit kit-source/kit --check
+
+  actionlint:
+    name: actionlint (emitted workflows)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v8
+      - name: Compose the flagship install
+        run: |
+          uv run --project scripts scripts/install_harness.py \
+            --payload harness --target /tmp/golden-repo \
+            --profile profiles/microsoft-enterprise/profile.yaml
+      - name: Stub adaptation tokens
+        # The emitted reference workflows carry <<TOKENS>> that a repo fills during
+        # Phase-3 adaptation; stub them so actionlint sees the post-adaptation shape.
+        run: sed -i -E 's/<<[^>]+>>/STUB/g; s/<PLACEHOLDER>/STUB/g' /tmp/golden-repo/.github/workflows/*.yml
+      - name: Lint emitted workflows
+        # Pinned + checksum-verified (the standard's supply-chain rule). shellcheck is
+        # disabled: the run: bodies are stack-templated references, not final shell.
+        run: |
+          set -euo pipefail
+          curl -fsSL -o actionlint.tar.gz \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz" | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+          ./actionlint -shellcheck= /tmp/golden-repo/.github/workflows/*.yml
