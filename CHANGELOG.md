@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — 2026-07-16
+
+- **spec-gate** (harness): a deterministic blocking check — a pull request that changes source
+  without a committed `specs/NNNN-*.md` in the diff is refused. "No spec, no build" was previously
+  a grader warning; it is now mechanical. Recorded escape: the `no-spec:chore` label plus a reason
+  in the PR description. Added to the required-status-check set on both CI platforms (the merge bar
+  is now five blocking checks).
+- **Coverage floor enforced** (harness): the GitHub CI rail gained the cobertura-parsing floor step
+  the Azure DevOps pack already had — a sub-threshold run now exits non-zero instead of uploading a
+  low number to a report nobody reads. Fails closed when no coverage report is produced.
+- **Stop hook runs tests by default**: `RAILS_STOP_RUN_TESTS=0` opts out (was opt-in). The AI can no
+  longer end a turn on red tests in a default install.
+- Shakedown drills added for both new gates in the core and both CI/CD packs.
+
 ## 0.4.0 — 2026-07-16
 
 - Install manifest: `install_harness.py` writes `.claude/harness-manifest.json` — plugin version,

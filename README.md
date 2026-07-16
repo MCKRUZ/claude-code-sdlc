@@ -54,8 +54,8 @@ One marketplace add, one install — brings the orchestration commands **and** t
 
 Then, per project: `/sdlc-setup` initializes `.sdlc/` **and installs the full delivery harness**
 (governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, 7 CI workflows in
-`.github/workflows/` — 5 rail gates plus 2 eval workflows — of which four checks (build-and-test,
-grader, correctness-review, security-review) block at merge via the
+`.github/workflows/` — 5 rail gates plus 2 eval workflows — of which five checks (build-and-test,
+spec-gate, grader, correctness-review, security-review) block at merge via the
 branch-protection ruleset, and `infra/` starters). To add or refresh just the
 harness in an existing repo, use `/sdlc-harness`. Requires Claude Code v2.1.196+ (`source: "."`).
 

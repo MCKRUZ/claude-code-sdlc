@@ -117,7 +117,7 @@ applier. If the repo is on GitHub and `gh` is authenticated, offer to apply it:
 ```bash
 bash scripts/rails/apply-branch-protection.sh
 ```
-This makes the four blocking checks (build-and-test, grader, correctness-review, security-review)
+This makes the five blocking checks (build-and-test, spec-gate, grader, correctness-review, security-review)
 + a non-author approval mandatory at merge; deploy-dev runs post-merge and is not a merge check.
 Skip if the repo isn't on GitHub yet; the ruleset stays in the repo to apply later.
 
