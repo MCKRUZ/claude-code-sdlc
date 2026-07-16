@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+import ci_tokens
 from install_harness import (
     InstallError,
     _deep_merge,
@@ -56,7 +57,67 @@ CORE_MCP = {
 }
 
 CORE_CI = "name: CI\n# PLACEHOLDER core ci — run: dotnet build {{SOLUTION_OR_PROJECT}}\n"
-REALIZED_CI = "name: CI\n# realized github pack ci\njobs:\n  build-and-test:\n    runs-on: ubuntu-latest\n"
+
+# The CI/CD pack's realized workflow, token-driven exactly like the real packs: every stack value is
+# a <<CI_*>> seam token, commands sit in block scalars, and the Phase-3 blanks
+# ({{SOLUTION_OR_PROJECT}} inside the commands, <<EVAL_TEST_PROJECT>>, <<CI_WORKFLOW_NAME>>) must
+# survive substitution untouched.
+REALIZED_CI = """\
+name: CI
+# realized github pack ci
+on:
+  workflow_run:
+    workflows: ["CI"]            # <<CI_WORKFLOW_NAME>> — a PHASE-3 blank sharing the CI_ prefix
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup toolchain
+        uses: <<CI_TOOLCHAIN_ACTION>>
+        with:
+          <<CI_TOOLCHAIN_INPUT>>: '<<CI_TOOLCHAIN_VERSION>>'
+      - name: Restore
+        run: |
+          <<CI_RESTORE_CMD>>
+      - name: Build
+        run: |
+          <<CI_BUILD_CMD>>
+      - name: Test
+        run: |
+          <<CI_TEST_CMD>>
+      - name: Lint
+        run: |
+          <<CI_LINT_CMD>>
+      - name: Enforce coverage floor
+        env:
+          COVERAGE_FLOOR: '<<CI_COVERAGE_FLOOR>>'
+        run: |
+          echo "floor $COVERAGE_FLOOR"
+      - name: Eval fixtures
+        run: |
+          dotnet test <<EVAL_TEST_PROJECT>> --filter "<<CI_EVAL_TEST_FILTER>>"
+"""
+
+# The stack pack's declared command interface — a compose-time INPUT, never installed as a file.
+# `test` deliberately carries a colon+quotes payload: it must survive into the emitted YAML.
+CI_PROFILE = {
+    "toolchain": {"id": "dotnet", "version": "10.x"},
+    "solution": "{{SOLUTION_OR_PROJECT}}",
+    "commands": {
+        "restore": "dotnet restore {{SOLUTION_OR_PROJECT}}",
+        "build": "dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --configuration Release",
+        "test": 'dotnet test {{SOLUTION_OR_PROJECT}} --collect:"XPlat Code Coverage"',
+        "lint": "dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes",
+    },
+    "coverage": {"floor_percent": 80, "tool": "coverlet"},
+    "eval_gate": {"enabled": False, "test_filter": "Category=OwaspAgentic"},
+}
+
+# The CI/CD pack's platform half of the seam: toolchain.id -> this platform's setup action + input.
+GITHUB_TOOLCHAIN_MAP = {
+    "dotnet": {"action": "actions/setup-dotnet@v4", "input": "dotnet-version"},
+    "node": {"action": "actions/setup-node@v7", "input": "node-version"},
+}
 
 STACK_STANDARDS = """\
 <!--
@@ -71,7 +132,7 @@ STACK_STANDARDS = """\
 
 STACK_PACK_YAML = {
     "pack": {"id": "dotnet", "axis": "stack", "name": ".NET", "version": "0.1.0"},
-    "provides": {"claude_standards": "claude/stack-standards.md"},
+    "provides": {"claude_standards": "claude/stack-standards.md", "ci_profile": "ci-profile.yaml"},
     "overlays": [
         {"src": "rules/clean-architecture.md", "dest": ".claude/rules/clean-architecture.md"},
         {"src": "rules/testing.md", "dest": ".claude/rules/testing.md"},
@@ -103,7 +164,8 @@ CICD_PACK_YAML = {
         {"src": "RAILS.md", "dest": ".github/RAILS.md"},
         {"src": "mcp.fragment.json", "dest": ".mcp.json", "merge": True},
     ],
-    "requires_stack_pack": ["dotnet", "angular", "python"],
+    "toolchain_map": GITHUB_TOOLCHAIN_MAP,
+    "requires_stack_pack": ["dotnet", "node-typescript", "python"],
 }
 
 CICD_MCP_FRAGMENT = {
@@ -148,10 +210,13 @@ def _write(path: Path, content: str) -> None:
     path.write_text(content, encoding="utf-8")
 
 
-def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, tools_present=True) -> Path:
+def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, tools_present=True,
+                 ci_profile=CI_PROFILE, toolchain_map=GITHUB_TOOLCHAIN_MAP) -> Path:
     """Build a minimal but structurally-real payload: EVERY core FILE_MAP/DIR_MAP/EXTRA_FILES
-    source (the installer fails closed on a missing one) + a dotnet stack pack + a github CI/CD
-    pack + a gitnexus tools pack. Knobs let a test force an incompatible pair or a missing pack."""
+    source (the installer fails closed on a missing one) + a dotnet stack pack (declaring a
+    ci-profile) + a github CI/CD pack (with a toolchain_map and a token-driven workflow) + a
+    gitnexus tools pack. Knobs let a test force an incompatible pair, a missing pack, or a broken
+    seam (ci_profile=None omits the profile file; toolchain_map=None omits the map)."""
     payload = root / "harness"
     _write(payload / "CLAUDE.md.template", CLAUDE_TEMPLATE)
     _write(payload / "spec-template.md", "# spec template\n")
@@ -182,10 +247,17 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     _write(sp / "rules" / "testing.md", "# testing\n")
     _write(sp / "settings.fragment.json", json.dumps(STACK_FRAGMENT, indent=2) + "\n")
     _write(sp / "mcp.fragment.json", json.dumps(STACK_MCP_FRAGMENT, indent=2) + "\n")
+    if ci_profile is not None:
+        _write(sp / "ci-profile.yaml", yaml.dump(ci_profile))
 
     if cicd_present:
+        cicd = dict(CICD_PACK_YAML)
+        if toolchain_map is None:
+            cicd = {k: v for k, v in CICD_PACK_YAML.items() if k != "toolchain_map"}
+        else:
+            cicd["toolchain_map"] = toolchain_map
         cp = payload / "packs" / "cicd" / "github"
-        _write(cp / "pack.yaml", yaml.dump(CICD_PACK_YAML))
+        _write(cp / "pack.yaml", yaml.dump(cicd))
         _write(cp / "workflows" / "ci.yml", REALIZED_CI)
         _write(cp / "RAILS.md", "# rails guide\n")
         _write(cp / "mcp.fragment.json", json.dumps(CICD_MCP_FRAGMENT, indent=2) + "\n")
@@ -306,6 +378,163 @@ class TestCompose:
         mcp = json.loads((target / ".mcp.json").read_text(encoding="utf-8"))
         assert "team-custom" in mcp["mcpServers"]         # repo's own server preserved (no --force)
         assert "microsoft-learn" in mcp["mcpServers"]     # fragment still merged in
+
+
+# ── the stack<->CI/CD seam (compose-time <<CI_*>> substitution) ─────────────────
+
+class TestCiSeam:
+    """The seam is MECHANICAL: a stack pack's ci-profile + a CI/CD pack's toolchain_map are joined
+    into a token table and substituted into every file the CI/CD pack overlays, at copy time."""
+
+    def _ci(self, target: Path) -> str:
+        return (target / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    def test_dotnet_github_substitutes_real_commands(self, payload, target, tmp_path, valid_profile):
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        ci = self._ci(target)
+        assert "uses: actions/setup-dotnet@v4" in ci          # toolchain_map action
+        assert "dotnet-version: '10.x'" in ci                 # map's input name + profile's version
+        assert "dotnet restore {{SOLUTION_OR_PROJECT}}" in ci  # ci-profile.commands.restore, verbatim
+        assert "dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --configuration Release" in ci
+        assert "dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes" in ci
+        assert "COVERAGE_FLOOR: '80'" in ci                    # int floor stringified, quoting kept
+        assert '--filter "Category=OwaspAgentic"' in ci        # eval_gate.test_filter
+
+    def test_no_seam_token_survives_in_any_emitted_file(self, payload, target, tmp_path, valid_profile):
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        for path in target.rglob("*"):
+            if path.is_file() and path.suffix in (".yml", ".yaml", ".md"):
+                assert not ci_tokens.residual_tokens(path.read_text(encoding="utf-8", errors="ignore")), \
+                    f"{path} still holds a seam token"
+
+    def test_azure_devops_maps_the_same_profile_to_its_own_task(self, tmp_path, target, valid_profile):
+        """One stack pack, two platforms: the commands are identical, the toolchain step is not."""
+        ado_map = {"dotnet": {"action": "UseDotNet@2", "input": "version"}}
+        payload = make_payload(tmp_path, toolchain_map=ado_map)
+        shutil.move(str(payload / "packs" / "cicd" / "github"), str(payload / "packs" / "cicd" / "azure-devops"))
+        profile = {**valid_profile,
+                   "stack": {**valid_profile["stack"], "ci_cd": {"platform": "azure-devops"}}}
+        assert install(payload, target, force=False, profile_path=_profile_file(tmp_path, profile)) == 0
+        ci = self._ci(target)
+        assert "uses: UseDotNet@2" in ci                       # ADO task, not the github action
+        assert "version: '10.x'" in ci and "dotnet-version" not in ci   # ADO's input name
+        assert "dotnet restore {{SOLUTION_OR_PROJECT}}" in ci  # commands unchanged across platforms
+
+    def test_emitted_workflow_still_parses_as_yaml(self, payload, target, tmp_path, valid_profile):
+        """A substituted value carrying quotes and a colon (--collect:"XPlat Code Coverage") must
+        not break the YAML — which is why commands are spliced into BLOCK scalars."""
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        doc = yaml.safe_load(self._ci(target))
+        steps = {s["name"]: s for s in doc["jobs"]["build-and-test"]["steps"] if "name" in s}
+        assert steps["Test"]["run"].strip() == (
+            'dotnet test {{SOLUTION_OR_PROJECT}} --collect:"XPlat Code Coverage"')
+        assert steps["Setup toolchain"]["with"] == {"dotnet-version": "10.x"}
+
+    def test_phase_three_tokens_survive_substitution(self, payload, target, tmp_path, valid_profile):
+        """{{SOLUTION_OR_PROJECT}} and the <<...>> repo blanks are Phase-3, never compose-time —
+        including <<CI_WORKFLOW_NAME>>, which merely shares the CI_ prefix."""
+        install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        ci = self._ci(target)
+        assert "{{SOLUTION_OR_PROJECT}}" in ci
+        assert "<<EVAL_TEST_PROJECT>>" in ci
+        assert "<<CI_WORKFLOW_NAME>>" in ci
+
+    def test_unknown_toolchain_id_for_platform_is_clean_rc2(self, tmp_path, target, valid_profile, capsys):
+        """A stack whose toolchain the platform cannot install FAILS CLOSED — a pipeline that sets
+        up the wrong runtime is worse than none."""
+        rust = {**CI_PROFILE, "toolchain": {"id": "rust", "version": "1.x"}}
+        payload = make_payload(tmp_path, ci_profile=rust)
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 2
+        err = capsys.readouterr().err
+        assert "rust" in err and "github" in err and "toolchain_map" in err
+
+    def test_cicd_pack_without_toolchain_map_is_clean_rc2(self, tmp_path, target, valid_profile, capsys):
+        payload = make_payload(tmp_path, toolchain_map=None)
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, valid_profile)) == 2
+        assert "toolchain_map" in capsys.readouterr().err
+
+    def test_stack_pack_without_ci_profile_is_clean_rc2(self, tmp_path, target, valid_profile, capsys):
+        payload = make_payload(tmp_path, ci_profile=None)
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, valid_profile)) == 2
+        assert "ci_profile" in capsys.readouterr().err
+
+    def test_multiline_ci_profile_command_is_clean_rc2(self, tmp_path, target, valid_profile, capsys):
+        """A command must be single-line: it is spliced into ONE run: block, so an embedded newline
+        would emit an extra, unreviewed shell line."""
+        bad = {**CI_PROFILE,
+               "commands": {**CI_PROFILE["commands"], "build": "dotnet restore\ndotnet build"}}
+        payload = make_payload(tmp_path, ci_profile=bad)
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, valid_profile)) == 2
+        err = capsys.readouterr().err
+        assert "commands.build" in err and "single line" in err
+
+    def test_residual_token_after_substitution_is_clean_rc2(self, tmp_path, target, valid_profile, capsys):
+        """A CI/CD pack referencing a token the seam does not define must never install a literal
+        token — it fails closed naming the file and the token."""
+        payload = make_payload(tmp_path)
+        ci = payload / "packs" / "cicd" / "github" / "workflows" / "ci.yml"
+        ci.write_text(REALIZED_CI.replace("<<CI_LINT_CMD>>", "<<CI_LINT_CMD>>\n          <<CI_TEST_CMD>>"),
+                      encoding="utf-8")
+        # Drop `test` from the profile so <<CI_TEST_CMD>> can never resolve.
+        no_test = {**CI_PROFILE,
+                   "commands": {k: v for k, v in CI_PROFILE["commands"].items() if k != "test"}}
+        _write(payload / "packs" / "stacks" / "dotnet" / "ci-profile.yaml", yaml.dump(no_test))
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, valid_profile)) == 2
+        assert "commands.test" in capsys.readouterr().err
+
+    def test_unfilled_token_in_pack_file_fails_closed_naming_file_and_token(
+        self, tmp_path, target, valid_profile, capsys
+    ):
+        """The post-write audit itself: a token the table cannot fill (because the pack invented it)
+        is caught after writing, not silently shipped."""
+        payload = make_payload(tmp_path)
+        rails = payload / "packs" / "cicd" / "github" / "RAILS.md"
+        rails.write_text("# rails\nrun <<CI_TEST_CMD>> then <<CI_BUILD_CMD>>\n", encoding="utf-8")
+        # Both tokens DO resolve, so this must succeed — proving the audit is not over-eager.
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, valid_profile)) == 0
+        assert "dotnet test" in (target / ".github" / "RAILS.md").read_text(encoding="utf-8")
+
+
+class TestCiSeamDegrades:
+    """Rule: the axes degrade INDEPENDENTLY. A CI/CD pack with no stack pack must still install —
+    with its tokens PRESERVED for Phase 3, not filled with a guess and not a hard failure."""
+
+    @pytest.fixture
+    def degraded(self, payload, target, tmp_path, valid_profile, capsys):
+        # rust has no stack pack; github-actions still resolves the CI/CD pack.
+        bad = {**valid_profile, "stack": {**valid_profile["stack"],
+                                          "backend": {"language": "rust", "framework": "axum"}}}
+        rc = install(payload, target, force=False, profile_path=_profile_file(tmp_path, bad))
+        return rc, capsys.readouterr().err, target
+
+    def test_setup_still_exits_zero(self, degraded):
+        assert degraded[0] == 0
+
+    def test_tokens_are_preserved_not_filled(self, degraded):
+        ci = (degraded[2] / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        assert "<<CI_RESTORE_CMD>>" in ci        # left for Phase 3
+        assert "<<CI_TOOLCHAIN_ACTION>>" in ci
+        assert "<<CI_COVERAGE_FLOOR>>" in ci
+        # No seam site was filled from the absent stack pack — no .NET was guessed for a rust repo.
+        assert "dotnet restore" not in ci
+        assert "actions/setup-dotnet" not in ci
+
+    def test_warns_listing_the_affected_files_and_tokens(self, degraded):
+        err = degraded[1]
+        assert "no stack pack" in err
+        assert ".github/workflows/ci.yml" in err
+        assert "<<CI_RESTORE_CMD>>" in err
+
+    def test_phase_three_ci_prefixed_blank_is_not_reported_as_seam_work(self, degraded):
+        """<<CI_WORKFLOW_NAME>> is a repo blank, not seam work — reporting it would be noise."""
+        assert "<<CI_WORKFLOW_NAME>>" not in degraded[1]
 
 
 # ── graceful degrade (valid stack, no pack built for it yet) ────────────────────

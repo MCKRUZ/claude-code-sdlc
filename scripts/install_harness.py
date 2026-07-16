@@ -23,9 +23,18 @@ Two modes:
     (setup never fails just because a pack is missing), while an incompatible pair or a pack that is
     mapped but absent from the payload still fails closed (real breakage, not "not built yet").
 
-  This does NOT fill per-repo tokens ({{SOLUTION_OR_PROJECT}}, <<GATED_PATHS>>, deploy wiring,
-  reviewer models): those are genuinely repo-level Phase-3 adaptation, not something a profile
-  knows. The profile drives which packs compose, not repo-specific values.
+  When BOTH a stack pack and a CI/CD pack compose, the seam between them is filled MECHANICALLY:
+  the stack's ci-profile.yaml (toolchain + commands + coverage floor) is joined with the CI/CD
+  pack's toolchain_map (its platform's setup action/task per toolchain id) into a <<CI_*>> token
+  table, and every file the CI/CD pack overlays is substituted AS IT IS COPIED (see ci_tokens.py).
+  A <<CI_*>> token surviving that substitution fails the install closed — a literal token is never
+  written. When the stack axis DEGRADED (no stack pack) but a CI/CD pack composed, the tokens are
+  deliberately LEFT in place and reported as a WARNING: the axes still degrade independently.
+
+  This does NOT fill per-repo tokens ({{SOLUTION_OR_PROJECT}}, <<GATED_PATHS>>, <<EVAL_TEST_PROJECT>>,
+  deploy wiring, reviewer models): those are genuinely repo-level Phase-3 adaptation, not something a
+  profile knows, and they pass through substitution untouched. The profile drives which packs compose
+  and what the seam resolves to, not repo-specific values.
 
 Fail-closed: a FILE_MAP/DIR_MAP/EXTRA_FILES source missing from the payload, or a pack.yaml
 overlay src missing from its pack, still logs a MISS line for EVERY missing item (the scan
@@ -55,6 +64,7 @@ from pathlib import Path
 _SCRIPT_DIR = Path(__file__).resolve().parent
 if str(_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPT_DIR))
+import ci_tokens  # noqa: E402
 from harness_manifest import (  # noqa: E402
     MANIFEST_REL,
     build_manifest,
@@ -136,22 +146,37 @@ class InstallError(Exception):
     """A fail-closed install problem (bad profile, unresolved/incompatible pack)."""
 
 
-def _copy(src: Path, dest: Path, force: bool, written: set[Path], log: list[str]) -> None:
-    """Copy src->dest. A dest written earlier THIS run (a core placeholder a pack overlays) is
-    overwritten; a dest that pre-existed the run (a repo's own file) is preserved unless --force."""
+def _copy(src: Path, dest: Path, force: bool, written: set[Path], log: list[str],
+          tokens: dict[str, str] | None = None) -> bool:
+    """Copy src->dest, filling the <<CI_*>> seam tokens en route when a table is given. A dest
+    written earlier THIS run (a core placeholder a pack overlays) is overwritten; a dest that
+    pre-existed the run (a repo's own file) is preserved unless --force. Returns True iff the
+    file was actually written (so the caller can audit only what it wrote)."""
     rel = str(dest)
     composed_this_run = dest in written
     existed = dest.exists()
     if existed and not force and not composed_this_run:
         log.append(f"SKIP    {rel}  (exists)")
-        return
+        return False
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)
+    shutil.copy2(src, dest)   # first, so mode bits (e.g. a rails script's +x) survive
+    if tokens:
+        _substitute_in_place(dest, tokens)
     written.add(dest)
     if composed_this_run:
         log.append(f"OVERLAY {rel}")
     else:
         log.append(f"{'FORCE ' if existed else 'WRITE '}  {rel}")
+    return True
+
+
+def _substitute_in_place(dest: Path, tokens: dict[str, str]) -> None:
+    """Rewrite a just-copied file with the seam tokens filled. Rewrites only on a real change, so
+    a pack file with no tokens keeps copy2's byte-identical content and timestamp."""
+    text = dest.read_text(encoding="utf-8")
+    filled = ci_tokens.substitute(text, tokens)
+    if filled != text:
+        dest.write_text(filled, encoding="utf-8")
 
 
 def _copy_core(payload: Path, target: Path, force: bool, written: set[Path], log: list[str],
@@ -383,7 +408,11 @@ def _merge_json(fragment: Path, dest: Path, log: list[str],
 
 def _overlay_pack(pack_dir: Path, manifest: dict, target: Path, force: bool,
                   written: set[Path], log: list[str], missing: list[str],
-                  touched: set[Path] | None = None) -> None:
+                  touched: set[Path] | None = None,
+                  tokens: dict[str, str] | None = None) -> list[Path]:
+    """Overlay one pack's files. `tokens` fills the <<CI_*>> seam during the copy (CI/CD packs
+    only). Returns the dests actually written, for the caller's post-write token audit."""
+    copied: list[Path] = []
     for entry in manifest.get("overlays", []):
         src = pack_dir / entry["src"]
         dest = target / entry["dest"]
@@ -393,8 +422,9 @@ def _overlay_pack(pack_dir: Path, manifest: dict, target: Path, force: bool,
             continue
         if entry.get("merge"):
             _merge_json(src, dest, log, touched)
-        else:
-            _copy(src, dest, force, written, log)
+        elif _copy(src, dest, force, written, log, tokens):
+            copied.append(dest)
+    return copied
 
 
 def _splice_claude_stack_section(stack_pack_dir: Path, manifest: dict, target: Path,
@@ -483,7 +513,7 @@ def _install(payload: Path, target: Path, force: bool, profile_path: Path | None
     _raise_if_missing(missing)  # after the FULL core scan, so every core miss is reported
 
     packs = _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs,
-                           target, force, written, touched, log, missing)
+                           target, force, written, touched, log, missing, warnings)
     _ensure_gitignore(target, log)
 
     touched |= written  # copies; merge/splice dests were collected as they happened
@@ -496,7 +526,7 @@ def _install(payload: Path, target: Path, force: bool, profile_path: Path | None
 
 def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: Path,
                    force: bool, written: set[Path], touched: set[Path],
-                   log: list[str], missing: list[str]) -> list[str]:
+                   log: list[str], missing: list[str], warnings: list[str]) -> list[str]:
     """Overlay every resolved pack (stack -> CI/CD -> frontend -> tools; last wins) and return
     the composed pack ids as '<axis-dir>/<id>' for the manifest."""
     if not (stack_pack or cicd_pack or frontend_packs or tools_packs):
@@ -510,7 +540,12 @@ def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: P
         _overlay_pack(stack_pack[0], stack_pack[1], target, force, written, log, missing, touched)
         _splice_claude_stack_section(stack_pack[0], stack_pack[1], target, force, log, touched)
     if cicd_pack:
-        _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log, missing, touched)
+        # The seam: fill the CI/CD pack's <<CI_*>> tokens from the stack's ci-profile as the files
+        # are copied. No stack pack => no table => the tokens are left for Phase 3 (audited below).
+        tokens = _ci_token_table(stack_pack, cicd_pack) if stack_pack else None
+        emitted = _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log, missing,
+                                touched, tokens)
+        _audit_ci_tokens(emitted, target, tokens, warnings)
     for fe_dir, fe_manifest in frontend_packs:
         _overlay_pack(fe_dir, fe_manifest, target, force, written, log, missing, touched)
     for tool_dir, tool_manifest in tools_packs:
@@ -522,6 +557,44 @@ def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: P
     packs += [f"frontend/{d.name}" for d, _ in frontend_packs]
     packs += [f"tools/{d.name}" for d, _ in tools_packs]
     return packs
+
+
+def _ci_token_table(stack_pack, cicd_pack) -> dict[str, str]:
+    """Join the resolved stack pack's ci-profile.yaml with the resolved CI/CD pack's toolchain_map.
+    Every authoring fault (no declared profile, unmapped toolchain id, multi-line command, missing
+    value) surfaces from ci_tokens as a ValueError; convert it to the fail-closed InstallError."""
+    try:
+        profile = ci_tokens.load_ci_profile(stack_pack[0], stack_pack[1])
+        return ci_tokens.build_token_table(profile, cicd_pack[1], cicd_pack[0].name)
+    except ValueError as exc:
+        raise InstallError(str(exc)) from exc
+
+
+def _audit_ci_tokens(emitted: list[Path], target: Path, tokens: dict[str, str] | None,
+                     warnings: list[str]) -> None:
+    """Post-write scan of what the CI/CD pack actually wrote.
+
+    With a token table, a surviving <<CI_*>> means the pack referenced a token the seam does not
+    define — FAIL CLOSED rather than install a pipeline containing a literal token. Without one
+    (the stack axis degraded), the same survivors are the EXPECTED Phase-3 hand-adaptation, so
+    report them as a warning and let setup exit 0 — the axes degrade independently."""
+    found = [(p, ci_tokens.residual_tokens(p.read_text(encoding="utf-8"))) for p in emitted]
+    unfilled = [(p, toks) for p, toks in found if toks]
+    if not unfilled:
+        return
+    items = "\n".join(f"  - {p.relative_to(target).as_posix()}: {', '.join(t)}"
+                      for p, t in unfilled)
+    if tokens is not None:
+        raise InstallError(
+            f"{len(unfilled)} emitted file(s) still contain unfilled <<CI_*>> seam token(s) "
+            f"(fail-closed; the CI/CD pack references a token the stack's ci-profile does not "
+            f"define):\n{items}"
+        )
+    warnings.append(
+        f"no stack pack composed, so the CI/CD pack's <<CI_*>> seam tokens were LEFT UNFILLED in "
+        f"{len(unfilled)} file(s) — fill them by hand (Phase 3) before the pipeline can run:\n"
+        f"{items}"
+    )
 
 
 def _write_manifest(payload: Path, target: Path, touched: set[Path],
