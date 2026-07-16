@@ -28,6 +28,7 @@ from install_harness import install
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PAYLOAD = _REPO_ROOT / "harness"
 PROFILE = _REPO_ROOT / "profiles" / "microsoft-enterprise" / "profile.yaml"
+STARTER_PROFILE = _REPO_ROOT / "profiles" / "starter" / "profile.yaml"
 GOLDEN_TREE = Path(__file__).resolve().parent / "golden" / "enterprise-tree.txt"
 
 REGEN_HINT = (
@@ -110,4 +111,73 @@ class TestGoldenRepo:
         workflows = sorted((target / ".github" / "workflows").glob("*.yml"))
         assert workflows, "no workflows installed"
         for wf in workflows:
+            yaml.safe_load(wf.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="class")
+def starter_repo(tmp_path_factory):
+    target = tmp_path_factory.mktemp("starter-repo")
+    subprocess.run(["git", "init", "-q"], cwd=target, check=True)
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        rc = install(PAYLOAD, target, force=False, profile_path=STARTER_PROFILE)
+    assert rc == 0, f"install failed rc={rc}\n{out.getvalue()}\n{err.getvalue()}"
+    return target, out.getvalue(), err.getvalue()
+
+
+class TestStarterRepoIsNode:
+    """The point of the whole seam: a Node profile must get a NODE pipeline. Before the seam was
+    mechanical, this repo would have been handed `dotnet restore`."""
+
+    def _ci(self, target: Path) -> str:
+        return (target / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    def test_pipeline_runs_node_not_dotnet(self, starter_repo):
+        target, _, _ = starter_repo
+        ci = self._ci(target)
+        assert "uses: actions/setup-node@v7" in ci        # github pack's toolchain_map for id: node
+        assert "node-version: '24.x'" in ci               # map's input name + ci-profile's version
+        assert "npm ci" in ci                             # ci-profile.commands.restore
+        assert "npx vitest run" in ci
+        # The BLOCKING job — the one every PR runs — must be pure Node.
+        blocking = ci.split("eval-gate:")[0]
+        assert "dotnet" not in blocking, "a .NET command leaked into a Node repo's blocking pipeline"
+
+    def test_known_gap_eval_gate_is_still_dotnet_shaped(self, starter_repo):
+        """PINS A KNOWN GAP, does not bless it (intent-driven-development#15).
+
+        ci-profile declares an eval-gate FILTER but no eval-runner COMMAND, so the optional
+        eval-gate job keeps its .NET invocation on every stack. It is `enabled: false` by
+        default and the pack tells you to delete the job if unused, so it never runs — but a
+        Node repo should not be shipped a `dotnet test` line at all. When the eval-gate seam is
+        finished, this test SHOULD fail: delete it and tighten the assertion above to the whole
+        file."""
+        target, _, _ = starter_repo
+        eval_job = self._ci(target).split("eval-gate:", 1)
+        assert len(eval_job) == 2, "eval-gate job vanished — retire this test with the gap"
+        assert "dotnet test" in eval_job[1]
+
+    def test_coverage_floor_comes_from_the_customer_profile(self, starter_repo):
+        # starter states quality.coverage_minimum: 60; the node pack declares 80. The profile is
+        # the later layer, so 60 is what the gate must enforce.
+        target, _, _ = starter_repo
+        assert "COVERAGE_FLOOR: '60'" in self._ci(target)
+
+    def test_no_seam_token_survives(self, starter_repo):
+        target, _, _ = starter_repo
+        from ci_tokens import residual_tokens
+        for path in target.rglob("*"):
+            if path.is_file() and path.suffix in (".yml", ".yaml"):
+                left = residual_tokens(path.read_text(encoding="utf-8"))
+                assert not left, f"{path.name} kept seam tokens: {left}"
+
+    def test_node_stack_standards_spliced(self, starter_repo):
+        target, _, _ = starter_repo
+        claude = (target / "CLAUDE.md").read_text(encoding="utf-8")
+        assert "{{STACK}}" not in claude
+        assert (target / ".claude" / "skills" / "api-pattern-node" / "SKILL.md").is_file()
+
+    def test_emitted_workflows_parse(self, starter_repo):
+        target, _, _ = starter_repo
+        for wf in sorted((target / ".github" / "workflows").glob("*.yml")):
             yaml.safe_load(wf.read_text(encoding="utf-8"))

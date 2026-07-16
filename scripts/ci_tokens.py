@@ -86,16 +86,26 @@ def _validate_commands(profile: dict, path: Path) -> None:
             )
 
 
-def build_token_table(ci_profile: dict, cicd_manifest: dict, cicd_pack_id: str) -> dict[str, str]:
+def build_token_table(ci_profile: dict, cicd_manifest: dict, cicd_pack_id: str,
+                     coverage_floor: int | None = None) -> dict[str, str]:
     """Join the stack's declared ci-profile with the CI/CD pack's platform vocabulary.
 
     Values are stringified: they are spliced into YAML text, and an unquoted `80` or `10.x` must
     land as the pack authored the surrounding quoting, not as a YAML int/float.
+
+    `coverage_floor` is the customer profile's quality.coverage_minimum. It OVERRIDES the stack
+    pack's declared default, because the composition order makes the profile (layer 6) authoritative
+    over the stack pack (layer 2) — a coverage bar is the customer's policy, not the stack's. The
+    pack's ci-profile still declares a floor: it states the standard's bar for that stack and is what
+    a profile-less composition would use. Profiles must state coverage_minimum, so in practice the
+    profile's number is the one the gate enforces.
     """
     table = dict(zip(_TOOLCHAIN_TOKENS,
                      _resolve_toolchain(ci_profile, cicd_manifest, cicd_pack_id)))
     for token, (section, key) in _PROFILE_TOKENS:
         table[token] = str(_require(ci_profile, section, key))
+    if coverage_floor is not None:
+        table["<<CI_COVERAGE_FLOOR>>"] = str(coverage_floor)
     return table
 
 

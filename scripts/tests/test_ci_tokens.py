@@ -159,6 +159,26 @@ class TestBuildTokenTable:
 
 # ── the substitute / residual-scan primitives ──────────────────────────────────
 
+class TestCoverageFloorOverride:
+    """quality.coverage_minimum (customer profile, layer 6) outranks the stack pack's declared
+    floor (layer 2). Passing None keeps the pack's default — the profile-less path."""
+
+    def test_override_wins(self):
+        table = build_token_table(DOTNET_CI_PROFILE, _cicd_manifest(GITHUB_TOOLCHAIN_MAP), "github",
+                                  coverage_floor=60)
+        assert table["<<CI_COVERAGE_FLOOR>>"] == "60"
+
+    def test_none_keeps_pack_default(self):
+        table = build_token_table(DOTNET_CI_PROFILE, _cicd_manifest(GITHUB_TOOLCHAIN_MAP), "github",
+                                  coverage_floor=None)
+        assert table["<<CI_COVERAGE_FLOOR>>"] == "80"
+
+    def test_override_is_stringified_for_yaml_splice(self):
+        table = build_token_table(DOTNET_CI_PROFILE, _cicd_manifest(GITHUB_TOOLCHAIN_MAP), "github",
+                                  coverage_floor=60)
+        assert isinstance(table["<<CI_COVERAGE_FLOOR>>"], str)
+
+
 class TestSubstitute:
     def test_replaces_every_occurrence(self):
         out = substitute("a <<CI_BUILD_CMD>> b <<CI_BUILD_CMD>>", {"<<CI_BUILD_CMD>>": "make"})

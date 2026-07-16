@@ -502,6 +502,35 @@ class TestCiSeam:
         assert "dotnet test" in (target / ".github" / "RAILS.md").read_text(encoding="utf-8")
 
 
+class TestCoverageFloorPrecedence:
+    """The customer profile outranks the stack pack (composition order: profile is layer 6, the
+    stack pack layer 2). The stack pack's ci-profile declares a DEFAULT floor; a profile that
+    states its own quality.coverage_minimum is the authority and must win, or the standard says
+    one number while the gate enforces another."""
+
+    def _ci(self, target: Path) -> str:
+        return (target / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    def test_profile_coverage_minimum_overrides_pack_floor(self, payload, target, tmp_path,
+                                                           valid_profile):
+        valid_profile["quality"]["coverage_minimum"] = 60      # pack's ci-profile declares 80
+        rc = install(payload, target, force=False,
+                     profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        assert "COVERAGE_FLOOR: '60'" in self._ci(target)
+        assert "COVERAGE_FLOOR: '80'" not in self._ci(target)
+
+    def test_enterprise_80_is_unchanged_by_the_override_path(self, payload, target, tmp_path,
+                                                             valid_profile):
+        # The flagship profile states 80 and the pack declares 80 — the override must be a no-op,
+        # not a coincidence that hides a bug.
+        valid_profile["quality"]["coverage_minimum"] = 80
+        rc = install(payload, target, force=False,
+                     profile_path=_profile_file(tmp_path, valid_profile))
+        assert rc == 0
+        assert "COVERAGE_FLOOR: '80'" in self._ci(target)
+
+
 class TestCiSeamDegrades:
     """Rule: the axes degrade INDEPENDENTLY. A CI/CD pack with no stack pack must still install —
     with its tokens PRESERVED for Phase 3, not filled with a guess and not a hard failure."""

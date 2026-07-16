@@ -108,7 +108,8 @@ GITIGNORE_LINES = [".claude/.review-receipts/", ".claude/settings.local.json"]
 # fails closed (there is no pack for it yet) — never a silent core-only install.
 STACK_PACK_BY_LANGUAGE = {
     "csharp": "dotnet",
-    # add "typescript": "angular", "python": "python" when those stack packs exist.
+    "typescript": "node-typescript",   # backend TS/Node; a TS *frontend* is the frontend axis
+    "python": "python",
 }
 CICD_PACK_BY_PLATFORM = {
     "github-actions": "github",
@@ -513,7 +514,7 @@ def _install(payload: Path, target: Path, force: bool, profile_path: Path | None
     _raise_if_missing(missing)  # after the FULL core scan, so every core miss is reported
 
     packs = _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs,
-                           target, force, written, touched, log, missing, warnings)
+                           target, force, written, touched, log, missing, warnings, profile)
     _ensure_gitignore(target, log)
 
     touched |= written  # copies; merge/splice dests were collected as they happened
@@ -526,7 +527,8 @@ def _install(payload: Path, target: Path, force: bool, profile_path: Path | None
 
 def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: Path,
                    force: bool, written: set[Path], touched: set[Path],
-                   log: list[str], missing: list[str], warnings: list[str]) -> list[str]:
+                   log: list[str], missing: list[str], warnings: list[str],
+                   profile: dict | None) -> list[str]:
     """Overlay every resolved pack (stack -> CI/CD -> frontend -> tools; last wins) and return
     the composed pack ids as '<axis-dir>/<id>' for the manifest."""
     if not (stack_pack or cicd_pack or frontend_packs or tools_packs):
@@ -542,7 +544,7 @@ def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: P
     if cicd_pack:
         # The seam: fill the CI/CD pack's <<CI_*>> tokens from the stack's ci-profile as the files
         # are copied. No stack pack => no table => the tokens are left for Phase 3 (audited below).
-        tokens = _ci_token_table(stack_pack, cicd_pack) if stack_pack else None
+        tokens = _ci_token_table(stack_pack, cicd_pack, profile) if stack_pack else None
         emitted = _overlay_pack(cicd_pack[0], cicd_pack[1], target, force, written, log, missing,
                                 touched, tokens)
         _audit_ci_tokens(emitted, target, tokens, warnings)
@@ -559,13 +561,16 @@ def _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs, target: P
     return packs
 
 
-def _ci_token_table(stack_pack, cicd_pack) -> dict[str, str]:
+def _ci_token_table(stack_pack, cicd_pack, profile: dict) -> dict[str, str]:
     """Join the resolved stack pack's ci-profile.yaml with the resolved CI/CD pack's toolchain_map.
-    Every authoring fault (no declared profile, unmapped toolchain id, multi-line command, missing
-    value) surfaces from ci_tokens as a ValueError; convert it to the fail-closed InstallError."""
+    The customer profile's quality.coverage_minimum overrides the stack pack's declared floor (the
+    profile is the later, more specific layer). Every authoring fault (no declared profile, unmapped
+    toolchain id, multi-line command, missing value) surfaces from ci_tokens as a ValueError; convert
+    it to the fail-closed InstallError."""
+    floor = (profile.get("quality") or {}).get("coverage_minimum")
     try:
-        profile = ci_tokens.load_ci_profile(stack_pack[0], stack_pack[1])
-        return ci_tokens.build_token_table(profile, cicd_pack[1], cicd_pack[0].name)
+        ci_profile = ci_tokens.load_ci_profile(stack_pack[0], stack_pack[1])
+        return ci_tokens.build_token_table(ci_profile, cicd_pack[1], cicd_pack[0].name, floor)
     except ValueError as exc:
         raise InstallError(str(exc)) from exc
 

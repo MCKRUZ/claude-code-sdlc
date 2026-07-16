@@ -9,6 +9,11 @@ stack:
     language: python
     framework: uv-scripts
     testing: pytest
+  ci_cd:
+    # Without this the CI/CD axis degrades and the repo keeps the core's placeholder
+    # pipelines (which carry .NET reference commands). Change or drop it if this
+    # project is not on GitHub.
+    platform: github-actions
 
 quality:
   coverage_minimum: 80

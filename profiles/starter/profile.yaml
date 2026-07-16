@@ -8,6 +8,12 @@ stack:
   backend:
     language: typescript
     framework: node
+  ci_cd:
+    # Without this the CI/CD axis degrades and the repo keeps the core's placeholder
+    # pipelines (which carry .NET reference commands) — a quick-start profile should
+    # produce a pipeline that actually runs its own stack. Change or drop it if this
+    # project is not on GitHub.
+    platform: github-actions
 
 quality:
   coverage_minimum: 60
