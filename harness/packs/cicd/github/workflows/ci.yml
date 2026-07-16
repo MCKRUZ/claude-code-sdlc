@@ -32,9 +32,11 @@ name: CI
 #                         seam — it is repo/integration-test specific. The reference
 #                         shows Postgres; DELETE the whole block if your tests need
 #                         no external service.
-#   <<EVAL_TEST_PROJECT>> The test project/assembly that holds the eval fixtures
-#                         (repo-level). The eval FILTER is a stack seam
-#                         (ci-profile.eval_gate.test_filter); see the eval-gate job.
+#   <<EVAL_TEST_PROJECT>> The test project/assembly holding the eval fixtures — only
+#                         appears if your stack's «ci-profile.eval_gate.command» needs a
+#                         project path (the .NET one does; a pytest marker does not). It
+#                         is NOT written in this file: it rides inside the substituted
+#                         command and lands here unfilled, for you.
 #   <<SPEC_GATE_SRC_RE>>  Regex for what counts as source in the spec-gate job
 #                         (default: ^src/). A PR matching it must carry a spec.
 # The coverage floor is NOT a repo placeholder: it is the stack seam
@@ -280,20 +282,12 @@ jobs:
         # Any failing eval fixture causes a non-zero exit and blocks the merge.
         # Document a legitimate bypass in profile/eval-bypasses.md (the gate still runs).
         #
-        # PARTIAL SEAM (known gap): the FILTER is bound to the stack pack, but the
-        # runner invocation around it is written in .NET's vocabulary — ci-profile
-        # declares no eval-runner command, only the filter. This job is already
-        # hand-adapted per repo (it carries <<EVAL_TEST_PROJECT>> and is kept only when
-        # ci-profile.eval_gate.enabled is true, which the .NET reference sets to false),
-        # so a non-.NET stack rewrites these flags when it enables the job.
+        # «stack pack: ci-profile.eval_gate.command» — the WHOLE runner invocation,
+        # including the filter, because a filter's syntax is runner-specific and means
+        # nothing without the flag that consumes it. The stack contracts to write its
+        # results into `eval-results/`, which the upload step below reads.
         run: |
-          dotnet test <<EVAL_TEST_PROJECT>> \
-            --no-build \
-            --configuration Release \
-            --filter "<<CI_EVAL_TEST_FILTER>>" \
-            --logger "trx;LogFileName=eval-gate.trx" \
-            --results-directory eval-results
-          # «stack pack: ci-profile.eval_gate.test_filter» fills the --filter above.
+          <<CI_EVAL_CMD>>
 
       - name: Upload eval results
         uses: actions/upload-artifact@v4

@@ -30,7 +30,8 @@ DOTNET_CI_PROFILE = {
         "lint": "dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes",
     },
     "coverage": {"floor_percent": 80, "tool": "coverlet"},
-    "eval_gate": {"enabled": False, "test_filter": "Category=OwaspAgentic"},
+    "eval_gate": {"enabled": False,
+                  "command": 'dotnet test <<EVAL_TEST_PROJECT>> --filter "Category=OwaspAgentic"'},
 }
 
 GITHUB_TOOLCHAIN_MAP = {
@@ -84,6 +85,23 @@ class TestLoadCiProfile:
         with pytest.raises(ValueError, match="commands.test.*single line"):
             load_ci_profile(pack_dir, manifest)
 
+    def test_multiline_eval_command_raises(self, tmp_path):
+        """The single-line rule covers eval_gate.command too — it is spliced into the eval job's
+        `run:` block exactly like the other four. A rule that held for four commands but not the
+        fifth would be a gap, not a policy."""
+        bad = {**DOTNET_CI_PROFILE,
+               "eval_gate": {"enabled": False, "command": "dotnet build\ndotnet test --filter x"}}
+        pack_dir, manifest = _stack_pack(tmp_path, bad)
+        with pytest.raises(ValueError, match="eval_gate.command.*single line"):
+            load_ci_profile(pack_dir, manifest)
+
+    def test_missing_eval_command_fails_closed_at_table_build(self, tmp_path):
+        """A stack pack that declares no eval command cannot fill <<CI_EVAL_CMD>>, and the packs
+        would emit a job with a literal token in it. Fail closed, naming the key."""
+        no_eval = {k: v for k, v in DOTNET_CI_PROFILE.items() if k != "eval_gate"}
+        with pytest.raises(ValueError, match="eval_gate.command"):
+            build_token_table(no_eval, _cicd_manifest(GITHUB_TOOLCHAIN_MAP), "github")
+
     def test_folded_scalar_command_is_single_line_and_loads(self, tmp_path):
         """The .NET profile writes commands.test as a `>-` folded scalar: single-line at load."""
         raw = (
@@ -96,7 +114,7 @@ class TestLoadCiProfile:
             '    --collect:"XPlat Code Coverage" --results-directory coverage\n'
             "  lint: dotnet format x\n"
             "coverage: {floor_percent: 80}\n"
-            "eval_gate: {enabled: false, test_filter: 'Category=OwaspAgentic'}\n"
+            "eval_gate: {enabled: false, command: 'dotnet test x --filter y'}\n"
         )
         pack_dir = tmp_path / "packs" / "stacks" / "dotnet"
         pack_dir.mkdir(parents=True)
@@ -124,7 +142,7 @@ class TestBuildTokenTable:
         assert table["<<CI_TOOLCHAIN_VERSION>>"] == "10.x"
         assert table["<<CI_RESTORE_CMD>>"] == "dotnet restore {{SOLUTION_OR_PROJECT}}"
         assert table["<<CI_COVERAGE_FLOOR>>"] == "80"      # stringified for YAML splicing
-        assert table["<<CI_EVAL_TEST_FILTER>>"] == "Category=OwaspAgentic"
+        assert table["<<CI_EVAL_CMD>>"] == 'dotnet test <<EVAL_TEST_PROJECT>> --filter "Category=OwaspAgentic"'
 
     def test_same_profile_different_platform_maps_to_ado_task(self, tmp_path):
         """The whole point of the seam: one ci-profile, each platform's own toolchain vocabulary."""
@@ -227,7 +245,7 @@ class TestSeamVocabulary:
         assert SEAM_TOKENS == {
             "<<CI_TOOLCHAIN_ACTION>>", "<<CI_TOOLCHAIN_INPUT>>", "<<CI_TOOLCHAIN_VERSION>>",
             "<<CI_RESTORE_CMD>>", "<<CI_BUILD_CMD>>", "<<CI_TEST_CMD>>", "<<CI_LINT_CMD>>",
-            "<<CI_COVERAGE_FLOOR>>", "<<CI_EVAL_TEST_FILTER>>",
+            "<<CI_COVERAGE_FLOOR>>", "<<CI_EVAL_CMD>>",
         }
 
     def test_a_built_table_fills_every_seam_token(self):

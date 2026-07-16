@@ -39,7 +39,7 @@ _PROFILE_TOKENS: tuple[tuple[str, tuple[str, str]], ...] = (
     ("<<CI_TEST_CMD>>", ("commands", "test")),
     ("<<CI_LINT_CMD>>", ("commands", "lint")),
     ("<<CI_COVERAGE_FLOOR>>", ("coverage", "floor_percent")),
-    ("<<CI_EVAL_TEST_FILTER>>", ("eval_gate", "test_filter")),
+    ("<<CI_EVAL_CMD>>", ("eval_gate", "command")),
 )
 
 # The ENTIRE compose-time vocabulary. Membership — not the <<CI_ prefix — is what makes a token the
@@ -74,14 +74,26 @@ def load_ci_profile(stack_pack_dir: Path, manifest: dict) -> dict:
 def _validate_commands(profile: dict, path: Path) -> None:
     """Every command must be a SINGLE line: a workflow splices it verbatim into one block scalar,
     so an embedded newline would silently emit an extra, unreviewed shell line. A folded (`>-`)
-    scalar is already single-line at load; a trailing newline (a `>` clip) is benign."""
+    scalar is already single-line at load; a trailing newline (a `>` clip) is benign.
+
+    Covers eval_gate.command too — it is spliced into the eval job's `run:` block the same way, and
+    a rule that held for four commands but not the fifth would be a gap, not a policy.
+    """
     commands = profile.get("commands") or {}
     if not isinstance(commands, dict):
         raise ValueError(f"{path}: commands must be a mapping, got {type(commands).__name__}")
-    for name, value in commands.items():
+    checked = [(f"commands.{name}", value) for name, value in commands.items()]
+
+    eval_gate = profile.get("eval_gate") or {}
+    if not isinstance(eval_gate, dict):
+        raise ValueError(f"{path}: eval_gate must be a mapping, got {type(eval_gate).__name__}")
+    if eval_gate.get("command") is not None:
+        checked.append(("eval_gate.command", eval_gate["command"]))
+
+    for name, value in checked:
         if "\n" in str(value).strip():
             raise ValueError(
-                f"{path}: commands.{name} must be a single line (it is spliced into one CI "
+                f"{path}: {name} must be a single line (it is spliced into one CI "
                 f"`run:` block); use a folded '>-' scalar or ' && ' instead of a newline"
             )
 

@@ -58,7 +58,7 @@ The join is **mechanical** — the installer does it, not a human with a copy bu
 
 | Half | Lives in | Knows |
 | --- | --- | --- |
-| `ci-profile.yaml` | `packs/stacks/<id>/` | *Which* toolchain (`toolchain.id` + `version`) and *what* the commands are (`commands.{restore,build,test,lint}`, `coverage.floor_percent`, `eval_gate.test_filter`) |
+| `ci-profile.yaml` | `packs/stacks/<id>/` | *Which* toolchain (`toolchain.id` + `version`) and *what* the commands are (`commands.{restore,build,test,lint}`, `coverage.floor_percent`, `eval_gate.command`) |
 | `toolchain_map:` | `packs/cicd/<id>/pack.yaml` | *How this platform installs* a given `toolchain.id` — its setup action/task and that action's version-input name |
 
 Neither knows the other. `dotnet` says "I need dotnet 10.x"; the github pack says "on me, `dotnet`
@@ -77,7 +77,7 @@ substituted into **every file the CI/CD pack overlays**, as it is copied:
 | `<<CI_TOOLCHAIN_VERSION>>` | `ci-profile` `toolchain.version` |
 | `<<CI_RESTORE_CMD>>` / `<<CI_BUILD_CMD>>` / `<<CI_TEST_CMD>>` / `<<CI_LINT_CMD>>` | `ci-profile` `commands.*` |
 | `<<CI_COVERAGE_FLOOR>>` | `ci-profile` `coverage.floor_percent` |
-| `<<CI_EVAL_TEST_FILTER>>` | `ci-profile` `eval_gate.test_filter` |
+| `<<CI_EVAL_CMD>>` | `ci-profile` `eval_gate.command` |
 
 Those nine are the **whole** compose-time vocabulary — it is a closed list, **not** the `<<CI_*>>`
 prefix. The prefix is not free: `deploy-dev.yml` in both packs already carries `<<CI_WORKFLOW_NAME>>`
@@ -107,10 +107,13 @@ target repo. What lands there is the realized pipeline carrying its values.
   and the installer prints a WARNING listing the affected files and tokens as Phase-3 work. Setup
   still exits 0 — a missing stack pack never breaks setup, exactly as before.
 
-**Known gap.** The optional eval-gate job binds only its `--filter` to the stack; the runner
-invocation around it is still written in .NET's vocabulary in both CI/CD packs, because `ci-profile`
-declares no eval-runner command. That job is hand-adapted per repo regardless (it carries a
-`<<EVAL_TEST_PROJECT>>` blank and is deleted unless `eval_gate.enabled` is true).
+**The eval gate is on the seam too.** The optional eval-gate job declares a whole `eval_gate.command`
+— not a bare filter. An earlier design bound only `--filter`, which was a half-measure: a filter
+value is meaningless without the runner flag that consumes it, and that flag's *syntax* is
+runner-specific (`dotnet test --filter "Category=X"`, `vitest -t "@x"`, `pytest -m "x"`). Splitting
+one fact across two layers guaranteed the .NET runner leaked onto every stack. The command is the
+unit; each stack declares its own, including how it writes results into `eval-results/` (the
+directory the packs' upload step reads — the same kind of contract as `coverage/`).
 
 ## Composition order (who wins)
 

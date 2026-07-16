@@ -95,7 +95,7 @@ jobs:
           echo "floor $COVERAGE_FLOOR"
       - name: Eval fixtures
         run: |
-          dotnet test <<EVAL_TEST_PROJECT>> --filter "<<CI_EVAL_TEST_FILTER>>"
+          <<CI_EVAL_CMD>>
 """
 
 # The stack pack's declared command interface — a compose-time INPUT, never installed as a file.
@@ -110,7 +110,8 @@ CI_PROFILE = {
         "lint": "dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes",
     },
     "coverage": {"floor_percent": 80, "tool": "coverlet"},
-    "eval_gate": {"enabled": False, "test_filter": "Category=OwaspAgentic"},
+    "eval_gate": {"enabled": False,
+                  "command": 'dotnet test <<EVAL_TEST_PROJECT>> --filter "Category=OwaspAgentic"'},
 }
 
 # The CI/CD pack's platform half of the seam: toolchain.id -> this platform's setup action + input.
@@ -413,7 +414,7 @@ class TestCiSeam:
         assert "dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --configuration Release" in ci
         assert "dotnet format {{SOLUTION_OR_PROJECT}} --verify-no-changes" in ci
         assert "COVERAGE_FLOOR: '80'" in ci                    # int floor stringified, quoting kept
-        assert '--filter "Category=OwaspAgentic"' in ci        # eval_gate.test_filter
+        assert '--filter "Category=OwaspAgentic"' in ci        # eval_gate.command
 
     def test_no_seam_token_survives_in_any_emitted_file(self, payload, target, tmp_path, valid_profile):
         install(payload, target, force=False, profile_path=_profile_file(tmp_path, valid_profile))

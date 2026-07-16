@@ -23,8 +23,10 @@
 #                               GitHub; the reference shows a Postgres sidecar. DELETE if not needed.
 #   <<EVAL_TEST_PROJECT>>       the test project holding the eval fixtures, for the optional agentic
 #                               eval-fixture hard gate. Keep only if you ship agent behavior that must
-#                               not regress; else delete the eval-gate stage. (The eval FILTER is NOT a
-#                               repo blank — it is the seam «ci-profile.eval_gate.test_filter».)
+#                               not regress; else delete the eval-gate stage. NOT written in this file:
+#                               it rides inside the substituted «ci-profile.eval_gate.command» and only
+#                               appears if that stack's runner needs a project path (.NET does; a pytest
+#                               marker does not).
 #
 # NOT placeholders any more — these are STACK SEAMS the installer fills from ci-profile.yaml:
 #   the toolchain + its version, the restore/build/test/lint commands (which carry the repo's own
@@ -180,23 +182,18 @@ stages:
               <<CI_BUILD_CMD>>
             displayName: 'Build'
             # «stack pack: ci-profile.commands.build»
-          # PARTIAL SEAM (known gap, mirrors the github twin): the FILTER binds to the stack pack,
-          # but the runner invocation around it is written in .NET's vocabulary — ci-profile declares
-          # no eval-runner command, only the filter. This stage is already hand-adapted per repo (it
-          # carries <<EVAL_TEST_PROJECT>> and is kept only when ci-profile.eval_gate.enabled is true,
-          # which the .NET reference sets to false), so a non-.NET stack rewrites these flags.
+          # «stack pack: ci-profile.eval_gate.command» — the WHOLE runner invocation, including the
+          # filter, because a filter's syntax is runner-specific and means nothing without the flag
+          # that consumes it. The stack contracts to write its results into `eval-results/` (a
+          # relative dir, like `coverage/`) — that is why the publish step below reads a plain path
+          # and not $(Agent.TempDirectory): an ADO-ism in a stack-declared command would leak this
+          # platform's vocabulary into the stack layer, which is the coupling the seam exists to break.
           - script: |
-              dotnet test <<EVAL_TEST_PROJECT>> \
-                --no-build \
-                --configuration Release \
-                --filter "<<CI_EVAL_TEST_FILTER>>" \
-                --logger "trx;LogFileName=eval-gate.trx" \
-                --results-directory $(Agent.TempDirectory)/eval-results
+              <<CI_EVAL_CMD>>
             displayName: 'Run eval fixtures (hard gate)'
-            # «stack pack: ci-profile.eval_gate.test_filter» fills the --filter above.
           - task: PublishPipelineArtifact@1
             displayName: 'Upload eval results'
             condition: always()
             inputs:
-              targetPath: '$(Agent.TempDirectory)/eval-results'
+              targetPath: 'eval-results'
               artifact: 'eval-gate-results'

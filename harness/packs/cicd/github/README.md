@@ -50,7 +50,7 @@ The overlay map above is declared machine-readably in [`pack.yaml`](./pack.yaml)
 
 The stack pack **declares its commands** in `packs/stacks/<id>/ci-profile.yaml`
 (`toolchain.{id,version}`, `solution`, `commands.{restore,build,test,lint}`,
-`coverage.floor_percent`, `eval_gate.test_filter`, `session_health.command`). This
+`coverage.floor_percent`, `eval_gate.command`, `session_health.command`). This
 pack **realizes** those into GitHub Actions YAML. That is what keeps the two axes
 independent: add a new stack and this pack can run it; add a new CI platform and every
 stack works on it.
@@ -73,7 +73,7 @@ each `«stack pack: …»` line with that stack's value.
 
 | Workflow | Stack-sourced slots (`ci-profile.<path>`) |
 | --- | --- |
-| `ci.yml` | `toolchain.id` → setup action, `toolchain.version`, `commands.restore`, `commands.build`, `commands.test`, `coverage.floor_percent` (enforced by the `Enforce coverage floor` step, `COVERAGE_FLOOR` env), `eval_gate.test_filter` (eval-gate job). `commands.lint` is declared but left unwired to preserve the reference rail's gate semantics — add a lint step from it if desired. The `spec-gate` job has no stack seam (pure git + jq). |
+| `ci.yml` | `toolchain.id` → setup action, `toolchain.version`, `commands.restore`, `commands.build`, `commands.test`, `coverage.floor_percent` (enforced by the `Enforce coverage floor` step, `COVERAGE_FLOOR` env), `eval_gate.command` (eval-gate job). `commands.lint` is declared but left unwired to preserve the reference rail's gate semantics — add a lint step from it if desired. The `spec-gate` job has no stack seam (pure git + jq). |
 | `eval-regression.yml` | `toolchain` (the "Setup runtime" step + the `DOTNET_*` env defaults) |
 | `eval-suite.yml` | `toolchain` (the "Setup runtime" step + the `DOTNET_*` env defaults) |
 | `grader.yml`, `correctness.yml`, `security.yml`, `deploy-dev.yml` | **none** — these run no stack build/test commands. Their placeholders are methodology/repo/deploy-platform level, and the Claude invocation is carried verbatim. |

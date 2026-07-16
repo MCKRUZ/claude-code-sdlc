@@ -83,6 +83,9 @@ it stays green. For bug fixes this is not optional (see above), regardless of pr
   what CI runs. The `xml:<path>` form is load-bearing: the pipeline's coverage gate only searches
   inside `coverage/`, and pytest-cov's bare default writes `coverage.xml` to the repo root — which
   the gate would not find, failing it closed.
-- `uv run pytest -m "eval_gate"` — the optional eval suite (`ci-profile.eval_gate.test_filter`).
+- `uv run pytest -m "eval_gate"` — the optional eval suite (`ci-profile.eval_gate.command`). Register
+  the marker in `[tool.pytest.ini_options] markers` and keep `--strict-markers` on: a marker typo'd
+  on a *test* would otherwise drop it silently out of the gate. (A typo in the `-m` *expression* is
+  caught by pytest exiting 5 when nothing is collected — a different hole, closed differently.)
 - The floor is enforced by the **pipeline's** gate step, not by `--cov-fail-under`: one threshold,
   in one place, uniform across every stack. Do not add a second one in the runner.

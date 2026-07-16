@@ -114,6 +114,18 @@ class TestGoldenRepo:
         assert manifest["files"], "manifest recorded no files"
         assert ".claude/harness-manifest.json" not in manifest["files"]
 
+    def test_dotnet_eval_gate_cannot_pass_by_matching_nothing(self, golden_repo):
+        """`dotnet test --filter` matching ZERO tests exits 0 — "No test matches the given testcase
+        filter" is a WARNING, and the trx is still written with total="0" and outcome="Completed".
+        Verified on SDK 8.0.129 / 9.0.316 / 10.0.301: all three. Without this runsettings value the
+        gate passes green having run nothing. It must stay LAST, after `--`."""
+        target, _, _ = golden_repo
+        ci = (target / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        eval_step = ci.split("eval-gate:", 1)[1]
+        assert "-- RunConfiguration.TreatNoTestsAsError=true" in eval_step, (
+            "the .NET eval gate lost its fail-closed setting — zero matched tests would exit 0"
+        )
+
     def test_emitted_workflows_parse(self, golden_repo):
         target, _, _ = golden_repo
         workflows = sorted((target / ".github" / "workflows").glob("*.yml"))
@@ -147,23 +159,29 @@ class TestStarterRepoIsNode:
         assert "node-version: '24.x'" in ci               # map's input name + ci-profile's version
         assert "npm ci" in ci                             # ci-profile.commands.restore
         assert "npx vitest run" in ci
-        # The BLOCKING job — the one every PR runs — must be pure Node.
-        blocking = ci.split("eval-gate:")[0]
-        assert "dotnet" not in blocking, "a .NET command leaked into a Node repo's blocking pipeline"
+        # THE WHOLE FILE, not just the blocking job. This assertion was scoped to the blocking job
+        # while the eval-gate carried a hardcoded `dotnet test` on every stack; closing that seam
+        # (intent-driven-development#15) retired the exemption. A Node repo now receives no .NET
+        # anywhere in its pipeline — which is the entire promise of the seam.
+        assert "dotnet" not in ci, "a .NET command leaked into a Node repo's pipeline"
 
-    def test_known_gap_eval_gate_is_still_dotnet_shaped(self, starter_repo):
-        """PINS A KNOWN GAP, does not bless it (intent-driven-development#15).
-
-        ci-profile declares an eval-gate FILTER but no eval-runner COMMAND, so the optional
-        eval-gate job keeps its .NET invocation on every stack. It is `enabled: false` by
-        default and the pack tells you to delete the job if unused, so it never runs — but a
-        Node repo should not be shipped a `dotnet test` line at all. When the eval-gate seam is
-        finished, this test SHOULD fail: delete it and tighten the assertion above to the whole
-        file."""
+    def test_eval_gate_is_realized_from_the_node_stack(self, starter_repo):
+        """The gap this closed (intent-driven-development#15): the eval job used to hardcode
+        `dotnet test` regardless of stack, because ci-profile declared only a FILTER and not the
+        runner invocation that consumes it."""
         target, _, _ = starter_repo
         eval_job = self._ci(target).split("eval-gate:", 1)
-        assert len(eval_job) == 2, "eval-gate job vanished — retire this test with the gap"
-        assert "dotnet test" in eval_job[1]
+        assert len(eval_job) == 2, "eval-gate job vanished"
+        assert 'npx vitest run -t "@owasp-agentic"' in eval_job[1]
+
+    def test_node_eval_gate_cannot_pass_by_matching_nothing(self, starter_repo):
+        """`vitest run -t` matching ZERO tests exits 0 (verified on vitest 3.2.7 and 4.1.10), so a
+        bare invocation would be a gate that passes green having run nothing. The realized job must
+        carry the guard that fails closed — and it must guard on numPassed+numFailed, because
+        `success` is true and `numTotalTests` counts COLLECTED (not matched) on a zero-match run."""
+        eval_job = self._ci(starter_repo[0]).split("eval-gate:", 1)[1]
+        assert "numPassedTests+r.numFailedTests" in eval_job, "eval gate lost its fail-closed guard"
+        assert "failing closed" in eval_job
 
     def test_coverage_floor_comes_from_the_customer_profile(self, starter_repo):
         # starter states quality.coverage_minimum: 60; the node pack declares 80. The profile is

@@ -91,17 +91,40 @@ coverage:
 
 # Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
 # Realized by the CI/CD pack as an extra job/stage.
-# PARTIAL SEAM (same known gap the .NET reference carries): only the filter is bound. The eval job's
-# runner invocation around it is still written in .NET's vocabulary in both CI/CD packs
-# (`dotnet test --filter "<<CI_EVAL_TEST_FILTER>>"`), so a repo enabling this job on Python MUST
-# rewrite that invocation to `uv run --frozen pytest -m "<filter>"`. That job is hand-adapted per repo
-# anyway (it carries a repo-level <<EVAL_TEST_PROJECT>> blank and is deleted unless `enabled` is
-# true). The filter below is a pytest MARKER expression (`pytest -m`), not a .NET trait expression.
-# Register the marker in pyproject.toml [tool.pytest.ini_options] markers and run with
-# --strict-markers so a typo is an error, not a silently empty selection.
+#
+# `command` is the WHOLE invocation. The selection is a pytest MARKER expression (`-m`), which is
+# why a bare "filter" could never cross the seam alone: `-m eval_gate`, `dotnet --filter
+# "Category=X"` and `vitest -t "@x"` are not the same fact in three dialects — they are three
+# different mechanisms. The command is the unit.
+#
+# CONTRACT with the CI/CD packs: results land in `eval-results/` (relative), which their upload step
+# publishes. pytest CREATES that directory itself — verified in _pytest/junitxml.py
+# (`os.makedirs(dirname, exist_ok=True)` in LogXML.pytest_sessionfinish) and confirmed by running it.
+# That is source-level, not documented prose, so treat it as behavior to re-check on a major bump.
+#
+# WHY THIS GATE IS REAL rather than theater: a marker expression matching NOTHING exits 5
+# (NO_TESTS_COLLECTED), not 0 — `testscollected` is counted AFTER deselection, so "all deselected"
+# IS "none collected" (docs.pytest.org/en/stable/reference/exit-codes.html; verified by running a
+# typo'd `-m` against real tests: "2 deselected", exit 5). A mistyped marker therefore FAILS the
+# build instead of quietly gating zero tests. Note the XML is still written with tests="0" in that
+# case — never infer success from the artifact's existence, only from the exit code.
+#
+# --strict-markers guards the OTHER end and is not what saves the selection: it errors on an unknown
+# mark applied via @pytest.mark.x (a typo'd marker on a TEST, which would silently drop that test out
+# of the gate). It does NOT validate the -m expression. Both holes are worth closing; they are
+# different holes. Register the marker in pyproject.toml [tool.pytest.ini_options] markers.
+# (`strict_markers = true` as an ini key is pytest 9+; the CLI flag works on 8 and 9 — hence the flag.)
+#
+# KNOWN, UNCLOSED: if every marked fixture is SKIPPED the run exits 0 — collected, not failed. A
+# suite that skips itself into vacuous green is not caught here.
 eval_gate:
   enabled: false
-  test_filter: "eval_gate"   # -> <<CI_EVAL_TEST_FILTER>>  (used as: pytest -m "eval_gate")
+  # -> <<CI_EVAL_CMD>>. No <<EVAL_TEST_PROJECT>> blank: a marker selects across the whole suite, so
+  # unlike .NET this stack needs no project path — the blank simply never appears in a Python repo.
+  command: >-
+    uv run --frozen pytest -m "eval_gate"
+    --strict-markers
+    --junit-xml=eval-results/eval-gate.xml
 
 # Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke
 # test. Must be FAST and must not mutate the environment or hit the network: `--no-sync` skips the

@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.9.0 — 2026-07-16
+
+- **The eval-gate seam is finished; the last .NET leak is closed.** The optional eval-gate job bound
+  only its `--filter` to the stack and hardcoded `dotnet test` around it, so every stack — Node,
+  Python — was shipped a .NET invocation. Binding the filter alone was the design error: a filter
+  value is meaningless without the runner flag that consumes it, and that flag's syntax is
+  runner-specific (`--filter "Category=X"` / `-t "@x"` / `-m "x"`). `<<CI_EVAL_TEST_FILTER>>` is
+  replaced by `<<CI_EVAL_CMD>>`, filled from a whole `ci-profile.eval_gate.command`. The seam
+  vocabulary is still nine tokens. A Node repo's pipeline now contains no `dotnet` anywhere, which
+  the golden test asserts over the whole file rather than just the blocking job.
+- **The .NET eval gate was fake, on every SDK, and now fails closed.** `dotnet test --filter`
+  matching ZERO tests exits **0** — "No test matches the given testcase filter" is a *warning*, and
+  the trx is still written with `total="0"` and `outcome="Completed"`. Verified empirically on SDK
+  8.0.129, 9.0.316 and 10.0.301. So the flagship profile's gate would have gone green having run
+  nothing, and its trx artifact would have looked like a clean pass. The command now ends with
+  `-- RunConfiguration.TreatNoTestsAsError=true`, verified on all three SDKs in all three states:
+  zero-match → 1, matching filter → 0, failing fixture → 1. (`/p:FailIfNoTestsFound` and
+  `/FailWhenNoTestsFound` do not exist — they appear in no shipped SDK. Microsoft.Testing.Platform
+  fails closed natively with exit 8; classic VSTest `dotnet test` does not.)
+- **Recorded, because it is a silent-green trap:** `Category=` is xUnit's trait key. MSTest and NUnit
+  spell it `TestCategory=`, and on MSTest a `Category=` filter matches zero tests *even when every
+  fixture is correctly tagged* — which, before the setting above, was exit 0.
+- **The Node eval gate would have been fake, and now fails closed.** `vitest run -t` matching ZERO
+  tests exits **0** (verified on vitest 3.2.7 and 4.1.10) — so a renamed or typo'd tag would have
+  passed the gate green having run nothing. The declared command carries a guard. The obvious guards
+  don't work and were each verified not to: `--passWithNoTests=false` covers a different condition
+  (no test *files*), the JSON's `success` is `true` on a zero-match run, and `numTotalTests` counts
+  *collected*, not matched. Only `numPassedTests + numFailedTests` discriminates. Prior to this the
+  Node pack's own comment recommended the unguarded command as the adaptation path.
+- **The Python eval gate is real without a guard**, for a reason worth recording: pytest counts
+  `testscollected` *after* deselection, so a marker matching nothing is "no tests collected" and
+  exits 5. `--strict-markers` is kept but does **not** protect the `-m` expression — it catches a
+  marker typo'd on a *test*, the mirror-image hole.
+- `eval_gate.command` is covered by the single-line rule and fails the install closed when absent —
+  a rule that held for four commands but not the fifth was a gap, not a policy.
+- The eval results contract is now a plain `eval-results/` directory (the ADO pack no longer
+  publishes from `$(Agent.TempDirectory)`): a platform variable inside a stack-declared command would
+  leak ADO's vocabulary into the stack layer, which is the coupling the seam exists to break.
+
 ## 0.8.0 — 2026-07-16
 
 - **Angular frontend pack.** The flagship microsoft-enterprise profile declares `angular-17`, which

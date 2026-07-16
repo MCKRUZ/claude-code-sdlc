@@ -74,17 +74,45 @@ coverage:
 
 # Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
 # Realized by the CI/CD pack as an extra job/stage.
-# PARTIAL SEAM: only the filter is bound. The eval job's runner invocation around it is still written
-# in .NET's vocabulary in both CI/CD packs — that job is hand-adapted per repo anyway (it carries a
-# repo-level <<EVAL_TEST_PROJECT>> blank and is deleted unless `enabled` is true). A Node repo enabling
-# it rewrites those flags as `npx vitest run <dir> -t "<filter>"`.
 #
-# The filter is a TEST-NAME pattern, because that is what vitest filters on (`-t/--testNamePattern`);
-# there is no xUnit-style trait/category system. Convention: tag the fixture titles, e.g.
-# `describe('@owasp-agentic tool poisoning', ...)`.
+# The selection is a TEST-NAME regex, because that is what vitest filters on (`-t`); there is no
+# xUnit-style trait system. Convention: tag the fixture titles, e.g.
+# `describe('@owasp-agentic tool poisoning', ...)`. (`@` is not regex-special; no escaping needed.)
+#
+# CONTRACT with the CI/CD packs: results land in `eval-results/` (relative), which their upload step
+# publishes. Vitest creates that directory recursively — verified on 3.2.7 and 4.1.10, but it is
+# UNDOCUMENTED behavior; the guard below fails closed if the file is missing, so a regression here
+# breaks loudly rather than silently.
+#
+# ── WHY THE GUARD EXISTS. READ BEFORE SIMPLIFYING. ────────────────────────────────────────────────
+# `vitest run -t "<pattern>"` matching ZERO tests exits 0. Verified on 3.2.7 and 4.1.10. Rename the
+# tag, typo it, or delete the last fixture, and the bare command PASSES GREEN having run nothing —
+# a gate that blocks merges would be theater. This is not hypothetical: the earlier version of this
+# very file told Node repos to adapt the job to `npx vitest run <dir> -t "<filter>"`, i.e. it
+# documented the fake gate as the supported path.
+#
+# What does NOT work, each verified, so nobody re-discovers them the hard way:
+#   --passWithNoTests=false  — a different condition entirely (no test FILES found). Zero name
+#                              matches means the files were found and the tests SKIPPED. Still 0.
+#   json `success`           — `true` on a zero-match run.
+#   json `numTotalTests`     — counts COLLECTED, not matched: reports 2 when 0 ran.
+#   --reporter=junit         — its `tests="2"` counts skipped too; fake-passes identically.
+# Only numPassedTests + numFailedTests distinguishes "ran and passed" from "never ran".
+#
+# vitest exit-0-on-zero-match is undocumented (the docs are silent, it is arguably a bug). If a
+# future version fixes it, this guard becomes redundant but stays correct.
 eval_gate:
   enabled: false
-  test_filter: "@owasp-agentic"   # -> <<CI_EVAL_TEST_FILTER>>
+  # -> <<CI_EVAL_CMD>>. No <<EVAL_TEST_PROJECT>> blank: `-t` selects across the whole suite, so
+  # unlike .NET this stack needs no project path — the blank never appears in a Node repo.
+  # Message is platform-neutral (no ::error:: annotation): this profile feeds BOTH cicd packs.
+  command: >-
+    npx vitest run -t "@owasp-agentic"
+    --reporter=default --reporter=json --outputFile.json=eval-results/eval-gate.json
+    && node -e "const r=require('./eval-results/eval-gate.json');
+    const n=r.numPassedTests+r.numFailedTests;
+    if(!n){console.error('eval-gate: 0 fixtures matched @owasp-agentic - failing closed');
+    process.exit(1)} console.log('eval-gate: '+n+' fixture(s) ran')"
 
 # Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
 # --noEmit: a health check answers "does this still type-check?" — it must not write build output.

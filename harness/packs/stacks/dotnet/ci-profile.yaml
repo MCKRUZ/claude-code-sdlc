@@ -51,12 +51,51 @@ coverage:
 
 # Optional second hard gate — kept only when the repo ships agentic behavior that must not regress.
 # Realized by the CI/CD pack as an extra job/stage. Filter harvested from the reference repo.
-# PARTIAL SEAM: only the filter is bound. The eval job's runner invocation around it is still written
-# in .NET's vocabulary in both CI/CD packs — that job is hand-adapted per repo anyway (it carries a
-# repo-level <<EVAL_TEST_PROJECT>> blank and is deleted unless `enabled` is true).
+#
+# `command` is the WHOLE invocation, not a bare filter. An earlier design bound only the filter and
+# left `dotnet test ...` hardcoded in both CI/CD packs, which put a .NET runner on every stack: a
+# filter value is meaningless without the flag that consumes it, and that flag's syntax is
+# runner-specific. The command is the unit that crosses the seam.
+#
+# CONTRACT with the CI/CD packs: results are written into `eval-results/` (relative), which their
+# upload step publishes. Same shape as the `coverage/` contract.
+#
+# --no-build: the pack runs «commands.build» in the step before this one; rebuilding here would be
+# waste and could mask a build that only succeeds on a second pass. It REQUIRES the Release config
+# below to match the earlier build's.
+#
+# ── WHY TreatNoTestsAsError IS HERE. READ BEFORE REMOVING. ────────────────────────────────────────
+# `dotnet test --filter` matching ZERO tests exits 0 — "No test matches the given testcase filter"
+# is a WARNING. Verified empirically on SDK 8.0.129, 9.0.316 and 10.0.301: all three exit 0, and all
+# three still WRITE the trx, with Counters total="0" and outcome="Completed". Without the setting
+# below this gate passes green having run nothing — never trust the trx's existence as success.
+#
+# `RunConfiguration.TreatNoTestsAsError=true` makes zero-match exit 1. Verified on all three SDKs in
+# all three states: zero-match -> 1, matching filter -> 0, genuinely failing fixture -> 1. So it
+# fails closed on "nobody tagged it" AND on "a fixture regressed", without false-failing a healthy
+# run. It is a runsettings value, so it MUST come after `--` and `--` MUST come last.
+# Docs: learn.microsoft.com/visualstudio/test/configure-unit-tests-by-using-a-dot-runsettings-file
+# ("Value that specifies the exit code when no tests are discovered").
+# NOTE `/p:FailIfNoTestsFound` and `/FailWhenNoTestsFound` do NOT exist — do not reach for them.
+# Microsoft.Testing.Platform fails closed natively (exit 8 = zero tests ran) and needs no setting,
+# but this reference targets classic VSTest `dotnet test`, which does not.
+#
+# ── FILTER SYNTAX IS TEST-FRAMEWORK SPECIFIC ──────────────────────────────────────────────────────
+# `Category=` is xUnit's trait key. MSTest and NUnit spell it `TestCategory=`. On MSTest a
+# `Category=` filter matches zero tests EVEN WHEN every fixture is correctly tagged (verified) —
+# which, before the setting above, was a silent green. If your eval project is not xUnit, change
+# this key. This is a Phase-3 adaptation like <<EVAL_TEST_PROJECT>>, not a stack-wide truth.
 eval_gate:
   enabled: false
-  test_filter: "Category=OwaspAgentic"   # -> <<CI_EVAL_TEST_FILTER>>
+  # -> <<CI_EVAL_CMD>>. <<EVAL_TEST_PROJECT>> is a Phase-3 repo blank riding inside this command:
+  # the installer substitutes the command, and the blank lands in the workflow for the repo to fill.
+  command: >-
+    dotnet test <<EVAL_TEST_PROJECT>>
+    --no-build --configuration Release
+    --filter "Category=OwaspAgentic"
+    --logger "trx;LogFileName=eval-gate.trx"
+    --results-directory eval-results
+    -- RunConfiguration.TreatNoTestsAsError=true
 
 # Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
 session_health:

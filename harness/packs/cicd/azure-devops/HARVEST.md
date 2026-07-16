@@ -44,7 +44,7 @@ tight; do not add `Write`/`Edit`/`Bash` to the grader.
 
 ### 1. CI (`ci.yml`) — build-and-test (+ optional eval-gate)
 - **Maps 1:1:** restore/build/test/lint via the seam templates; coverage floor enforced in the runner;
-  eval-gate as an optional second hard stage from `ci-profile.eval_gate.test_filter`.
+  eval-gate as an optional second hard stage from `ci-profile.eval_gate.command`.
 - **Approximation:** `setup-dotnet` → `UseDotNet@2`; `services:` (GitHub service containers with an
   init-script caveat) → Azure requires a **container job** to attach `services`, so the Postgres sidecar
   is shipped commented-out with a note, not as a drop-in. Coverage threshold is expressed via coverlet

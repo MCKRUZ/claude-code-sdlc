@@ -82,7 +82,7 @@ These are deliberate, outward-facing actions. Nothing in the kit performs them.
    the .NET stack, the defaults already work; on another stack, replace each marked
    value with the field from your stack's `ci-profile.yaml`
    (`toolchain.{id,version}`, `commands.{restore,build,test,lint}`,
-   `coverage.floor_percent`, `eval_gate.test_filter`). The profile-aware installer will
+   `coverage.floor_percent`, `eval_gate.command`). The profile-aware installer will
    do this automatically once it lands.
 2. **Adapt every repo-level placeholder.** Search the installed files for `<<...>>`
    markers and the `@your-org/your-team` owner handle, and replace them: the

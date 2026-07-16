@@ -25,7 +25,7 @@ that replaces GitHub branch protection, and the scripts that stand in for GitHub
 ## The seam — how it consumes the stack pack
 
 The stack pack **declares** its commands in `ci-profile.yaml` (`toolchain`, `solution`,
-`commands.{restore,build,test,lint}`, `coverage.floor_percent`, `eval_gate.test_filter`,
+`commands.{restore,build,test,lint}`, `coverage.floor_percent`, `eval_gate.command`,
 `session_health.command`). This pack **realizes** them in Azure Pipelines syntax, so the two axes stay
 independent — add a stack and every CI/CD pack can run it; add a CI platform and every stack works on it.
 
