@@ -188,6 +188,10 @@ gate is only proven when **both its block and its escape** have been seen to wor
   config / tool def) in a way that degrades a key metric past the trip-wire. The
   `eval-regression` gate must go red. Confirm the per-metric scorecard shows *which*
   metric moved.
+- **secret scan** — open a throwaway PR that commits a **fake but realistic credential**
+  (e.g. an invented `AKIA…`-style key in a config file — never a real one). The
+  `build-and-test` check must go red at its first step, `Secret scan (gitleaks)`, with
+  the planted string redacted in the log. Close it unmerged.
 - **CI / eval-gate** — already exercised by every real PR.
 
 A rail that has never failed safely has not been proven. The shakedown is not optional

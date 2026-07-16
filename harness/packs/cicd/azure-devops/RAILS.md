@@ -124,6 +124,9 @@ when **both its block and its escape** have been seen to work.
   dev Environment, with the rollback trigger condition written down in advance, not invented mid-incident.
 - **eval-regression** — open a PR touching `prompts/**` that degrades a key metric past the trip-wire (or
   point the runner at a fixture that regresses). The `eval-regression` build validation must go red.
+- **secret scan** — open a throwaway PR that commits a **fake but realistic credential** (e.g. an invented
+  `AKIA…`-style key in a config file — never a real one). The `build-and-test` build validation must go red
+  at its first step, `Secret scan (gitleaks)`, with the planted string redacted in the log. Abandon the PR.
 
 A rail that has never failed safely has not been proven. The shakedown is not optional polish — it is the
 difference between a rail and a decoration.

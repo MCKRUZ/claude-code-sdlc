@@ -39,7 +39,7 @@ ValidationFailure`, FluentValidation auto-discovered via the MediatR `Validation
   those realize them via the `«stack pack: ci-profile.*»` seam markers.
 - **Profile-aware install** — DONE. `install_harness.py --profile <profile.yaml>` composes core +
   the stack pack (`stack.backend.language`) + the CI/CD pack (`stack.ci_cd.platform`): overlay maps
-  from each `pack.yaml`, a shallow JSON merge for `settings.fragment.json`, and a CLAUDE.md
+  from each `pack.yaml`, a deep JSON merge for `settings.fragment.json`, and a CLAUDE.md
   stack-section splice. The two axes degrade independently (a stack/platform with no pack installs
   neutral core + a WARNING; setup never fails for a missing pack). `/sdlc-setup` passes the profile.
 

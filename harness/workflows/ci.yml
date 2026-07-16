@@ -1,9 +1,9 @@
 name: CI
 
-# The CI rail (the-rails.md §3): build + test + lint + coverage — the mechanical,
-# deterministic gate. This is a HARD BLOCK: any red here stops the merge. Nothing
-# in this file calls an LLM; it answers only the questions a machine can answer
-# definitively (does it compile, do the tests pass, is coverage met).
+# The CI rail (the-rails.md §3): secret scan + build + test + lint + coverage — the
+# mechanical, deterministic gate. This is a HARD BLOCK: any red here stops the merge.
+# Nothing in this file calls an LLM; it answers only the questions a machine can answer
+# definitively (is a secret committed, does it compile, do the tests pass, is coverage met).
 #
 # ── PLACEHOLDERS (adapt per client, then delete this block) ────────────────────
 #   <<BUILD_TOOLCHAIN>>   The setup-* action + version for your stack.
@@ -63,6 +63,21 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Secret scan (hard gate) — a committed credential is a fact; facts block.
+      # Runs first: it needs no toolchain and a hit invalidates everything after it.
+      # The binary is version- AND checksum-pinned (the standard's supply-chain rule:
+      # no @latest, no unverified downloads). Scans the checked-out tree; history
+      # scanning is a one-time onboarding task, not a per-PR gate.
+      - name: Secret scan (gitleaks)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o gitleaks.tar.gz \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks dir . --no-banner --redact
+          rm -f gitleaks gitleaks.tar.gz
 
       # <<BUILD_TOOLCHAIN>>
       - name: Setup toolchain

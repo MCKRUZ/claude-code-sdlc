@@ -141,7 +141,7 @@ principle: **work can be proposed by anyone; only a gate lets it through.**
 
 | Check | Power | Why |
 |---|---|---|
-| Build & tests | **blocks** | a broken build is a fact — facts block |
+| Build & tests (starts with a secret scan) | **blocks** | a broken build or a committed credential is a fact — facts block |
 | Grader (AI review vs. the standards) | **advises only** | an AI's "looks good" must never replace the human approver's judgment — the review must *happen*, but a human weighs it |
 | Correctness review | **blocks** | only on a concrete, demonstrable defect — and a human can overrule it with a visible, recorded label |
 | Security review | **blocks** | on serious findings in sensitive code |

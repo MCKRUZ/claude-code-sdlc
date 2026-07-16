@@ -1,7 +1,8 @@
 #!/usr/bin/env pwsh
 #
 # review-gate.ps1 — the "review gate": a push refuses until per-commit review
-# evidence exists.
+# evidence exists. Also enforces the download-and-execute policy (no curl|sh),
+# which settings.json permission patterns cannot express.
 #
 # Fires on the Claude Code `PreToolUse` event for Bash. Before the agent is allowed to
 # `git push` or `gh pr create` a change that touches compilable source, this proves that
@@ -75,6 +76,16 @@ if (-not $payload) { Allow }
 if ($payload.tool_name -ne 'Bash') { Allow }
 $cmd = [string]$payload.tool_input.command
 if (-not $cmd) { Allow }
+
+# --- Download-and-execute guard. Piping a downloader straight into a shell cannot be
+#     expressed as a settings.json permission pattern (no mid-command wildcards), so the
+#     policy is enforced here: same pipeline stage = downloader, then a pipe, then a shell.
+$pipeToShellRe = '(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)[^|;&]*\|\s*(sudo\s+)?((ba|z|da)?sh|pwsh|powershell|iex|Invoke-Expression)(\s|$)'
+if ($cmd -match $pipeToShellRe) {
+  Deny("Blocked: piping a download straight into a shell (curl|sh and friends) is denied by " +
+       "policy. Download to a file, inspect it, then execute it as a separate, reviewable step.")
+}
+
 $gates = $false
 foreach ($seg in ($cmd -split '\|\||&&|[;|&]')) {
   $s = $seg.Trim()

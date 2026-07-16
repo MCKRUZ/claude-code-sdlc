@@ -21,7 +21,8 @@ provides:
   mcp_fragment: mcp.fragment.json                 # stack MCP servers, merged into .mcp.json
 
 # Overlay map: pack-relative source -> repo destination. `merge: true` means the installer
-# shallow-merges JSON rather than overwriting (so core + pack permissions combine).
+# deep-merges JSON rather than overwriting (dicts merge key-wise, lists concatenate and
+# dedup), so core + pack permissions combine and core entries survive.
 overlays:
   - { src: rules/clean-architecture.md,          dest: .claude/rules/clean-architecture.md }
   - { src: rules/testing.md,                     dest: .claude/rules/testing.md }

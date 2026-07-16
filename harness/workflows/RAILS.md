@@ -153,6 +153,10 @@ gate is only proven when **both its block and its escape** have been seen to wor
 - **security** — open a **probe PR touching a guarded path** (e.g. add a comment in a
   file under `**/Auth/`) with a planted HIGH issue. The check must go red. Close it
   unmerged.
+- **secret scan** — open a throwaway PR that commits a **fake but realistic credential**
+  (e.g. an invented `AKIA…`-style key in a config file — never a real one). The
+  `build-and-test` check must go red at its first step, `Secret scan (gitleaks)`, with
+  the planted string redacted in the log. Close it unmerged.
 - **CI / eval-gate** — already exercised by every real PR.
 
 A rail that has never failed safely has not been proven. The shakedown is not optional

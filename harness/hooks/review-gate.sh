@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
 # review-gate.sh — bash twin of review-gate.ps1. The "review gate": a push refuses
-# until per-commit review evidence exists. Use on hosts without PowerShell (pwsh).
+# until per-commit review evidence exists. Also enforces the download-and-execute policy
+# (no curl|sh), which settings.json patterns cannot express. Use on hosts without pwsh.
 #
 # Maturity: STABLE machinery, POLICY-COUPLED (assumes /code-review + /simplify and that
 # receipts are written by save-review-receipt.{ps1,sh}). See kit/hooks/README.md.
@@ -40,11 +41,21 @@ tool_name="$(printf '%s' "$raw" | jq -r '.tool_name // empty' 2>/dev/null)"
 cmd="$(printf '%s' "$raw" | jq -r '.tool_input.command // empty' 2>/dev/null)"
 [[ -z "$cmd" ]] && allow
 
+# --- Download-and-execute guard. Piping a downloader straight into a shell cannot be
+#     expressed as a settings.json permission pattern (no mid-command wildcards), so the
+#     policy is enforced here: same pipeline stage = downloader, then a pipe, then a shell.
+pipe_to_shell_re='(curl|wget|iwr|irm|Invoke-WebRequest|Invoke-RestMethod)[^|;&]*\|[[:space:]]*(sudo[[:space:]]+)?((ba|z|da)?sh|pwsh|powershell|iex|Invoke-Expression)([[:space:]]|$)'
+if [[ "$cmd" =~ $pipe_to_shell_re ]]; then
+  deny "Blocked: piping a download straight into a shell (curl|sh and friends) is denied by policy. Download to a file, inspect it, then execute it as a separate, reviewable step."
+fi
+
 # --- Only gate commands that actually INVOKE git push / gh pr create. Inspect the start
 #     of each shell segment (split on ; && || | &) so the words inside a quoted string or
 #     an echo don't trip the gate. `git -C <path> push` is recognized.
+#     awk, not sed: BSD sed renders '\n' in a replacement as a literal 'n', which would
+#     leave compound commands unsplit and let `cd x && git push` walk past the gate.
 gates=false
-segment_stream="$(printf '%s' "$cmd" | sed -E 's/(\|\||&&|[;|&])/\n/g')"
+segment_stream="$(printf '%s' "$cmd" | awk '{gsub(/\|\||&&|[;|&]/, "\n"); print}')"
 while IFS= read -r seg; do
   s="$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//')"
   if [[ "$s" =~ ^git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([[:space:]]|$) ]] \

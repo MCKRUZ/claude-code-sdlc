@@ -68,8 +68,12 @@ in `deny` in this shared file** — `ask` is for "stop and confirm", `allow` is 
 - `ask` — prompts every time: `git push`, `gh api` (write-capable), and edits/writes to
   sensitive trees (see placeholders below).
 - `deny` — hard refusal, no exception: force-push (`--force` / `--force-with-lease` / `-f`),
-  `git reset --hard`, piping a download straight into a shell (`curl|sh`, `wget|bash`), and
-  reading secrets (`.env`, `.env.*`, `secrets/**`, `*.pfx`, `*.pem`).
+  `git reset --hard`, and reading secrets (`.env`, `.env.*`, `secrets/**`, `*.pfx`, `*.pem`).
+- Piping a download straight into a shell (`curl|sh`, `wget|bash`, `irm|iex`) is **also a
+  hard prohibition, but it is enforced by the review-gate PreToolUse hook**, not by a deny
+  rule: permission patterns are prefix matches and cannot express a mid-command pipe, so a
+  `Bash(curl:* | sh)`-style rule would match nothing. The hook inspects the raw command
+  and denies any downloader piped into a shell in the same pipeline stage.
 
 ### Placeholders to confirm / adapt per repo
 
@@ -123,10 +127,11 @@ On a host **without `pwsh`**, point the hook commands at the `.sh` twins instead
 The bash twins require **`jq`** (payload parsing) and `git`; the .NET gates also need
 `dotnet`. Missing required tooling makes a gate **fail open** (allow) rather than wedge.
 
-The Stop-hook command is intentionally written as a single string
-(`pwsh -NoProfile -ExecutionPolicy Bypass -File …`) rather than the
-`{"command":"pwsh","args":[…]}` array form. The single-string form works on all Claude
-Code versions; the array form requires CLI v2.1.139+.
+Both hooks are registered in the exec (array) form —
+`{"command":"pwsh","args":["-NoProfile","-ExecutionPolicy","Bypass","-File","${CLAUDE_PROJECT_DIR}/…"]}` —
+which avoids shell re-quoting of the script path. The array form requires Claude Code
+CLI v2.1.139+ (the plugin already requires ≥ 2.1.196, so this is never the binding
+constraint). On an older standalone CLI, fall back to the single-string form shown above.
 
 ## Maturity
 

@@ -16,8 +16,8 @@
 # ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
 #   <<RULESET_FILE>>  Path to the ruleset JSON relative to repo root. Reference below
 #                     assumes this script lives at scripts/rails/ and the JSON at
-#                     .github/rulesets/main-branch-protection.json — adjust RULESET_FILE
-#                     if your install layout differs.
+#                     .github/rulesets/branch-protection.json (where the installer
+#                     lays it down) — adjust RULESET_FILE if your install layout differs.
 # ───────────────────────────────────────────────────────────────────────────────
 #
 # Usage:
@@ -28,7 +28,7 @@
 set -euo pipefail
 
 # <<RULESET_FILE>> — resolve relative to the repo root (two levels up from scripts/rails/).
-RULESET_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.github/rulesets/main-branch-protection.json"
+RULESET_FILE="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.github/rulesets/branch-protection.json"
 RULESET_NAME="$(jq -r '.name' "$RULESET_FILE")"
 DRY_RUN=0
 

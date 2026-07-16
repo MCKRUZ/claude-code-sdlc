@@ -36,7 +36,11 @@ on:
     paths:
       - 'prompts/**'                      # judge & classifier prompts (versioned)
       - 'eval-datasets/**'                # the golden sets themselves
-      - '**/model-config*.{json,yaml,yml}'  # model selections
+      # model selections — one line per extension: Actions path filters do NOT
+      # support {brace,expansion}; a braced pattern silently matches nothing.
+      - '**/model-config*.json'
+      - '**/model-config*.yaml'
+      - '**/model-config*.yml'
       - '**/tools/**'                     # tool definitions
       - 'specs/**/agent*.md'              # agent specs
       - 'specs/**/golden-set.yaml'
