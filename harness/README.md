@@ -83,7 +83,8 @@ have run) **and `/update-docs`** — declared there, not duplicated here.
 ## The five rails (CI), at a glance
 | Workflow | Job/check name | Blocks? | Job |
 |---|---|---|---|
-| `ci.yml` | `build-and-test` | **Blocks** | Build + test + coverage floor. |
+| `ci.yml` | `build-and-test` | **Blocks** | Build + test + enforced coverage floor. |
+| `ci.yml` | `spec-gate` | **Blocks** | A source change with no spec in the diff is a fact; `no-spec:chore` label = recorded escape. |
 | `grader.yml` | `grader` | **Advises** (required to *run*) | Fresh agent grades the spec **file in the diff**, line-anchored. |
 | `correctness.yml` | `correctness-review` | **Blocks** on a high-confidence defect | Named override label clears it. |
 | `security.yml` | `security-review` | **Blocks** on HIGH | Gated-path / `risk:high` triggered; self-passes otherwise. |
@@ -92,8 +93,9 @@ have run) **and `/update-docs`** — declared there, not duplicated here.
 Plus `eval-regression.yml` (per-PR gate when prompts/models/tools/agent-behavior change) and
 `eval-suite.yml` (periodic full benchmark) for §11 agentic deliverables.
 
-The merge bar (in `branch-protection.json`): **CI green + grader ran + correctness passed (or
-recorded override) + a non-author approval**; HIGH adds security pass + a named sign-off in the PR.
+The merge bar (in `branch-protection.json`): **CI green + spec-gate green + grader ran +
+correctness passed (or recorded override) + a non-author approval**; HIGH adds security pass + a
+named sign-off in the PR.
 
 ---
 

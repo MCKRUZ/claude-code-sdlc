@@ -34,7 +34,7 @@ evidence exists."
 
 | File | Event | What it enforces |
 | --- | --- | --- |
-| `stop-gate.{ps1,sh}` | `Stop` | The build (optionally tests) is green before a turn ends. |
+| `stop-gate.{ps1,sh}` | `Stop` | The build **and tests** are green before a turn ends (tests opt-out: `RAILS_STOP_RUN_TESTS=0`). |
 | `review-gate.{ps1,sh}` | `PreToolUse` (Bash) | `git push` / `gh pr create` is blocked until per-commit review receipts exist. |
 | `save-review-receipt.{ps1,sh}` | (manual) | Writes a commit-bound receipt the review gate looks for. |
 
@@ -103,7 +103,7 @@ All optional. Defaults assume a .NET solution under `src/`.
 | --- | --- | --- | --- |
 | `RAILS_SRC_GLOB` | stop-gate | `.cs/.csproj/.slnx/.sln/.props/.targets/.razor/.cshtml` under `src/**` | Git pathspecs whose dirty state arms the build gate. |
 | `RAILS_SOLUTION` | stop-gate | first `*.slnx`/`*.sln` found | Explicit solution/project to build. |
-| `RAILS_STOP_RUN_TESTS` | stop-gate | unset | `1` also runs the test suite after a green build. |
+| `RAILS_STOP_RUN_TESTS` | stop-gate | unset (tests RUN) | Tests run by default after a green build; `0` opts out (e.g. a suite too slow for a per-turn gate). |
 | `RAILS_REVIEW_BASE` | review-gate | `origin/main`, then `main` | Base ref the branch is diffed against. |
 | `RAILS_REVIEW_SRC_REGEX` | review-gate | `^src/.*\.(cs\|csproj\|…\|ts\|html)$` | Which changed paths count as gated source. |
 | `RAILS_REVIEW_KINDS` | review-gate, save-review-receipt | `code-review,simplify` | Which reviews must have receipts. |

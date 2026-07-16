@@ -29,6 +29,7 @@
         "do_not_enforce_on_create": false,
         "required_status_checks": [
           { "context": "build-and-test" },
+          { "context": "spec-gate" },
           { "context": "grader" },
           { "context": "correctness-review" },
           { "context": "security-review" }

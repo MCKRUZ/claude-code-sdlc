@@ -15,7 +15,7 @@ Seven workflows plus the rails guide:
 
 | Workflow | File | Fires on | Block or advise |
 | --- | --- | --- | --- |
-| **CI** | `workflows/ci.yml` | every PR + push to main | **BLOCKS** (build/test/coverage; optional eval-gate) |
+| **CI** | `workflows/ci.yml` | every PR + push to main | **BLOCKS** (build/test + enforced coverage floor; `spec-gate` job — no spec, no build; optional eval-gate) |
 | **Grader** | `workflows/grader.yml` | every PR | **ADVISES** — required to RUN, verdict never blocks |
 | **Correctness Review** | `workflows/correctness.yml` | every PR (reviews when source changed) | **BLOCKS** on a high-confidence defect (override label) |
 | **Security Review** | `workflows/security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH |
@@ -73,7 +73,7 @@ each `«stack pack: …»` line with that stack's value.
 
 | Workflow | Stack-sourced slots (`ci-profile.<path>`) |
 | --- | --- |
-| `ci.yml` | `toolchain.id` → setup action, `toolchain.version`, `commands.restore`, `commands.build`, `commands.test`, `coverage.floor_percent` + `coverage.tool` (enforced in the runner), `eval_gate.test_filter` (eval-gate job). `commands.lint` is declared but left unwired to preserve the reference rail's gate semantics — add a lint step from it if desired. |
+| `ci.yml` | `toolchain.id` → setup action, `toolchain.version`, `commands.restore`, `commands.build`, `commands.test`, `coverage.floor_percent` (enforced by the `Enforce coverage floor` step, `COVERAGE_FLOOR` env), `eval_gate.test_filter` (eval-gate job). `commands.lint` is declared but left unwired to preserve the reference rail's gate semantics — add a lint step from it if desired. The `spec-gate` job has no stack seam (pure git + jq). |
 | `eval-regression.yml` | `toolchain` (the "Setup runtime" step + the `DOTNET_*` env defaults) |
 | `eval-suite.yml` | `toolchain` (the "Setup runtime" step + the `DOTNET_*` env defaults) |
 | `grader.yml`, `correctness.yml`, `security.yml`, `deploy-dev.yml` | **none** — these run no stack build/test commands. Their placeholders are methodology/repo/deploy-platform level, and the Claude invocation is carried verbatim. |
@@ -89,8 +89,9 @@ gates depend on the profile layer's ruleset:
 
 - **Ruleset:** `profile/rulesets/branch-protection.json` — lists the required status
   check contexts, which must match the workflow **job names** exactly:
-  `build-and-test`, `grader`, `correctness-review`, `security-review` (plus `eval-gate`
-  if you keep that job). Rename a job → rename its required-check context.
+  `build-and-test`, `spec-gate`, `grader`, `correctness-review`, `security-review`
+  (plus `eval-gate` if you keep that job). Rename a job → rename its required-check
+  context.
 - **Apply it:** `scripts/rails/apply-branch-protection.sh` (the installed location of
   `profile/scripts/apply-branch-protection.sh`) — the only sanctioned way to change
   branch protection. Edit the JSON, re-run the script; do not hand-edit rules in the

@@ -1,9 +1,10 @@
 name: CI
 
-# The CI rail (the-rails.md §3): build + test + lint + coverage — the mechanical,
-# deterministic gate. This is a HARD BLOCK: any red here stops the merge. Nothing
-# in this file calls an LLM; it answers only the questions a machine can answer
-# definitively (does it compile, do the tests pass, is coverage met).
+# The CI rail (the-rails.md §3): build + test + lint + coverage, plus the spec-gate —
+# the mechanical, deterministic gate. This is a HARD BLOCK: any red here stops the
+# merge. Nothing in this file calls an LLM; it answers only the questions a machine
+# can answer definitively (does it compile, do the tests pass, is coverage met, does
+# a source PR carry its spec).
 #
 # ── PACK NOTE (github CI/CD pack) ──────────────────────────────────────────────
 # This is the GitHub Actions REALIZATION of the core CI rail. Every stack-specific
@@ -25,6 +26,11 @@ name: CI
 #   <<EVAL_TEST_PROJECT>> The test project/assembly that holds the eval fixtures
 #                         (repo-level). The eval FILTER comes from the stack pack
 #                         (ci-profile.eval_gate.test_filter); see the eval-gate job.
+#   <<COVERAGE_THRESHOLD>>   The standard's 80% coverage floor. ENFORCED by the
+#                         "Enforce coverage floor" step below (COVERAGE_FLOOR env);
+#                         change the value on the marked line, not in the runner.
+#   <<SPEC_GATE_SRC_RE>>  Regex for what counts as source in the spec-gate job
+#                         (default: ^src/). A PR matching it must carry a spec.
 # ───────────────────────────────────────────────────────────────────────────────
 
 on:
@@ -112,16 +118,51 @@ jobs:
 
       - name: Test with coverage
         # «stack pack: ci-profile.commands.test» — must FAIL the job on any failing
-        # test or sub-threshold coverage. Enforce the coverage floor
-        # (ci-profile.coverage.floor_percent = 80, via ci-profile.coverage.tool =
-        # coverlet) in the runner settings so a coverage miss is a non-zero exit, not
-        # a passing run with a low number in a report. «stack pack: ci-profile.coverage»
+        # test. Coverage is COLLECTED here; the floor
+        # (ci-profile.coverage.floor_percent = 80) is enforced by the "Enforce
+        # coverage floor" step below. (The XPlat collector cannot fail a run on a
+        # threshold — that is a coverlet.msbuild feature, not a collector feature.)
         run: >
           dotnet test {{SOLUTION_OR_PROJECT}}
           --no-build
           --configuration Release
           --collect:"XPlat Code Coverage"
           --results-directory coverage
+
+      # Coverage floor gate («stack pack: ci-profile.coverage.floor_percent»). Parses
+      # every cobertura report the collector produced and exits 1 if any line-rate is
+      # below the floor — a coverage miss is a non-zero exit, never a passing run with
+      # a low number in a report the pipeline ignores. Fails CLOSED when no report was
+      # produced. KEEP IN SYNC with the ADO twin:
+      # packs/cicd/azure-devops/azure-pipelines/templates/dotnet-restore-build-test.yml.
+      - name: Enforce coverage floor
+        env:
+          COVERAGE_FLOOR: '80'   # <<COVERAGE_THRESHOLD>>  «stack pack: ci-profile.coverage.floor_percent»
+        run: |
+          set -euo pipefail
+          FLOOR="$COVERAGE_FLOOR"
+          found=0; fail=0
+          while IFS= read -r report; do
+            found=1
+            rate="$(sed -n 's/.*<coverage[^>]*line-rate="\([0-9.]*\)".*/\1/p' "$report" | head -n1)"
+            if [ -z "$rate" ]; then
+              echo "::error::Could not read line-rate from $report"
+              fail=1
+              continue
+            fi
+            pct="$(awk -v r="$rate" 'BEGIN{printf "%.2f", r*100}')"
+            if awk -v p="$pct" -v t="$FLOOR" 'BEGIN{exit !(p+0 < t+0)}'; then
+              echo "::error::Coverage ${pct}% is below the ${FLOOR}% floor ($report)"
+              fail=1
+            else
+              echo "Coverage ${pct}% >= ${FLOOR}% floor ($report)"
+            fi
+          done < <(find coverage -name 'coverage.cobertura.xml' 2>/dev/null)
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No coverage.cobertura.xml produced — the coverage gate cannot pass without a report (fail closed)."
+            exit 1
+          fi
+          exit "$fail"
 
       # NOTE: ci-profile.commands.lint (dotnet format --verify-no-changes) is declared
       # by the stack pack but the reference CI wires no discrete lint STEP (analyzers
@@ -135,6 +176,57 @@ jobs:
         with:
           name: coverage
           path: coverage/
+
+  # ── spec-gate ──────────────────────────────────────────────────────────────────
+  # "No spec, no build" (the-rails.md §2), enforced deterministically. The grader
+  # only WARNS when a PR carries no committed spec (grader.yml); this job BLOCKS:
+  # a source change with no spec in the diff is a fact, and facts block. The
+  # recorded escape is the `no-spec:chore` label + the reason in the PR description.
+  # PR-only: push builds to the protected branch have no diff-vs-base to judge.
+  # No stack seam here — the gate is pure git + jq, stack-independent.
+  spec-gate:
+    name: spec-gate               # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history, so the diff against the base resolves
+
+      - name: Require a spec in the diff for source changes
+        env:
+          SRC_RE: '^src/'         # <<SPEC_GATE_SRC_RE>> — what counts as source
+          SPEC_DIR: specs         # <<SPEC_DIR>> — same directory grader.yml reads
+        run: |
+          set -euo pipefail
+          # Recorded escape: the `no-spec:chore` PR label (for chores that genuinely
+          # need no spec). Read from the event payload — no API call needed.
+          if jq -e '.pull_request.labels[]? | select(.name == "no-spec:chore")' "$GITHUB_EVENT_PATH" >/dev/null; then
+            echo "NOTICE: 'no-spec:chore' label present — spec-gate exemption recorded for this PR. State the reason in the PR description."
+            exit 0
+          fi
+          git fetch --no-tags origin "$GITHUB_BASE_REF"
+          changed="$(git diff --name-only "origin/${GITHUB_BASE_REF}...HEAD")"
+          source_touched="$(printf '%s\n' "$changed" | grep -E "$SRC_RE" || true)"
+          # New-or-modified spec files in this PR's diff (not deleted).
+          # KEEP IN SYNC: this is the SAME regex grader.yml uses to identify the
+          # committed spec file — change one, change both.
+          spec_in_diff="$(git diff --name-only --diff-filter=d "origin/${GITHUB_BASE_REF}...HEAD" -- "${SPEC_DIR}/" \
+            | grep -E "^${SPEC_DIR}/[0-9]+.*\.md$" || true)"
+          if [ -n "$source_touched" ] && [ -z "$spec_in_diff" ]; then
+            echo "::error::No spec, no build — this PR touches source but carries no committed spec."
+            echo "Source files touched (match SRC_RE '${SRC_RE}'):"
+            printf '%s\n' "$source_touched" | sed 's/^/  - /'
+            echo "No ${SPEC_DIR}/NNNN-*.md file is in this PR's diff."
+            echo "To comply: add or update the spec for this change under ${SPEC_DIR}/ so it rides in this PR."
+            echo "Recorded escape: apply the 'no-spec:chore' label and state the reason in the PR description."
+            exit 1
+          fi
+          if [ -z "$source_touched" ]; then
+            echo "OK: not a source PR (nothing matches SRC_RE '${SRC_RE}') — spec-gate does not apply."
+          else
+            echo "OK: spec present in the diff: $(printf '%s\n' "$spec_in_diff" | head -n1)"
+          fi
 
   # ── OPTIONAL: eval-gate ────────────────────────────────────────────────────────
   # A second HARD gate for projects that ship agentic behavior with an eval-fixture

@@ -6,11 +6,15 @@ CODEOWNERS, ruleset, and scripts come from `../profile/`. For the operator's gui
 go-live steps, the merge bar, and the **shakedown drill** that proves each rail fails
 safely — read [`RAILS.md`](./RAILS.md).
 
-## The five workflows
+## The five workflows (and the gates they carry)
+
+`ci.yml` carries two blocking gates — `build-and-test` and `spec-gate` — so five
+workflow files yield six gate rows here.
 
 | Workflow | File | Fires on | Block or advise | Source |
 | --- | --- | --- | --- | --- |
-| **CI** | `ci.yml` | every PR + push to main | **BLOCKS** (secret scan/build/test/coverage; optional eval-gate) | generalized from source `ci.yml` |
+| **CI** | `ci.yml` | every PR + push to main | **BLOCKS** (secret scan/build/test + enforced coverage floor; optional eval-gate) | generalized from source `ci.yml` |
+| **Spec Gate** | `ci.yml` (`spec-gate` job) | every PR | **BLOCKS** — a source change with no spec in the diff is a fact (`no-spec:chore` label = recorded escape) | built fresh for the kit |
 | **Grader** | `grader.yml` | every PR | **ADVISES** — required to RUN, verdict never blocks | generalized from source `grader.yml` |
 | **Correctness Review** | `correctness.yml` | every PR (reviews when source changed) | **BLOCKS** on a high-confidence defect (override label) | generalized from source `correctness-review.yml` |
 | **Security Review** | `security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH | generalized from source `security-review.yml` |
@@ -40,7 +44,8 @@ adapting.
 | `<<RESTORE_CMD>>` / `<<BUILD_CMD>>` / `<<TEST_CMD>>` | ci | your stack's commands |
 | `<<SOLUTION_OR_PROJECT>>` | ci | solution / workspace / manifest path |
 | `<<SERVICE_PROVISIONING>>` | ci | `services:` block + schema/seed (or delete) |
-| `<<COVERAGE_THRESHOLD>>` | ci | enforce the 80% floor in the test runner |
+| `<<COVERAGE_THRESHOLD>>` | ci | the 80% floor — enforced by ci.yml's `Enforce coverage floor` step (`COVERAGE_FLOOR` env on the marked line) |
+| `<<SPEC_GATE_SRC_RE>>` | ci | regex for what counts as source in the `spec-gate` job (reference: `^src/`) |
 | `<<EVAL_GATE>>` / `<<EVAL_TEST_PROJECT>>` / `<<EVAL_FILTER>>` | ci | the optional eval-fixture hard gate (or delete the job) |
 | `<<SPEC_DIR>>` | grader + grader rubric | committed-spec directory (reference: `specs/`) |
 | `<<MODEL>>` | grader / security / correctness | reviewer model (sonnet / opus) |
@@ -55,9 +60,9 @@ adapting.
 | `<<RULESET_FILE>>` | apply-branch-protection.sh | ruleset JSON path if layout differs |
 
 Required-status-check **context names** in `../profile/rulesets/branch-protection.json`
-must match the workflow **job names**: `build-and-test`, `grader`, `correctness-review`,
-`security-review` (and `eval-gate` if you keep that job). Rename a job → rename its
-required-check context.
+must match the workflow **job names**: `build-and-test`, `spec-gate`, `grader`,
+`correctness-review`, `security-review` (and `eval-gate` if you keep that job). Rename
+a job → rename its required-check context.
 
 ## Fail-safe semantics (do not weaken)
 

@@ -91,6 +91,9 @@ jobs:
           git fetch --no-tags origin "$BASE_REF"
           BASE_SHA="$(git merge-base FETCH_HEAD HEAD)"
           # New-or-modified spec files in this PR's diff (not deleted).
+          # KEEP IN SYNC: ci.yml's spec-gate job BLOCKS on this SAME regex — change
+          # one, change both. (Here a missing spec is only a WARNING; the block lives
+          # in spec-gate.)
           SPEC_FILES="$(git diff --name-only --diff-filter=d "$BASE_SHA" HEAD -- "${SPEC_DIR}/" \
             | grep -E "^${SPEC_DIR}/[0-9]+.*\.md$" || true)"
           if [ -n "$SPEC_FILES" ]; then

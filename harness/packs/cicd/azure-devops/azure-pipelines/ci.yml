@@ -1,8 +1,8 @@
-# CI rail (the-rails.md §3): build + test + lint + coverage — the mechanical, deterministic gate.
-# HARD BLOCK. Nothing here calls an LLM; it answers only what a machine can answer definitively (does it
-# compile, do the tests pass, is coverage met). Consumes the stack pack's ci-profile.yaml via the
-# templates below (UseDotNet@2 + the restore/build/test commands) — no stack commands are hard-coded as
-# policy in this file.
+# CI rail (the-rails.md §3): build + test + lint + coverage, plus the spec-gate — the mechanical,
+# deterministic gate. HARD BLOCK. Nothing here calls an LLM; it answers only what a machine can answer
+# definitively (does it compile, do the tests pass, is coverage met, does a source PR carry its spec).
+# Consumes the stack pack's ci-profile.yaml via the templates below (UseDotNet@2 + the
+# restore/build/test commands) — no stack commands are hard-coded as policy in this file.
 #
 # HOW IT BLOCKS ON AZURE: for Azure Repos, `pr:` YAML triggers are ignored — PR runs are driven by a
 # **build validation branch policy**. scripts/configure-branch-policies.sh registers this pipeline
@@ -16,6 +16,8 @@
 #                               eval-gate stage or wire secrets; the mechanical stage needs none.
 #   <<SOLUTION_OR_PROJECT>>     path passed to the dotnet-restore-build-test template.
 #   <<COVERAGE_THRESHOLD>>      the standard's 80% floor (default carried by the template).
+#   <<SPEC_GATE_SRC_RE>>        regex for what counts as source in the spec-gate stage (default: ^src/).
+#                               A PR matching it must carry a committed spec in its diff.
 #   <<SERVICE_PROVISIONING>>    a `services`/sidecar container + schema/seed if integration tests need a
 #                               DB/cache/broker. Azure Pipelines runs service containers differently from
 #                               GitHub; the reference shows a Postgres sidecar. DELETE if not needed.
@@ -33,8 +35,78 @@ pool:
   vmImage: 'ubuntu-latest'
 
 stages:
+  # ── spec-gate ─────────────────────────────────────────────────────────────────────
+  # "No spec, no build" (the-rails.md §2), enforced deterministically. The grader only WARNS when a PR
+  # carries no committed spec (grader.yml); this stage BLOCKS: a source change with no spec in the diff
+  # is a fact, and facts block. A red stage fails the whole build-validation run, which is what blocks
+  # the merge on Azure Repos. The recorded escape is the `no-spec:chore` PR label + the reason in the
+  # PR description.
+  # PR-context only: this pipeline also runs on push to the protected branch (the `trigger:` above) to
+  # feed deploy-dev — those runs have no PR to judge or read labels from, so the stage skips cleanly
+  # (Build.Reason is only 'PullRequest' on build-validation runs; a skipped stage does not fail the run).
+  - stage: spec_gate
+    displayName: 'spec-gate'
+    dependsOn: []                   # parallel to build_and_test — no reason to serialize the two gates
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: spec_gate
+        displayName: 'spec-gate'
+        steps:
+          - template: templates/checkout-with-base.yml   # full history + fetches the PR target branch, sets $(baseRef)
+
+          - bash: |
+              set -euo pipefail
+              # Recorded escape: the `no-spec:chore` PR label (for chores that genuinely need no spec).
+              # Azure DevOps puts no labels in the pipeline context, so read them from the REST API with
+              # the pipeline's own $(System.AccessToken) — the same pattern as scripts/post-pr-thread.sh.
+              # Endpoint verified against Microsoft Learn ("Pull Request Labels - List", api-version 7.1):
+              #   GET {org}/{project}/_apis/git/repositories/{repositoryId}/pullRequests/{pullRequestId}/labels
+              #   → WebApiTagDefinition[] — objects with {id, name, active, url}, wrapped as {count, value}.
+              if [ -z "${SYSTEM_ACCESSTOKEN:-}" ]; then
+                echo "##vso[task.logissue type=warning]System.AccessToken not mapped — cannot check the no-spec:chore exemption label; the gate proceeds without the escape."
+              else
+                LABELS_URL="${ORG_URL%/}/${PROJECT}/_apis/git/repositories/${REPO_ID}/pullRequests/${PR_ID}/labels?api-version=7.1"
+                LABELS_JSON="$(curl -sf -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" "$LABELS_URL" || echo '{}')"
+                if printf '%s' "$LABELS_JSON" | jq -e '(.value // .)[]? | select(.name == "no-spec:chore")' >/dev/null; then
+                  echo "NOTICE: 'no-spec:chore' label present — spec-gate exemption recorded for this PR. State the reason in the PR description."
+                  exit 0
+                fi
+              fi
+              changed="$(git diff --name-only "origin/${BASE_REF}...HEAD")"
+              source_touched="$(printf '%s\n' "$changed" | grep -E "$SRC_RE" || true)"
+              # New-or-modified spec files in this PR's diff (not deleted).
+              # KEEP IN SYNC: this is the SAME regex grader.yml uses to identify the
+              # committed spec file — change one, change both.
+              spec_in_diff="$(git diff --name-only --diff-filter=d "origin/${BASE_REF}...HEAD" -- "${SPEC_DIR}/" \
+                | grep -E "^${SPEC_DIR}/[0-9]+.*\.md$" || true)"
+              if [ -n "$source_touched" ] && [ -z "$spec_in_diff" ]; then
+                echo "##vso[task.logissue type=error]No spec, no build — this PR touches source but carries no committed spec."
+                echo "Source files touched (match SRC_RE '${SRC_RE}'):"
+                printf '%s\n' "$source_touched" | sed 's/^/  - /'
+                echo "No ${SPEC_DIR}/NNNN-*.md file is in this PR's diff."
+                echo "To comply: add or update the spec for this change under ${SPEC_DIR}/ so it rides in this PR."
+                echo "Recorded escape: apply the 'no-spec:chore' label and state the reason in the PR description."
+                exit 1
+              fi
+              if [ -z "$source_touched" ]; then
+                echo "OK: not a source PR (nothing matches SRC_RE '${SRC_RE}') — spec-gate does not apply."
+              else
+                echo "OK: spec present in the diff: $(printf '%s\n' "$spec_in_diff" | head -n1)"
+              fi
+            displayName: 'Require a spec in the diff for source changes'
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)      # allow the OAuth token in the pipeline settings
+              ORG_URL: $(System.CollectionUri)
+              PROJECT: $(System.TeamProject)
+              REPO_ID: $(Build.Repository.ID)
+              PR_ID: $(System.PullRequest.PullRequestId)
+              BASE_REF: $(baseRef)                            # set by checkout-with-base.yml
+              SRC_RE: '^src/'                                 # <<SPEC_GATE_SRC_RE>> — what counts as source
+              SPEC_DIR: 'specs'                               # <<SPEC_DIR>> — same directory grader.yml reads
+
   - stage: build_and_test
     displayName: 'build-and-test'   # <-- register this pipeline as a REQUIRED build validation policy
+    dependsOn: []                   # explicit: run in parallel with spec_gate, not after it
     jobs:
       - job: build_and_test
         displayName: 'build-and-test'

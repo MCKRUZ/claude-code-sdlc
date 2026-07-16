@@ -14,7 +14,8 @@ and — the part most teams skip — how to **prove they actually catch things**
 
 | Gate | File | Fires on | Blocks or advises |
 | --- | --- | --- | --- |
-| **build-and-test** | `ci.yml` | every PR | **Blocks** (hard gate) |
+| **build-and-test** | `ci.yml` | every PR | **Blocks** (hard gate) — includes the enforced coverage floor |
+| **spec-gate** | `ci.yml` (stage in the build-and-test pipeline) | every PR | **Blocks** — a source change with no spec in the diff is a fact; `no-spec:chore` PR label is the recorded escape |
 | **eval-gate** *(optional)* | `ci.yml` | every PR | **Blocks** — keep only if you ship an eval-fixture suite |
 | **grader** | `grader.yml` | every PR | **Advises** — never blocks; required to RUN |
 | **correctness-review** | `correctness.yml` | every PR; reviews when source changed | **Blocks** on a high-confidence defect |
@@ -30,7 +31,11 @@ checks mandatory and require a non-author approval + code-owner review on gated 
 
 Every PR, to merge, must clear (the-rails.md §4):
 
-- **CI green** — `build-and-test` (and `eval-gate` if kept). Hard block (blocking build validation).
+- **CI green** — `build-and-test` (build, tests, and the enforced coverage floor; plus `eval-gate` if
+  kept). Hard block (blocking build validation).
+- **Spec present** — the `spec-gate` stage of the same build-validation run: a PR touching source
+  carries its committed spec in the diff, *or* the `no-spec:chore` PR label records the exemption. A red
+  stage fails the run, which blocks completion — no extra policy needed.
 - **The grader has run** — the `grader` build validation completed and posted its verdict thread. The
   verdict can say anything; the *running* is required. (The grader pipeline always concludes success, so
   requiring it gates "did it run," never "what it said.")
@@ -63,7 +68,9 @@ security" without leaving low-risk PRs stuck.
 5. **Allow the OAuth token + PR write.** In each gate pipeline's settings, allow the job to access the
    OAuth token (`System.AccessToken`), and grant the **build service identity** (`<Project> Build
    Service (<Org>)`) the **"Contribute to pull requests"** permission on the repo, so the rails can post
-   threads.
+   threads. This includes the `build-and-test` pipeline: its `spec-gate` stage reads the PR's labels via
+   the REST API to honor the `no-spec:chore` exemption (read-only; without the token the gate still runs,
+   just without the escape).
 6. **Apply branch policies.**
    ```bash
    scripts/rails/configure-branch-policies.sh --dry-run   # review the plan
@@ -106,7 +113,14 @@ Before trusting these, force each one to fail and confirm it is caught. A blocki
 when **both its block and its escape** have been seen to work.
 
 - **CI / eval-gate** — introduce a failing test (and a sub-threshold coverage change), open a PR. The
-  `build-and-test` build validation must go red and block completion. Already exercised by every real PR.
+  `build-and-test` build validation must go red and block completion — the coverage miss goes red at the
+  `Enforce coverage floor` step (dotnet-restore-build-test.yml), which names the measured percentage and
+  the floor it missed. Already exercised by every real PR.
+- **spec-gate** — open a throwaway PR that touches a file under `src/` with **no spec in the diff**. The
+  `spec-gate` stage must go **red** (failing the `build-and-test` build validation), listing the touched
+  source files and the escape. Then apply the `no-spec:chore` PR label and re-queue; confirm it goes
+  **green** — the recorded exemption clears it. Abandon the PR. A blocking gate is only proven when both
+  its block and its escape have been seen to work.
 - **grader** — open a PR whose **spec file claims something the diff does not do** (or whose stated
   intent and implementation disagree). The grader's PR comment thread must call out the mismatch. (No
   verdict blocks — you are confirming it *posts the miss* and that the `grader` build validation still

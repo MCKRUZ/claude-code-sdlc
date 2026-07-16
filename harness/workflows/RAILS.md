@@ -18,13 +18,14 @@ live, and — the part most teams skip — how to **prove they actually catch th
 
 | Gate | File | Fires on | Blocks or advises |
 | --- | --- | --- | --- |
-| **build-and-test** | `ci.yml` | every PR | **Blocks** (hard gate) |
+| **build-and-test** | `ci.yml` | every PR | **Blocks** (hard gate) — includes the enforced coverage floor |
+| **spec-gate** | `ci.yml` | every PR | **Blocks** — a source change with no spec in the diff is a fact; `no-spec:chore` label is the recorded escape |
 | **eval-gate** *(optional)* | `ci.yml` | every PR | **Blocks** (hard gate) — keep only if you ship an eval-fixture suite |
 | **grader** | `grader.yml` | every PR | **Advises** — never blocks; required to RUN |
 | **correctness-review** | `correctness.yml` | every PR; reviews when source changed | **Blocks** on a high-confidence defect |
 | **security-review** | `security.yml` | every PR; reviews on gated paths / `risk:high` | **Blocks** on HIGH |
 | **deploy-dev** | `deploy-dev.yml` | successful CI on `main` (merge) | n/a — it ships; rolls back on failure |
-| **Stop gate** | `.claude/hooks/stop-gate.ps1` | agent tries to finish locally | **Blocks** a red build |
+| **Stop gate** | `.claude/hooks/stop-gate.ps1` | agent tries to finish locally | **Blocks** a red build or red tests (tests opt-out: `RAILS_STOP_RUN_TESTS=0`) |
 
 Branch protection (`profile/rulesets/branch-protection.json`) makes the blocking
 checks mandatory and requires a non-author approval + code-owner review.
@@ -33,7 +34,10 @@ checks mandatory and requires a non-author approval + code-owner review.
 
 Every PR, to merge, must clear (the-rails.md §4):
 
-- **CI green** — `build-and-test` (and `eval-gate` if kept). Hard block.
+- **CI green** — `build-and-test` (build, tests, and the enforced coverage floor; plus
+  `eval-gate` if kept). Hard block.
+- **Spec present** — `spec-gate`: a PR touching source carries its committed spec in
+  the diff, *or* the `no-spec:chore` label records the exemption. Hard block.
 - **The grader has run** — the `grader` check completed and posted its verdict. The
   verdict can say anything; the *running* is required. (The grader job always
   concludes successfully, so requiring it gates "did it run," never "what did it
@@ -83,6 +87,7 @@ These are deliberate, outward-facing actions. Nothing in the kit performs them.
 The ruleset requires exactly these check contexts to be green before merge:
 
 - `build-and-test`
+- `spec-gate` (a source PR must carry its committed spec — `no-spec:chore` label is the recorded escape)
 - `grader` (required to have RUN — its verdict never blocks)
 - `correctness-review`
 - `security-review`
@@ -139,6 +144,15 @@ gate is only proven when **both its block and its escape** have been seen to wor
 - **grader** — open a PR whose **spec file claims something the diff does not do**
   (or whose stated intent and implementation disagree). The grader's comment must
   call out the mismatch. (No verdict blocks — you are confirming it *posts the miss*.)
+- **spec-gate** — open a throwaway PR that touches a file under `src/` with **no spec
+  in the diff**. The `spec-gate` check must go **red**, listing the touched source
+  files and the escape. Then apply the `no-spec:chore` label and re-run; confirm it
+  goes **green** — the recorded exemption clears it. Close it unmerged. A blocking
+  gate is only proven when both its block and its escape have been seen to work.
+- **coverage floor** — open a throwaway PR that pushes coverage below the floor (e.g.
+  add a sizeable class under `src/` with no tests). The `build-and-test` check must go
+  **red** at the `Enforce coverage floor` step, naming the measured percentage and the
+  floor it missed. Close it unmerged.
 - **correctness** — open a throwaway PR with a planted high-confidence defect under
   source (e.g. an inverted null check, or an off-by-one that drops a row). The check
   must go **red** with `CORRECTNESS_VERDICT: BLOCK`, anchored to the exact changed

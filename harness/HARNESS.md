@@ -141,7 +141,8 @@ principle: **work can be proposed by anyone; only a gate lets it through.**
 
 | Check | Power | Why |
 |---|---|---|
-| Build & tests (starts with a secret scan) | **blocks** | a broken build or a committed credential is a fact — facts block |
+| Build & tests (starts with a secret scan, ends by enforcing the coverage floor) | **blocks** | a broken build, a committed credential, or coverage below the floor is a fact — facts block |
+| Spec gate | **blocks** | a source change with no spec is a fact — the "no spec, no build" rule, enforced by a machine; a labeled, recorded exemption is the only way past |
 | Grader (AI review vs. the standards) | **advises only** | an AI's "looks good" must never replace the human approver's judgment — the review must *happen*, but a human weighs it |
 | Correctness review | **blocks** | only on a concrete, demonstrable defect — and a human can overrule it with a visible, recorded label |
 | Security review | **blocks** | on serious findings in sensitive code |

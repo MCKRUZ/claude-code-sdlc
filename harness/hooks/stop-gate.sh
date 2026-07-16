@@ -10,7 +10,8 @@
 #                           compilable source. Default targets a .NET tree.
 #   RAILS_SOLUTION        — explicit solution/project path to build. If unset, the first
 #                           *.slnx / *.sln found under the project root is used.
-#   RAILS_STOP_RUN_TESTS  — set to 1 to also run the test suite after a green build.
+#   RAILS_STOP_RUN_TESTS  — tests run by DEFAULT after a green build; set to 0 to
+#                           opt out (e.g. a suite too slow for a per-turn gate).
 #
 # CONTRACT (verified against https://code.claude.com/docs/en/hooks, 2026-07-15):
 #   * Block: print top-level JSON {"decision":"block","reason":"..."} to stdout and
@@ -81,8 +82,8 @@ if [[ $? -ne 0 ]]; then
 $err_lines"
 fi
 
-# --- Optionally prove the tests.
-if [[ "${RAILS_STOP_RUN_TESTS:-}" == "1" ]]; then
+# --- Prove the tests (default ON; RAILS_STOP_RUN_TESTS=0 opts out).
+if [[ "${RAILS_STOP_RUN_TESTS:-}" != "0" ]]; then
   test_out="$(run dotnet test "$solution" --nologo --no-build --configuration Debug 2>&1)"
   if [[ $? -ne 0 ]]; then
     fail_lines="$(printf '%s\n' "$test_out" | grep -iE 'Failed|error' | head -n 15)"

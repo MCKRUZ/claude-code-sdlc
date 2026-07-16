@@ -17,10 +17,13 @@
 #   RAILS_SOLUTION        — explicit path to the solution/project to build. If unset,
 #                           the first *.slnx / *.sln found under the project root is used.
 #                           If nothing is found, the gate allows (nothing to build).
-#   RAILS_STOP_RUN_TESTS  — set to 1 to also run the test suite after a green build.
+#   RAILS_STOP_RUN_TESTS  — tests run by DEFAULT after a green build; set to 0 to
+#                           opt out (e.g. a suite too slow for a per-turn gate).
 #
 # Scope decisions (deliberate):
-#   * Build only by default. A full test run on every Stop costs minutes per turn.
+#   * Build AND tests by default — "green" means the tests pass, not just the compile.
+#     A suite too slow for a per-turn gate opts out with RAILS_STOP_RUN_TESTS=0
+#     (a recorded choice, not a silent default).
 #   * Only fires when there are uncommitted changes matching RAILS_SRC_GLOB. Doc-only
 #     or planning turns don't pay for a build.
 #   * Honors `stop_hook_active` to avoid an infinite stop->block->stop loop.
@@ -128,8 +131,8 @@ if ($build.ExitCode -ne 0) {
         "Fix the build before ending the turn. First errors:`n$errLines")
 }
 
-# --- Optionally prove the tests.
-if ($env:RAILS_STOP_RUN_TESTS -eq '1') {
+# --- Prove the tests (default ON; RAILS_STOP_RUN_TESTS=0 opts out).
+if ($env:RAILS_STOP_RUN_TESTS -ne '0') {
   $test = Invoke-Bounded @('dotnet', 'test', $solution, '--nologo', '--no-build', '--configuration', 'Debug')
   if ($test.TimedOut) {
     Block("Tests timed out after ${script:GateTimeoutSeconds}s — a hung test run counts as red (Stop gate). " +
