@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 — 2026-07-16
+
+- **The stack↔CI/CD seam is now mechanical.** It was documentation-only: the CI/CD packs hardcoded
+  .NET commands with comments naming where a human had copied them from `ci-profile.yaml`, a file
+  the installer never read and that never reached a repo. Composing a non-.NET stack with either
+  CI/CD pack would have installed a .NET pipeline. The packs' workflows now carry a closed
+  vocabulary of nine `<<CI_*>>` seam tokens which the installer fills at compose time from the
+  resolved stack pack's `ci-profile.yaml` (commands, toolchain version, coverage floor) and the
+  CI/CD pack's own `toolchain_map` (platform knowledge: which setup action installs a toolchain and
+  what its version input is called). Adding a stack is now one `ci-profile.yaml`, not a per-stack
+  copy of every pipeline.
+- Fail-closed: an unmapped `toolchain.id`, a missing ci-profile value, a multi-line command, or a
+  residual seam token in an installed file each fail the install with a clean error — a literal
+  token can never reach a client repo. Phase-3 repo blanks (`{{SOLUTION_OR_PROJECT}}`,
+  `<<CI_WORKFLOW_NAME>>`, …) pass through untouched.
+- Degrade-independent: a CI/CD pack composed without a stack pack keeps its seam tokens and prints a
+  warning naming the files to hand-adapt, rather than failing.
+- Azure DevOps templates generalized: `use-dotnet.yml` → `setup-toolchain.yml`,
+  `dotnet-restore-build-test.yml` → `restore-build-test.yml`.
+
 ## 0.5.0 — 2026-07-16
 
 - **spec-gate** (harness): a deterministic blocking check — a pull request that changes source
