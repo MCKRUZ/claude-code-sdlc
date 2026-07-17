@@ -39,7 +39,7 @@ The realization lives in two step templates, both stack-neutral:
 
 - `templates/setup-toolchain.yml` — emits the task `toolchain_map` gives for
   `ci-profile.toolchain.id`, with that task's own version-input name
-  (`dotnet` → **`UseDotNet@2`**/`version`; `node` → **`NodeTool@0`**/`versionSpec`;
+  (`dotnet` → **`UseDotNet@2`**/`version`; `node` → **`UseNode@1`**/`version`;
   `python` → **`UsePythonVersion@0`**/`versionSpec`).
 - `templates/restore-build-test.yml` — the restore/build/test/lint script steps, spliced verbatim from
   `ci-profile.commands`, plus the coverage-floor gate bound to `ci-profile.coverage.floor_percent`.

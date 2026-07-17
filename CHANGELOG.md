@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.0 — 2026-07-16
+
+- **Every stale CI pin bumped, none blind.** `setup-dotnet` v4→**v6**, `checkout` v4→**v7**,
+  `upload-artifact` v4→**v7**, `download-artifact` v4→**v8** (38 pins). `setup-node@v7` and
+  `setup-python@v6` were already current. The filed issue named only setup-dotnet; the others were
+  found by inventorying the whole surface and were *three and four* majors behind.
+- **`NodeTool@0` is deprecated and was silently wrong.** The ADO pack mapped `node` to it; Learn says
+  verbatim "This version of the task is deprecated; use `UseNode@1`". The migration renames the
+  input — `versionSpec` → `version` — so bumping the task without the input would emit a broken
+  pipeline. This is exactly the non-uniformity the `toolchain_map` exists to absorb: the fix is two
+  values in one file, and the node stack pack never learned a thing. (`UseDotNet@2` and
+  `UsePythonVersion@0` are confirmed current — no `@3`/`@1` successor exists for either.)
+- **Runner floor:** the node24 line (setup-dotnet v5+, checkout v5+, upload-artifact v6+) requires
+  **Actions Runner ≥ v2.327.1**. GitHub-hosted is well past it; a stale self-hosted runner fails all
+  of them together. That is the one precondition this release carries.
+- **Recorded because no release note says it:** setup-dotnet v5 dropped `signed` and `validated`
+  from `dotnet-quality`, and passing them now *throws*. Visible only by diffing `src/setup-dotnet.ts`.
+  The kit doesn't use the input; a client repo might.
+- **Client-repo warning, documented in the pack:** setup-dotnet ≥ v5.4.0 validates `global.json`
+  strictly, so `"version": "10.0.*"` now hard-errors (upstream #753, open). The wildcard was never
+  supported per Microsoft's docs — the action was lax since 2022. This kit ships no `global.json`,
+  but a client repo with a wildcard one fails at Setup toolchain.
+- Verified as **not** applicable rather than assumed: checkout v7's new fork-PR block (its source
+  returns early unless `workflow_run.event` starts with `pull_request` *and* the head repo is a fork;
+  the deploy job is gated to `main` and checks out no fork ref), and download-artifact v5's path
+  change (scoped to downloads *by ID*; deploy-dev downloads by name).
+- The flagship golden test now pins `setup-dotnet@v6` / `dotnet-version: '10.x'`. It had **no**
+  version assertion, which is why the pin rotted unnoticed — the Node profile had one and stayed
+  current. A test cannot detect upstream staleness; that stays a periodic human check.
+
 ## 0.9.0 — 2026-07-16
 
 - **The eval-gate seam is finished; the last .NET leak is closed.** The optional eval-gate job bound

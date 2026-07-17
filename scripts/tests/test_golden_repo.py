@@ -114,6 +114,16 @@ class TestGoldenRepo:
         assert manifest["files"], "manifest recorded no files"
         assert ".claude/harness-manifest.json" not in manifest["files"]
 
+    def test_pipeline_sets_up_dotnet_from_the_toolchain_map(self, golden_repo):
+        """The .NET twin of TestStarterRepoIsNode.test_pipeline_runs_node_not_dotnet — the flagship
+        had no version assertion at all, which is why setup-dotnet sat two majors behind unnoticed
+        (intent-driven-development#14). This pins the map -> workflow binding; it cannot detect
+        staleness against upstream, which stays a periodic human check."""
+        target, _, _ = golden_repo
+        ci = (target / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+        assert "uses: actions/setup-dotnet@v6" in ci   # github pack's toolchain_map for id: dotnet
+        assert "dotnet-version: '10.x'" in ci          # map's input name + ci-profile's version
+
     def test_dotnet_eval_gate_cannot_pass_by_matching_nothing(self, golden_repo):
         """`dotnet test --filter` matching ZERO tests exits 0 — "No test matches the given testcase
         filter" is a WARNING, and the trx is still written with total="0" and outcome="Completed".

@@ -62,7 +62,7 @@ The join is **mechanical** — the installer does it, not a human with a copy bu
 | `toolchain_map:` | `packs/cicd/<id>/pack.yaml` | *How this platform installs* a given `toolchain.id` — its setup action/task and that action's version-input name |
 
 Neither knows the other. `dotnet` says "I need dotnet 10.x"; the github pack says "on me, `dotnet`
-means `actions/setup-dotnet@v4` and the input is called `dotnet-version`"; the ADO pack says
+means `actions/setup-dotnet@v6` and the input is called `dotnet-version`"; the ADO pack says
 "`UseDotNet@2`, input `version`". The input name is genuinely not uniform across platforms
 (`version` vs `versionSpec` on ADO), which is why it is **mapped, not assumed**.
 

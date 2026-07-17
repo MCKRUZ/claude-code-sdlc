@@ -36,10 +36,31 @@ consumes:
 # <<CI_TOOLCHAIN_VERSION>> comes from ci-profile.toolchain.version.
 # A toolchain.id absent from this map FAILS THE INSTALL CLOSED naming the id and this pack —
 # a pipeline that sets up the wrong runtime is worse than no pipeline.
-# Verified against each action's action.yml `inputs:` on main (input names) and its
-# /releases/latest (major pin) — 2026-07-16.
+# Verified against each action's action.yml `inputs:` (input names) and repos/<a>/releases/latest
+# (major pin) — 2026-07-16. Re-check BOTH when revisiting: an input name that is merely correct for a
+# superseded task is still a bug (see the ADO pack, where NodeTool@0 -> UseNode@1 also renamed
+# `versionSpec` -> `version`).
+#
+# RUNNER FLOOR: setup-dotnet v5+ (and checkout v5+/upload-artifact v6+) run on node24 and require
+# Actions Runner >= v2.327.1. GitHub-hosted runners are well past it; a stale SELF-HOSTED runner
+# fails all of them together. That is the one precondition this bump carries.
+#
+# setup-dotnet v4 -> v6 breaking changes, verified against release notes AND source:
+#   v5  node20 -> node24 (the runner floor above).
+#   v5  `dotnet-quality` silently dropped `signed` and `validated` — passing them now THROWS. This
+#       is in NO release note; it is visible only by diffing src/setup-dotnet.ts. Nothing here uses
+#       the input, but a repo that does will break on adaptation.
+#   v6  ESM migration + @actions/cache 6.2. Internal only: no input/output/behavior change.
+#   `dotnet-version: '10.x'` is unaffected across all of it — the `A.x` form is still documented and
+#   still parsed. global.json handling and cache semantics are byte-identical v4 -> v6.
+#
+# CLIENT-REPO GOTCHA (not ours to fix, ours to warn about): setup-dotnet >= v5.4.0 validates
+# global.json strictly, so `"version": "10.0.*"` now hard-errors (upstream issue #753, open). The
+# wildcard was NEVER supported per Microsoft's own docs — the action was simply lax since 2022. This
+# kit ships no global.json, but a client repo with a wildcard one will fail at Setup toolchain. The
+# fix is theirs: spell the full version (`10.0.100`) or use rollForward.
 toolchain_map:
-  dotnet: { action: "actions/setup-dotnet@v4", input: "dotnet-version" }
+  dotnet: { action: "actions/setup-dotnet@v6", input: "dotnet-version" }
   node:   { action: "actions/setup-node@v7",   input: "node-version" }
   python: { action: "actions/setup-python@v6", input: "python-version" }
 

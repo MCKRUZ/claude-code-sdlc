@@ -20,7 +20,7 @@
 toolchain:
   # Which toolchain — NOT how to install it. Each CI/CD pack maps this id to its own platform's setup
   # step via `toolchain_map:` in its pack.yaml (github → actions/setup-node@v7 + `node-version`;
-  # azure-devops → NodeTool@0 + `versionSpec`). An id no CI/CD pack maps fails the install closed.
+  # azure-devops → UseNode@1 + `version`). An id no CI/CD pack maps fails the install closed.
   # `node` is mapped by BOTH packs today — verified against their toolchain_map blocks.
   id: node               # -> <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>> (via toolchain_map)
   # 24.x is the ACTIVE LTS as of 2026-07-16 (nodejs/Release: 24.x "Krypton", Active LTS 2025-10-28 →

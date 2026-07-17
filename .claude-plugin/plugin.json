@@ -1,6 +1,6 @@
 {
   "name": "claude-code-sdlc",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters).",
   "author": {
     "name": "Matt Kruczek",

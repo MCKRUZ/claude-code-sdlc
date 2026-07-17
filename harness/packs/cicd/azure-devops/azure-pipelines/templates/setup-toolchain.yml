@@ -4,9 +4,9 @@
 # (ci-profile.toolchain.id + .version); this pack's `toolchain_map:` (pack.yaml) knows how Azure
 # Pipelines installs it, and the installer substitutes both at compose time:
 #
-#   github → actions/setup-dotnet@v4 ; azure-devops → UseDotNet@2   (this file)
+#   github → actions/setup-dotnet@v6 ; azure-devops → UseDotNet@2   (this file)
 #
-# Nothing here is .NET-specific: composing this pack with a node stack pack emits NodeTool@0, with a
+# Nothing here is .NET-specific: composing this pack with a node stack pack emits UseNode@1, with a
 # python stack pack UsePythonVersion@0. The task's version-input NAME differs per toolchain
 # (UseDotNet@2 → `version`; NodeTool@0 / UsePythonVersion@0 → `versionSpec`), which is exactly why
 # toolchain_map carries `input` alongside `action`.

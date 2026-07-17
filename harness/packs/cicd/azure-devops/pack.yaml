@@ -57,13 +57,32 @@ consumes:
 # <<CI_TOOLCHAIN_VERSION>> comes from ci-profile.toolchain.version. Note the input name is NOT uniform
 # across these tasks (`version` vs `versionSpec`) — that is precisely why it is mapped, not assumed.
 # A toolchain.id absent from this map FAILS THE INSTALL CLOSED naming the id and this pack.
-# Verified against the Microsoft Learn task references (YAML syntax blocks) — 2026-07-16:
+# Verified against the Microsoft Learn task references (YAML syntax blocks) — task index re-checked
+# for CURRENCY and deprecation on 2026-07-16, not merely for existence:
 #   UseDotNet@2        learn.microsoft.com/azure/devops/pipelines/tasks/reference/use-dotnet-v2
-#   NodeTool@0         learn.microsoft.com/azure/devops/pipelines/tasks/reference/node-tool-v0
+#                      Current — no UseDotNet@3 exists, no deprecation banner. (The older, separate
+#                      DotNetCoreInstaller@1 IS deprecated and on the retirement schedule; this is
+#                      its replacement, so we are on the right side of that.)
+#   UseNode@1          learn.microsoft.com/azure/devops/pipelines/tasks/reference/use-node-v1
+#                      Current. SUPERSEDES NodeTool@0, whose page states verbatim: "This version of
+#                      the task is deprecated; use UseNode@1." NodeTool@0 has no retirement date, so
+#                      it still runs — this was a currency bug, not an outage.
+#                      NOTE THE INPUT RENAME: NodeTool@0 took `versionSpec`; UseNode@1 takes
+#                      `version`. Migrating the task without the input emits a BROKEN pipeline. This
+#                      is exactly the non-uniformity the map exists to absorb — the stack pack still
+#                      just says `toolchain: {id: node, version: "24.x"}` and never learned a thing.
+#                      UseNode@1 also drops versionSource/versionFilePath (the .nvmrc path); nothing
+#                      here used them, but a repo that wants .nvmrc must hand-adapt.
 #   UsePythonVersion@0 learn.microsoft.com/azure/devops/pipelines/tasks/reference/use-python-version-v0
+#                      Current — no UsePythonVersion@1 exists, no deprecation banner. It is NOT
+#                      limited to pre-installed versions: `disableDownloadFromRegistry` defaults to
+#                      false, so it downloads a missing version from actions/python-versions. That
+#                      fallback is the fragile path (anonymous rate limits — hence its `githubToken`
+#                      input), so prefer a version the image already caches. 3.13 is cached on
+#                      ubuntu-24.04 today. Only SELF-HOSTED agents are pre-installed-only.
 toolchain_map:
   dotnet: { action: "UseDotNet@2",        input: "version" }
-  node:   { action: "NodeTool@0",         input: "versionSpec" }
+  node:   { action: "UseNode@1",          input: "version" }
   python: { action: "UsePythonVersion@0", input: "versionSpec" }
 
 # Overlay map: pack-relative source -> repo destination in an Azure DevOps repo.

@@ -36,7 +36,7 @@ ci-profile.yaml                → consumed by the CI/CD pack (not copied as-is)
 ## What it composes with
 
 `toolchain.id: node` is mapped by **both** CI/CD packs (`github` → `actions/setup-node@v7` /
-`node-version`; `azure-devops` → `NodeTool@0` / `versionSpec`), so this pack runs on either platform
+`node-version`; `azure-devops` → `UseNode@1` / `version`), so this pack runs on either platform
 unchanged. Both packs list `node-typescript` in their `requires_stack_pack`.
 
 ## The repo's side of the contract

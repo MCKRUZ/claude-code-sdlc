@@ -64,13 +64,13 @@ jobs:
 
     steps:
       - name: Checkout PR head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0   # need base history to score the baseline
 
       # --- Toolchain. Swap for your runner's runtime (node/python/etc). ---
       - name: Setup runtime
-        # <PLACEHOLDER> e.g. actions/setup-dotnet@v4 / setup-node / setup-python
+        # <PLACEHOLDER> e.g. actions/setup-dotnet@v6 / setup-node / setup-python
         run: echo "TODO install the eval-runner toolchain"
 
       # --- Score the BASE branch first to get the comparison baseline. ---
@@ -131,7 +131,7 @@ jobs:
 
       - name: Publish scorecard (JUnit)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: eval-regression-junit
           path: eval-regression.junit.xml

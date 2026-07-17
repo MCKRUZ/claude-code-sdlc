@@ -17,7 +17,7 @@
 
 toolchain:
   # Which toolchain — NOT how to install it. Each CI/CD pack maps this id to its own platform's setup
-  # step via `toolchain_map:` in its pack.yaml (github → actions/setup-dotnet@v4 + `dotnet-version`;
+  # step via `toolchain_map:` in its pack.yaml (github → actions/setup-dotnet@v6 + `dotnet-version`;
   # azure-devops → UseDotNet@2 + `version`). An id no CI/CD pack maps fails the install closed.
   id: dotnet             # -> <<CI_TOOLCHAIN_ACTION>> / <<CI_TOOLCHAIN_INPUT>> (via toolchain_map)
   version: "10.x"        # -> <<CI_TOOLCHAIN_VERSION>>

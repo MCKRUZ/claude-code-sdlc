@@ -5,7 +5,7 @@
 # leaves no common ancestor — exactly the failure diff-anchors.sh guards against. This template forces a
 # full checkout and fetches the PR target branch so `git merge-base` resolves.
 #
-# GitHub equivalent: `actions/checkout@v4 with: fetch-depth: 0` + `git fetch --no-tags origin "$BASE_REF"`.
+# GitHub equivalent: `actions/checkout@v7 with: fetch-depth: 0` + `git fetch --no-tags origin "$BASE_REF"`.
 
 steps:
   - checkout: self
