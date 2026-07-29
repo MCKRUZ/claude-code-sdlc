@@ -52,3 +52,4 @@ prompts/judge.template.v1.md
 scripts/rails/apply-branch-protection.sh
 scripts/rails/diff-anchors.sh
 specs/spec-template.md
+spikes/spike-template.md

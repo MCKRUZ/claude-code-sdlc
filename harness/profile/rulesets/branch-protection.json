@@ -4,7 +4,9 @@
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["~DEFAULT_BRANCH"],
+      "include": [
+        "~DEFAULT_BRANCH"
+      ],
       "exclude": []
     }
   },
@@ -28,11 +30,27 @@
         "strict_required_status_checks_policy": true,
         "do_not_enforce_on_create": false,
         "required_status_checks": [
-          { "context": "build-and-test" },
-          { "context": "spec-gate" },
-          { "context": "grader" },
-          { "context": "correctness-review" },
-          { "context": "security-review" }
+          {
+            "context": "build-and-test"
+          },
+          {
+            "context": "spike-guard"
+          },
+          {
+            "context": "repro-gate"
+          },
+          {
+            "context": "spec-gate"
+          },
+          {
+            "context": "grader"
+          },
+          {
+            "context": "correctness-review"
+          },
+          {
+            "context": "security-review"
+          }
         ]
       }
     },

@@ -18,7 +18,11 @@ name: Grader
 #
 # ── PLACEHOLDERS ───────────────────────────────────────────────────────────────
 #   <<SPEC_DIR>>         Directory holding committed spec files (reference: specs/).
-#   <<MODEL>>            Grader model (reference: sonnet).
+#   <<MODEL>>            Grader model (reference: opus). The strong model goes on the
+#                        CHECKING side, not the writing side: rung 4 is the rung that
+#                        catches the hole the author was blind to, so it is the one worth
+#                        resourcing. Independence still comes from not having written the
+#                        code — the model tier is capability, not independence.
 #   (No <<DEFAULT_BRANCH>> here — this workflow diffs against `github.base_ref`,
 #   which needs no adaptation.)
 # ───────────────────────────────────────────────────────────────────────────────
@@ -132,6 +136,6 @@ jobs:
             files, then POST your verdict as a single PR comment. Update the same comment on
             re-runs rather than stacking new ones.
           claude_args: |
-            --model sonnet
+            --model opus
             --max-turns 20
             --allowedTools Bash,Read,Grep,Glob

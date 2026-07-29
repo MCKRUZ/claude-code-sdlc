@@ -8,6 +8,7 @@
 # {{NNNN}} — {{Feature name}}
 
 - **Risk tier:** {{HIGH | MEDIUM | LOW}}  <!-- set by the Pod Lead at triage; drives the gates -->
+- **Type:** {{feature | bugfix}}  <!-- bugfix adds the repro-gate: label the PR `type:bugfix` -->
 - **Status:** {{draft | ready | in-progress | merged}}
 - **Owner (human):** {{name}}
 
@@ -41,6 +42,7 @@
 
 ## Checking plan (which rungs of the ladder)
 - [ ] Stop hook green (build + tests) — always
+- [ ] {{Repro-gate: the new test FAILS without the fix — bugfix only, enforced in CI}}
 - [ ] Grader verdict posted (advisory) — always
 - [ ] Correctness gate passed (or named override recorded) — on any source change
 - [ ] Non-author human approval — always

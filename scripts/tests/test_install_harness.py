@@ -229,6 +229,7 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     payload = root / "harness"
     _write(payload / "CLAUDE.md.template", CLAUDE_TEMPLATE)
     _write(payload / "spec-template.md", "# spec template\n")
+    _write(payload / "spike-template.md", "# spike template\n")
     _write(payload / "settings.json", json.dumps(CORE_SETTINGS, indent=2) + "\n")
     _write(payload / "mcp.json", json.dumps(CORE_MCP, indent=2) + "\n")
     _write(payload / "HARNESS.md", "# harness tour\n")
