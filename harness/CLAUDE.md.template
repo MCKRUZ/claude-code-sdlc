@@ -84,6 +84,24 @@ The spec is part of the diff so the reviewer sees intent and implementation in o
 seven parts: **Goal · Why · Scope in/out · Acceptance checks · Risk tier · Delegation plan
 (what you may touch, what's gated) · Checking plan (which rungs).** Template: `spec-template.md`.
 
+## Spikes (when the answer isn't known yet)
+If you cannot write an acceptance check that passes the vague-line test because **nobody knows
+the answer** — the integration's real behavior, whether the assumption the design rests on holds
+— say so. Do **not** invent confident criteria about unverified behavior; a spec that reads ready
+but describes a guess gets graded against fiction and the pod finds out at merge.
+
+The route is a **spike**: bounded, throwaway work whose deliverable is a written finding.
+
+- One question = one file `spikes/NNNN-name.md` = one branch `spike/NNNN-name`.
+- Template: `spike-template.md`. Record what was assumed, what was tested against which system,
+  what was found, and whether the assumption survived. Write the finding even when the answer is
+  "still unknown" — what you ruled out saves the next attempt.
+- **Spike code never merges.** The `spike-guard` CI check fails any PR opened from a `spike/`
+  branch, and there is no label escape. Commit the finding, delete the branch. If the work should
+  ship, it gets a spec and gets rebuilt under the loop.
+- A human opens the spike and sets the box (time or tokens). You do not decide to spike instead
+  of building, and you do not run past the box without asking.
+
 ## Repo etiquette
 - Branch `spec/NNNN-name`. You push **only to branches you create**, never to `{{DEFAULT_BRANCH}}`.
 - You **cannot approve or merge your own work** — platform-enforced.

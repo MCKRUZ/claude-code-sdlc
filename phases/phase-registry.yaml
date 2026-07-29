@@ -206,6 +206,8 @@ phases:
         - "phase7-handoff.md"
       optional:
         - "specs/"
+        - "spikes/"              # written findings from bounded spikes (Build loop §3a); the
+                                 # spike code is thrown away, the finding is the durable record
         - "build-summary.md"
         - "hardening-pass-notes.md"
         - "steering-scorecard.md"

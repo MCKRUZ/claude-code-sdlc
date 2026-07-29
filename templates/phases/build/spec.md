@@ -2,6 +2,8 @@
 spec: "NNNN"
 name: "short-kebab-name"
 status: draft            # draft | ready | in-flight | merged
+type: feature            # feature | bugfix — a bugfix PR carries the `type:bugfix` label and
+                         # must pass repro-gate: its new test FAILS against the pre-fix code
 risk: MEDIUM             # HIGH | MEDIUM | LOW — first-class field; sets review depth
 source: "—"              # the story / REQ-id this spec realizes, or — if standalone
 channel: ""              # optional — delivery surface (see channels/); blank = channel-agnostic

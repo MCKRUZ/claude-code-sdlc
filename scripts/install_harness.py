@@ -79,6 +79,7 @@ from validate_profile import SCHEMA_PATH, load_yaml, validate_profile  # noqa: E
 FILE_MAP: list[tuple[str, str]] = [
     ("CLAUDE.md.template", "CLAUDE.md"),            # governance base; SDLC section appended by setup
     ("spec-template.md", "specs/spec-template.md"),
+    ("spike-template.md", "spikes/spike-template.md"),  # bounded-discovery findings (Build loop §3a)
     ("settings.json", ".claude/settings.json"),
     ("mcp.json", ".mcp.json"),                      # team MCP servers; packs merge their fragments in
     ("HARNESS.md", "docs/harness.md"),              # the developer-facing tour of what's installed

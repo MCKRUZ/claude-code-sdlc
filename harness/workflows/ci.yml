@@ -22,6 +22,12 @@ name: CI
 #                         change the value on the marked line, not in the runner.
 #   <<SPEC_GATE_SRC_RE>>  Regex for what counts as source in the spec-gate job
 #                         (default: ^src/). A PR matching it must carry a spec.
+#   <<SPIKE_BRANCH_RE>>   Branch namespace reserved for spikes (default: ^spike/).
+#                         The spike-guard job fails any PR opened from one.
+#   <<TEST_ONLY_CMD>>     How to run ONLY the test files this PR adds, used by the
+#                         repro-gate job to prove a bug-fix test fails without the fix.
+#                         Reference is dotnet's --filter; swap for your runner's
+#                         "run these files" flag (pytest <paths>, jest <paths>, …).
 #   <<EVAL_GATE>>         OPTIONAL second hard gate for an agentic/eval fixture
 #                         suite (the source repo's "OWASP Agentic Top-10 Gate").
 #                         Keep it if you ship agent behavior that must not
@@ -167,6 +173,101 @@ jobs:
   # a source change with no spec in the diff is a fact, and facts block. The
   # recorded escape is the `no-spec:chore` label + the reason in the PR description.
   # PR-only: push builds to the protected branch have no diff-vs-base to judge.
+  spike-guard:
+    name: spike-guard             # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Refuse to merge spike code into the default branch
+        env:
+          SPIKE_RE: '^spike/'     # <<SPIKE_BRANCH_RE>> — branch namespace reserved for spikes
+        run: |
+          set -euo pipefail
+          # A spike is bounded, throwaway work run to answer an unknown (build-loop.md §3a).
+          # Its code has climbed NONE of the checking ladder — no spec to grade against, no
+          # coverage bar, no Checker. The written finding is what leaves the branch; the code
+          # is deleted. Rulesets target the DESTINATION branch and cannot express "reject this
+          # source branch", so the throwaway rule is enforced here, as a required check.
+          if printf '%s' "$GITHUB_HEAD_REF" | grep -qE "$SPIKE_RE"; then
+            echo "::error::Spike branches never merge. '$GITHUB_HEAD_REF' is spike work."
+            echo "A spike's deliverable is the written finding, not the code."
+            echo "To comply:"
+            echo "  1. Commit the finding (spikes/NNNN-name.md) on its own, off this branch."
+            echo "  2. Delete this branch — the experiment is disposable by design."
+            echo "  3. If the work should ship, write a spec and rebuild it under the loop."
+            echo "There is no label escape for this gate. Rebuild under a spec instead."
+            exit 1
+          fi
+          echo "OK: '$GITHUB_HEAD_REF' is not a spike branch."
+
+  repro-gate:
+    name: repro-gate              # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Prove a bug-fix test fails without the fix
+        env:
+          FIX_LABEL: 'type:bugfix'   # applied at triage when the spec's type is a bug fix
+        run: |
+          set -euo pipefail
+          # WHY THIS GATE EXISTS: coverage proves a test EXISTS. It does not prove the test
+          # would have CAUGHT the bug. A fix can satisfy an 80% floor with a test that passes
+          # both before and after — decoration that burns review attention and protects
+          # nothing, while every gate stays green. So for bug fixes we prove the negative:
+          # the new test must FAIL against the code as it was before the fix.
+          #
+          # Scoped to bug fixes deliberately. A feature has no "before" state to fail against.
+          if ! jq -e --arg l "$FIX_LABEL" '.pull_request.labels[]? | select(.name == $l)' "$GITHUB_EVENT_PATH" >/dev/null; then
+            echo "OK: not labelled '$FIX_LABEL' — repro-gate does not apply to this PR."
+            exit 0
+          fi
+
+          git fetch --no-tags origin "$GITHUB_BASE_REF"
+          base="origin/${GITHUB_BASE_REF}"
+
+          # Test files this PR adds or modifies. <<TEST_PATH_RE>> — adapt to your layout.
+          new_tests="$(git diff --name-only --diff-filter=d "${base}...HEAD" \
+            | grep -E '[Tt]ests?/.*\.(cs|py|ts|js|java|go)$' || true)"
+          if [ -z "$new_tests" ]; then
+            echo "::error::'$FIX_LABEL' PR carries no new or changed test."
+            echo "A bug fix without a test that reproduces the bug is a fix nobody can prove."
+            exit 1
+          fi
+          echo "Reproduction test(s) in this PR:"; printf '%s\n' "$new_tests" | sed 's/^/  - /'
+
+          # Reconstruct the pre-fix state WITH the new tests: take the base tree, then apply
+          # only the test files from this PR. If the suite still passes, the test does not
+          # discriminate between broken and fixed — it is not a reproduction.
+          work="$(mktemp -d)"
+          git worktree add --detach "$work" "$base" >/dev/null
+          # shellcheck disable=SC2086
+          git checkout HEAD -- $new_tests
+          for f in $new_tests; do
+            mkdir -p "$work/$(dirname "$f")"
+            git show "HEAD:$f" > "$work/$f"
+          done
+
+          cd "$work"
+          set +e
+          # <<TEST_ONLY_CMD>> — run ONLY the tests this PR adds. Reference: dotnet.
+          dotnet test <<SOLUTION_OR_PROJECT>> --nologo --verbosity quiet
+          rc=$?
+          set -e
+          cd - >/dev/null
+          git worktree remove --force "$work" || true
+
+          if [ "$rc" -eq 0 ]; then
+            echo "::error::The new test PASSES without the fix — it does not reproduce the bug."
+            echo "Rewrite it so it fails against the unpatched code, then push again."
+            echo "There is no label escape: a test that cannot fail cannot protect anything."
+            exit 1
+          fi
+          echo "OK: the new test fails without the fix (exit $rc) — it reproduces the bug."
+
   spec-gate:
     name: spec-gate               # <-- required status-check context (branch-protection.json)
     runs-on: ubuntu-latest

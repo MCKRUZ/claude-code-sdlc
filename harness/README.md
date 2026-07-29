@@ -28,7 +28,7 @@ plugin**, which bundles a synced copy and lays it down for you:
 ```
 
 The install map below is what the plugin's installer applies (and what you'd copy by hand if
-installing manually). `delivery-standard/kit/` stays the source of truth; the plugin's copy is
+installing manually). This repo's `kit/` stays the source of truth; the plugin's copy is
 regenerated from it via `scripts/sync_kit.py` — don't hand-edit the plugin's `harness/`.
 
 ---
@@ -49,6 +49,7 @@ so install here unless you also repoint the references.
 |---|---|---|
 | `CLAUDE.md.template` | `./CLAUDE.md` | Replace every `{{TOKEN}}`; delete guidance comments. |
 | `spec-template.md` | `./specs/spec-template.md` | Copy per feature to `specs/NNNN-name.md`. |
+| `spike-template.md` | `./spikes/spike-template.md` | Copy per unknown to `spikes/NNNN-name.md`. The finding is committed; the `spike/` branch never merges. |
 | `settings.json` | `./.claude/settings.json` | Shared, committed. Leans on `deny` (see below). |
 | `mcp.json` | `./.mcp.json` | Team MCP servers (context7, sequential-thinking, playwright); packs merge additions (dotnet → microsoft-learn, github → github, azure-devops → azure-devops). npx-launched servers are version-pinned; the HTTP-hosted ones (context7, microsoft-learn, github) run server-side and cannot be pinned. No secrets — auth is always per-developer. Each developer approves the set once on first open. |
 | `HARNESS.md` | `./docs/harness.md` | The developer-facing tour: what each installed piece does and why, per layer. Point new team members here first. |
