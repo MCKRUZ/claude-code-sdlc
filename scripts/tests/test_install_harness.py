@@ -234,6 +234,7 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     _write(payload / "settings.json", json.dumps(CORE_SETTINGS, indent=2) + "\n")
     _write(payload / "mcp.json", json.dumps(CORE_MCP, indent=2) + "\n")
     _write(payload / "HARNESS.md", "# harness tour\n")
+    _write(payload / "ONBOARDING.md", "# day 1\n")
     _write(payload / "workflows" / "ci.yml", CORE_CI)
     _write(payload / "workflows" / "RAILS.md", "# rails guide (core)\n")
     _write(payload / "hooks" / "stop-gate.sh", "#!/bin/sh\n")
