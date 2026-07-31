@@ -61,6 +61,10 @@ The five workflows:
 
 Wire the build-time security gates from the Phase 2 threat review: register each guarded path with the security workflow so the workflow runs on any PR touching that path. The gate is the workflow plus the path registration.
 
+**Confirm the wiring against the model, path by path.** This is Phase 3's half of the threat review — Phase 2 decided *what* to guard, and this pass proves it got guarded. Walk `threat-model.md`'s guarded-path map and, for each entry, confirm a registration exists and the workflow actually fires on it. Prove one: open a throwaway PR touching a guarded path and watch the security workflow run. A guarded path that was registered but never observed firing is a gate nobody has tested, which is the same failure the rails shakedown exists to prevent.
+
+If Phase 2 produced no threat model, stop and do that review now rather than choosing the guarded paths here from memory — picking them at wiring time is how the security gate ends up protecting whatever seemed sensitive on the day.
+
 Workflow YAML and branch-protection config are HIGH risk — human review on every change, the deputy and the client's DevOps reading them before they merge.
 
 ### Step 3: The Risk-Tier Map

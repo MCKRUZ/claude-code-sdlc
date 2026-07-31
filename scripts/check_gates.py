@@ -63,19 +63,43 @@ def check_artifact_not_empty(artifacts_dir: Path, artifact: str) -> tuple[bool, 
     return True, f"File '{artifact}' has content ({len(content)} chars)"
 
 
+PLACEHOLDER_MARKERS = ["TODO", "TBD", "${", "PLACEHOLDER", "[INSERT", "<!-- REQUIRED:"]
+
+
+def _placeholders_in(path: Path) -> list[str]:
+    content = path.read_text(encoding="utf-8", errors="replace")
+    return [p for p in PLACEHOLDER_MARKERS if p in content]
+
+
 def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, str]:
-    """Check artifact exists, is non-empty, and has no placeholder content."""
+    """Check artifact exists, is non-empty, and has no placeholder content.
+
+    A DIRECTORY artifact is checked through to its files. It used to pass on merely being
+    non-empty, which made `adrs/` satisfiable by a single ADR that was nothing but headings and
+    TODOs — the phase whose output is the signed record of why the system is shaped this way
+    could close on a folder with no decisions in it. If a file with a TODO fails, a directory of
+    them cannot pass.
+    """
     exists, msg = check_artifact_not_empty(artifacts_dir, artifact)
     if not exists:
         return False, msg
 
     path = artifacts_dir / artifact
     if path.is_dir():
-        return True, msg
+        files = [f for f in sorted(path.rglob("*")) if f.is_file()]
+        if not files:
+            return False, f"Directory '{artifact}' contains no files"
+        empty = [f.name for f in files if not f.read_text(encoding="utf-8", errors="replace").strip()]
+        if empty:
+            return False, f"Directory '{artifact}' contains empty file(s): {empty}"
+        incomplete = {f.name: _placeholders_in(f) for f in files}
+        incomplete = {n: p for n, p in incomplete.items() if p}
+        if incomplete:
+            detail = ", ".join(f"{n} {p}" for n, p in incomplete.items())
+            return False, f"Directory '{artifact}' contains placeholder content: {detail}"
+        return True, f"Directory '{artifact}' is complete ({len(files)} file(s))"
 
-    content = path.read_text(encoding="utf-8", errors="replace")
-    placeholders = ["TODO", "TBD", "${", "PLACEHOLDER", "[INSERT", "<!-- REQUIRED:"]
-    found = [p for p in placeholders if p in content]
+    found = _placeholders_in(path)
     if found:
         return False, f"File '{artifact}' contains placeholder content: {found}"
     return True, f"File '{artifact}' is complete"
@@ -319,6 +343,28 @@ def check_phase_gates(
 
     artifacts_dir = artifacts_base / phase_def["slug"]
 
+    # Some required artifacts are the repo's real files, not copies under .sdlc/ — the README a
+    # stranger actually clones and follows. artifacts_base is <repo>/.sdlc/artifacts.
+    repo_root = artifacts_base.resolve().parent.parent
+
+    # Phase 0 records the project type; five phase bodies adapt their artifacts to it, and the
+    # gate must adapt with them or it blocks on documents those bodies said to skip.
+    project_type = state.get("project_type")
+    required = pm.required_artifacts(phase_def, project_type)
+
+    skipped = [
+        a for a in pm.required_artifacts(phase_def, None)
+        if not a.applies_to(project_type)
+    ]
+    for artifact in skipped:
+        results.append({
+            "gate": "G1-integrity",
+            "artifact": artifact.name,
+            "passed": True,
+            "message": f"N/A — {project_type}: '{artifact.name}' is not required for this project type",
+            "severity": "INFO",
+        })
+
     # Dirty tracking — identify changed artifacts for incremental validation
     dirty = get_dirty_artifacts(phase_id, state, artifacts_dir)
     unchanged_set = set(dirty["unchanged"])
@@ -338,31 +384,35 @@ def check_phase_gates(
         })
 
     # Gate 1: Artifact Integrity — required artifacts exist
-    for artifact in phase_def.get("artifacts", {}).get("required", []):
-        passed, message = check_artifact_exists(artifacts_dir, artifact)
+    for artifact in required:
+        base = artifact.base_dir(artifacts_dir, repo_root)
+        passed, message = check_artifact_exists(base, artifact.name)
         results.append({
             "gate": "G1-integrity",
-            "artifact": artifact,
+            "artifact": artifact.name,
             "passed": passed,
             "message": message,
             "severity": "MUST",
         })
 
     # Gate 2: Completeness — required artifacts are complete
-    for artifact in phase_def.get("artifacts", {}).get("required", []):
-        if has_baseline and artifact in unchanged_set:
+    for artifact in required:
+        # Dirty tracking only ever indexed the phase's own artifact dir, so a repo-root file has
+        # no baseline to be "unchanged" against and must be checked every time.
+        if has_baseline and artifact.root == "phase" and artifact.name in unchanged_set:
             results.append({
                 "gate": "G2-completeness",
-                "artifact": artifact,
+                "artifact": artifact.name,
                 "passed": True,
-                "message": f"File '{artifact}' unchanged since last check (skipped)",
+                "message": f"File '{artifact.name}' unchanged since last check (skipped)",
                 "severity": "MUST",
             })
             continue
-        passed, message = check_artifact_complete(artifacts_dir, artifact)
+        base = artifact.base_dir(artifacts_dir, repo_root)
+        passed, message = check_artifact_complete(base, artifact.name)
         results.append({
             "gate": "G2-completeness",
-            "artifact": artifact,
+            "artifact": artifact.name,
             "passed": passed,
             "message": message,
             "severity": "MUST",

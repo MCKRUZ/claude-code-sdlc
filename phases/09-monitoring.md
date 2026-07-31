@@ -88,7 +88,7 @@ Capture what worked, what didn't, and what to carry forward. The retrospective m
 - Were the profile thresholds (coverage, file size, etc.) appropriate or should they be adjusted?
 
 **Actionable improvements:**
-- Concrete changes for the next project — not "communicate better" but "add a daily async standup in the Phase 4 handoff"
+- Concrete changes for the next project — not "communicate better" but "add a daily async standup during the Build loop"
 - Patterns to reuse and patterns to avoid
 
 Incorporate findings from `feedback-synthesizer` when available.
@@ -142,6 +142,32 @@ Must contain ALL of:
 - **Patterns to reuse** — decisions and approaches worth repeating
 - **Patterns to avoid** — decisions that created problems
 - **User feedback summary** — patterns from feedback-synthesizer analysis (if available)
+
+### `close-handoff.md` (REQUIRED)
+
+The gate has always required this file and the phase never said how to write it, so it was
+produced by guesswork — a required artifact with no specification is a demand nobody can satisfy
+deliberately. Close reads it at its opening HITL gate, and the questions asked there are what it
+must answer.
+
+Must contain ALL of:
+- **Transfer readiness** — is the client team actually ready to run the loop without us? State it
+  plainly, including if the answer is no. This is a steering conversation, not a scheduling one.
+- **Named client engineers** — who will orchestrate real specs at the close gate, and their
+  availability. Close needs at least three working with pod Checkers, then one solo.
+- **Named client Setup Owner** — who owns the harness after transfer, and whether they have
+  already merged a harness change themselves. "Will be identified later" is not a name.
+- **Candidate backlog items** — the real specs proposed for the shadow flip and the close-gate
+  spec, each with a note on why it clears the real-spec bar. Not toy work invented for the test.
+- **Access inventory to revoke** — every seat, token, repo permission, environment role and vault
+  policy held by the pod. This becomes `access-revocation-checklist.md` in Close.
+- **Operational state at handover** — what is live, what is monitored, what is still manual, and
+  any alert or incident open at the moment of transfer.
+- **Known debt and open risks** — carried from the retrospective, with owners on the client side.
+
+> **HITL GATE:** Every name in this file is a real person who has agreed. Ask the human to confirm
+> each one; do not infer availability from an org chart. If a name cannot be filled in, record the
+> gap explicitly — Close needs to know what is missing, not a plausible-looking list.
 
 ## Exit Criteria
 - [ ] All P0 features have at least one observable metric

@@ -16,7 +16,7 @@ Ensure all documentation reflects the system as built — not as planned. A new 
 **For `library` / `cli` / `skill` projects:** Mark skipped artifacts as `N/A — {project_type}` in the gate check. Do not spend time writing documentation for components that do not exist.
 
 ## Entry Criteria
-- Phase 6 exit gate passed and `phase7-handoff.md` reviewed
+- Build loop feature-complete (human declaration — it is continuous, with no batch artifact gate) and `phase7-handoff.md` reviewed
 - Test results confirm system behavior documented
 
 ## Workflow
@@ -74,7 +74,7 @@ Reference the Phase 9 monitoring setup — the runbook's failure scenarios shoul
 Close any ADRs that were open during implementation and surface undocumented decisions:
 
 ```
-Agent(Explore, "Search the git history from Phase 4 onward for significant technical decisions that are not recorded in the adrs/ directory. Look for: architectural changes, dependency additions, pattern choices, and rejected alternatives mentioned in commit messages or implementation-notes.md. List each undocumented decision with context.")
+Agent(Explore, "Search the git history from the start of the Build loop for significant technical decisions that are not recorded in the adrs/ directory. Look for: architectural changes, dependency additions, pattern choices, and rejected alternatives mentioned in commit messages or implementation-notes.md. List each undocumented decision with context.")
 ```
 
 For each undocumented decision found:

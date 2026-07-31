@@ -149,6 +149,24 @@ class InstallError(Exception):
     """A fail-closed install problem (bad profile, unresolved/incompatible pack)."""
 
 
+def _ensure_executable(dest: Path) -> None:
+    """Give installed shell scripts the executable bit.
+
+    copy2 preserves the source's mode, which sounds like enough and is not: every .sh in this
+    repo and in delivery-standard is committed 0644, because git on Windows does not track the
+    bit. Installed non-executable, the hooks and rails scripts die with 'Permission denied' —
+    and since the gates are fail-closed, that surfaces as a blocked merge with a confusing
+    reason, or as a checking ladder that is quietly not running at all.
+
+    So the installer sets the bit rather than inheriting it. Deciding by suffix keeps it to the
+    files that are actually executed; marking docs +x would be noise hiding the signal.
+    """
+    if dest.suffix != ".sh":
+        return
+    mode = dest.stat().st_mode
+    dest.chmod(mode | 0o111)   # +x wherever the file is already readable
+
+
 def _copy(src: Path, dest: Path, force: bool, written: set[Path], log: list[str],
           tokens: dict[str, str] | None = None) -> bool:
     """Copy src->dest, filling the <<CI_*>> seam tokens en route when a table is given. A dest
@@ -162,9 +180,10 @@ def _copy(src: Path, dest: Path, force: bool, written: set[Path], log: list[str]
         log.append(f"SKIP    {rel}  (exists)")
         return False
     dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(src, dest)   # first, so mode bits (e.g. a rails script's +x) survive
+    shutil.copy2(src, dest)   # first, so mode bits survive where the source has them
     if tokens:
         _substitute_in_place(dest, tokens)
+    _ensure_executable(dest)
     written.add(dest)
     if composed_this_run:
         log.append(f"OVERLAY {rel}")

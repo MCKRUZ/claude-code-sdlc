@@ -47,7 +47,14 @@ phases:
           check: exists_and_complete
         - artifact: "phase1-handoff.md"
           check: exists_and_complete
-      approval: manual
+        # The judgement calls. Every condition above is "a file exists and has no TODO in it",
+        # which is not what Discovery is for — the approver was shown a file list and asked to
+        # sign. These are the questions that actually decide whether Discovery is done, and G7
+        # puts them in front of the person signing.
+        - check: "Scope boundaries are unambiguous — a reader can say what is NOT being built"
+        - check: "success-criteria.md has at least 3 measurable dimensions with pass/fail thresholds, each with a named source it will be read from"
+        - check: "Every persona is a real person or role the human named — none invented to fill the table"
+        - check: "project_type is recorded in state.yaml (it selects the later-phase templates)"
     artifacts:
       required:
         - "constitution.md"
@@ -85,7 +92,12 @@ phases:
           check: exists_and_complete
         - artifact: "phase2-handoff.md"
           check: exists_and_complete
-      approval: manual
+        # As with Phase 0: the artifact checks confirm files exist, not that requirements are
+        # ready to design from. These are what the approver actually has to judge.
+        - check: "Every architectural implication appears in phase2-handoff.md as a numbered AQ-NN under 'What Design Must Address' — Phase 2's opening gate has no other input"
+        - check: "No unresolved P0 conflicts or ambiguities between stakeholders"
+        - check: "Every numeric NFR threshold states its Measurement Basis, and each [aspirational] one has an agreed Build-loop measurement method with a named owner"
+        - check: "Every P0 requirement traces to a Phase 0 pain point"
     artifacts:
       required:
         - "requirements.md"
@@ -122,7 +134,12 @@ phases:
           check: exists_and_complete
         - artifact: "phase3-handoff.md"
           check: exists_and_complete
-      approval: manual
+        # Neither of these is a hard artifact gate — the first is RECOMMENDED, the second only
+        # exists when /deep-plan ran. They sat in the phase body's Exit Criteria looking
+        # mandatory while nothing checked them. Stated here, the approver at least SEES them.
+        - check: "Architecture diagrams rendered as HTML (not ASCII art), if the design warrants them"
+        - check: "If /deep-plan was used: deep-plan-checkpoint.yaml is present for Phase 3 to resume from"
+        - check: "Design-level threat review done and its guarded-path map accepted by a named human (threat-model.md) — Phase 3 wires its security gates from this"
     artifacts:
       required:
         - "design-doc.md"
@@ -166,7 +183,6 @@ phases:
         - check: "Walking skeleton deployed to the dev environment through the real pipeline and verified"
         - check: "The rails are proven, not just present (Stop hook blocks, gates fire, deploy rolls back)"
         - check: "At least one HIGH-risk spec has run the full Build loop"
-      approval: manual
     artifacts:
       required:
         - "foundation-report.md"
@@ -200,7 +216,6 @@ phases:
         - check: "Build backlog is feature-complete (human declaration — no batch artifact gate)"
         - artifact: "phase7-handoff.md"
           check: exists_and_complete
-      approval: manual
     artifacts:
       required:
         - "phase7-handoff.md"
@@ -238,12 +253,21 @@ phases:
           check: exists_and_complete
         - check: "README cold checkout completed by someone new to the repo, unassisted"
         - check: "RUNBOOK deploy + rollback + one failure scenario executed cold by the ops engineer"
-      approval: manual
     artifacts:
       required:
-        - "README.md"
-        - "api-docs.md"
-        - "RUNBOOK.md"
+        # README and RUNBOOK are the repo's REAL files, not copies under .sdlc/. Phase 7 tells
+        # the team to test the README against a fresh clone; checking a copy would validate a
+        # file no stranger ever reads, and the copy drifts from the original by the next commit.
+        - path: "README.md"
+          root: repo
+        # Skipped for `skill` projects — no endpoints to document (see 07-documentation.md).
+        - path: "api-docs.md"
+          required_for: [service, app, library, cli]
+        # Skipped unless something is actually operated. A library, CLI or skill has no server
+        # to run, and the phase body says so; the gate has to agree or it blocks on nothing.
+        - path: "RUNBOOK.md"
+          root: repo
+          required_for: [service, app]
         - "phase8-handoff.md"
       optional:
         - "CHANGELOG.md"
@@ -278,7 +302,6 @@ phases:
         - check: "Rollback rehearsed in test by the client's operators before production promotion"
         - check: "Recorded go/no-go with every named role asked and answered"
         - check: "Production smoke tests passing"
-      approval: manual
     artifacts:
       required:
         - "release-notes.md"
@@ -319,7 +342,6 @@ phases:
           check: exists_and_complete
         - check: "Every alert threshold derived from a measured baseline (or flagged modeled, with revisit date)"
         - check: "Alert drill executed: every critical alert fired and answered from the playbook"
-      approval: manual
     artifacts:
       required:
         - "monitoring-config.md"
@@ -360,7 +382,6 @@ phases:
         - check: "Close gate: client team ran one real spec end-to-end (triage->spec->delegate->grade->merge->deploy) without the pod driving, observed and unassisted"
         - check: "Pod access revoked and confirmed against the client's audit trail"
         - check: "Harvest PR opened against the delivery-standard repo"
-      approval: manual
     artifacts:
       required:
         - "final-handoff-report.md"

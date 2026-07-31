@@ -87,7 +87,34 @@ Define the data structures:
 - Key fields and types
 - Persistence strategy
 
-### Step 7: Generate Architecture Diagrams
+### Step 7: Design-Level Threat Review
+
+Threat modelling belongs here, not only in Phase 3. Phase 3 wires the build-time security gates
+*from this review* — without it, that step has no input and the guarded paths get chosen by
+whoever is wiring them, on the day, from memory. Phase 3 keeps its own pass: a confirmation that
+the gates this review called for actually got wired.
+
+Work from the components, data flows and trust boundaries just defined — a threat review before
+there is a design to review is theatre.
+
+For each trust boundary the design crosses:
+- **What crosses it** — data, credentials, or control. Name the sensitivity: PII, payment,
+  auth material, client-confidential.
+- **What could go wrong** — spoofing, tampering, disclosure, denial, elevation. One line each,
+  concrete to this system, not a checklist recital.
+- **The mitigation** — the design change or control that addresses it, and where it lives.
+- **The guarded path** — the file patterns that, once built, must trigger the security workflow
+  on any PR touching them. This column is the handoff to Phase 3.
+
+Record the result in `threat-model.md`. Its mitigation map is what Phase 3 registers as guarded
+paths, and what the Build loop's HIGH-risk tier is calibrated against.
+
+> **HITL GATE:** Present the trust boundaries and the proposed guarded paths to the human using
+> the `AskUserQuestion` tool. Which paths are guarded is a risk decision with a named owner — the
+> agent proposes the map, a human accepts it. An unreviewed guarded-path list means the security
+> gate protects whatever Claude guessed was sensitive.
+
+### Step 8: Generate Architecture Diagrams
 
 Generate visual architecture diagrams using the `/visual-explainer` skill (or equivalent HTML diagram generation). Replace all ASCII art in `design-doc.md` with proper rendered diagrams. Output a self-contained HTML file at `.sdlc/reports/architecture-diagrams.html`.
 
@@ -110,7 +137,7 @@ Generate visual architecture diagrams using the `/visual-explainer` skill (or eq
 
 **If not available:** Generate the HTML directly using the Mermaid CDN patterns. The diagrams must still be proper rendered flowcharts — never fall back to ASCII art in the final artifacts.
 
-### Step 8: Phase Handoff
+### Step 9: Phase Handoff
 Review and complete `phase3-handoff.md` (generated in Step 3). Ensure it contains:
 - Design summary and key decisions
 - Section breakdown for implementation (logical units of work)
@@ -119,7 +146,7 @@ Review and complete `phase3-handoff.md` (generated in Step 3). Ensure it contain
 - Open technical questions for implementation phase
 - Risks identified during design
 
-### Step 9: Generate Phase Report
+### Step 10: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase02-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
@@ -176,6 +203,23 @@ A self-contained HTML page with rendered architecture diagrams (Mermaid + CSS). 
 
 Generated via `/visual-explainer` skill or equivalent HTML generation. Stored at `.sdlc/reports/architecture-diagrams.html`. Share with stakeholders as a visual companion to `design-doc.md`.
 
+### `threat-model.md` (RECOMMENDED — required for any system handling auth, payments or PII)
+
+The output of Step 7, and the input Phase 3 wires its security gates from.
+
+Must contain ALL of:
+- **Trust boundaries** — every boundary the design crosses, and what crosses it
+- **Threats per boundary** — concrete to this system; a recital of STRIDE with no system in it is
+  not a threat model
+- **Mitigations** — the design change or control for each, and where it lives
+- **The guarded-path map** — file patterns that must trigger the security workflow once built.
+  This is the handoff to Phase 3, which registers them and confirms they fire.
+- **Accepted risks** — anything knowingly not mitigated, with the named human who accepted it
+
+> Not yet a hard artifact gate: promoting it would newly block any engagement already past Phase 2,
+> so it is raised to the approver at sign-off instead. Promote it to `required` on a major version
+> with a migration note.
+
 ### Optional Artifacts (from /deep-plan)
 - `research-notes.md` — codebase and web research findings
 - `integration-notes.md` — cross-system integration concerns
@@ -187,10 +231,14 @@ Generated via `/visual-explainer` skill or equivalent HTML generation. Stored at
 - [ ] At least one ADR exists for each significant technology/pattern decision
 - [ ] `adr-registry.md` lists all ADRs with correct statuses
 - [ ] `api-contracts.md` covers all system interfaces
-- [ ] Architecture diagrams generated as rendered HTML (not ASCII art) at `.sdlc/reports/architecture-diagrams.html`
 - [ ] Design reviewed and approved by stakeholder (manual gate)
 - [ ] Implementation sections are clearly defined in the handoff
-- [ ] `deep-plan-checkpoint.yaml` exists for Phase 3 resumption
+- [ ] *(recommended)* Architecture diagrams rendered as HTML, not ASCII art, at
+      `.sdlc/reports/architecture-diagrams.html` — see the RECOMMENDED artifact spec above.
+      Raised to the approver at sign-off; not a hard block.
+- [ ] *(only if `/deep-plan` was used)* `deep-plan-checkpoint.yaml` exists — Phase 3 reads it as
+      the source of the walking skeleton's slices. A Phase 2 done without `/deep-plan` has no
+      checkpoint to produce, so this is conditional rather than required.
 
 ## HTML Report
 The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase02-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
