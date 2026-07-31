@@ -54,7 +54,7 @@ so install here unless you also repoint the references.
 | `mcp.json` | `./.mcp.json` | Team MCP servers (context7, sequential-thinking, playwright); packs merge additions (dotnet → microsoft-learn, github → github, azure-devops → azure-devops). npx-launched servers are version-pinned; the HTTP-hosted ones (context7, microsoft-learn, github) run server-side and cannot be pinned. No secrets — auth is always per-developer. Each developer approves the set once on first open. |
 | `HARNESS.md` | `./docs/harness.md` | The developer-facing tour: what each installed piece does and why, per layer. Point new team members here first. |
 | `ONBOARDING.md` | `./ONBOARDING.md` | The day-1 checklist: tools, auth, MCP approval, executable bits, repo secrets, unfilled setup tokens. Repo root, because that is where a new developer looks. `/sdlc-doctor` checks everything on it and prints the fix. |
-| `hooks/*` | `./.claude/hooks/` | `stop-gate`, `review-gate`, `save-review-receipt` (`.ps1` + `.sh`). |
+| `hooks/*` | `./.claude/hooks/` | `stop-gate`, `review-gate`, `save-review-receipt` (`.ps1` + `.sh`), plus `sensitive-edit-nudge` — an advisory (non-blocking) example, installed but not registered. |
 | `agents/*` | `./.claude/agents/` | `planner`, `architect`, `grader`, `security-reviewer`, `build-error-resolver`, `debugger` — model-tiered; see `agents/README.md`. |
 | `skills/*` | `./.claude/skills/` | `spec-writer`, `test-writer`, `api-pattern`, `pr-writer`, `eval-builder`, `diagnose`. |
 | `workflows/{ci,grader,correctness,security,deploy-dev,eval-regression,eval-suite}.yml` | `./.github/workflows/` | The five rails + the two eval workflows. |
