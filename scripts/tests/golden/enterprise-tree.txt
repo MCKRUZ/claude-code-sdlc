@@ -12,6 +12,8 @@
 .claude/hooks/review-gate.sh
 .claude/hooks/save-review-receipt.ps1
 .claude/hooks/save-review-receipt.sh
+.claude/hooks/sensitive-edit-nudge.ps1
+.claude/hooks/sensitive-edit-nudge.sh
 .claude/hooks/stop-gate.ps1
 .claude/hooks/stop-gate.sh
 .claude/rules/clean-architecture.md

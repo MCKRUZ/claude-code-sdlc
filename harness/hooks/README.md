@@ -17,6 +17,8 @@ Copy into the target repo so the layout is:
 <repo>/.claude/hooks/review-gate.sh
 <repo>/.claude/hooks/save-review-receipt.ps1
 <repo>/.claude/hooks/save-review-receipt.sh
+<repo>/.claude/hooks/sensitive-edit-nudge.ps1     <- example nudge: installed, not registered
+<repo>/.claude/hooks/sensitive-edit-nudge.sh
 ```
 
 Add this to the repo `.gitignore` (receipts are per-clone evidence, never committed):
@@ -37,6 +39,7 @@ evidence exists."
 | `stop-gate.{ps1,sh}` | `Stop` | The build **and tests** are green before a turn ends (tests opt-out: `RAILS_STOP_RUN_TESTS=0`). |
 | `review-gate.{ps1,sh}` | `PreToolUse` (Bash) | `git push` / `gh pr create` is blocked until per-commit review receipts exist. |
 | `save-review-receipt.{ps1,sh}` | (manual) | Writes a commit-bound receipt the review gate looks for. |
+| `sensitive-edit-nudge.{ps1,sh}` | `PreToolUse` (Edit/Write) | **Nothing.** It advises rather than refuses — a worked example of the nudge pattern below. Ships **unregistered**. |
 
 ## Hook contracts (verified — do not "improve" these)
 
@@ -52,7 +55,75 @@ These are subtle and easy to get wrong. They are the load-bearing part of the ki
 - **PreToolUse block:** write
   `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"..."}}`
   to stdout, then `exit 0`. (`hookSpecificOutput` *is* valid here — the opposite of Stop.)
+- **PreToolUse advisory (a *nudge*):** emit
+  `{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"..."}}` with **no
+  `permissionDecision` field at all**, then `exit 0`. The call proceeds through the normal
+  permission flow and the string is injected as a system reminder next to the tool result — Claude
+  reads it, the user never sees a transcript entry. (Verified by probe, 2026-07-31: the tool ran
+  *and* the reminder arrived. The reference documents the field but not the omit-the-decision case,
+  so it was tested rather than inferred.) `additionalContext` is **ignored** when
+  `permissionDecision` is `"defer"`. `PostToolUse` accepts the same field if you want the reminder
+  *after* the fact instead.
 - **Allow (either event):** emit nothing and `exit 0`.
+
+## Advisory nudges (the non-blocking variant)
+
+Every other hook in this directory **refuses**. A nudge doesn't: it fires on the same
+events, returns no decision, and drops a sentence into the agent's context at the moment
+the action is about to happen.
+
+The argument for it is the one already made above — a written instruction is the class of
+thing an agent forgets — but the conclusion is different. Not every rule earns a hard
+stop. A gate has to be *certain*, because a false positive wedges the session and teaches
+the team to reach for the bypass. Plenty of real guidance can't meet that bar: the
+condition isn't mechanically decidable, or the rule is right most of the time rather than
+always. Without a middle option those rules go in `CLAUDE.md` and get forgotten. A nudge
+delivers them at the point of use instead — a sticky note that appears when the agent
+reaches for the thing.
+
+**Gate when** the rule is absolute *and* the violation is mechanically provable: the build
+is red, the receipt is missing. **Nudge when** the judgement belongs to the agent, or when
+a wrong block would cost more than a missed reminder.
+
+Two shapes, and the choice is just *who filters*:
+
+- **Hook-filtered** — the script decides. `sensitive-edit-nudge` reads the target path and
+  stays silent unless it matches a security-sensitive tree. Use this whenever the trigger
+  is something a script can actually evaluate.
+- **Model-filtered** — the hook fires every time and the *message* carries the condition
+  ("…skip this if the edit is docs or comments"). Use it when the hook can't tell — it
+  cannot know whether an edit touches a real symbol — and hand that judgement to the
+  agent rather than guessing at it.
+
+**A nudge is not free.** Every fire spends context, on every matching tool call, for the
+rest of the session. Keep the message to a sentence or two, and push the condition into
+the hook whenever the hook can express it — a chatty unconditional nudge is a tax on the
+whole session and gets tuned out exactly like a noisy alert.
+
+### The shipped example
+
+`sensitive-edit-nudge.{ps1,sh}` fires when the agent is about to edit an auth, identity,
+security, migrations, or `infra/` path, and reminds it that the change is `risk:high` and
+owes a security-reviewer pass before the named human sign-off. It is **installed but not
+registered** — a nudge encodes a specific team's rule, so the kit ships the mechanism and
+leaves the policy to you. Retune `RAILS_NUDGE_PATH_REGEX` / `RAILS_NUDGE_MESSAGE`, or copy
+the script as a starting point, then register it:
+
+```json
+"PreToolUse": [
+  {
+    "matcher": "Edit|Write|MultiEdit",
+    "hooks": [
+      { "type": "command", "command": "pwsh",
+        "args": ["-NoProfile", "-ExecutionPolicy", "Bypass",
+                 "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/sensitive-edit-nudge.ps1"] }
+    ]
+  }
+]
+```
+
+It fails open like everything else here: unparseable payload, missing `jq`, no
+`file_path` — it stays silent and exits 0 rather than interrupting the turn.
 
 ## Permissions model (settings.json)
 
@@ -108,6 +179,8 @@ All optional. Defaults assume a .NET solution under `src/`.
 | `RAILS_REVIEW_SRC_REGEX` | review-gate | `^src/.*\.(cs\|csproj\|…\|ts\|html)$` | Which changed paths count as gated source. |
 | `RAILS_REVIEW_KINDS` | review-gate, save-review-receipt | `code-review,simplify` | Which reviews must have receipts. |
 | `RAILS_SKIP_REVIEW_GATE` | review-gate | unset | `1` = documented, auditable emergency bypass. |
+| `RAILS_NUDGE_PATH_REGEX` | sensitive-edit-nudge | `Auth`/`Identity`/`Security`/`SecurityAttributes`/`Migrations` segments, plus `infra/` | Which edited paths trigger the nudge. Matched against the path with `\` normalized to `/`. |
+| `RAILS_NUDGE_MESSAGE` | sensitive-edit-nudge | the security sign-off reminder | The reminder text injected into the agent's context. |
 
 `CLAUDE_PROJECT_DIR` is set by Claude Code and used to locate the repo root; scripts fall
 back to the current directory if it is absent.
@@ -145,6 +218,8 @@ shell features, or with the `.sh` twins as shown above.
 | `stop-gate` scripts | **Stable** | Logic depends only on git + dotnet. |
 | `review-gate` scripts | **Stable machinery, policy-coupled** | Assumes the review workflow is `/code-review` + `/simplify` and that receipts come from `save-review-receipt`. Retune `RAILS_REVIEW_KINDS` for a different workflow. |
 | `save-review-receipt` scripts | **Stable** | Binds + timestamps a receipt; it cannot judge review quality — that is on the reviewer. |
+| PreToolUse advisory contract | **Stable** | Probe-verified; the omit-the-decision case is not spelled out in the reference, so re-check it if hook behavior ever surprises you. |
+| `sensitive-edit-nudge` scripts | **Template** | The mechanism is stable; the regex and the message are one team's policy and are meant to be replaced. Not registered by default. |
 | Permission globs | **Template** | The deny/ask/allow *shape* is stable; the specific paths are placeholders to confirm per repo. |
 
 ## Coverage boundary (read this)
