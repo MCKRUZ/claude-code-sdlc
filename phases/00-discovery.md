@@ -196,6 +196,48 @@ Must contain ALL of:
 - **Risks to Monitor** — risks surfaced during discovery with probability/impact rating
 - **Suggested Starting Point** — where Phase 1 should begin and what to tackle first
 
+### `po-decision-record.md` (OPTIONAL)
+
+The Product Owner arrangement, in writing: a named PO with committed hours per week, or a signed
+proxy rider naming who decides in their place.
+
+This is an SOW precondition with billing teeth. It is optional here because the contract is its
+home of record — a copy in `.sdlc/` that disagrees with the signed document is worse than no copy.
+Record it when the decision is made outside the contract, or link to where it lives.
+
+Must contain: the mode chosen, the named person, their committed hours, the date agreed, and who
+agreed it.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
+
+### `tooling-record.md` (OPTIONAL)
+
+Anthropic access live under the client's own account, or a signed fallback rider with a date to
+migrate.
+
+The other precondition with billing teeth, and optional for the same reason: the rider is a contract
+artifact. What belongs here is the operational fact — whose account, whose keys, whose audit trail,
+and the date the fallback expires if one is in use.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
+
+### `workshop-brief.md` (OPTIONAL)
+
+The outcome-workshop brief as it was actually sent: questions only.
+
+The brief is curated by a human from Claude's draft and must never propose outcomes, metrics or
+solutions — a brief that answers its own questions produces a workshop that confirms what we already
+assumed. Today it is drafted, edited, sent, and never kept.
+
+Must contain: the questions as sent, who curated them, who received it, and the date.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
 ## Exit Criteria
 - [ ] `constitution.md` contains: project identity, mission statement, governing principles, decision authority
 - [ ] `problem-statement.md` contains: exec summary, persona table, current state metrics, root cause analysis

@@ -1,5 +1,105 @@
 # Changelog
 
+## 1.0.0 — 2026-07-31
+
+**Breaking. Gates that previously passed will now block.** Read the migration note before upgrading
+an engagement that is mid-flight.
+
+### Human work now leaves a receipt (Fix 3)
+
+Of the 110 artifacts across the standard's ten worked-example ledgers, 65 were machine artifacts,
+**3** were human receipts — all in Phase C — and **42** were human work that left no trace at all.
+The threat review. Every spike. The cold README checkout. The rollback rehearsal. The alert drill.
+The go/no-go. Each one load-bearing, each one unauditable a year later.
+
+They were triaged rather than mechanically converted, because "add an artifact for each of the 42"
+would have been wrong for 24 of them and the standard warns against exactly that kind of scaffolding
+growth. See `FIX-3-TRIAGE.md` in the delivery-standard repo for the full reasoning.
+
+**Twelve required receipts** — the phase now blocks without them:
+
+| Phase | Receipt |
+|---|---|
+| 1 | `decision-list.md` |
+| 2 | `spike-findings.md`, `threat-model.md`, `nfr-proving-plan.md`, `walking-skeleton-definition.md` |
+| 3 | `data-flow-brief.md` |
+| 7 | `readme-verification.md`, `runbook-walkthrough.md` (service/app only) |
+| 8 | `rollback-rehearsal.md`, `go-no-go-record.md`, `secrets-rotation-record.md` |
+| 9 | `drill-record.md` |
+
+Four of these already existed as optional entries (`go-no-go-record.md`, `drill-record.md`) or had a
+spec but no registry entry (`threat-model.md`); the rest are new.
+
+**Eleven optional receipts**, recorded when the work happens and surfaced to the approver at
+sign-off rather than blocking: `po-decision-record.md`, `tooling-record.md`, `workshop-brief.md`,
+`scope-out-record.md`, `adversarial-review-record.md`, `consistency-check-record.md`,
+`spec-audit-record.md`, `rollout-shape-decision.md`, `what-healthy-table.md`,
+`fatigue-review-record.md`, `outcome-metric-first-read.md`.
+
+**Six items got no artifact deliberately** — branch protection, the deployed skeleton, the security
+gates having fired, the outcome metric ticking, the per-merge metrics line and the provenance log.
+These are states of the world, not documents. A markdown file asserting "branch protection is on" is
+weaker than reading the setting, and goes stale silently. `/sdlc-doctor` already checks one of them;
+two others are fleet observability, tracked separately.
+
+**Six more got none** because they are already inside a parent artifact the gate checks (error
+specs, the traceability matrix, user stories, the data model), or because the receipt would be
+ceremony: the non-author approval is recorded by GitHub and enforced by branch protection, and a
+"the grader was read" receipt records a claim rather than a fact.
+
+### Waivers, in the artifact and never silent
+
+Some of this work genuinely will not happen — there is no live carrier sandbox to spike against, no
+client ops engineer to walk the RUNBOOK. A gate with no escape gets worked around, and the
+workaround leaves no trace, so the escape is built in and made loud.
+
+A required receipt may carry `WAIVED: <name> — <reason>`. The gate accepts it and reports it, **by
+name**, in the record the approver signs against. Both halves are required: a waiver naming nobody
+is the thing being prevented. A *missing* file still blocks — the escape is from the work, not from
+the record.
+
+### `risk-signoff` — the HIGH-risk sign-off is now enforced
+
+The standard has always required a named human to accept the risk on a `risk:high` change — "a
+person, by name. Not a thumbs-up." It was convention in a PR comment that nothing templated and
+nothing checked.
+
+A new required status check fails any `risk:high` PR with no line of the form
+`SIGNED-OFF-BY: <name> — <sentence>` in the body or a comment. The sentence is required; a bare name
+does not satisfy it. It is a check rather than a committed receipt because a file under `.sdlc/`
+would describe a merge that already happened, and the acceptance has to exist before the merge.
+
+Added to `branch-protection.json`'s required contexts. Existing repos must re-apply the ruleset
+(`scripts/rails/apply-branch-protection.sh`) or the check will run without being required.
+
+---
+
+## Migration — engagements already in flight
+
+**The failure is loud and local.** On the next `/sdlc-gate` the phase reports each missing receipt by
+name, with the artifact spec in the phase body describing what it must contain. Nothing silently
+changes behaviour; nothing is deleted.
+
+**You have three honest options per receipt:**
+
+1. **Write it** — if the work happened, record it now while people still remember. This is the case
+   for most of them, and the reason the receipts exist.
+2. **Waive it** — if the work genuinely did not happen, create the file with
+   `WAIVED: <name> — <reason>`. The gate accepts it and the record says who decided and why.
+3. **Do the work** — if it did not happen and should have, the gate has just told you something
+   worth knowing. That is the point.
+
+**What we do not recommend:** reverting to 0.10.0 to clear the gate. A phase that closed without a
+threat model closed without a threat model; the previous version simply did not ask.
+
+**Re-apply branch protection** so `risk-signoff` becomes required rather than merely present.
+
+**Phase 7 is project-type aware.** `runbook-walkthrough.md` is required only for `service` and `app`
+projects — a library, CLI or skill has no RUNBOOK to walk, and the gate now agrees with the phase
+body about that.
+
+---
+
 ## 0.10.0 — 2026-07-16
 
 - **Every stale CI pin bumped, none blind.** `setup-dotnet` v4→**v6**, `checkout` v4→**v7**,

@@ -67,6 +67,9 @@ phases:
         - "market-research.md"
         - "document-registry.md"  # Document intake index (opt-in via profile.documentation)
         - "phase0-report.html"
+        - "po-decision-record.md"
+        - "tooling-record.md"
+        - "workshop-brief.md"
 
   - id: 1
     slug: "01-requirements"
@@ -104,9 +107,12 @@ phases:
         - "non-functional-requirements.md"
         - "epics.md"
         - "phase2-handoff.md"
+        - "decision-list.md"
       optional:
         - "glossary.md"
         - "phase1-report.html"
+        - "scope-out-record.md"
+        - "adversarial-review-record.md"
 
   - id: 2
     slug: "02-design"
@@ -147,6 +153,10 @@ phases:
         - "adrs/"
         - "adr-registry.md"
         - "phase3-handoff.md"
+        - "spike-findings.md"
+        - "threat-model.md"
+        - "nfr-proving-plan.md"
+        - "walking-skeleton-definition.md"
       optional:
         - "data-model.md"
         - "sequence-diagrams.md"
@@ -155,6 +165,7 @@ phases:
         - "integration-notes.md"
         - "external-reviews/"
         - "deep-plan-checkpoint.yaml"
+        - "consistency-check-record.md"
 
   - id: 3
     slug: "03-foundation"
@@ -189,6 +200,7 @@ phases:
         - "risk-tier-map.md"
         - "cadence-plan.md"
         - "build-handoff.md"
+        - "data-flow-brief.md"
       optional:
         - "harness-inventory.md"
         - "pipeline-proof.md"
@@ -255,6 +267,12 @@ phases:
         - check: "RUNBOOK deploy + rollback + one failure scenario executed cold by the ops engineer"
     artifacts:
       required:
+        # Every project has a README, so every project gets the cold verification.
+        - "readme-verification.md"
+        # But only something that is operated has a RUNBOOK to walk. Mirrors RUNBOOK.md below —
+        # requiring the receipt for a project with no runbook would re-create D-3 for the receipt.
+        - path: "runbook-walkthrough.md"
+          required_for: [service, app]
         # README and RUNBOOK are the repo's REAL files, not copies under .sdlc/. Phase 7 tells
         # the team to test the README against a fresh clone; checking a copy would validate a
         # file no stranger ever reads, and the copy drifts from the original by the next commit.
@@ -274,6 +292,7 @@ phases:
         - "CONTRIBUTING.md"
         - "drift-catalog.md"
         - "phase7-report.html"
+        - "spec-audit-record.md"
 
   - id: 8
     slug: "08-deployment"
@@ -308,11 +327,14 @@ phases:
         - "deployment-checklist.md"
         - "smoke-test-results.md"
         - "phase9-handoff.md"
+        - "rollback-rehearsal.md"
+        - "go-no-go-record.md"
+        - "secrets-rotation-record.md"
       optional:
         - "rollback-procedure.md"
-        - "go-no-go-record.md"
         - "deployment-log.md"
         - "phase8-report.html"
+        - "rollout-shape-decision.md"
 
   - id: 9
     slug: "09-monitoring"
@@ -349,10 +371,13 @@ phases:
         - "incident-response.md"
         - "project-retrospective.md"
         - "close-handoff.md"
+        - "drill-record.md"
       optional:
         - "baseline-data.md"
-        - "drill-record.md"
         - "phase9-report.html"
+        - "what-healthy-table.md"
+        - "fatigue-review-record.md"
+        - "outcome-metric-first-read.md"
 
   - id: close
     slug: "close"
@@ -382,6 +407,13 @@ phases:
         - check: "Close gate: client team ran one real spec end-to-end (triage->spec->delegate->grade->merge->deploy) without the pod driving, observed and unassisted"
         - check: "Pod access revoked and confirmed against the client's audit trail"
         - check: "Harvest PR opened against the delivery-standard repo"
+        # Three receipts that exist as optional artifacts and nothing ever asked about. They do
+        # not block — but the last person to touch this engagement should be asked, once, whether
+        # each happened. Two of them live outside .sdlc/ entirely, so the gate cannot see them at
+        # all; the question is the only mechanism available.
+        - check: "Outcomes dashboard re-pointed to client ownership, caveats intact, with the quarter-read date in their calendar (outcomes-dashboard-handover.md)"
+        - check: "Harvest notes recorded locally — the PR itself lands in another repo this gate cannot see (harvest-pr-notes.md)"
+        - check: "The engagement retro is written in the delivery-standard repo, and this record links to it"
     artifacts:
       required:
         - "final-handoff-report.md"

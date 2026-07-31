@@ -169,6 +169,50 @@ Must contain ALL of:
 > each one; do not infer availability from an org chart. If a name cannot be filled in, record the
 > gap explicitly — Close needs to know what is missing, not a plausible-looking list.
 
+### `what-healthy-table.md` (OPTIONAL)
+
+Per failure scenario and per user journey: what healthy looks like, what degraded looks like, who is
+woken, and who is merely told in the morning.
+
+This table is the entire output of the monitoring design session, and it currently survives only if
+somebody folds it into `monitoring-config.md`. Waking the wrong person at 3am is a design defect,
+and this is where that design is recorded.
+
+Must contain, per row: the scenario, the healthy signal, the degraded signal, the paging threshold,
+who is paged, and who is informed without being paged.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
+
+### `fatigue-review-record.md` (OPTIONAL)
+
+Every proposed alert replayed against hypercare history, with its would-have-fired count.
+
+An alert that fires weekly without anyone acting is not monitoring; it is training the team to
+ignore the pager. This is the pass that catches it before go-live rather than three months in.
+
+Must contain, per alert: how often it would have fired over the observed period, how many of those
+warranted action, and the decision — kept, threshold raised, or cut.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
+
+### `outcome-metric-first-read.md` (OPTIONAL)
+
+The engagement's headline number, read honestly for the first time in production, with its caveats
+attached.
+
+The caveats are the artifact. A first read with no cohort caveat, no partial-period warning and no
+note about what changed alongside is a number that will be quoted for a year without them.
+
+Must contain: the number, the window, where it was read from, every caveat, and who read it with the
+sponsor.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
 ## Exit Criteria
 - [ ] All P0 features have at least one observable metric
 - [ ] At least one alert exists for each CRITICAL failure mode

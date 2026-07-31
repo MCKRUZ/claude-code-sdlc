@@ -37,6 +37,9 @@
             "context": "spike-guard"
           },
           {
+            "context": "risk-signoff"
+          },
+          {
             "context": "repro-gate"
           },
           {
