@@ -244,3 +244,36 @@ class TestRun:
         monkeypatch.setattr(doctor, "SECTIONS", [("Synthetic", lambda r: [
             doctor.Result(WARN, "undetermined", "")], False)])
         assert doctor.run(repo, offline=True) == 0
+
+
+class TestArgvSafePlaceholders:
+    """A placeholder that lands in an ARGV cannot use << >> (issue #28).
+
+    On Windows npx runs through cmd.exe, which reads them as redirect operators and dies with
+    `<< was unexpected at this time.` before the tool starts — naming neither the tool nor the
+    token. Those spots use a NAME_NOT_SET sentinel, which the tool itself then reports clearly.
+    The doctor has to recognise both forms, or swapping the placeholder would trade a detected
+    failure for an undetected one.
+    """
+
+    def test_the_sentinel_form_is_detected(self, repo):
+        (repo / ".mcp.json").write_text(json.dumps({
+            "mcpServers": {"azure-devops": {
+                "command": "npx", "args": ["-y", "@azure-devops/mcp", "ADO_ORGANIZATION_NOT_SET"]}}
+        }), encoding="utf-8")
+        results = check_residual_tokens(repo)
+        assert WARN in _statuses(results)
+        assert "ADO_ORGANIZATION" in _titles(results)
+
+    def test_the_sentinel_carries_the_same_owner_as_the_angled_form(self, repo):
+        (repo / ".mcp.json").write_text(json.dumps({
+            "mcpServers": {"ado": {"args": ["ADO_ORGANIZATION_NOT_SET"]}}
+        }), encoding="utf-8")
+        fix = [r.fix for r in check_residual_tokens(repo) if "ADO_ORGANIZATION" in r.title][0]
+        assert "Phase 3" in fix
+
+    def test_a_filled_org_is_not_reported(self, repo):
+        (repo / ".mcp.json").write_text(json.dumps({
+            "mcpServers": {"ado": {"args": ["-y", "@azure-devops/mcp", "harbor-mutual"]}}
+        }), encoding="utf-8")
+        assert check_residual_tokens(repo)[0].status == PASS

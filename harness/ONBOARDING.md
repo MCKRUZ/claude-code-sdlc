@@ -72,10 +72,11 @@ Some values are deliberately left for a human, because only your team knows them
 security paths, the deploy step, the CI artifact name. They look like `<<GATED_PATHS>>` in the
 files that need them.
 
-`/sdlc-doctor` lists every one still unfilled and which phase fills it. They are not bugs; they
-are the unfinished half of setup. But a tool given a literal `<<TOKEN>>` fails in unhelpful ways —
-on Windows an unfilled `<<ADO_ORGANIZATION>>` produces a raw `cmd.exe` syntax error that mentions
-neither the token nor the tool.
+A few placeholders that end up on a command line use a plain `NAME_NOT_SET` sentinel instead —
+Windows `cmd.exe` reads `<<` as a redirect and would fail before the tool even starts.
+
+`/sdlc-doctor` lists every placeholder still unfilled, in either form, and which phase fills it.
+They are not bugs; they are the unfinished half of setup.
 
 ## 7. Prove it works before you trust it
 
