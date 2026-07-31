@@ -33,7 +33,9 @@ provides:
   branch_policies: branch-policies/policies.json   # desired-state consumed by configure-branch-policies.sh
   rails_guide: RAILS.md                            # operator's guide + shakedown drills (ADO realization)
   mcp_fragment: mcp.fragment.json                  # Azure DevOps MCP server, merged into .mcp.json
-                                                   # (<<ADO_ORGANIZATION>> is a Phase-3 token; auth is
+                                                   # (ADO_ORGANIZATION_NOT_SET is the Phase-3 placeholder —
+                                                   # a plain sentinel, not <<TOKEN>>, because it lands in an
+                                                   # argv and cmd.exe would eat the angle brackets; auth is
                                                    # per-developer via az login — never a committed PAT)
 
 # The SEAM. This pack REALIZES the stack pack's declared commands into Azure Pipelines syntax.

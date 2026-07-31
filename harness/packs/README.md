@@ -40,8 +40,10 @@ stack- or platform-specific server ships an `mcp.fragment.json` and an overlay e
 `{ src: mcp.fragment.json, dest: .mcp.json, merge: true }` — the installer deep-merges it, so
 core entries survive and fragments only add. Current contributors: `stacks/dotnet` →
 `microsoft-learn`; `cicd/github` → `github` (hosted server, per-developer OAuth sign-in);
-`cicd/azure-devops` → `azure-devops` (org name is the `<<ADO_ORGANIZATION>>`
-Phase-3 token; authentication is per-developer via `az login`, never a committed credential).
+`cicd/azure-devops` → `azure-devops` (org name replaces the `ADO_ORGANIZATION_NOT_SET`
+placeholder in Phase 3 — a plain sentinel rather than the usual `<<TOKEN>>`, because the value
+lands in an argv and Windows `cmd.exe` reads `<<` as a redirect; authentication is per-developer
+via `az login`, never a committed credential).
 Hard rules for any new entry: pin the exact version (no `@latest`), and no secrets in the file —
 auth is always per-developer. Every developer approves the repo's server set once on first open;
 that consent prompt is Claude Code's, not ours.

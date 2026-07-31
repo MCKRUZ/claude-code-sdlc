@@ -50,7 +50,11 @@ TOKEN_OWNER = {
     "CI_WORKFLOW_NAME": "Phase 3 — the CI workflow name that triggers deploy",
 }
 
-RESIDUAL_TOKEN = re.compile(r"<<([A-Z][A-Z0-9_]*)>>")
+# Two placeholder forms, because one of them cannot use the angle brackets. A value that lands in
+# an ARGV must avoid << and >>: on Windows npx runs through cmd.exe, which reads them as redirect
+# operators and dies before the tool starts. Those few spots use a NAME_NOT_SET sentinel instead,
+# and both forms mean the same thing here — setup somebody still has to finish.
+RESIDUAL_TOKEN = re.compile(r"<<([A-Z][A-Z0-9_]*)>>|\b([A-Z][A-Z0-9_]*)_NOT_SET\b")
 SCANNED_SUFFIXES = {".json", ".yml", ".yaml", ".md", ".sh", ".ps1"}
 
 
@@ -238,15 +242,19 @@ def check_residual_tokens(repo: Path) -> list[Result]:
         if path.name.upper().startswith("README"):
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for token in RESIDUAL_TOKEN.findall(_strip_annotations(path, text)):
-            found.setdefault(token, []).append(str(path.relative_to(repo)))
+        for angled, sentinel in RESIDUAL_TOKEN.findall(_strip_annotations(path, text)):
+            # Key by the literal that is IN the file. Reporting `<<ADO_ORGANIZATION>>` for a file
+            # containing `ADO_ORGANIZATION_NOT_SET` sends the reader searching for absent text.
+            literal = f"<<{angled}>>" if angled else f"{sentinel}_NOT_SET"
+            found.setdefault(literal, []).append(str(path.relative_to(repo)))
 
     if not found:
         return [Result(PASS, "no unfilled setup tokens", "")]
     out = []
-    for token, files in sorted(found.items()):
-        owner = TOKEN_OWNER.get(token, "fill before relying on the affected tool")
-        out.append(Result(WARN, f"<<{token}>> still unfilled",
+    for literal, files in sorted(found.items()):
+        name = literal.strip("<>").removesuffix("_NOT_SET")
+        owner = TOKEN_OWNER.get(name, "fill before relying on the affected tool")
+        out.append(Result(WARN, f"{literal} still unfilled",
                           f"{len(files)} file(s): {', '.join(sorted(set(files))[:4])}",
                           owner))
     return out
