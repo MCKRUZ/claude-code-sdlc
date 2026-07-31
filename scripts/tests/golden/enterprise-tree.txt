@@ -42,6 +42,7 @@
 .gitignore
 .mcp.json
 CLAUDE.md
+ONBOARDING.md
 docs/harness.md
 eval-datasets/README.md
 eval-datasets/golden-set.template.yaml

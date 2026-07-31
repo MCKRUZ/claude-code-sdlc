@@ -83,6 +83,7 @@ FILE_MAP: list[tuple[str, str]] = [
     ("settings.json", ".claude/settings.json"),
     ("mcp.json", ".mcp.json"),                      # team MCP servers; packs merge their fragments in
     ("HARNESS.md", "docs/harness.md"),              # the developer-facing tour of what's installed
+    ("ONBOARDING.md", "ONBOARDING.md"),             # day-1 checklist; repo root, where a new dev looks
 ]
 DIR_MAP: list[tuple[str, str]] = [
     ("hooks/", ".claude/hooks/"),
