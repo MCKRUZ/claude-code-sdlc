@@ -200,6 +200,57 @@ jobs:
           fi
           echo "OK: '$GITHUB_HEAD_REF' is not a spike branch."
 
+  risk-signoff:
+    name: risk-signoff            # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: A HIGH-risk change needs a named human accepting the risk
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RISK_LABEL: 'risk:high'
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # The standard has always required this: on HIGH risk, a named human records a sentence
+          # accepting the risk — "a person, by name, accepting the risk. Not a thumbs-up." It was
+          # convention in a PR comment that nothing templated and nothing checked, which makes it
+          # a rule that holds exactly as long as everyone remembers it.
+          #
+          # It is a CHECK rather than an artifact deliberately. A receipt committed under .sdlc/
+          # would describe a merge that already happened; the acceptance has to exist BEFORE the
+          # merge, which means it has to be at the merge.
+          LABELS="$(gh pr view "$PR" --json labels --jq '.labels[].name' || true)"
+          if ! printf '%s\n' "$LABELS" | grep -qx "$RISK_LABEL"; then
+            echo "OK: not labelled $RISK_LABEL — no named sign-off required."
+            exit 0
+          fi
+
+          # Body and comments both count; reviewers put it in either.
+          HAYSTACK="$(
+            gh pr view "$PR" --json body --jq '.body' || true
+            gh pr view "$PR" --json comments --jq '.comments[].body' || true
+          )"
+          # SIGNED-OFF-BY: <name> — <sentence>. The sentence is required: a bare name is the
+          # thumbs-up this gate exists to reject.
+          # NOTE: no `\n` in the bracket expressions. In POSIX ERE that is a literal backslash and
+          # the letter n, so `[^—–\n]` would silently exclude every name containing an "n" —
+          # "Wes Carter" would pass this gate and "Dan Ruiz" would not. grep matches per line, so
+          # the newline never needed excluding in the first place.
+          if printf '%s' "$HAYSTACK" | grep -qiE '^[[:space:]>*-]*SIGNED-OFF-BY:[[:space:]]*[^[:space:]—–,:-][^—–]*[—–,:-]+[[:space:]]*[^[:space:]]'; then
+            echo "OK: a named sign-off is recorded on this PR."
+            exit 0
+          fi
+
+          echo "::error::This PR is labelled $RISK_LABEL and carries no named risk sign-off."
+          echo "Add a comment in the form:"
+          echo "    SIGNED-OFF-BY: Wes Carter — accepted: the carrier retry path is idempotent, verified in spike 0007"
+          echo "A name with no sentence is a thumbs-up, and does not satisfy this gate."
+          exit 1
+
   repro-gate:
     name: repro-gate              # <-- required status-check context (branch-protection.json)
     runs-on: ubuntu-latest

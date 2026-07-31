@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,6 +65,41 @@ def check_artifact_not_empty(artifacts_dir: Path, artifact: str) -> tuple[bool, 
 
 
 PLACEHOLDER_MARKERS = ["TODO", "TBD", "${", "PLACEHOLDER", "[INSERT", "<!-- REQUIRED:"]
+
+# A required receipt records human work no command can perform. Some of it genuinely will not
+# happen on a given engagement — there is no live carrier API to spike against, the client has no
+# ops engineer to walk the RUNBOOK. A gate with no escape gets worked around, and the workaround is
+# invisible; so the escape is built in, and made loud.
+#
+# The waiver lives IN the artifact: the file exists and names who waived it and why. That keeps the
+# record honest about what was skipped, the same way the eval-bypass ledger does. What it must never
+# do is pass silently — a quiet gate exception is how a gate stops being a gate.
+# Deliberately forgiving about the separator between the name and the reason — em dash, en dash,
+# hyphen, comma or colon. A human types this line by hand under pressure; a waiver that fails to
+# parse would block the gate for a punctuation choice, and the next person's fix would be to delete
+# the gate rather than the comma.
+WAIVER_RE = re.compile(
+    # Markdown emphasis may close before or after the colon (`**WAIVED**:` / `**WAIVED:**`), and
+    # both are what people actually type.
+    r"^\s*(?:[-*>]\s*)?(?:\*\*)?WAIVED(?:\*\*)?\s*:\s*(?:\*\*)?\s*"
+    r"(?P<who>[^—–,:\-\n]+?)\s*[—–,:\-]+\s*(?P<why>\S.*)$",
+    re.MULTILINE | re.IGNORECASE,
+)
+
+
+def waiver_in(path: Path) -> tuple[str, str] | None:
+    """The (who, why) of a waiver recorded in this artifact, or None.
+
+    Both halves are required. `WAIVED: because we ran out of time` names nobody, and an
+    unattributable waiver is the thing being prevented.
+    """
+    if path.is_dir() or not path.exists():
+        return None
+    m = WAIVER_RE.search(path.read_text(encoding="utf-8", errors="replace"))
+    if not m:
+        return None
+    who, why = m.group("who").strip(), m.group("why").strip()
+    return (who, why) if who and why else None
 
 
 def _placeholders_in(path: Path) -> list[str]:
@@ -397,6 +433,24 @@ def check_phase_gates(
 
     # Gate 2: Completeness — required artifacts are complete
     for artifact in required:
+        base = artifact.base_dir(artifacts_dir, repo_root)
+
+        # A waiver is checked BEFORE completeness: a waived receipt is deliberately not filled in,
+        # so judging it on placeholders would fail it for being exactly what it says it is. It is
+        # reported at INFO with the name attached — visible in the report the approver signs
+        # against, never a silent pass.
+        waiver = waiver_in(base / artifact.name)
+        if waiver:
+            who, why = waiver
+            results.append({
+                "gate": "G2-completeness",
+                "artifact": artifact.name,
+                "passed": True,
+                "message": f"WAIVED by {who} — {why}",
+                "severity": "INFO",
+            })
+            continue
+
         # Dirty tracking only ever indexed the phase's own artifact dir, so a repo-root file has
         # no baseline to be "unchanged" against and must be checked every time.
         if has_baseline and artifact.root == "phase" and artifact.name in unchanged_set:
@@ -408,7 +462,6 @@ def check_phase_gates(
                 "severity": "MUST",
             })
             continue
-        base = artifact.base_dir(artifacts_dir, repo_root)
         passed, message = check_artifact_complete(base, artifact.name)
         results.append({
             "gate": "G2-completeness",

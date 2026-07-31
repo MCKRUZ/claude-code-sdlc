@@ -226,6 +226,100 @@ Must contain ALL of:
 - `external-reviews/` — multi-LLM review outputs (Gemini, OpenAI, Opus)
 - `deep-plan-checkpoint.yaml` — session state for Phase 3 resumption
 
+### `spike-findings.md` (REQUIRED)
+
+The summary of every bounded investigation this design rests on. One spike answers one question
+that nobody could answer from documentation, against the live system.
+
+The code a spike produces is thrown away. **This file is the deliverable** — a finding that is not
+written down was not a spike, it was a detour.
+
+Must contain, per spike:
+- **The question** — phrased so an answer would be recognisable. Not "look at the carrier API" but
+  "does the carrier API deduplicate on our idempotency key, or do retries create duplicate claims?"
+- **What was tested against** — which system, which environment, which version. Sandbox and live
+  behave differently and the difference is usually the finding
+- **What was observed** — raw enough that someone else could check it
+- **The assumption, and whether it survived** — including "still unknown," which is a real result
+- **What it changes** — the spec now writable, the ADR to revise, the risk newly visible
+
+If the design depends on no unverified assumption, say that explicitly and name who confirmed it.
+An empty file is not the same claim as "we checked, and there were none."
+
+> **HITL GATE:** Claude does not run spikes — they touch live systems with real credentials. Ask
+> the human which integrations and behaviours this design assumes, and refuse to advance until each
+> has a recorded finding or a named waiver.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
+### `nfr-proving-plan.md` (REQUIRED)
+
+For every quantified non-functional requirement: how its number will be proved, and the named place
+that number will be read from.
+
+A threshold with no proving plan is a wish with a decimal point. Phase 9 reads this file back when
+the system is live and the target is either met or it is not — if the method was never agreed, that
+conversation becomes an argument about what the number meant.
+
+Must contain, per NFR:
+- **The requirement id and its threshold**
+- **The verification method** — the load profile, the query, the test, the measurement window
+- **Where the number is read** — a named dashboard, log query, or report. Not "monitoring"
+- **Who reads it, and when** — the person and the phase
+- **What happens if it misses** — revise the target, change the design, or accept it with a name
+
+Aspirational thresholds are honest and belong here too; what is not acceptable is a number nobody
+has agreed how to check.
+
+> **HITL GATE:** The measurement method is an engineering commitment, not a documentation task.
+> Confirm each with the Quality Engineer before writing it down.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
+### `walking-skeleton-definition.md` (REQUIRED)
+
+The thin end-to-end slice Phase 3 must ship: named, bounded, and sufficient to exercise every ADR's
+chosen mechanism at least once.
+
+This is the *definition*, written in design. Phase 3 produces `walking-skeleton-spec.md`, the
+*evidence* that the thing was built and rode the full loop — and its checkpoint verifies the running
+software against this file. Without it, that comparison has nothing to compare against, and "the
+skeleton is done" becomes a matter of opinion.
+
+Must contain:
+- **The slice** — the one user-visible path it proves, end to end
+- **Every ADR it exercises** — with the mechanism each one chose. An ADR no slice touches is an
+  architectural decision nobody will test until it is expensive
+- **The boundaries** — what is deliberately stubbed, and what that defers
+- **Done means** — the observable condition that ends Phase 3, agreed now rather than argued later
+
+> **HITL GATE:** Present the proposed slice and its ADR coverage to the Setup Owner and Quality
+> Engineer. A skeleton that misses an ADR is the common failure and it is invisible until Phase 3
+> is over.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+### `consistency-check-record.md` (OPTIONAL)
+
+Requirements traced against the design in both directions, with every orphan resolved.
+
+Both directions is the point. Forward finds requirements the design forgot; backward finds design
+nobody asked for, which is the more expensive of the two and the one no checklist catches.
+
+Must contain: the two traces, every orphan found, and its resolution — designed, deferred with an
+owner, or removed.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
 ## Exit Criteria
 - [ ] `design-doc.md` covers all major components and cross-cutting concerns
 - [ ] At least one ADR exists for each significant technology/pattern decision

@@ -129,6 +129,64 @@ Must contain ALL of:
 - **Known issues in production** — anything to watch post-deployment
 - **Escalation contacts** — who to call if something goes wrong
 
+### `rollback-rehearsal.md` (REQUIRED)
+
+The timestamped record of a deploy, a rollback, and a redeploy, run by the client's operators in a
+real environment before production.
+
+The standard already says a rollback that has never run is a wish. This file is the wish becoming a
+fact, and it is the single most useful document in the repository at 3am.
+
+Must contain:
+- **The timeline** — deploy, the decision to roll back, rollback complete, redeploy, each stamped
+- **Time back to healthy** — the number the incident commander will want, measured not estimated
+- **Who ran it** — the client's operators, named
+- **What broke that was not expected** — the rehearsal's actual output. A rehearsal where nothing
+  surprised anyone was probably not run against anything real
+- **The trigger conditions** — written down in advance: what makes someone decide to roll back
+
+> **HITL GATE:** Do not accept a described rollback procedure in place of an executed one. Ask when
+> it was run, in which environment, and by whom.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
+### `secrets-rotation-record.md` (REQUIRED)
+
+Production credentials rotated to values the pod has never held, confirmed by the client's security
+function.
+
+This is the handoff made literal. Everything else at close is a document; this is the moment the
+client's system stops being reachable by us. It is also the single most audit-relevant fact of the
+whole engagement.
+
+Must contain:
+- **Every credential rotated** — what it was for, and where it now lives
+- **The rotation date**, per credential
+- **Confirmation by the client's security function** — a named person, not the pod
+- **Anything deliberately not rotated**, with the reason and who accepted the risk
+- **The audit-trail reference** — where this can be independently confirmed later
+
+> **HITL GATE:** The pod cannot sign this off. It is confirmed by the client's security function,
+> by name, or it is not confirmed.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+### `rollout-shape-decision.md` (OPTIONAL)
+
+Cutover, pilot or parallel-run — chosen by the client, in writing, before the go/no-go ceremony
+rather than during it.
+
+Must contain: the shape chosen and why, what happens to work already in flight, the fallback, and
+the conditions that would trigger it. Named owner, dated.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
 ## Exit Criteria
 - [ ] Staging deployment successful
 - [ ] All staging smoke tests passing

@@ -181,6 +181,30 @@ Must contain ALL of:
 - `walking-skeleton-spec.md` — the skeleton slices with per-slice loop evidence (spec, PR, grader verdict, Checker, deploy)
 - `phase3-report.html` — the generated phase report
 
+### `data-flow-brief.md` (REQUIRED)
+
+The one-page brief for the client's security team: what leaves the repo for the model API, what does
+not, where credentials live, and who can see usage.
+
+This is a contractual artifact as much as a technical one. The standard promises the client's
+security function a written answer to "what are you sending, and where does it go" before any agent
+runs against their code. A verbal answer in a meeting is not that.
+
+Must contain:
+- **What goes to the API** — code context from the repo, specs, diffs. Be specific
+- **What does not** — the material tagged out of agent context, and the mechanism that keeps it out
+- **Where keys live** — their vault, their tenant, their audit trail
+- **Who sees usage** — the account, the billing view, the log retention
+- **The training position** — the contractual terms covering whether their data trains a model
+- **Who signed it** — a named person in the client's security function, with a date
+
+> **HITL GATE:** This is reviewed and accepted by the client's security team, not by us. Do not mark
+> it complete on the strength of the pod's own reading.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
 ## Exit Criteria
 - [ ] `foundation-report.md`, `risk-tier-map.md`, `cadence-plan.md`, and `build-handoff.md` exist and are complete
 - [ ] The harness is installed, adapted to the client, committed, and reviewed by the Setup Owner's deputy (never sole-approved by its author)

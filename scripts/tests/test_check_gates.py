@@ -322,13 +322,22 @@ class TestFormatResults:
 
 # ── D-2: repo-root artifacts are the real files, not copies ───────────────────
 
-def _phase7_artifacts(sdlc_dir, repo_root, *, in_repo=(), in_phase=()):
-    """Lay down Phase 7's artifacts, choosing which live where."""
+def _phase7_artifacts(sdlc_dir, repo_root, *, in_repo=(), in_phase=(), receipts=True):
+    """Lay down Phase 7's artifacts, choosing which live where.
+
+    `receipts` writes the Fix 3 human receipts (the cold README verification and the RUNBOOK
+    walkthrough). They are required for a service, so tests about *other* Phase 7 behaviour need
+    them present or they fail for an unrelated reason.
+    """
     body = "# Doc\n\nReal content that a stranger could follow, with no placeholders.\n"
     for name in in_repo:
         (repo_root / name).write_text(body, encoding="utf-8")
+    phase_dir = sdlc_dir / "artifacts" / "07-documentation"
+    if receipts:
+        for name in ("readme-verification.md", "runbook-walkthrough.md"):
+            (phase_dir / name).write_text(body, encoding="utf-8")
     for name in in_phase:
-        (sdlc_dir / "artifacts" / "07-documentation" / name).write_text(body, encoding="utf-8")
+        (phase_dir / name).write_text(body, encoding="utf-8")
 
 
 def _failures(results, artifact):
@@ -352,7 +361,7 @@ class TestRepoRootArtifacts:
                           in_repo=["README.md", "RUNBOOK.md"],
                           in_phase=["api-docs.md", "phase8-handoff.md"])
         results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
-        assert not [r for r in results if r["passed"] is False], format_results(results)
+        assert not [r for r in results if r["passed"] is False], [r["message"] for r in results if r["passed"] is False]
 
     def test_a_copy_under_sdlc_does_not_satisfy_the_gate(self, sdlc_dir, valid_profile, state_yaml):
         """The copy is exactly what drifts — it must not count as the deliverable."""
@@ -396,7 +405,7 @@ class TestProjectTypeAwareness:
                           in_repo=["README.md"],
                           in_phase=["api-docs.md", "phase8-handoff.md"])
         results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
-        assert not [r for r in results if r["passed"] is False], format_results(results)
+        assert not [r for r in results if r["passed"] is False], [r["message"] for r in results if r["passed"] is False]
 
     def test_a_skill_needs_neither_runbook_nor_api_docs(self, sdlc_dir, valid_profile, state_yaml):
         repo_root = sdlc_dir.parent
@@ -404,7 +413,7 @@ class TestProjectTypeAwareness:
         state["project_type"] = "skill"
         _phase7_artifacts(sdlc_dir, repo_root, in_repo=["README.md"], in_phase=["phase8-handoff.md"])
         results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
-        assert not [r for r in results if r["passed"] is False], format_results(results)
+        assert not [r for r in results if r["passed"] is False], [r["message"] for r in results if r["passed"] is False]
 
     def test_a_service_still_needs_all_of_them(self, sdlc_dir, valid_profile, state_yaml):
         """Relaxing for other types must not relax the type the artifacts exist for."""
@@ -487,3 +496,86 @@ class TestDirectoryCompleteness:
         (adrs / "superseded" / "ADR-000.md").write_text("PLACEHOLDER")
         passed, _ = check_artifact_complete(tmp_path, "adrs")
         assert passed is False, "a placeholder in a subdirectory still means the record is unfinished"
+
+
+# ── the waiver mechanism (Fix 3) ──────────────────────────────────────────────
+
+from check_gates import waiver_in  # noqa: E402
+
+
+class TestWaiver:
+    """A required receipt may be waived IN the artifact — but never silently.
+
+    Some human work genuinely will not happen: no live carrier API to spike against, no client
+    ops engineer to walk the RUNBOOK. A gate with no escape gets worked around, and the
+    workaround leaves no trace. So the escape is built in and made loud: the file exists, names
+    who waived it and why, and the gate reports it at INFO in the report the approver signs
+    against.
+    """
+
+    def test_a_waiver_needs_both_a_name_and_a_reason(self, tmp_path):
+        (tmp_path / "a.md").write_text("WAIVED: Wes Carter — no live carrier sandbox exists yet",
+                                       encoding="utf-8")
+        assert waiver_in(tmp_path / "a.md") == ("Wes Carter", "no live carrier sandbox exists yet")
+
+    def test_an_unattributed_waiver_is_not_a_waiver(self, tmp_path):
+        """`WAIVED: because we ran out of time` names nobody — that is the thing being prevented."""
+        (tmp_path / "a.md").write_text("WAIVED: — ran out of time")
+        assert waiver_in(tmp_path / "a.md") is None
+
+    def test_a_reasonless_waiver_is_not_a_waiver(self, tmp_path):
+        (tmp_path / "a.md").write_text("WAIVED: Wes Carter")
+        assert waiver_in(tmp_path / "a.md") is None
+
+    def test_it_reads_the_bulleted_and_bold_forms(self, tmp_path):
+        (tmp_path / "a.md").write_text(
+            "- **WAIVED:** Dan Ruiz — client security signed the brief instead\n", encoding="utf-8")
+        who, why = waiver_in(tmp_path / "a.md")
+        assert who == "Dan Ruiz" and "client security" in why
+
+    def test_an_ordinary_artifact_is_not_a_waiver(self, tmp_path):
+        (tmp_path / "a.md").write_text("# Threat model\n\nBoundary 1: the carrier API.\n")
+        assert waiver_in(tmp_path / "a.md") is None
+
+    def test_a_waived_artifact_does_not_block_the_gate(self, sdlc_dir, valid_profile, state_yaml):
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        body = "# Doc\n\nReal content with no placeholders.\n"
+        for name in ("README.md", "RUNBOOK.md"):
+            (repo_root / name).write_text(body, encoding="utf-8")
+        d = sdlc_dir / "artifacts" / "07-documentation"
+        for name in ("api-docs.md", "readme-verification.md", "runbook-walkthrough.md"):
+            (d / name).write_text(body, encoding="utf-8")
+        (d / "phase8-handoff.md").write_text(
+            "# Handoff\n\nWAIVED: Dan Ruiz — deployment deferred to the next engagement\n",
+            encoding="utf-8")
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert not [r for r in results if r["passed"] is False], [r["message"] for r in results if r["passed"] is False]
+
+    def test_a_waived_artifact_is_reported_with_the_name(self, sdlc_dir, valid_profile, state_yaml):
+        """Silent is the failure mode. The approver must see WHO waived it and why."""
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        body = "# Doc\n\nReal content.\n"
+        for name in ("README.md", "RUNBOOK.md"):
+            (repo_root / name).write_text(body, encoding="utf-8")
+        d = sdlc_dir / "artifacts" / "07-documentation"
+        for name in ("api-docs.md", "readme-verification.md", "runbook-walkthrough.md"):
+            (d / name).write_text(body, encoding="utf-8")
+        (d / "phase8-handoff.md").write_text(
+            "WAIVED: Dan Ruiz — deployment deferred\n", encoding="utf-8")
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        waived = [r for r in results if r.get("artifact") == "phase8-handoff.md"
+                  and "WAIVED" in r["message"]]
+        assert waived, "a waived artifact must appear in the report"
+        assert "Dan Ruiz" in waived[0]["message"]
+        assert waived[0]["severity"] == "INFO", "a waiver is information, not a silent MUST pass"
+
+    def test_a_missing_artifact_is_still_a_failure(self, sdlc_dir, valid_profile, state_yaml):
+        """The waiver is an escape from the WORK, not from the record. No file, no pass."""
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert [r for r in results if r["passed"] is False]

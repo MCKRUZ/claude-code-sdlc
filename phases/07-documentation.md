@@ -135,6 +135,68 @@ Must contain ALL of:
 - **Operations readiness** — is the runbook sufficient for an on-call engineer?
 - **ADR status** — all ADRs finalized, or list of any remaining open decisions
 
+### `readme-verification.md` (REQUIRED)
+
+The defect log from someone who did not write the README following it cold, on a clean machine.
+
+Phase 7's entire purpose is to prove a stranger can run the system. The proof is not that the README
+exists or reads well — it is that a specific person, with no context, got to a working system by
+following it, and here is every place they stalled.
+
+Must contain:
+- **Who verified it, and when** — a named person who did not write the documentation
+- **From what starting point** — clean clone, which OS, which toolchain versions
+- **Every stall, as it happened** — the step, what was missing or wrong, what they did instead
+- **What was fixed** — the README change each stall produced
+- **The re-run** — did a second cold pass get through without help
+
+"A little help from the author" is a **failed** verification, not a passed one with an asterisk. Log
+it as a stall.
+
+> **HITL GATE:** Claude cannot perform this — the whole value is a human without context. Ask who
+> did it and when; refuse to accept the pod's own author as the verifier.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
+### `runbook-walkthrough.md` (REQUIRED)
+
+The client's own operations engineer executing a deploy, a rollback, and one failure scenario from
+the RUNBOOK, cold, using their own permissions.
+
+Their own permissions is the load-bearing part. A walkthrough performed with the pod's access proves
+the RUNBOOK works for people who will not be here next month.
+
+Must contain:
+- **Who walked it** — the client's operator, named, and the date
+- **The three exercises** — deploy, rollback, and one failure scenario, each with what happened
+- **Permission gaps found** — every place they lacked access the RUNBOOK assumed
+- **Timings** — how long the rollback actually took, which is the number an incident cares about
+- **What was rewritten** — the RUNBOOK changes each gap produced
+
+> **HITL GATE:** This requires a real person from the client's operations function and a real
+> environment. Ask who it will be and when it is scheduled; do not accept a pod member standing in.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+### `spec-audit-record.md` (OPTIONAL)
+
+Five to ten specs, weighted to HIGH-risk and recently-changed, with their acceptance checks executed
+by hand against the running system.
+
+The grader checked these once, at merge, against the diff. This is the trust-but-verify pass that
+asks whether the spec library still describes the system that actually exists.
+
+Must contain: which specs were sampled and why those, each check re-executed with its result, and
+every divergence found between the spec and reality.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
 ## Exit Criteria
 - [ ] README allows a new developer to set up and run the project from scratch
 - [ ] API docs are current with the implementation (not the plan)

@@ -126,6 +126,58 @@ architectural questions. The ADRs then trace back to identifiers no one ever ass
 Format — one line per question, numbered sequentially from `AQ-01`:
 
 ```markdown
+### `decision-list.md` (REQUIRED)
+
+Every unmade product decision this phase surfaced and could not answer: numbered, owned by a named
+person, and aged on the agreed clock (two business days by default).
+
+The Definition of Ready depends on this file. A spec cannot enter the Build loop with an open
+decision belonging to its story, because the agent will otherwise pick one — silently, and
+plausibly. "Fail open or fail closed?" is not a detail an agent should decide on a Tuesday.
+
+Must contain, per entry:
+- **`D-NN`** — a stable id, referenced by the specs that are blocked on it
+- **The decision** — stated as a question with the options, not as a topic
+- **Owner** — a named human who can actually answer it, not a role
+- **Raised** and **due** — the clock, so an unanswered decision becomes visible rather than old
+- **The answer, when it comes**, with who gave it and when
+
+At the gate the list is either empty or fully owned. An entry with no owner is the failure mode
+this file exists to prevent.
+
+> **HITL GATE:** Claude drafts the questions and never the answers. Put each open decision to the
+> named owner using `AskUserQuestion`, and record what they say. Do not infer an answer from the
+> requirements, and do not let an entry stand with an unnamed owner.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+### `scope-out-record.md` (OPTIONAL)
+
+The explicit not-in-v1 list, and the confirmation that the sponsor has seen it.
+
+Everything cut is remembered by somebody as merely deferred. This is the record that the cut was
+visible at the time — the difference between a scope decision and a later surprise.
+
+Must contain: each excluded item, why, whether it is deferred or dropped, and the date the sponsor
+saw the list.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
+
+### `adversarial-review-record.md` (OPTIONAL)
+
+What fresh reviewers found when they attacked the requirements from the product, quality and
+security angles — reviewers who did not write the draft.
+
+Must contain: who reviewed, from which angle, and every catch with what changed as a result. A
+review that found nothing is a finding too, and worth recording as one.
+
+> **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
+> does not block on it — but the approver is asked about it at sign-off. Write it when the work
+> happens; a receipt written later from memory is worth less than no receipt at all.
 ## What Design Must Address
 
 - **AQ-01:** Does the claims intake API need idempotency, or can duplicates be reconciled
