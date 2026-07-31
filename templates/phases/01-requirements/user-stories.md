@@ -3,7 +3,7 @@
 
 ## Overview
 
-User stories capture what users want to accomplish. Each story is independent, negotiable, valuable, estimable, small, and testable (INVEST). P0 stories must each have an E2E test by Phase 6.
+User stories capture what users want to accomplish. Each story is independent, negotiable, valuable, estimable, small, and testable (INVEST). P0 stories must each have an E2E test before the Build loop is declared feature-complete.
 
 ---
 

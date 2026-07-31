@@ -9,7 +9,7 @@ Non-functional requirements define *how* the system must behave, not what it doe
 
 ## Performance
 <!-- REQUIRED: At least NFR-P01 and NFR-P02 filled in with specific numeric thresholds and a measurement method — "TBD" is not acceptable -->
-<!-- REQUIRED: Measurement Basis column must be one of: "Measured: [source]" | "Industry standard: [ref]" | "Contractual: [doc]" | "[aspirational — validate Phase 6]" -->
+<!-- REQUIRED: Measurement Basis column must be one of: "Measured: [source]" | "Industry standard: [ref]" | "Contractual: [doc]" | "[aspirational — validate in the Build loop]" -->
 
 | NFR ID | Requirement | Threshold | Measurement Method | Priority | Measurement Basis |
 |--------|-------------|-----------|-------------------|---------|------------------|

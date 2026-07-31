@@ -3,7 +3,7 @@
 
 ## Overview
 
-Epics are large user-facing capabilities. Each epic will be decomposed into Stories during Phase 3 Planning. P0 epics must each have at least one E2E test by Phase 6.
+Epics are large user-facing capabilities. Each epic will be decomposed into Stories during Phase 2 Design. P0 epics must each have at least one E2E test before the Build loop is declared feature-complete.
 
 ---
 

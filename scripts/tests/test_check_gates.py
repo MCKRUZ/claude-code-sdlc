@@ -5,10 +5,12 @@ from pathlib import Path
 import pytest
 import yaml
 
+import phase_model as pm
 from check_gates import (
     check_artifact_complete,
     check_artifact_exists,
     check_artifact_not_empty,
+    check_exit_criteria,
     check_phase_gates,
     format_results,
 )
@@ -100,7 +102,11 @@ class TestCheckArtifactComplete:
         passed, msg = check_artifact_complete(tmp_path, "doc.md")
         assert passed is False
 
-    def test_directory_always_complete(self, tmp_path):
+    def test_directory_of_real_files_is_complete(self, tmp_path):
+        """Named for what it checks: directories are no longer complete unconditionally.
+
+        See TestDirectoryCompleteness — the contents are now checked too.
+        """
         d = tmp_path / "reports"
         d.mkdir()
         (d / "file.md").write_text("content")
@@ -210,11 +216,31 @@ class TestExitCriteriaGate:
         for r in self._exit_criteria(results):
             assert "artifact" not in r, f"artifact condition re-emitted by G7: {r}"
 
-    def test_phase_with_no_prose_conditions_emits_none(self, sdlc_dir, valid_profile, state_yaml):
-        """Phase 0's exit conditions are all artifact entries — G7 must stay silent."""
-        state = yaml.safe_load(state_yaml.read_text())
-        results = check_phase_gates(0, state, valid_profile, sdlc_dir / "artifacts")
-        assert self._exit_criteria(results) == []
+    def test_phase_with_no_prose_conditions_emits_none(self):
+        """A phase whose conditions are ALL artifact entries must produce no G7 items.
+
+        This used to point at Phase 0 as its example. Phase 0 now declares real prose
+        conditions — the opening phases had only file-existence checks, so the approver was
+        never shown a judgement call — so the example moved into the test. Asserting a property
+        of the code beats asserting a property of today's registry data.
+        """
+        phase_def = {
+            "exit_gate": {"conditions": [
+                {"artifact": "design-doc.md", "check": "exists_and_complete"},
+                {"artifact": "adrs/", "check": "exists_and_complete"},
+            ]}
+        }
+        assert check_exit_criteria(phase_def) == []
+
+    def test_the_opening_phases_declare_judgement_calls(self):
+        """Phases 0-2 must each put something a human actually has to decide at the gate.
+
+        A phase whose entire exit gate is "these files exist and contain no TODO" asks the
+        approver to sign for work nobody assessed. That is the shape of a rubber stamp.
+        """
+        for phase_id in ("0", "1", "2"):
+            surfaced = check_exit_criteria(pm.get_phase(phase_id))
+            assert surfaced, f"phase {phase_id} surfaces no human-verified exit condition"
 
     def test_exit_criteria_never_block(self, sdlc_dir, valid_profile, state_yaml):
         """A human decides these. They must never turn into a MUST failure."""
@@ -292,3 +318,172 @@ class TestFormatResults:
         assert "1 non-compliant" in output
         assert "1 review" in output
         assert "3 total" in output
+
+
+# ── D-2: repo-root artifacts are the real files, not copies ───────────────────
+
+def _phase7_artifacts(sdlc_dir, repo_root, *, in_repo=(), in_phase=()):
+    """Lay down Phase 7's artifacts, choosing which live where."""
+    body = "# Doc\n\nReal content that a stranger could follow, with no placeholders.\n"
+    for name in in_repo:
+        (repo_root / name).write_text(body, encoding="utf-8")
+    for name in in_phase:
+        (sdlc_dir / "artifacts" / "07-documentation" / name).write_text(body, encoding="utf-8")
+
+
+def _failures(results, artifact):
+    return [r for r in results if r.get("artifact") == artifact and r["passed"] is False]
+
+
+class TestRepoRootArtifacts:
+    """Phase 7 proves a stranger can run the project — so it must check the file they'd read.
+
+    The gate used to resolve every artifact under .sdlc/artifacts/07-documentation/. A team
+    either duplicated README.md there, where it drifted from the real one by the next commit,
+    or the phase never closed. The phase whose whole purpose is 'prove this works cold'
+    validated a file no stranger would ever open.
+    """
+
+    def test_readme_at_the_repo_root_satisfies_the_gate(self, sdlc_dir, valid_profile, state_yaml):
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        _phase7_artifacts(sdlc_dir, repo_root,
+                          in_repo=["README.md", "RUNBOOK.md"],
+                          in_phase=["api-docs.md", "phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert not [r for r in results if r["passed"] is False], format_results(results)
+
+    def test_a_copy_under_sdlc_does_not_satisfy_the_gate(self, sdlc_dir, valid_profile, state_yaml):
+        """The copy is exactly what drifts — it must not count as the deliverable."""
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        _phase7_artifacts(sdlc_dir, repo_root,
+                          in_phase=["README.md", "RUNBOOK.md", "api-docs.md", "phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert _failures(results, "README.md"), "a copy under .sdlc/ must not satisfy README.md"
+        assert _failures(results, "RUNBOOK.md")
+
+    def test_phase_local_artifacts_still_resolve_under_the_phase_dir(self, sdlc_dir, valid_profile, state_yaml):
+        """The default is unchanged — only entries that say `root: repo` move."""
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        _phase7_artifacts(sdlc_dir, repo_root,
+                          in_repo=["README.md", "RUNBOOK.md", "phase8-handoff.md"],
+                          in_phase=["api-docs.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert _failures(results, "phase8-handoff.md"), "a handoff at the repo root is in the wrong place"
+
+
+# ── D-3: the gate honours project_type, like the phase bodies do ──────────────
+
+class TestProjectTypeAwareness:
+    """Five phase bodies adapt required artifacts by project_type; the gate must agree.
+
+    Phase 7 tells a library or CLI to 'Skip RUNBOOK — there is no server to operate', then the
+    gate blocked on RUNBOOK.md anyway. No non-service project could close Phase 7 — including
+    this plugin, which is a `skill`.
+    """
+
+    @pytest.mark.parametrize("project_type", ["library", "cli"])
+    def test_runbook_is_not_required_without_a_server(self, sdlc_dir, valid_profile, state_yaml, project_type):
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = project_type
+        _phase7_artifacts(sdlc_dir, repo_root,
+                          in_repo=["README.md"],
+                          in_phase=["api-docs.md", "phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert not [r for r in results if r["passed"] is False], format_results(results)
+
+    def test_a_skill_needs_neither_runbook_nor_api_docs(self, sdlc_dir, valid_profile, state_yaml):
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "skill"
+        _phase7_artifacts(sdlc_dir, repo_root, in_repo=["README.md"], in_phase=["phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert not [r for r in results if r["passed"] is False], format_results(results)
+
+    def test_a_service_still_needs_all_of_them(self, sdlc_dir, valid_profile, state_yaml):
+        """Relaxing for other types must not relax the type the artifacts exist for."""
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "service"
+        _phase7_artifacts(sdlc_dir, repo_root, in_repo=["README.md"], in_phase=["phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert _failures(results, "RUNBOOK.md")
+        assert _failures(results, "api-docs.md")
+
+    def test_an_unset_project_type_requires_everything(self, sdlc_dir, valid_profile, state_yaml):
+        """Phase 0 hasn't recorded a type yet — fail closed rather than guess and drop a gate."""
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state.pop("project_type", None)
+        _phase7_artifacts(sdlc_dir, repo_root, in_repo=["README.md"], in_phase=["phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        assert _failures(results, "RUNBOOK.md")
+
+    def test_skipped_artifacts_are_reported_not_silently_dropped(self, sdlc_dir, valid_profile, state_yaml):
+        """The approver must see WHY a gate shrank, or the gate quietly got weaker."""
+        repo_root = sdlc_dir.parent
+        state = yaml.safe_load(state_yaml.read_text())
+        state["project_type"] = "skill"
+        _phase7_artifacts(sdlc_dir, repo_root, in_repo=["README.md"], in_phase=["phase8-handoff.md"])
+        results = check_phase_gates(7, state, valid_profile, sdlc_dir / "artifacts")
+        notes = [r for r in results if r.get("artifact") == "RUNBOOK.md" and r["severity"] == "INFO"]
+        assert notes and "N/A — skill" in notes[0]["message"]
+
+
+# ── X-7: a directory artifact is checked through to its files ─────────────────
+
+class TestDirectoryCompleteness:
+    """`adrs/` used to pass on being non-empty.
+
+    That let Phase 2 close on a folder holding one ADR that was headings and TODOs — the phase
+    whose output is the signed record of WHY the system is shaped this way, satisfied by a
+    directory with no decisions in it. If a file containing a TODO fails, a directory of them
+    cannot pass.
+    """
+
+    def test_a_directory_of_real_documents_passes(self, tmp_path):
+        adrs = tmp_path / "adrs"
+        adrs.mkdir()
+        (adrs / "ADR-001.md").write_text("# ADR-001\n\nWe chose Postgres because of the join load.")
+        passed, msg = check_artifact_complete(tmp_path, "adrs")
+        assert passed is True
+        assert "1 file" in msg
+
+    def test_a_placeholder_inside_a_directory_blocks(self, tmp_path):
+        adrs = tmp_path / "adrs"
+        adrs.mkdir()
+        (adrs / "ADR-001.md").write_text("# ADR-001\n\nTODO: decide the datastore")
+        passed, msg = check_artifact_complete(tmp_path, "adrs")
+        assert passed is False
+        assert "ADR-001.md" in msg, "the message must name the offending file"
+
+    def test_one_good_document_does_not_excuse_a_bad_one(self, tmp_path):
+        adrs = tmp_path / "adrs"
+        adrs.mkdir()
+        (adrs / "ADR-001.md").write_text("# ADR-001\n\nWe chose Postgres because of the join load.")
+        (adrs / "ADR-002.md").write_text("# ADR-002\n\nTBD")
+        passed, msg = check_artifact_complete(tmp_path, "adrs")
+        assert passed is False
+        assert "ADR-002.md" in msg
+
+    def test_an_empty_file_inside_a_directory_blocks(self, tmp_path):
+        adrs = tmp_path / "adrs"
+        adrs.mkdir()
+        (adrs / "ADR-001.md").write_text("   \n")
+        passed, msg = check_artifact_complete(tmp_path, "adrs")
+        assert passed is False
+        assert "empty" in msg
+
+    def test_nested_documents_are_checked_too(self, tmp_path):
+        adrs = tmp_path / "adrs"
+        (adrs / "superseded").mkdir(parents=True)
+        (adrs / "ADR-001.md").write_text("# ADR-001\n\nReal decision, real rationale.")
+        (adrs / "superseded" / "ADR-000.md").write_text("PLACEHOLDER")
+        passed, _ = check_artifact_complete(tmp_path, "adrs")
+        assert passed is False, "a placeholder in a subdirectory still means the record is unfinished"

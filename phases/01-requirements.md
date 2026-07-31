@@ -42,9 +42,9 @@ Define measurable quality attributes — quantify every single one:
 - **Measured** — derived from profiling, benchmarks, or monitoring data. Cite the source.
 - **Industry standard** — a widely-accepted norm for this type of system. Cite the reference.
 - **Contractual** — required by a SLA, regulation, or stakeholder agreement. Cite the document.
-- **Aspirational** — a best-guess target with no data. Tag it `[aspirational — validate in Phase 6]`.
+- **Aspirational** — a best-guess target with no data. Tag it `[aspirational — validate in the Build loop]`.
 
-A threshold tagged `[aspirational]` is not a failure — it is honest. What is not acceptable: a numeric threshold with no stated basis that gets treated as a validated requirement. Aspirational thresholds must be measured in Phase 6 and revised if the measurement shows they are unachievable.
+A threshold tagged `[aspirational]` is not a failure — it is honest. What is not acceptable: a numeric threshold with no stated basis that gets treated as a validated requirement. Aspirational thresholds must be measured during the Build loop and revised if the measurement shows they are unachievable.
 
 ### Step 3: Epics
 For each P0 and P1 requirement:
@@ -57,7 +57,7 @@ Walk through with stakeholder before advancing:
 - Verify P0 completeness — nothing missing that blocks core value
 - Confirm P3 items are genuinely deferred
 - Resolve contradictions explicitly
-- **NFR threshold validation:** For each numeric NFR, confirm the measurement basis is recorded. For any threshold tagged `[aspirational]`, agree on the Phase 6 measurement method *now* — who will measure it, how, and what happens if the measured value exceeds the target. Do not leave this for Phase 6 to figure out.
+- **NFR threshold validation:** For each numeric NFR, confirm the measurement basis is recorded. For any threshold tagged `[aspirational]`, agree on the Build-loop measurement method *now* — who will measure it, how, and what happens if the measured value exceeds the target. Do not leave this for the Build loop to figure out.
 
 ### Step 5: Phase Handoff
 Document the architectural implications of NFRs — these drive Phase 2 design decisions.
@@ -93,7 +93,7 @@ Must contain ALL of:
 - Performance, security, scalability, reliability, maintainability sections
 - Each NFR as a table row: ID | Requirement | Metric | Test Method | Priority | Measurement Basis
 - No vague NFRs — every metric must be measurable and testable
-- **Measurement Basis column is mandatory for every numeric threshold.** Valid values: `Measured: [source]`, `Industry standard: [reference]`, `Contractual: [document]`, `[aspirational — validate Phase 6]`
+- **Measurement Basis column is mandatory for every numeric threshold.** Valid values: `Measured: [source]`, `Industry standard: [reference]`, `Contractual: [document]`, `[aspirational — validate in the Build loop]`
 
 ### `epics.md` (REQUIRED)
 Must contain ALL of:
@@ -107,19 +107,55 @@ Must contain ALL of:
 - Requirements summary (counts by priority, key themes)
 - Architectural implications from NFRs (what design options this opens/closes)
 - Key decisions made and rationale
-- Open questions Phase 2 must resolve
+- **What Design Must Address** — the `AQ-NN` list (see below). This is not optional prose: it is
+  the input Phase 2's Step 0 gate reads.
+- Open questions Phase 2 must resolve (product/scope questions that are NOT architectural — an
+  architectural one belongs above, with an `AQ-NN`)
 - Risks and ambiguities to watch
 - Recommended design starting point
+
+#### The `What Design Must Address` section
+
+Phase 2 opens with a blocking human gate that extracts every **AQ-NN** (Architectural Question)
+from this section and puts 2–3 concrete options to the human for each. The answers become the
+ADRs — the signed, this-is-why records the rest of the engagement rests on.
+
+If this section is missing or thin, that gate has no defined input and Claude improvises the
+architectural questions. The ADRs then trace back to identifiers no one ever assigned. Write it.
+
+Format — one line per question, numbered sequentially from `AQ-01`:
+
+```markdown
+## What Design Must Address
+
+- **AQ-01:** Does the claims intake API need idempotency, or can duplicates be reconciled
+  downstream? *(Driven by: REQ-014, NFR-003)*
+- **AQ-02:** Is the policyholder record the system of record, or a cache of the carrier's?
+  *(Driven by: REQ-021)*
+```
+
+Rules:
+- **One architectural question per `AQ-NN`.** If answering it needs two decisions, it is two.
+- **It is architectural if the answer changes the shape of the system** — a component boundary, a
+  data flow, a technology choice, a consistency or failure model. If it only changes what a screen
+  says, it is a product question and belongs under "Open questions" instead.
+- **Cite what drove it.** Every AQ names the REQ/NFR ids that raised it, so Phase 2 can weigh the
+  options against real constraints rather than taste.
+- **Do not answer them here.** Phase 1 states the question; Phase 2's human gate decides it. An
+  AQ that arrives pre-answered has skipped the gate that exists to get a human's name on it.
 
 ## Exit Criteria
 - [ ] All P0 requirements documented with source traceability
 - [ ] Every NFR quantified with a measurable metric
 - [ ] Every numeric NFR threshold has a Measurement Basis entry (measured / industry standard / contractual / aspirational)
-- [ ] Every `[aspirational]` NFR has an agreed Phase 6 measurement method documented
+- [ ] Every `[aspirational]` NFR has an agreed Build-loop measurement method documented
 - [ ] Epics exist for all P0 and P1 requirements
 - [ ] Each epic has happy path AND at least one error scenario
 - [ ] Stakeholder reviewed and approved (manual gate)
 - [ ] No unresolved P0 conflicts or ambiguities
+- [ ] `phase2-handoff.md` has a **What Design Must Address** section, and every architectural
+      implication recorded above appears there as a numbered `AQ-NN` — Phase 2's opening gate
+      reads this list and has no other input
 - [ ] If document intake was performed: every P0 requirement sourced from an external document has a DOC-NNN reference in the Source Document(s) column
 
 ## HTML Report

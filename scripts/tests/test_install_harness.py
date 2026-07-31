@@ -1,6 +1,7 @@
 """Tests for install_harness.py — core-only copy and profile-aware pack composition."""
 
 import hashlib
+import os
 import json
 import shutil
 from pathlib import Path
@@ -1130,3 +1131,49 @@ class TestResolvePacks:
         payload = make_payload(tmp_path, cicd_present=False)  # github mapped but absent from payload
         with pytest.raises(InstallError, match="not found"):
             _resolve_packs(valid_profile, payload)
+
+
+# ── executable bits on installed scripts (issue #18) ──────────────────────────
+
+class TestExecutableBits:
+    """The rails and hooks are shell scripts the gates SHELL OUT TO.
+
+    Installed without the executable bit they fail with 'Permission denied', and because the
+    gates are fail-closed that reads as a blocked merge with a confusing reason — or worse, a
+    checking ladder that is quietly not running. The bit is not cosmetic; it is the difference
+    between the harness working and appearing to work.
+
+    Skipped on Windows, where the POSIX mode bits are not meaningful.
+    """
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not meaningful on Windows")
+    def test_installed_hooks_are_executable(self, payload, target):
+        install(payload, target, force=False)
+        hook = target / ".claude" / "hooks" / "stop-gate.sh"
+        assert hook.exists()
+        assert os.access(hook, os.X_OK), "stop-gate.sh installed without +x — the Stop hook cannot run"
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not meaningful on Windows")
+    def test_installed_rails_scripts_are_executable(self, payload, target):
+        install(payload, target, force=False)
+        rail = target / "scripts" / "rails" / "diff-anchors.sh"
+        assert rail.exists()
+        assert os.access(rail, os.X_OK), "rails script installed without +x — the gate cannot invoke it"
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not meaningful on Windows")
+    def test_a_non_executable_source_is_still_installed_executable(self, payload, target):
+        """The payload's own mode must not decide this.
+
+        Every .sh in both repos is committed 0644 (git on Windows does not track the bit), so
+        relying on copy2 to carry a bit that was never set is exactly how this shipped broken.
+        """
+        src = payload / "hooks" / "stop-gate.sh"
+        src.chmod(0o644)
+        install(payload, target, force=False)
+        assert os.access(target / ".claude" / "hooks" / "stop-gate.sh", os.X_OK)
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permission bits are not meaningful on Windows")
+    def test_non_scripts_are_not_made_executable(self, payload, target):
+        """Only scripts. Marking docs and config +x is noise that hides the real signal."""
+        install(payload, target, force=False)
+        assert not os.access(target / "CLAUDE.md", os.X_OK)
