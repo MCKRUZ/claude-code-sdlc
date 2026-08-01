@@ -293,9 +293,14 @@ Scans artifact content for placeholder patterns that indicate incomplete work.
 - `${...}` -- Unresolved template variables
 - `PLACEHOLDER` -- Explicit placeholder text
 - `[INSERT` -- Template insertion points (e.g., `[INSERT DESCRIPTION HERE]`)
-- `<!-- REQUIRED:` -- HTML comment markers for required sections
+- `<!-- REQUIRED:` -- marks a section that must be written; **delete the comment once you have written it**, or the artifact never passes
 
 For each artifact, the script reads the file content and checks against these patterns. If any match is found, the artifact fails the completeness gate.
+
+Ordinary bracket prose (`[Describe the situation]`) is deliberately **not** in the list: templates
+use `- [ ]` checkboxes and `[text](links)`, so a general bracket rule would fail nearly every
+artifact. The consequence is that a carelessly half-filled artifact can pass — the check is a
+tripwire for an untouched template, not a proofreader.
 
 **Build loop:** the gate prints a spec-backlog summary via `track_specs.py` instead of a section consistency check. It scans `<repo>/specs/*.md`, reads each spec's frontmatter `status` (`draft`/`ready`/`in-flight`/`merged`) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports as `INFO`:
 - Total specs

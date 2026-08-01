@@ -171,7 +171,11 @@ def check_artifact_complete(artifacts_dir: Path, artifact: str) -> tuple[bool, s
 | `${...}` | Unresolved variable | Template interpolation |
 | `PLACEHOLDER` | Filler content | Template boilerplate |
 | `[INSERT` | Content insertion point | Template instructions (e.g., `[INSERT diagram here]`) |
-| `<!-- REQUIRED:` | HTML comment marking a required section | Template enforcement markers |
+| `<!-- REQUIRED:` | Marks a section that must be written — **delete the comment once it is**, or the artifact never passes | Template enforcement markers |
+
+Note what is absent: ordinary bracket prose (`[Describe the situation]`) is **not** a marker.
+Templates legitimately use `- [ ]` checkboxes and `[text](links)`, so a general bracket rule would
+fail nearly every artifact. Gate 2 catches an untouched template, not a carelessly filled one.
 
 **Build Loop spec-backlog summary:**
 
