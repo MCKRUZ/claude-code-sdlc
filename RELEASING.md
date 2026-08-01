@@ -19,6 +19,13 @@ checks listed here, so a red anywhere means stop.
 3. **Bump the version** in `.claude-plugin/plugin.json` AND `.claude-plugin/marketplace.json`
    (they must match). Semver: new capability = minor, fixes only = patch.
 4. **Write the CHANGELOG entry** — `CHANGELOG.md`, newest first, factual and short.
+
+   > Steps 3 and 4 are enforced by `scripts/tests/test_release_manifest_agreement.py`: the two
+   > manifests must agree on version and name, the version must be semver, and it must be the
+   > newest release heading in the CHANGELOG. This exists because 1.1.0 bumped `plugin.json`
+   > alone — git then *auto-merged* `marketplace.json` to the previous version with no conflict
+   > and no failing test, which would have published a release the marketplace never offered.
+
 5. **Commit** (`feat:`/`fix:`/`chore:` as appropriate), **push**, and wait for CI green.
 6. **Tag and push the tag**:
    ```bash
