@@ -1,5 +1,56 @@
 # Changelog
 
+## Unreleased
+
+### The 1.0.0 receipt migration is now actually wired (#31, #33, #34, #35)
+
+1.0.0 added twelve required receipts to `phases/phase-registry.yaml` and updated almost none of the
+prose around them. `check_gates.py` blocks on `artifacts.required` and nothing else, so the registry
+was the only thing telling the truth — and it was telling it to nobody. Four separately-reported
+issues turned out to be one unfinished migration.
+
+**Two receipts were required by the gate and described nowhere.** A team hit them as a blocked phase
+with no instruction anywhere for what the file should contain:
+
+- `drill-record.md` — Phase 9 now has a **Step 4: Alert Drill** (the playbook is written first, so
+  the drill tests `incident-response.md` as much as it tests the alert), an artifact spec, and a
+  template. Steps 4–6 renumbered to 5–7.
+- `go-no-go-record.md` — the Step 0 ceremony already existed and is the most consequential HITL
+  gate in the lifecycle; only its receipt was missing. Added a spec, a template, and a line in
+  Step 0 to record the decision *as it happens*. Silence is not agreement: a role that was not
+  polled is recorded as not polled.
+
+**`docs/phase-lifecycle.md` was missing eleven of the twelve** from its Required Artifacts tables,
+and listed `go-no-go-record.md` and `drill-record.md` as *optional* — the direct contradiction that
+makes a team skip an artifact and then fail the gate on it. All corrected.
+
+**`threat-model.md` was documented `RECOMMENDED — required for any system handling auth, payments
+or PII`** while the registry blocked on it unconditionally. The registry is right and the promotion
+was deliberate: the phase body's own note asked for it to be promoted "on a major version with a
+migration note", which is exactly what 1.0.0 was. The prose now says REQUIRED, with the `WAIVED:`
+escape spelled out. Every system has guarded paths — deploy credentials and CI secrets at minimum —
+and Phase 3 has nothing to wire its security gates from without the map.
+
+**`decision-list.md` is gone; the work it named was already done by two shipped mechanisms.** The
+phase-spanning `.sdlc/decision-log.md` (`DL-NN`, read by `track_decisions.py`, surfaced by
+`/sdlc-status`) and a spec's own `## Decision List` section (enforced per-spec by `check_spec.py` at
+Definition of Ready) already cover it, and three places in the repo warn against confusing the two.
+A third file would have been the confusion. Dropped from `artifacts.required`; the Phase 1 spec now
+points at the decision log; and because that log lives outside the phase's artifact directory where
+the gate cannot see it, the exit gate gains a prose check so the approver is still asked — the same
+pattern the `close` phase already uses for its off-gate receipts.
+
+**A runaway code fence in `phases/01-requirements.md`** swallowed 59 lines, turning three artifact
+specifications and a section heading into sample code. This was the migration's insertion landing
+inside an existing fence. The fence now wraps only the `AQ-NN` example it was meant to.
+
+### The rail that catches the next one
+
+`scripts/tests/test_registry_docs_consistency.py` asserts that every registry-required artifact has
+a `### <name>` spec in its phase definition, appears in `docs/phase-lifecycle.md`'s Required
+Artifacts table, and is not simultaneously listed as optional. Verified by reintroducing each
+original defect and confirming the matching check fails.
+
 ## 1.0.0 — 2026-07-31
 
 **Breaking. Gates that previously passed will now block.** Read the migration note before upgrading

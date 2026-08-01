@@ -126,33 +126,58 @@ architectural questions. The ADRs then trace back to identifiers no one ever ass
 Format — one line per question, numbered sequentially from `AQ-01`:
 
 ```markdown
-### `decision-list.md` (REQUIRED)
+## What Design Must Address
+
+- **AQ-01:** Does the claims intake API need idempotency, or can duplicates be reconciled
+  downstream? *(Driven by: REQ-014, NFR-003)*
+- **AQ-02:** Is the policyholder record the system of record, or a cache of the carrier's?
+  *(Driven by: REQ-021)*
+```
+
+Rules:
+- **One architectural question per `AQ-NN`.** If answering it needs two decisions, it is two.
+- **It is architectural if the answer changes the shape of the system** — a component boundary, a
+  data flow, a technology choice, a consistency or failure model. If it only changes what a screen
+  says, it is a product question and belongs under "Open questions" instead.
+- **Cite what drove it.** Every AQ names the REQ/NFR ids that raised it, so Phase 2 can weigh the
+  options against real constraints rather than taste.
+- **Do not answer them here.** Phase 1 states the question; Phase 2's human gate decides it. An
+  AQ that arrives pre-answered has skipped the gate that exists to get a human's name on it.
+
+### `decision-log.md` (REQUIRED — the approver checks it, the gate cannot)
 
 Every unmade product decision this phase surfaced and could not answer: numbered, owned by a named
 person, and aged on the agreed clock (two business days by default).
+
+> **Location:** this file lives at `.sdlc/decision-log.md`, **not** in this phase's artifact
+> directory. It is phase-spanning — a decision opens here in Requirements and closes in a later
+> phase in the same file. `scripts/track_decisions.py` reads it and `/sdlc-status` surfaces
+> anything past its clock. Because it sits outside `.sdlc/artifacts/01-requirements/`, the exit
+> gate cannot check it mechanically, so the approver is asked about it at sign-off instead.
 
 The Definition of Ready depends on this file. A spec cannot enter the Build loop with an open
 decision belonging to its story, because the agent will otherwise pick one — silently, and
 plausibly. "Fail open or fail closed?" is not a detail an agent should decide on a Tuesday.
 
 Must contain, per entry:
-- **`D-NN`** — a stable id, referenced by the specs that are blocked on it
+- **`DL-NN`** — a stable id, referenced by the specs that are blocked on it
 - **The decision** — stated as a question with the options, not as a topic
 - **Owner** — a named human who can actually answer it, not a role
-- **Raised** and **due** — the clock, so an unanswered decision becomes visible rather than old
+- **Opened** and **due** — the clock, so an unanswered decision becomes visible rather than old
 - **The answer, when it comes**, with who gave it and when
 
-At the gate the list is either empty or fully owned. An entry with no owner is the failure mode
+At the gate the log is either empty or fully owned. An entry with no owner is the failure mode
 this file exists to prevent.
+
+**Do not confuse it with a spec's own `## Decision List` section**, which captures the silent
+decisions *inside one spec* and is enforced per-spec by `check_spec.py` at Definition of Ready.
+Phase-scoped versus spec-scoped: a `DL-NN` logged here can later seed a spec's Decision List when
+that story is specced. They do not overlap, and neither replaces the other.
 
 > **HITL GATE:** Claude drafts the questions and never the answers. Put each open decision to the
 > named owner using `AskUserQuestion`, and record what they say. Do not infer an answer from the
 > requirements, and do not let an entry stand with an unnamed owner.
 
-> **If it genuinely did not happen**, say so *in this file*: a line reading
-> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
-> approver signs against. A missing file still blocks. The escape is from the work, not the
-> record — an exception nobody can see is how a gate stops being a gate.
 ### `scope-out-record.md` (OPTIONAL)
 
 The explicit not-in-v1 list, and the confirmation that the sponsor has seen it.
@@ -178,23 +203,6 @@ review that found nothing is a finding too, and worth recording as one.
 > **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
 > does not block on it — but the approver is asked about it at sign-off. Write it when the work
 > happens; a receipt written later from memory is worth less than no receipt at all.
-## What Design Must Address
-
-- **AQ-01:** Does the claims intake API need idempotency, or can duplicates be reconciled
-  downstream? *(Driven by: REQ-014, NFR-003)*
-- **AQ-02:** Is the policyholder record the system of record, or a cache of the carrier's?
-  *(Driven by: REQ-021)*
-```
-
-Rules:
-- **One architectural question per `AQ-NN`.** If answering it needs two decisions, it is two.
-- **It is architectural if the answer changes the shape of the system** — a component boundary, a
-  data flow, a technology choice, a consistency or failure model. If it only changes what a screen
-  says, it is a product question and belongs under "Open questions" instead.
-- **Cite what drove it.** Every AQ names the REQ/NFR ids that raised it, so Phase 2 can weigh the
-  options against real constraints rather than taste.
-- **Do not answer them here.** Phase 1 states the question; Phase 2's human gate decides it. An
-  AQ that arrives pre-answered has skipped the gate that exists to get a human's name on it.
 
 ## Exit Criteria
 - [ ] All P0 requirements documented with source traceability

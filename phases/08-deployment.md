@@ -26,6 +26,11 @@ Deploy the system to production safely, with documented rollback capability, ver
 
 > **HITL GATE (most critical gate in the lifecycle):** Before any deployment activity, read `phase8-handoff.md` and present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Deployment target and strategy — blue/green, rolling, canary, or direct replacement? (2) Rollback plan — what is the trigger condition, what is the exact procedure? (3) Who must be notified before, during, and after deployment? (4) Is this staging-only or staging + production? (5) Deployment window — when does it start, how long is the maintenance window? **Do NOT proceed to Step 1 without explicit human go/no-go.** A deployment without human approval is not a deployment — it is an incident.
 
+Record the outcome in `go-no-go-record.md` as the ceremony happens: the decision, and every named
+role's answer with any condition they attached. Write it during the gate, not afterwards — the
+point of the record is that it captures what people actually said before anyone knew how the
+deployment went.
+
 ### Step 1: Pre-Deployment Checklist
 Verify all deployment prerequisites:
 - All tests passing on the deployment candidate
@@ -176,6 +181,36 @@ Must contain:
 > `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
 > approver signs against. A missing file still blocks. The escape is from the work, not the
 > record — an exception nobody can see is how a gate stops being a gate.
+
+### `go-no-go-record.md` (REQUIRED)
+
+The recorded output of the Step 0 ceremony: the decision to deploy, with every named role's answer
+captured at the time it was given.
+
+The gate itself already happens — Step 0 is the most consequential HITL gate in the lifecycle. What
+was missing was the receipt. A go/no-go that leaves no record is indistinguishable, a quarter later,
+from a deployment nobody was asked about, and "who approved this?" is the first question after any
+production incident.
+
+Must contain:
+- **The decision** — go, no-go, or go-with-conditions, and the date and time it was made
+- **Every role polled** — named person, their answer, and any condition they attached. A role that
+  was not polled is recorded as not polled, not as assent
+- **What was being deployed** — the version or release, so the record ties to a specific artifact
+- **Known risks accepted at the time**, and who accepted each
+- **The conditions**, if any, and who owns clearing them before or after cutover
+
+Silence is not agreement. An unrecorded answer is a missing answer.
+
+> **HITL GATE:** The answers belong to the people who gave them. Capture them with
+> `AskUserQuestion` during the ceremony — Claude records the decision and must never supply an
+> answer on a named person's behalf.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
 ### `rollout-shape-decision.md` (OPTIONAL)
 
 Cutover, pilot or parallel-run — chosen by the client, in writing, before the go/no-go ceremony
@@ -187,6 +222,7 @@ the conditions that would trigger it. Named owner, dated.
 > **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
 > does not block on it — but the approver is asked about it at sign-off. Write it when the work
 > happens; a receipt written later from memory is worth less than no receipt at all.
+
 ## Exit Criteria
 - [ ] Staging deployment successful
 - [ ] All staging smoke tests passing

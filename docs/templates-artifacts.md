@@ -129,6 +129,7 @@ templates/
     │   └── phase9-handoff.md                # Handoff to Monitoring phase
     ├── 09-monitoring/
     │   ├── alert-definitions.md             # Alert rules and thresholds
+    │   ├── drill-record.md                  # Proof each critical alert fired and was answered
     │   ├── incident-response.md             # Incident classification and procedures
     │   ├── monitoring-config.md             # Dashboard and metrics configuration
     │   └── project-retrospective.md         # Final project retrospective
@@ -695,11 +696,12 @@ Documentation.
 | `smoke-test-results.md` | Post-deployment smoke test results per environment |
 | `phase9-handoff.md` | Handoff to Monitoring with deployment summary |
 
-### Phase 9: Monitoring (4 artifacts + handoff)
+### Phase 9: Monitoring (5 artifacts + handoff)
 
 | Artifact | Purpose |
 |----------|---------|
 | `alert-definitions.md` | Alert rules, thresholds, and notification routing |
+| `drill-record.md` | Per critical alert: trigger, detection time, routing, responder, outcome — the proof the pager works |
 | `incident-response.md` | Incident classification levels and response procedures |
 | `monitoring-config.md` | Dashboard inventory and metrics configuration |
 | `project-retrospective.md` | Final project retrospective covering the entire SDLC cycle |
