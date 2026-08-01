@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## 1.0.1 — 2026-08-01
+
+**A patch release, and entirely corrective.** 1.0.0 changed what the gates enforce and left the
+prose describing the old behaviour; everything here reconciles the two. Eight issues (#29–#36)
+turned out to be four root causes.
+
+**Nothing here makes a gate stricter.** One requirement is *removed* — Phase 1 no longer blocks on
+`decision-list.md`, a file nothing ever produced, so no passing gate regresses. The receipts that
+already blocked (`threat-model.md`, `drill-record.md`, `go-no-go-record.md`) still block; the
+difference is that the plugin now tells you what to write and ships a template.
+
+> **Ordering:** this releases from 1.0.0 and must land **before** the 1.1.0 kit sync, which is
+> based on the same 1.0.0 tree.
 
 ### The 1.0.0 receipt migration is now actually wired (#31, #33, #34, #35)
 
