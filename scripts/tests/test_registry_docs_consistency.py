@@ -137,6 +137,73 @@ def test_phase_reports_use_the_registry_slug_convention():
     )
 
 
+def test_every_shipped_command_appears_in_the_command_reference():
+    """A command nobody can find might as well not ship.
+
+    `/sdlc-spike` and `/sdlc-doctor` both shipped and were absent from `docs/commands.md`
+    entirely — not in the contents, the overview table, or the additional-commands table. Spikes
+    are a first-class part of the method and `/sdlc-doctor` is the single most useful command for
+    a first-time setup, so a reader working from the reference would conclude neither existed and
+    do the work by hand.
+    """
+    commands_doc = REPO_ROOT / "docs" / "commands.md"
+    assert commands_doc.exists(), "docs/commands.md is missing — this check would pass vacuously"
+    text = commands_doc.read_text(encoding="utf-8")
+
+    shipped = sorted(p.stem for p in (REPO_ROOT / "commands").glob("*.md"))
+    assert shipped, "no command files found — the glob is wrong, not a clean bill of health"
+
+    missing = [c for c in shipped if f"/{c}" not in text]
+    assert not missing, (
+        "shipped but absent from docs/commands.md — add to the overview table and either a full "
+        "section or the additional-commands table:\n  " + "\n  ".join(f"/{c}" for c in missing)
+    )
+
+
+def test_the_additional_commands_count_matches_its_table():
+    """The prose count and the table drifted apart once; it reads as authoritative and was wrong."""
+    text = (REPO_ROOT / "docs" / "commands.md").read_text(encoding="utf-8")
+    section = re.search(r"## Additional Commands \(summaries\)(.*?)(?=\n## |\Z)", text, re.S)
+    assert section, "the Additional Commands section was renamed or removed"
+
+    words = {"Six": 6, "Seven": 7, "Eight": 8, "Nine": 9, "Ten": 10, "Eleven": 11, "Twelve": 12}
+    stated = re.search(r"^(\w+) commands have their full flow", section.group(1), re.M)
+    assert stated, "the count sentence was reworded — update this check or the sentence"
+
+    rows = [l for l in section.group(1).splitlines() if l.startswith("| `/")]
+    assert words.get(stated.group(1)) == len(rows), (
+        f"the section says '{stated.group(1)} commands' but the table has {len(rows)} rows"
+    )
+
+
+def test_docs_describe_the_real_placeholder_marker_set():
+    """Three docs list Gate 2's markers by hand; all three must match the code.
+
+    `docs/templates-artifacts.md` claimed Gate 2 failed on "any remaining `[bracket text]`". It
+    does not — `[INSERT` is in the set, bare brackets are not, and they deliberately cannot be
+    (templates use `- [ ]` checkboxes and `[text](links)` throughout). An author trusting that
+    sentence would leave `[Describe the situation]` in an ADR and expect the gate to catch it.
+
+    Overstating what a gate checks is worse than understating it: it converts a tripwire into a
+    proofreader in the reader's head, and the work stops being done.
+    """
+    import check_gates
+
+    markers = set(check_gates.PLACEHOLDER_MARKERS)
+    assert markers, "PLACEHOLDER_MARKERS is empty — this check would pass vacuously"
+
+    for rel in ("docs/gate-system.md", "docs/scripts.md", "docs/templates-artifacts.md"):
+        text = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        missing = [m for m in markers if m not in text]
+        assert not missing, f"{rel} does not mention these real markers: {missing}"
+
+    # The specific false claim, kept as a named regression rather than a general rule.
+    overstated = "`[bracket text]`, `TODO`, or `TBD` markers cause the gate to fail"
+    assert overstated not in (REPO_ROOT / "docs/templates-artifacts.md").read_text(
+        encoding="utf-8"
+    ), "the '[bracket text] fails the gate' claim is back; bare brackets are not detected"
+
+
 @pytest.mark.parametrize("path", [REGISTRY, LIFECYCLE])
 def test_sources_exist(path: Path):
     """Guard the guard: a moved or renamed source must fail loudly, not pass vacuously."""

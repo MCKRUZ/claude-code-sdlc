@@ -60,12 +60,48 @@ All 38 references now use `<slug>-report.html` / `<slug>-visual.html`. The slug 
 what `generate_phase_report.py` is invoked with, and the only form that survives the non-numeric
 `build` and `close` phases.
 
-### The rail that catches the next one
+### `/sdlc-spike` and `/sdlc-doctor` are documented (#32)
 
-`scripts/tests/test_registry_docs_consistency.py` asserts that every registry-required artifact has
-a `### <name>` spec in its phase definition, appears in `docs/phase-lifecycle.md`'s Required
-Artifacts table, and is not simultaneously listed as optional. Verified by reintroducing each
-original defect and confirming the matching check fails.
+Both shipped and appeared nowhere in `docs/commands.md` — not the contents, the overview table, or
+the additional-commands table. Spikes are a first-class part of the method with their own Phase 2
+step, and `/sdlc-doctor` is the single most useful command for a first-time setup (it catches the
+missing interpreter, the rails script without its executable bit, the unset secret — each of which
+otherwise fails silently). A reader working from the reference would conclude neither existed.
+
+Both added, and the stale "Eight commands" count corrected to ten.
+
+### Gate 2 catches less than the docs claimed (#30)
+
+`docs/templates-artifacts.md` stated that Gate 2 fails on "any remaining `[bracket text]`, `TODO`,
+or `TBD`". It does not. The real set is exactly six strings — `TODO`, `TBD`, `${`, `PLACEHOLDER`,
+`[INSERT`, `<!-- REQUIRED:` — and **bare bracket prose is not among them**, deliberately: templates
+use `- [ ]` checkboxes and `[text](links)` throughout, so a general bracket rule would fail nearly
+every artifact.
+
+The consequence is that `[Describe the situation]` left in an ADR passes completeness. Overstating
+what a gate checks is worse than understating it — it turns a tripwire into a proofreader in the
+reader's head, and then the proofreading stops being done. All three docs that list the markers now
+state the real set and name the gap.
+
+The same docs described `<!-- REQUIRED: ... -->` as "not a placeholder to fill, but a validation
+hint", which reads as *leave it in place* — while its presence is exactly what fails the artifact.
+It is a template-enforcement marker: **delete it once you have written the section it names.** That
+deletion is the completeness contract, and nothing had ever said so.
+
+### The rails that catch the next one
+
+`scripts/tests/test_registry_docs_consistency.py` asserts that:
+
+- every registry-required artifact has a `### <name>` spec in its phase definition, appears in
+  `docs/phase-lifecycle.md`'s Required Artifacts table, and is not simultaneously listed as optional
+- report filenames use the registry slug, never `phase9-` or `phase09-`
+- every shipped command appears in `docs/commands.md`, and the additional-commands count matches
+  its own table
+- all three docs that list Gate 2's placeholder markers match `check_gates.PLACEHOLDER_MARKERS`,
+  with the specific `[bracket text]` false claim kept as a named regression
+
+Every check was verified by reintroducing the original defect and confirming it fails — a guard
+that has never failed is a configuration, not a control.
 
 ## 1.0.0 — 2026-07-31
 
