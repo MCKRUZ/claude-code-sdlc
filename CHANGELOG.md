@@ -44,6 +44,22 @@ pattern the `close` phase already uses for its off-gate receipts.
 specifications and a section heading into sample code. This was the migration's insertion landing
 inside an existing fence. The fence now wraps only the `AQ-NN` example it was meant to.
 
+### Report filenames use one convention (#36)
+
+Three were in use simultaneously: the phase bodies wrote `phase09-report.html`, the registry's
+optional lists said `phase9-report.html`, and `docs/commands.md` documented `<slug>-report.html`.
+`03-foundation.md` alone used both the padded and unpadded forms.
+
+Two things were actually broken by it, not merely untidy. `commands/sdlc-gate.md` pre-checks the
+**visual** report by slug, so a team following the phase definition wrote `phase09-visual.html`
+while the gate looked for `09-monitoring-visual.html` and reported it missing. And the registry's
+`artifacts.optional` entries could never match a real file under either of the other conventions,
+so those entries were dead.
+
+All 38 references now use `<slug>-report.html` / `<slug>-visual.html`. The slug wins because it is
+what `generate_phase_report.py` is invoked with, and the only form that survives the non-numeric
+`build` and `close` phases.
+
 ### The rail that catches the next one
 
 `scripts/tests/test_registry_docs_consistency.py` asserts that every registry-required artifact has

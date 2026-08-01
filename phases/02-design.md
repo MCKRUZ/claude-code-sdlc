@@ -147,7 +147,7 @@ Review and complete `phase3-handoff.md` (generated in Step 3). Ensure it contain
 - Risks identified during design
 
 ### Step 10: Generate Phase Report
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase02-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/02-design-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
 
@@ -341,7 +341,7 @@ owner, or removed.
       checkpoint to produce, so this is conditional rather than required.
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase02-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/02-design-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 

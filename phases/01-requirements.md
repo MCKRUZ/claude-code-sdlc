@@ -64,7 +64,7 @@ Document the architectural implications of NFRs — these drive Phase 2 design d
 
 ### Step 6: Generate Visual Report
 
-Generate an interactive HTML visual report at `.sdlc/reports/phase01-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+Generate an interactive HTML visual report at `.sdlc/reports/01-requirements-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
 **Required visualizations for Phase 1 (Requirements):**
 - Requirements summary by domain and priority (stacked bar or table with badges)
@@ -75,7 +75,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase01-visual.html
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
 ### Step 7: Generate Phase Report
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase01-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/01-requirements-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
 
@@ -219,7 +219,7 @@ review that found nothing is a finding too, and worth recording as one.
 - [ ] If document intake was performed: every P0 requirement sourced from an external document has a DOC-NNN reference in the Source Document(s) column
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase01-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/01-requirements-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 

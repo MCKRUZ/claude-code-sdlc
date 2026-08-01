@@ -132,7 +132,7 @@ Package everything Phase 1 needs:
 
 ### Step 7: Generate Visual Report
 
-Generate an interactive HTML visual report at `.sdlc/reports/phase00-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+Generate an interactive HTML visual report at `.sdlc/reports/00-discovery-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
 **Required visualizations for Phase 0 (Discovery):**
 - Stakeholder persona cards with pain points
@@ -144,7 +144,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase00-visual.html
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
 ### Step 8: Generate Phase Report
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase00-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/00-discovery-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
 
@@ -248,7 +248,7 @@ Must contain: the questions as sent, who curated them, who received it, and the 
 - [ ] Scope boundaries are unambiguous
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase00-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/00-discovery-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 

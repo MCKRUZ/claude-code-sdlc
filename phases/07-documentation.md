@@ -87,7 +87,7 @@ Summarize what was documented, what's out of date, and what monitoring should co
 
 ### Step 6: Generate Visual Report
 
-Generate an interactive HTML visual report at `.sdlc/reports/phase07-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+Generate an interactive HTML visual report at `.sdlc/reports/07-documentation-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
 **Required visualizations for Phase 7 (Documentation):**
 - Documentation completeness audit table (doc → status)
@@ -98,7 +98,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase07-visual.html
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
 ### Step 7: Generate Phase Report
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase07-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/07-documentation-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
 
@@ -205,7 +205,7 @@ every divergence found between the spec and reality.
 - [ ] Stakeholder reviewed and approved (manual gate)
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase07-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/07-documentation-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 

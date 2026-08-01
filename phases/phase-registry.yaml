@@ -66,7 +66,7 @@ phases:
         - "stakeholder-notes.md"
         - "market-research.md"
         - "document-registry.md"  # Document intake index (opt-in via profile.documentation)
-        - "phase0-report.html"
+        - "00-discovery-report.html"
         - "po-decision-record.md"
         - "tooling-record.md"
         - "workshop-brief.md"
@@ -113,7 +113,7 @@ phases:
         - "phase2-handoff.md"
       optional:
         - "glossary.md"
-        - "phase1-report.html"
+        - "01-requirements-report.html"
         - "scope-out-record.md"
         - "adversarial-review-record.md"
 
@@ -163,7 +163,7 @@ phases:
       optional:
         - "data-model.md"
         - "sequence-diagrams.md"
-        - "phase2-report.html"
+        - "02-design-report.html"
         - "research-notes.md"
         - "integration-notes.md"
         - "external-reviews/"
@@ -208,7 +208,7 @@ phases:
         - "harness-inventory.md"
         - "pipeline-proof.md"
         - "walking-skeleton-spec.md"
-        - "phase3-report.html"
+        - "03-foundation-report.html"
 
   - id: build
     slug: "build"
@@ -294,7 +294,7 @@ phases:
         - "CHANGELOG.md"
         - "CONTRIBUTING.md"
         - "drift-catalog.md"
-        - "phase7-report.html"
+        - "07-documentation-report.html"
         - "spec-audit-record.md"
 
   - id: 8
@@ -336,7 +336,7 @@ phases:
       optional:
         - "rollback-procedure.md"
         - "deployment-log.md"
-        - "phase8-report.html"
+        - "08-deployment-report.html"
         - "rollout-shape-decision.md"
 
   - id: 9
@@ -377,7 +377,7 @@ phases:
         - "drill-record.md"
       optional:
         - "baseline-data.md"
-        - "phase9-report.html"
+        - "09-monitoring-report.html"
         - "what-healthy-table.md"
         - "fatigue-review-record.md"
         - "outcome-metric-first-read.md"
