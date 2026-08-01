@@ -324,6 +324,10 @@ Create software architecture, API contracts, data models, and Architecture Decis
 | `adrs/` | Directory of Architecture Decision Records. Minimum one ADR. Each has context, decision, alternatives, and consequences. |
 | `adr-registry.md` | Index of all ADRs with ID, title, status, and date. |
 | `phase3-handoff.md` | Design summary, the walking-skeleton definition, Foundation implications, open questions, risks, and recommended Foundation approach. |
+| `spike-findings.md` | The summary of every bounded investigation this design rests on. The code a spike produces is thrown away; this file is the deliverable. |
+| `threat-model.md` | Trust boundaries, threats and mitigations per boundary, accepted risks, and the guarded-path map Phase 3 wires its security gates from. |
+| `nfr-proving-plan.md` | For every quantified non-functional requirement: how its number will be proved, and the named place that number will be read from. |
+| `walking-skeleton-definition.md` | The thin end-to-end slice Phase 3 must ship: named, bounded, and sufficient to exercise every ADR's chosen mechanism at least once. |
 
 ### Optional Artifacts
 
@@ -417,6 +421,7 @@ Build the factory and prove it on real software. Install and adapt the harness, 
 | `risk-tier-map.md` | Tier table for every codebase area with rationale, registered security gates (the Phase 2 gates MUST appear), and the risk taxonomy mirrored from `CLAUDE.md`. |
 | `cadence-plan.md` | Cadence calendar with owners; the agreed WIP cap; the review-wait tripwire; and the numbers that steer the loop (with the banned activity metrics noted). |
 | `build-handoff.md` | Ordered spec backlog ready for triage, the risk-tier map reference, the cadence calendar with WIP cap and review-wait tripwire, open questions, and the proven entry conditions for Build. |
+| `data-flow-brief.md` | The one-page brief for the client's security team: what leaves the repo for the model API, what does not, where credentials live, and who can see usage. |
 
 ### Optional Artifacts
 
@@ -599,6 +604,8 @@ Prove that someone who isn't the pod can understand, run, and operate the system
 | `api-docs.md` | API reference documentation: endpoints, parameters, responses, authentication, and examples. Required for `service`/`app`/`library`/`cli`. |
 | `RUNBOOK.md` | Operational runbook: health checks, common failure modes, troubleshooting trees, rollback procedures, escalation contacts. Required for `service`/`app` only. |
 | `phase8-handoff.md` | Documentation summary, deployment prerequisites identified during doc writing, release notes draft, and open questions. |
+| `readme-verification.md` | The defect log from someone who did not write the README following it cold, on a clean machine. |
+| `runbook-walkthrough.md` | The client's own operations engineer executing a deploy, a rollback, and one failure scenario from the RUNBOOK, cold, using their own permissions. Required for `service`/`app` only. |
 
 ### Optional Artifacts
 
@@ -686,11 +693,13 @@ Promote to production through the pipeline that has existed since Foundation. Ph
 | `deployment-checklist.md` | Step-by-step deployment checklist: pre-deployment verification, promotion steps, post-deployment validation, and rollback procedure. |
 | `smoke-test-results.md` | Production smoke test execution results: which tests ran, pass/fail status, environment details, and any issues encountered. |
 | `phase9-handoff.md` | Deployment summary (what, when, where), current system state, monitoring requirements, known issues in production, and escalation contacts. |
+| `rollback-rehearsal.md` | The timestamped record of a deploy, a rollback, and a redeploy, run by the client's operators in a real environment before production. |
+| `go-no-go-record.md` | The recorded output of the Step 0 ceremony: the decision, every named role's answer and any condition attached, the risks accepted and by whom. |
+| `secrets-rotation-record.md` | Production credentials rotated to values the pod has never held, confirmed by name by the client's security function. |
 
 ### Optional Artifacts
 
 - `rollback-procedure.md` -- the rehearsed rollback steps
-- `go-no-go-record.md` -- the recorded decision with every named role's answer
 - `deployment-log.md` -- the promotion log
 - `phase8-report.html` -- self-contained HTML phase report
 
@@ -776,11 +785,11 @@ Make production observable, make alerts real (thresholds from measured baselines
 | `incident-response.md` | Incident response playbook: detection procedures, triage criteria, mitigation steps, resolution procedures, and post-incident review template. |
 | `project-retrospective.md` | Structured retrospective: what went well, what did not, improvement areas, key learnings, metrics history, and the harvest raw material for the standard. |
 | `close-handoff.md` | Handoff into Phase C: the system's live/observable/drilled state, the retrospective's harvest candidates, the named client Setup Owner, the access inventory to revoke, and open questions. |
+| `drill-record.md` | Per critical alert: how it was triggered, the observed detection time, where it routed, who responded, and what changed. The one proof the pager works. |
 
 ### Optional Artifacts
 
 - `baseline-data.md` -- the measured baselines behind the alert thresholds
-- `drill-record.md` -- the alert drill evidence
 - `phase9-report.html` -- self-contained HTML phase report
 
 ### Primary Skills

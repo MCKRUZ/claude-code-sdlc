@@ -66,7 +66,33 @@ Write the runbook for common failure modes:
 
 Cross-reference with the RUNBOOK.md failure scenarios from Phase 7. The incident response playbook should cover the same failure modes with a focus on detection and communication rather than resolution steps.
 
-### Step 4: Project Retrospective
+### Step 4: Alert Drill
+
+Fire every critical alert on purpose and answer it from the playbook. Until an alert has fired it
+is a configuration, not a control — the threshold may be wrong, the routing may point at a rota
+that no longer exists, and the way to find out is not at 3am during a real incident.
+
+This is why the playbook is written first: the drill tests `incident-response.md` as much as it
+tests the alert.
+
+For each critical alert in `alert-definitions.md`:
+- **Trigger it deliberately** — synthetic load, a forced error, or the provider's own test-fire.
+  Record which method was used; a test-fire proves routing but says nothing about the threshold.
+- **Time the detection** — from the triggering condition to the page actually arriving. Observed,
+  not estimated.
+- **Follow the routing** — did it reach the person `alert-definitions.md` says it should?
+- **Answer it from `incident-response.md`** — the responder works the playbook, not their memory.
+  A step that turns out to be missing or wrong is the point of the exercise, not a failed drill.
+- **Record what changed** — thresholds corrected, routing repointed, playbook steps rewritten.
+
+Record the result in `drill-record.md`.
+
+> **HITL GATE:** The drill needs a real responder; Claude cannot page anyone. Use the
+> `AskUserQuestion` tool to confirm who is running each drill and when, then capture what actually
+> happened. Claude prepares the drill plan and writes the record — it must never report a detection
+> time or an outcome it did not observe.
+
+### Step 5: Project Retrospective
 
 Spawn `feedback-synthesizer` in background to analyze any user feedback collected during deployment:
 
@@ -93,7 +119,7 @@ Capture what worked, what didn't, and what to carry forward. The retrospective m
 
 Incorporate findings from `feedback-synthesizer` when available.
 
-### Step 5: Generate Visual Report
+### Step 6: Generate Visual Report
 
 Generate an interactive HTML visual report at `.sdlc/reports/phase09-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
@@ -105,7 +131,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase09-visual.html
 
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
-### Step 6: Generate Phase Report
+### Step 7: Generate Phase Report
 Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase09-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
@@ -169,6 +195,28 @@ Must contain ALL of:
 > each one; do not infer availability from an org chart. If a name cannot be filled in, record the
 > gap explicitly — Close needs to know what is missing, not a plausible-looking list.
 
+### `drill-record.md` (REQUIRED)
+
+The output of Step 4, and the one proof that the pager works. One entry per critical alert, written
+as the drill runs rather than reconstructed afterwards from memory.
+
+Must contain, per critical alert:
+- **The alert** — its id or name as it appears in `alert-definitions.md`
+- **How it was triggered** — synthetic load, forced error, or provider test-fire, and the date
+- **Detection time** — from the triggering condition to the page arriving, observed not estimated
+- **Routing** — who it actually reached, and whether that is who it was supposed to reach
+- **Responder and outcome** — who answered, whether `incident-response.md` was sufficient, and
+  what changed as a result
+
+An alert that has never fired is a configuration, not a control. A drill that found nothing wrong
+is still worth recording as one — it is the difference between believing it works and having
+watched it work.
+
+> **If the drill genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
 ### `what-healthy-table.md` (OPTIONAL)
 
 Per failure scenario and per user journey: what healthy looks like, what degraded looks like, who is
@@ -217,6 +265,8 @@ sponsor.
 - [ ] All P0 features have at least one observable metric
 - [ ] At least one alert exists for each CRITICAL failure mode
 - [ ] Incident response playbook covers top 5 alert types
+- [ ] Every critical alert has been fired in a drill and answered from the playbook, with the
+      detection time, routing and outcome recorded in `drill-record.md`
 - [ ] Project retrospective completed with actionable improvements
 - [ ] Stakeholder reviewed and approved (manual gate)
 

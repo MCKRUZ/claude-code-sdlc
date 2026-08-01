@@ -101,13 +101,16 @@ phases:
         - check: "No unresolved P0 conflicts or ambiguities between stakeholders"
         - check: "Every numeric NFR threshold states its Measurement Basis, and each [aspirational] one has an agreed Build-loop measurement method with a named owner"
         - check: "Every P0 requirement traces to a Phase 0 pain point"
+        # The decision log is phase-spanning and lives at .sdlc/decision-log.md, outside this
+        # phase's artifact directory — so the gate cannot see it and the question is the only
+        # mechanism available. Same pattern as the close phase's off-gate receipts.
+        - check: "Every open product decision is recorded in .sdlc/decision-log.md as a DL-NN with a named owner and a due date — an entry with no owner is the failure this log exists to prevent"
     artifacts:
       required:
         - "requirements.md"
         - "non-functional-requirements.md"
         - "epics.md"
         - "phase2-handoff.md"
-        - "decision-list.md"
       optional:
         - "glossary.md"
         - "phase1-report.html"

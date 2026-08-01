@@ -203,7 +203,7 @@ A self-contained HTML page with rendered architecture diagrams (Mermaid + CSS). 
 
 Generated via `/visual-explainer` skill or equivalent HTML generation. Stored at `.sdlc/reports/architecture-diagrams.html`. Share with stakeholders as a visual companion to `design-doc.md`.
 
-### `threat-model.md` (RECOMMENDED — required for any system handling auth, payments or PII)
+### `threat-model.md` (REQUIRED)
 
 The output of Step 7, and the input Phase 3 wires its security gates from.
 
@@ -216,9 +216,15 @@ Must contain ALL of:
   This is the handoff to Phase 3, which registers them and confirms they fire.
 - **Accepted risks** — anything knowingly not mitigated, with the named human who accepted it
 
-> Not yet a hard artifact gate: promoting it would newly block any engagement already past Phase 2,
-> so it is raised to the approver at sign-off instead. Promote it to `required` on a major version
-> with a migration note.
+> **Required for every engagement, not only the ones handling auth, payments or PII.** Promoted to
+> a hard artifact gate in 1.0.0, on the major version and with the migration note the earlier
+> RECOMMENDED note asked for. Every system has guarded paths — deploy credentials and CI secrets
+> at minimum — and Phase 3 has nothing to wire its security gates from without this map.
+>
+> **If the review genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
 
 ### Optional Artifacts (from /deep-plan)
 - `research-notes.md` — codebase and web research findings
