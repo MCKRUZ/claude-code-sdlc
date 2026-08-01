@@ -19,6 +19,8 @@ that replaces GitHub branch protection, and the scripts that stand in for GitHub
 | **Correctness** | `azure-pipelines/correctness.yml` | every PR (reviews when source changed) | **BLOCKS** on a high-confidence defect (label override) |
 | **Security** | `azure-pipelines/security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH |
 | **Deploy Dev** | `azure-pipelines/deploy-dev.yml` | successful CI on main (merge) | ships; **rolls back** on failure — **STARTER** |
+| **Dependency Scan** | `azure-pipelines/dependency-scan.yml` | weekly + manual | raises/updates one advisory work item; **never blocks** — the blocking half is `ci.yml`'s `dependency-gate` stage |
+| **Deploy Promote** | `azure-pipelines/deploy-promote.yml` | **manual only** (Run pipeline) | ships to test/prod once the target Environment's approval check is signed; **rolls back** on failure — **STARTER** |
 | **Eval regression** | `azure-pipelines/eval-regression.yml` | PRs touching the agentic surface | **BLOCKS** on degradation |
 | **Eval suite** | `azure-pipelines/eval-suite.yml` | manual + scheduled | **ADVISORY** — never gates PRs |
 

@@ -17,10 +17,13 @@ and — the part most teams skip — how to **prove they actually catch things**
 | **build-and-test** | `ci.yml` | every PR | **Blocks** (hard gate) — includes the enforced coverage floor |
 | **spec-gate** | `ci.yml` (stage in the build-and-test pipeline) | every PR | **Blocks** — a source change with no spec in the diff is a fact; `no-spec:chore` PR label is the recorded escape |
 | **eval-gate** *(optional)* | `ci.yml` | every PR | **Blocks** — keep only if you ship an eval-fixture suite |
+| **dependency-gate** | `ci.yml` (stage) | every PR | **Blocks** when the change INTRODUCES a High/Critical advisory (`accepted-risk:dependency` = recorded override) |
+| **dependency-scan** | `dependency-scan.yml` | weekly + manual | **Advises** — raises/updates one advisory work item; never blocks |
 | **grader** | `grader.yml` | every PR | **Advises** — never blocks; required to RUN |
 | **correctness-review** | `correctness.yml` | every PR; reviews when source changed | **Blocks** on a high-confidence defect |
 | **security-review** | `security.yml` | every PR; reviews on gated paths / `risk:high` | **Blocks** on HIGH |
 | **deploy-dev** | `deploy-dev.yml` | successful CI on main (merge) | n/a — it ships; rolls back on failure |
+| **deploy-promote** | `deploy-promote.yml` | **manual only** — never a trigger | n/a — it ships to test/prod once the target Environment's approval check is signed; rolls back on failure |
 | **eval-regression** | `eval-regression.yml` | PRs touching the agentic surface | **Blocks** on degradation |
 | **eval-suite** | `eval-suite.yml` | manual + scheduled | **Advises** — never gates PRs |
 
@@ -78,9 +81,19 @@ security" without leaving low-risk PRs stuck.
    ```
    This is the only sanctioned way to change branch policy — edit the JSON, re-run the script. Do not
    hand-edit policies in the Azure DevOps UI.
-7. **Wire and rehearse `deploy-dev`.** It ships as a STARTER that fails until its placeholder
-   deploy/rollback steps are adapted. Create a dev **Environment** (attach approvals/checks for
-   promotion beyond dev), wire the steps, then rehearse the rollback (§9 shakedown) before trusting it.
+7. **Wire and rehearse `deploy-dev`.** It ships as a STARTER whose placeholder deploy/rollback steps
+   must be adapted. Until they are, the job runs, warns that deploy is not wired, and stops — a job
+   red on every merge by design teaches the team that red is normal. Create a dev **Environment**,
+   wire the steps, set the pipeline variable `DEPLOY_WIRED = true`, then rehearse the rollback
+   (§9 shakedown) before trusting it.
+8. **Put an approval check on every promotion target, then wire `deploy-promote`.** Pipelines →
+   Environments → `test` / `prod` → Approvals and checks → Approvals. That approval **is** the
+   go/no-go; without it, promotion beyond dev is automatic. Unlike `deploy-dev`, `deploy-promote`
+   **fails** rather than warns when unwired — a human asked for the promotion and is waiting.
+   Note the coupling: `deploy-dev` tags the CI build `deployed-dev` on success, and
+   `deploy-promote` refuses to promote a build that does not carry its source environment's tag.
+   Remove that tagging step and dev becomes a dead end — nothing will ever be promotable.
+   `System.AccessToken` therefore needs build **tag write** as well as build read.
 
 ## Solo-repo accommodation (read this)
 
@@ -136,6 +149,21 @@ when **both its block and its escape** have been seen to work.
   at a failing build). The deployment must fail and the `on.failure` steps must **restore the last
   known-good version** — the rollback the rails rehearse. Run deploy → roll back → redeploy against the
   dev Environment, with the rollback trigger condition written down in advance, not invented mid-incident.
+- **deploy-promote** — three drills, and the first two are the ones people skip:
+  1. **The gate holds.** Run a promotion. It must **pause** on the target Environment's approval
+     check and not proceed until a named person signs. If it sails through, no approval is
+     configured and promotion is automatic — the standard's most protected stop, silently absent.
+  2. **You cannot skip an environment.** Try to promote a build straight to `prod` that carries only
+     the `deployed-dev` tag. The preflight must **refuse** it. This also proves the tagging step in
+     `deploy-dev` actually ran — if nothing is promotable at all, that step failed silently.
+  3. **The rollback still works up here.** Repeat the known-bad deploy against **test** via
+     `deploy-promote`, executed by the client's own operators with their own permissions — the
+     Phase 8 rehearsal, run before prod is ever a target.
+- **dependency-gate** — open a throwaway PR adding a package with a **published advisory**. The
+  stage must go **red**, naming the package and advisory. Apply the `accepted-risk:dependency` PR
+  label and confirm it clears. Abandon the PR. Run this one even if you skip others: every other
+  rail fails loudly when misconfigured, this one fails **silent and green** — a scan that cannot
+  parse its tool's output reports no findings, which looks exactly like a clean repo.
 - **eval-regression** — open a PR touching `prompts/**` that degrades a key metric past the trip-wire (or
   point the runner at a fixture that regresses). The `eval-regression` build validation must go red.
 - **secret scan** — open a throwaway PR that commits a **fake but realistic credential** (e.g. an invented

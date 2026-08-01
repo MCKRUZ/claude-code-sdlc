@@ -50,6 +50,9 @@ so install here unless you also repoint the references.
 | `CLAUDE.md.template` | `./CLAUDE.md` | Replace every `{{TOKEN}}`; delete guidance comments. |
 | `spec-template.md` | `./specs/spec-template.md` | Copy per feature to `specs/NNNN-name.md`. |
 | `spike-template.md` | `./spikes/spike-template.md` | Copy per unknown to `spikes/NNNN-name.md`. The finding is committed; the `spike/` branch never merges. |
+| `rollback-template.md` | `./ROLLBACK.md` | Phase 8. The **written** trigger ("roll back if X"), the procedure, what a rollback does NOT undo, and the rehearsal record. Proven by the client's operators executing deploy → roll back → redeploy in test. |
+| `alert-definitions-template.md` | `./ALERTS.md` | Phase 9. One entry per alert: measured baseline, warning/critical thresholds, who is woken, the drill record, and the standing fatigue review. |
+| `incident-playbook-template.md` | `./INCIDENT-PLAYBOOK.md` | Phase 9. Detect → diagnose → escalate → communicate, per alert, plus the user-facing message templates. The RUNBOOK resolves; this detects and communicates. |
 | `settings.json` | `./.claude/settings.json` | Shared, committed. Leans on `deny` (see below). |
 | `mcp.json` | `./.mcp.json` | Team MCP servers (context7, sequential-thinking, playwright); packs merge additions (dotnet → microsoft-learn, github → github, azure-devops → azure-devops). npx-launched servers are version-pinned; the HTTP-hosted ones (context7, microsoft-learn, github) run server-side and cannot be pinned. No secrets — auth is always per-developer. Each developer approves the set once on first open. |
 | `HARNESS.md` | `./docs/harness.md` | The developer-facing tour: what each installed piece does and why, per layer. Point new team members here first. |
@@ -58,9 +61,14 @@ so install here unless you also repoint the references.
 | `agents/*` | `./.claude/agents/` | `planner`, `architect`, `grader`, `security-reviewer`, `build-error-resolver`, `debugger` — model-tiered; see `agents/README.md`. |
 | `skills/*` | `./.claude/skills/` | `spec-writer`, `test-writer`, `api-pattern`, `pr-writer`, `eval-builder`, `diagnose`. |
 | `workflows/{ci,grader,correctness,security,deploy-dev,eval-regression,eval-suite}.yml` | `./.github/workflows/` | The five rails + the two eval workflows. |
+| `workflows/deploy-promote.yml` | `./.github/workflows/` | The second half of the deploy rail: dev→test→prod. Manual trigger only — the target Environment's **required reviewers** are the human go/no-go, and the workflow refuses to run against an environment that has none. |
 | `workflows/RAILS.md` | `./.github/RAILS.md` | Operator's guide + shakedown drills. |
 | `profile/rubrics/*` | `./.github/profile/rubrics/` | Workflows read these by this path. |
+| `workflows/dependency-scan.yml` | `./.github/workflows/` | Weekly scan of the **standing stock** of third-party advisories. Raises (and self-closes) one issue; never blocks — the blocking, diff-scoped half is `ci.yml`'s `dependency-gate` job. On by default: a security scan you have to remember to switch on is not running. |
+| `workflows/rails-telemetry.yml` | `./.github/workflows/` | Weekly gate-outcome report, committed as `.github/rails-telemetry.json`. Records what ran, every override by name, and **which checks branch protection actually requires vs which gate jobs exist** — the comparison that catches a gate someone disarmed. No external calls: it reads this repo's own history and writes into this repo. |
+| `profile/rails-telemetry.schema.json` | `./.github/rails-telemetry.schema.json` | The report's shape, fixed at version 1 before the install wave so it is not retrofitted across live repos. The fleet collector refuses a version it does not know rather than misreading it. |
 | `profile/eval-bypasses.md` | `./.github/eval-bypasses.md` | Override/bypass ledger. |
+| `profile/dependency-exceptions.md` | `./.github/dependency-exceptions.md` | Accepted-risk ledger for `dependency-gate`. The `accepted-risk:dependency` label clears one PR; this records why, who decided, whether the vulnerable path is reachable, and when the acceptance expires. Swept at Setup review. |
 | `profile/CODEOWNERS` | `./.github/CODEOWNERS` | |
 | `profile/scripts/*` | `./scripts/rails/` | Workflows call `scripts/rails/diff-anchors.sh`. |
 | `profile/rulesets/branch-protection.json` | `./.github/rulesets/` | Copied on install; `scripts/rails/apply-branch-protection.sh` reads it from there and applies it to GitHub. |

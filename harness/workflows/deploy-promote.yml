@@ -1,0 +1,323 @@
+name: Deploy Promote
+
+# ⚠️ STARTER WORKFLOW — adapt before relying on it. ⚠️
+# The second half of the deploy rail. `deploy-dev.yml` handles merge → dev, which is automatic
+# and has no human in the loop. THIS file handles everything beyond dev — dev → test and
+# test → prod — which is deliberate, human-gated, and never automatic (the-rails.md §5).
+#
+# Like its sibling, the deploy/rollback steps are placeholders you MUST wire to your client's
+# platform and then REHEARSE (deploy → roll back → redeploy) in the TEST environment, by the
+# hands that would run it at 2 a.m., before it is ever pointed at production (Phase 8's
+# rehearsal week; the-rails.md §5, §9).
+#
+# ── THE THREE §5 RULES THIS FILE EXISTS TO ENFORCE — do not undo them when adapting ─────────
+#
+#   1. PROMOTE THE ARTIFACT; NEVER REBUILD IT. This workflow runs no build. It downloads the
+#      EXACT artifact a named CI run produced — the bytes that dev, and then test, actually
+#      exercised — and ships those onward. "Rebuild it real quick for prod" puts something no
+#      environment ever verified into the one environment where that matters.
+#
+#   2. A HUMAN SAYS GO, EVERY TIME. Not just the first promotion. The go/no-go is enforced by
+#      the target GitHub Environment's REQUIRED REVIEWERS, not by anything hand-rolled here:
+#      the run pauses at the `promote` job until a named person approves, and the approval is
+#      recorded in the deployment's own audit trail. Using the platform's mechanism rather
+#      than inventing one matters — the client's security team can already audit it, and it
+#      cannot be edited away in a workflow file without branch protection noticing.
+#      Configure it: Settings → Environments → <target> → Required reviewers.
+#      An environment WITHOUT required reviewers turns this file into an automatic promotion,
+#      which is precisely the stop the standard calls its most protected. The preflight below
+#      refuses to run against a target that has none.
+#
+#   3. A ROLLBACK THAT HAS NEVER RUN IS A WISH. The restore path is identical in shape to
+#      deploy-dev's, and it is rehearsed in TEST during Phase 8's rehearsal week — deploy,
+#      roll back, redeploy — with the trigger condition ("roll back if X") written down in
+#      advance in the repo's ROLLBACK.md (kit/rollback-template.md), not invented mid-incident.
+#
+# ── YOU CANNOT PROMOTE WHAT THE PREVIOUS ENVIRONMENT NEVER RAN ──────────────────────────────
+# The preflight job below refuses a promotion unless the named CI run succeeded, ran on the
+# protected branch, AND has a successful deployment recorded to the SOURCE environment for the
+# same commit. That is the mechanical form of "the same build that passed test goes to
+# production": without it, an operator could promote a green CI run straight to prod having
+# skipped test entirely, and the pipeline would happily oblige.
+#
+# ── WHY THIS FAILS WHEN UNWIRED, WHERE deploy-dev ONLY WARNS ────────────────────────────────
+# deploy-dev fires automatically on every merge, so a red tick there would be red constantly by
+# design and would teach the team that red is normal. This workflow only ever runs because a
+# human deliberately asked for a promotion and is waiting on the result. Reporting green while
+# having shipped nothing would be the pipeline lying to the one person who most needs the
+# truth. So: unwired here is an ERROR, not a warning.
+#
+# ── PLACEHOLDERS (every one is adapt-per-client) ───────────────────────────────
+#   <<CI_WORKFLOW_NAME>>   The `name:` of the CI workflow that built the artifact
+#                          (reference: "CI", from ci.yml). Must match exactly.
+#   <<ARTIFACT_NAME>>      The build artifact CI uploaded that this promotes.
+#   <<DEPLOY_STEP>>        The real deploy, parameterised by target environment.
+#   <<HEALTH_CHECK>>       How you confirm the new version is serving in the target.
+#   <<SMOKE_TEST>>         One non-destructive check per top-priority user journey. Reads and
+#                          harmless writes ONLY — if it can corrupt data it is not a smoke
+#                          test, and this one runs against production.
+#   <<CAPTURE_LAST_GOOD>> / <<RESTORE_LAST_GOOD>>
+#                          How you record the currently-live version BEFORE deploy and put it
+#                          back on failure (slot swap, previous revision, image tag, release).
+#   <<ENVIRONMENTS>>       The environment names in the `choice` options below (reference:
+#                          dev, test, prod) — must match your GitHub Environment names exactly.
+# ───────────────────────────────────────────────────────────────────────────────
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_environment:
+        description: 'Promote FROM (must already be running these bytes)'
+        required: true
+        type: choice
+        options: [dev, test]        # <<ENVIRONMENTS>>
+        default: dev
+      target_environment:
+        description: 'Promote TO (its required reviewers are the go/no-go)'
+        required: true
+        type: choice
+        options: [test, prod]       # <<ENVIRONMENTS>>
+        default: test
+      ci_run_id:
+        description: 'The CI run whose artifact is promoted — the proven bytes, not a rebuild'
+        required: true
+        type: string
+
+# Least privilege. `actions: read` pulls the artifact from the named CI run; `deployments: read`
+# lets the preflight verify the source environment actually ran it.
+permissions:
+  contents: read
+  actions: read
+  deployments: read
+
+concurrency:
+  # One promotion per target environment at a time. NOT cancel-in-progress: cancelling a
+  # half-finished promotion mid-deploy is how you end up with an environment in a state nobody
+  # recorded — the opposite of what the rollback path is for.
+  group: deploy-promote-${{ github.event.inputs.target_environment }}
+  cancel-in-progress: false
+
+jobs:
+  # ── Everything that can be checked BEFORE a human is asked to approve ──────────────────────
+  # Deliberately a separate job with no `environment:`, so it runs immediately. Asking a named
+  # person to approve a promotion and only then discovering the run id was wrong wastes the
+  # scarcest thing in the ceremony — their attention — and trains people to approve on autopilot.
+  promotion-preflight:
+    name: promotion-preflight
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    steps:
+      - name: Resolve and validate the CI run being promoted
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.event.inputs.ci_run_id }}
+          SOURCE_ENV: ${{ github.event.inputs.source_environment }}
+          TARGET_ENV: ${{ github.event.inputs.target_environment }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+
+          if [ "$SOURCE_ENV" = "$TARGET_ENV" ]; then
+            echo "::error::Source and target are both '$SOURCE_ENV'. A promotion moves bytes between environments."
+            exit 1
+          fi
+
+          RUN_JSON="$(gh api "repos/${REPO}/actions/runs/${RUN_ID}")"
+          CONCLUSION="$(echo "$RUN_JSON" | jq -r '.conclusion')"
+          BRANCH="$(echo "$RUN_JSON" | jq -r '.head_branch')"
+          NAME="$(echo "$RUN_JSON" | jq -r '.name')"
+          SHA="$(echo "$RUN_JSON" | jq -r '.head_sha')"
+
+          # Promote a PROVEN build: a failed run, or one from a feature branch, never reaches an
+          # environment. This is the same gate deploy-dev applies to its trigger, restated here
+          # because a manually-supplied run id is not filtered by anything else.
+          if [ "$NAME" != "CI" ]; then          # <<CI_WORKFLOW_NAME>>
+            echo "::error::Run ${RUN_ID} is '${NAME}', not the CI workflow. Only a CI run publishes the deployable artifact."
+            exit 1
+          fi
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::CI run ${RUN_ID} concluded '${CONCLUSION}'. Only a successful CI run may be promoted."
+            exit 1
+          fi
+          if [ "$BRANCH" != "$DEFAULT_BRANCH" ]; then
+            echo "::error::CI run ${RUN_ID} ran on '${BRANCH}', not '${DEFAULT_BRANCH}'. Only the protected branch is promoted."
+            exit 1
+          fi
+
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Promoting commit ${SHA} (CI run ${RUN_ID}) from ${SOURCE_ENV} to ${TARGET_ENV}."
+
+      - name: Verify the source environment actually ran these bytes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SOURCE_ENV: ${{ github.event.inputs.source_environment }}
+          SHA: ${{ steps.resolve.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # "The same build that passed test goes to production." Without this check an operator
+          # could promote a green CI run straight to prod, having skipped test entirely — the
+          # pipeline would oblige and nothing would say so.
+          DEPLOYMENTS="$(gh api "repos/${REPO}/deployments?environment=${SOURCE_ENV}&sha=${SHA}")"
+          COUNT="$(echo "$DEPLOYMENTS" | jq 'length')"
+          if [ "$COUNT" -eq 0 ]; then
+            echo "::error::Commit ${SHA} has never been deployed to '${SOURCE_ENV}'. Promote it there first — you cannot promote what the previous environment never ran."
+            exit 1
+          fi
+
+          DEPLOYMENT_ID="$(echo "$DEPLOYMENTS" | jq -r '.[0].id')"
+          STATE="$(gh api "repos/${REPO}/deployments/${DEPLOYMENT_ID}/statuses" | jq -r '.[0].state // "none"')"
+          if [ "$STATE" != "success" ]; then
+            echo "::error::The most recent '${SOURCE_ENV}' deployment of ${SHA} is in state '${STATE}', not 'success'. A failed or rolled-back deploy is not a promotion candidate."
+            exit 1
+          fi
+          echo "Verified: ${SHA} is deployed and healthy in ${SOURCE_ENV}."
+
+      - name: Verify the target environment has a human gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          TARGET_ENV: ${{ github.event.inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          # Rule 2, made mechanical. The `environment:` key on the promote job below only pauses
+          # for approval if that environment HAS required reviewers configured. An environment
+          # without them turns this workflow into an automatic promotion — the standard's single
+          # most protected stop, silently removed, with nothing on screen to say so.
+          #
+          # Fail closed rather than promote unapproved. If this fires, the fix is to configure the
+          # reviewers, never to delete this check.
+          #
+          # The two failure modes are DELIBERATELY distinguished below. "No reviewers configured"
+          # and "I could not read the environment" need different fixes, and collapsing them into
+          # one message sends the operator to the wrong place — the classic way a fail-closed check
+          # gets deleted in frustration instead of satisfied.
+          #
+          # PERMISSION NOTE: reading an environment's protection rules may require more than the
+          # `contents: read` this workflow grants, depending on repo visibility and the
+          # organisation's default GITHUB_TOKEN permissions. Verify this step passes during the
+          # Phase 8 rehearsal — that is what the rehearsal is for. If it 403s, grant the workflow
+          # the permission rather than dropping the check.
+          if ! ENV_JSON="$(gh api "repos/${REPO}/environments/${TARGET_ENV}" 2>&1)"; then
+            echo "::error title=Could not verify the human gate::Reading environment '${TARGET_ENV}' failed, so this workflow cannot confirm a required reviewer would be asked. Refusing to promote unverified. Either the environment does not exist, or GITHUB_TOKEN lacks permission to read it. API said: ${ENV_JSON}"
+            exit 1
+          fi
+
+          REVIEWERS="$(echo "$ENV_JSON" | jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')"
+          if [ "$REVIEWERS" -eq 0 ]; then
+            echo "::error title=No human gate on ${TARGET_ENV}::Environment '${TARGET_ENV}' has no required reviewers, so this promotion would proceed with nobody approving it. Configure Settings -> Environments -> ${TARGET_ENV} -> Required reviewers. A promotion beyond dev is human-gated every time (the-rails.md §5)."
+            exit 1
+          fi
+          echo "Target '${TARGET_ENV}' requires reviewer approval — the go/no-go is in place."
+
+  # ── The promotion itself. PAUSES HERE for the target environment's required reviewers. ─────
+  promote:
+    name: promote
+    needs: promotion-preflight
+    runs-on: ubuntu-latest
+    # THE GO/NO-GO. GitHub holds the run at this job until a required reviewer approves, and
+    # records who approved it against the deployment. This one line is the most important in
+    # the file — see rule 2 in the header before changing it.
+    environment: ${{ github.event.inputs.target_environment }}
+
+    steps:
+      # ── Unwired is an ERROR here, not a warning — see the header for why this differs from
+      # deploy-dev. A human asked for this promotion and is waiting on the answer.
+      - name: Check the deploy is wired
+        env:
+          DEPLOY_WIRED: ${{ vars.DEPLOY_WIRED }}
+        run: |
+          set -euo pipefail
+          if [ "${DEPLOY_WIRED:-}" != "true" ]; then
+            echo "::error title=Deploy not wired::This is the starter deploy-promote workflow — its deploy, health-check, smoke and rollback steps are still placeholders, so nothing was promoted. Wire them (the-rails.md §5), rehearse deploy -> roll back -> redeploy in test (Phase 8), then set the repository variable DEPLOY_WIRED=true."
+            exit 1
+          fi
+
+      - name: Checkout (deploy scripts only — NOT for building)
+        uses: actions/checkout@v7
+
+      # ── Promote, never rebuild: the exact bytes the source environment ran ──────────────────
+      - name: Download the promoted artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: <<ARTIFACT_NAME>>
+          path: ./artifact
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.inputs.ci_run_id }}
+
+      # ── Record the current live version so we can put it back on failure ────────────────────
+      - name: Capture last known-good version
+        id: lastgood
+        env:
+          TARGET_ENV: ${{ github.event.inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          # <<CAPTURE_LAST_GOOD>> — record what is live in ${TARGET_ENV} RIGHT NOW (slot name,
+          # current revision id, deployed image tag, release id...). Emit it as an output the
+          # rollback step reads. Reference example (Azure slot model):
+          #   PREV="$(az webapp deployment slot list ... --query '...' -o tsv)"
+          PREV="REPLACE_ME"
+          echo "previous=${PREV}" >> "$GITHUB_OUTPUT"
+          echo "Last known-good version in ${TARGET_ENV}: ${PREV}"
+
+      # ── Deploy the promoted artifact ────────────────────────────────────────────────────────
+      - name: Deploy to the target environment
+        id: deploy
+        env:
+          TARGET_ENV: ${{ github.event.inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          # <<DEPLOY_STEP>> — ship ./artifact (the promoted bytes) to ${TARGET_ENV}. Same command
+          # as deploy-dev's, parameterised by environment: the pipeline moves the proven thing up,
+          # it does not make a new thing at each step. Must exit non-zero on a failed deploy so
+          # the rollback below fires.
+          echo "Promoting ./artifact to ${TARGET_ENV}..."
+          echo "::error::DEPLOY_WIRED is set, but <<DEPLOY_STEP>> is still a placeholder. Either wire the real deploy or unset DEPLOY_WIRED."
+          exit 1
+
+      # ── Prove the new version actually serves ───────────────────────────────────────────────
+      - name: Health check
+        id: health
+        run: |
+          set -euo pipefail
+          # <<HEALTH_CHECK>> — hit the target's health endpoint and FAIL (non-zero) if the new
+          # version is not serving. Reference:
+          #   curl --fail --retry 5 --retry-delay 10 "https://<<TARGET_URL>>/health"
+          echo "Health check placeholder — wire <<HEALTH_CHECK>>."
+
+      # ── Prove the journeys still work, not merely that the process is up ────────────────────
+      - name: Smoke test
+        id: smoke
+        run: |
+          set -euo pipefail
+          # <<SMOKE_TEST>> — one fast, NON-DESTRUCTIVE check per top-priority user journey.
+          # "Serving" and "working" are different claims; the health check makes the first and
+          # this makes the second. Reads and harmless writes only: this same step runs against
+          # production, and a smoke test that can corrupt data is not a smoke test
+          # (docs/phase-8-deployment.md). Must exit non-zero to trigger the rollback.
+          echo "Smoke test placeholder — wire <<SMOKE_TEST>>."
+
+      # ── Rollback: restore the last known-good version on any failure above ──────────────────
+      # Rehearsed in TEST during Phase 8's rehearsal week, by the client's own operators, before
+      # it is ever pointed at production. A rollback that has never run is a wish.
+      - name: Restore last known-good version (rollback)
+        if: failure()
+        env:
+          PREVIOUS: ${{ steps.lastgood.outputs.previous }}
+          TARGET_ENV: ${{ github.event.inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          echo "::warning::Promotion to ${TARGET_ENV} failed — restoring last known-good version: ${PREVIOUS}"
+          # <<RESTORE_LAST_GOOD>> — put ${PREVIOUS} back (swap the slot back, route to the
+          # previous revision, redeploy the previous image tag, roll back the release). The
+          # trigger condition for doing this by hand instead lives in ROLLBACK.md, written down
+          # in advance. Reference:
+          #   az webapp deployment slot swap ...
+          echo "Rollback placeholder — wire <<RESTORE_LAST_GOOD>>."
+          # Keep the job RED so the failed promotion is visible even though service was restored —
+          # a rolled-back promotion is still a promotion that did not land, and Phase 8's record
+          # must show it.
+          exit 1

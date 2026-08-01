@@ -20,6 +20,7 @@ Seven workflows plus the rails guide:
 | **Correctness Review** | `workflows/correctness.yml` | every PR (reviews when source changed) | **BLOCKS** on a high-confidence defect (override label) |
 | **Security Review** | `workflows/security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH |
 | **Deploy Dev** | `workflows/deploy-dev.yml` | successful CI on `main` (merge) | ships; **rolls back** on failure — starter, adapt per client |
+| **Deploy Promote** | `workflows/deploy-promote.yml` | **manual only** (`workflow_dispatch`) | ships to test/prod after a named approver signs; **rolls back** on failure — starter, adapt per client |
 | **Eval Regression Gate** | `workflows/eval-regression.yml` | PRs touching the HIGH-risk agentic surface | **BLOCKS** on a metric regression past the trip-wire (§11) |
 | **Eval Suite** | `workflows/eval-suite.yml` | manual + scheduled | **ADVISES** — periodic full benchmark, off by default |
 
@@ -39,6 +40,7 @@ when consciously accepted.
 | `workflows/correctness.yml` | `.github/workflows/correctness.yml` |
 | `workflows/security.yml` | `.github/workflows/security.yml` |
 | `workflows/deploy-dev.yml` | `.github/workflows/deploy-dev.yml` |
+| `workflows/deploy-promote.yml` | `.github/workflows/deploy-promote.yml` |
 | `workflows/eval-regression.yml` | `.github/workflows/eval-regression.yml` |
 | `workflows/eval-suite.yml` | `.github/workflows/eval-suite.yml` |
 | `RAILS.md` | `.github/RAILS.md` |
@@ -76,7 +78,7 @@ each `«stack pack: …»` line with that stack's value.
 | `ci.yml` | `toolchain.id` → setup action, `toolchain.version`, `commands.restore`, `commands.build`, `commands.test`, `coverage.floor_percent` (enforced by the `Enforce coverage floor` step, `COVERAGE_FLOOR` env), `eval_gate.command` (eval-gate job). `commands.lint` is declared but left unwired to preserve the reference rail's gate semantics — add a lint step from it if desired. The `spec-gate` job has no stack seam (pure git + jq). |
 | `eval-regression.yml` | `toolchain` (the "Setup runtime" step + the `DOTNET_*` env defaults) |
 | `eval-suite.yml` | `toolchain` (the "Setup runtime" step + the `DOTNET_*` env defaults) |
-| `grader.yml`, `correctness.yml`, `security.yml`, `deploy-dev.yml` | **none** — these run no stack build/test commands. Their placeholders are methodology/repo/deploy-platform level, and the Claude invocation is carried verbatim. |
+| `grader.yml`, `correctness.yml`, `security.yml`, `deploy-dev.yml`, `deploy-promote.yml` | **none** — these run no stack build/test commands. Their placeholders are methodology/repo/deploy-platform level, and the Claude invocation is carried verbatim. |
 
 `{{SOLUTION_OR_PROJECT}}` is a distinct, repo-adaptation (Phase 3) token — the same
 token `ci-profile.yaml` uses — that the product repo fills with its solution/workspace

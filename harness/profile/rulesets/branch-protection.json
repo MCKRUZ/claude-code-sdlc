@@ -53,6 +53,9 @@
           },
           {
             "context": "security-review"
+          },
+          {
+            "context": "dependency-gate"
           }
         ]
       }

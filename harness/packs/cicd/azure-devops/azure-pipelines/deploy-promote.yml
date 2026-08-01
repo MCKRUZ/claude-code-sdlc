@@ -1,0 +1,312 @@
+# ⚠️ STARTER PIPELINE — adapt before relying on it. ⚠️
+# The second half of the deploy rail. `deploy-dev.yml` owns merge → dev, which is automatic and has
+# no human in the loop. THIS pipeline owns everything beyond dev — dev → test and test → prod —
+# which is deliberate, human-gated, and never automatic (the-rails.md §5).
+#
+# Like its sibling, the deploy/rollback steps are placeholders you MUST wire to your platform and
+# then REHEARSE (deploy → roll back → redeploy) in the TEST environment, by the hands that would run
+# it at 2 a.m., before it is ever pointed at production (Phase 8's rehearsal week).
+#
+# ── PACK NOTE (azure-devops CI/CD pack) ────────────────────────────────────────
+# NO stack seam. Per §5 this pipeline does NOT build — it PROMOTES the exact artifact a named CI run
+# already built, so no ci-profile command is consumed here. Its placeholders are deploy-platform /
+# repo level, not stack level. Pairs with this pack's deploy-dev.yml; both halves of the deploy rail
+# share the DEPLOY_WIRED pipeline variable.
+#
+# ── THE THREE §5 RULES THIS FILE EXISTS TO ENFORCE — do not undo them when adapting ─────────
+#
+#   1. PROMOTE THE ARTIFACT; NEVER REBUILD IT. This pipeline runs no build. It downloads the EXACT
+#      artifact a named CI run produced — the bytes dev, and then test, actually exercised — and
+#      ships those onward. "Rebuild it real quick for prod" puts something no environment ever
+#      verified into the one environment where that matters.
+#
+#   2. A HUMAN SAYS GO, EVERY TIME. Not just the first promotion. The go/no-go is the target
+#      Environment's APPROVALS AND CHECKS, not anything hand-rolled here: the run pauses at the
+#      `promote` deployment job until a named approver signs, and the approval is recorded in the
+#      environment's own deployment history. Using the platform's mechanism matters — the client's
+#      security team can already audit it.
+#      Configure it: Pipelines → Environments → <target> → Approvals and checks → Approvals.
+#      An environment WITHOUT an approval check turns this pipeline into an automatic promotion,
+#      which is the standard's single most protected stop, silently removed.
+#
+#   3. A ROLLBACK THAT HAS NEVER RUN IS A WISH. The restore path is identical in shape to
+#      deploy-dev's, and it is rehearsed in TEST during Phase 8's rehearsal week — deploy, roll back,
+#      redeploy — with the trigger condition ("roll back if X") written down in advance in the repo's
+#      ROLLBACK.md, not invented mid-incident.
+#
+# ── YOU CANNOT PROMOTE WHAT THE PREVIOUS ENVIRONMENT NEVER RAN ──────────────────────────────
+# The preflight refuses a promotion unless the named CI run succeeded, ran on the protected branch,
+# AND carries the build tag its source-environment deploy stamped on it.
+#
+# WHY A BUILD TAG, WHERE THE GITHUB PACK QUERIES AN API: on GitHub, putting `environment:` on a job
+# creates a first-class Deployment record queryable BY ENVIRONMENT NAME, so that pack simply asks
+# "was this commit successfully deployed to dev?". Azure DevOps records deployments against an
+# environment ID that must first be resolved by name, through a different service area. Rather than
+# depend on that lookup, this pack has the deploy stamp an explicit, durable fact on the build
+# itself: `deployed-<environment>`. Same governance rule, realized in the idiom each platform makes
+# cheap and reliable — which is the entire point of the two-axis pack model.
+# THIS REQUIRES the source-environment deploy to add the tag on success. deploy-dev.yml in this pack
+# does exactly that; any promotion target you add must do the same or nothing can promote out of it.
+#
+# ── WHY THIS FAILS WHEN UNWIRED, WHERE deploy-dev ONLY WARNS ────────────────────────────────
+# deploy-dev fires automatically on every merge, so a red run there would be red constantly by design
+# and would teach the team that red is normal. This pipeline only ever runs because a human
+# deliberately asked for a promotion and is waiting on the result. Reporting success while having
+# shipped nothing would be the pipeline lying to the one person who most needs the truth. So:
+# unwired here is an ERROR, not a warning.
+#
+# ── PLACEHOLDERS (every one is adapt-per-repo) ─────────────────────────────────
+#   <<CI_PIPELINE_RESOURCE>>  the pipeline resource alias for the CI pipeline.
+#   <<CI_PIPELINE_NAME>>      the CI pipeline's name in this project (must match exactly).
+#   <<DEFAULT_BRANCH>>        the protected branch whose builds may be promoted (reference: main).
+#   <<ARTIFACT_NAME>>         the deployable artifact CI published.
+#   <<ENVIRONMENTS>>          the Environment names in the `values:` lists below (reference: dev,
+#                             test, prod) — must match your Azure DevOps Environment names exactly.
+#   <<DEPLOY_STEP>> / <<HEALTH_CHECK>> / <<SMOKE_TEST>> / <<CAPTURE_LAST_GOOD>> / <<RESTORE_LAST_GOOD>>
+#                             the real deploy, health probe, journey smoke test, live-version capture,
+#                             and rollback for your platform.
+# ───────────────────────────────────────────────────────────────────────────────
+
+trigger: none
+pr: none
+
+# Runtime parameters — the "Run pipeline" dialog is the operator's entry point. A promotion is always
+# somebody deciding to promote; there is no trigger here by design.
+parameters:
+  - name: sourceEnvironment
+    displayName: 'Promote FROM (must already be running these bytes)'
+    type: string
+    default: dev
+    values: [dev, test]          # <<ENVIRONMENTS>>
+  - name: targetEnvironment
+    displayName: 'Promote TO (its approval check is the go/no-go)'
+    type: string
+    default: test
+    values: [test, prod]         # <<ENVIRONMENTS>>
+  - name: ciRunId
+    displayName: 'CI run id whose artifact is promoted — the proven bytes, not a rebuild'
+    type: string
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+# The CI pipeline as a resource so its artifact can be downloaded by run id. NOTE the absence of a
+# `trigger:` block — unlike deploy-dev.yml, nothing about this pipeline is automatic.
+resources:
+  pipelines:
+    - pipeline: ci               # <<CI_PIPELINE_RESOURCE>>
+      source: 'CI'               # <<CI_PIPELINE_NAME>> — must match the CI pipeline's name exactly
+
+stages:
+  # ── Everything checkable BEFORE a human is asked to approve ────────────────────────────────
+  # Deliberately its own stage with no environment, so it runs immediately. Asking a named person to
+  # approve and only then discovering the run id was wrong wastes the scarcest thing in the ceremony
+  # — their attention — and trains people to approve on autopilot.
+  - stage: preflight
+    displayName: 'Promotion preflight'
+    jobs:
+      - job: promotion_preflight
+        displayName: 'promotion-preflight'
+        steps:
+          - checkout: none
+
+          - bash: |
+              set -euo pipefail
+
+              if [ "${SOURCE_ENV}" = "${TARGET_ENV}" ]; then
+                echo "##vso[task.logissue type=error]Source and target are both '${SOURCE_ENV}'. A promotion moves bytes between environments."
+                exit 1
+              fi
+
+              API="${SYSTEM_COLLECTIONURI}${SYSTEM_TEAMPROJECT}/_apis"
+              AUTH="Authorization: Bearer ${SYSTEM_ACCESSTOKEN}"
+
+              # ── The build being promoted must be a SUCCESSFUL CI build of the protected branch.
+              # A manually supplied run id is filtered by nothing else, so restate here the same gate
+              # deploy-dev gets from its completion trigger.
+              if ! BUILD="$(curl -sf -H "$AUTH" "${API}/build/builds/${CI_RUN_ID}?api-version=7.1")"; then
+                echo "##vso[task.logissue type=error]Could not read build ${CI_RUN_ID}. Check the run id and that System.AccessToken has build read access."
+                exit 1
+              fi
+
+              RESULT="$(echo "$BUILD"   | jq -r '.result')"
+              BRANCH="$(echo "$BUILD"   | jq -r '.sourceBranch')"
+              PIPELINE="$(echo "$BUILD" | jq -r '.definition.name')"
+              COMMIT="$(echo "$BUILD"   | jq -r '.sourceVersion')"
+
+              if [ "$PIPELINE" != "CI" ]; then          # <<CI_PIPELINE_NAME>>
+                echo "##vso[task.logissue type=error]Build ${CI_RUN_ID} belongs to '${PIPELINE}', not the CI pipeline. Only a CI build publishes the deployable artifact."
+                exit 1
+              fi
+              if [ "$RESULT" != "succeeded" ]; then
+                echo "##vso[task.logissue type=error]CI build ${CI_RUN_ID} result is '${RESULT}'. Only a successful build may be promoted."
+                exit 1
+              fi
+              if [ "$BRANCH" != "refs/heads/main" ]; then   # <<DEFAULT_BRANCH>>
+                echo "##vso[task.logissue type=error]CI build ${CI_RUN_ID} ran on '${BRANCH}', not the protected branch. Only the protected branch is promoted."
+                exit 1
+              fi
+
+              # ── The source environment must have actually deployed these bytes. See the header for
+              # why this is a build tag here and a Deployments API query in the github pack.
+              if ! TAGS="$(curl -sf -H "$AUTH" "${API}/build/builds/${CI_RUN_ID}/tags?api-version=7.1")"; then
+                echo "##vso[task.logissue type=error]Could not read the tags on build ${CI_RUN_ID}, so this pipeline cannot confirm ${SOURCE_ENV} ever ran it. Refusing to promote unverified."
+                exit 1
+              fi
+
+              WANTED="deployed-${SOURCE_ENV}"
+              if ! echo "$TAGS" | jq -e --arg t "$WANTED" '.value | index($t)' >/dev/null; then
+                echo "##vso[task.logissue type=error]Build ${CI_RUN_ID} carries no '${WANTED}' tag, so it has never been deployed to ${SOURCE_ENV}. Promote it there first — you cannot promote what the previous environment never ran."
+                exit 1
+              fi
+
+              echo "Verified: build ${CI_RUN_ID} (commit ${COMMIT}) succeeded on the protected branch and is deployed to ${SOURCE_ENV}."
+              echo "Promoting ${SOURCE_ENV} -> ${TARGET_ENV}."
+            displayName: 'Validate the build being promoted'
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              CI_RUN_ID: ${{ parameters.ciRunId }}
+              SOURCE_ENV: ${{ parameters.sourceEnvironment }}
+              TARGET_ENV: ${{ parameters.targetEnvironment }}
+
+  # ── The promotion itself. PAUSES for the target Environment's approval check. ───────────────
+  - stage: promote
+    displayName: 'Promote'
+    dependsOn: preflight
+    condition: succeeded()
+    jobs:
+      - deployment: promote
+        displayName: 'promote'
+        # THE GO/NO-GO. Azure DevOps holds the run here until the environment's approval check is
+        # signed, and records who signed it. This one line is the most important in the file — see
+        # rule 2 in the header before changing it.
+        environment: ${{ parameters.targetEnvironment }}
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                # ── Unwired is an ERROR here, not a warning — see the header for why this differs
+                # from deploy-dev. A human asked for this promotion and is waiting on the answer.
+                - bash: |
+                    set -euo pipefail
+                    if [ "${DEPLOY_WIRED:-}" != "true" ]; then
+                      echo "##vso[task.logissue type=error]This is the starter deploy-promote pipeline — its deploy, health-check, smoke and rollback steps are still placeholders, so nothing was promoted. Wire them (the-rails.md §5), rehearse deploy -> roll back -> redeploy in test (Phase 8), then set the pipeline variable DEPLOY_WIRED = true."
+                      exit 1
+                    fi
+                  displayName: 'Check the deploy is wired'
+                  env:
+                    DEPLOY_WIRED: $(DEPLOY_WIRED)
+
+                # ── Promote, never rebuild: the exact bytes the source environment ran.
+                - task: DownloadPipelineArtifact@2
+                  displayName: 'Download the promoted artifact'
+                  inputs:
+                    buildType: 'specific'
+                    project: '$(System.TeamProject)'
+                    definition: '$(resources.pipeline.ci.pipelineID)'
+                    buildVersionToDownload: 'specific'
+                    pipelineId: ${{ parameters.ciRunId }}
+                    artifactName: '<<ARTIFACT_NAME>>'
+                    targetPath: '$(Pipeline.Workspace)/artifact'
+
+                # ── Record the current live version so we can put it back on failure.
+                - bash: |
+                    set -euo pipefail
+                    # <<CAPTURE_LAST_GOOD>> — record what is live in ${TARGET_ENV} RIGHT NOW (slot
+                    # name, current revision, deployed image tag, release id...). Emit it so the
+                    # rollback step can read it. Reference (Azure Web App slot model):
+                    #   PREV="$(az webapp deployment slot list ... --query '...' -o tsv)"
+                    PREV="REPLACE_ME"
+                    echo "##vso[task.setvariable variable=previousVersion]$PREV"
+                    echo "Last known-good version in ${TARGET_ENV}: $PREV"
+                  displayName: 'Capture last known-good version'
+                  env:
+                    TARGET_ENV: ${{ parameters.targetEnvironment }}
+
+                # ── Deploy the promoted artifact.
+                - bash: |
+                    set -euo pipefail
+                    # <<DEPLOY_STEP>> — ship $(Pipeline.Workspace)/artifact (the promoted bytes) to
+                    # ${TARGET_ENV}. Same command as deploy-dev's, parameterised by environment: the
+                    # pipeline moves the proven thing up, it does not make a new thing at each step.
+                    # Must exit non-zero on a failed deploy so on.failure fires.
+                    echo "Promoting $(Pipeline.Workspace)/artifact to ${TARGET_ENV}..."
+                    echo "##vso[task.logissue type=error]DEPLOY_WIRED is set, but <<DEPLOY_STEP>> is still a placeholder. Either wire the real deploy or unset DEPLOY_WIRED."
+                    exit 1
+                  displayName: 'Deploy to the target environment'
+                  env:
+                    TARGET_ENV: ${{ parameters.targetEnvironment }}
+
+                # ── Prove the new version actually serves.
+                - bash: |
+                    set -euo pipefail
+                    # <<HEALTH_CHECK>> — hit the target's health endpoint and FAIL (non-zero) if the
+                    # new version is not serving. Reference:
+                    #   curl --fail --retry 5 --retry-delay 10 "https://<<TARGET_URL>>/health"
+                    echo "Health check placeholder — wire <<HEALTH_CHECK>>."
+                  displayName: 'Health check'
+
+                # ── Prove the journeys still work, not merely that the process is up.
+                - bash: |
+                    set -euo pipefail
+                    # <<SMOKE_TEST>> — one fast, NON-DESTRUCTIVE check per top-priority user journey.
+                    # "Serving" and "working" are different claims; the health check makes the first
+                    # and this makes the second. Reads and harmless writes only: this same step runs
+                    # against production, and a smoke test that can corrupt data is not a smoke test
+                    # (docs/phase-8-deployment.md). Must exit non-zero to trigger the rollback.
+                    echo "Smoke test placeholder — wire <<SMOKE_TEST>>."
+                  displayName: 'Smoke test'
+
+                # ── Stamp the durable fact that this build now runs in the target environment.
+                # This is what lets the NEXT promotion out of this environment verify itself — see
+                # the header. Last step on the happy path: it must not run unless everything above
+                # actually passed, or it would licence promoting something that never worked.
+                - bash: |
+                    set -euo pipefail
+                    # NOTE: deliberately the REST API, NOT `##vso[build.addbuildtag]`. That logging
+                    # command tags the RUN THAT EMITS IT — this promotion run — whereas the fact we
+                    # need to record is about the CI BUILD whose artifact just went live. Tagging the
+                    # wrong build would leave every future promotion unable to verify its source, and
+                    # would do so silently: the tag would exist, just never where anything looks.
+                    API="${SYSTEM_COLLECTIONURI}${SYSTEM_TEAMPROJECT}/_apis"
+                    if ! curl -sf -X PUT -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+                         "${API}/build/builds/${CI_RUN_ID}/tags/deployed-${TARGET_ENV}?api-version=7.1" \
+                         -o /dev/null; then
+                      echo "##vso[task.logissue type=error]Deployed to ${TARGET_ENV}, but could not tag build ${CI_RUN_ID} as deployed-${TARGET_ENV}. The promotion LANDED; the record of it did not. Nothing will be promotable out of ${TARGET_ENV} until this is fixed — check System.AccessToken has build tag write access."
+                      exit 1
+                    fi
+                    echo "Tagged build ${CI_RUN_ID} as deployed-${TARGET_ENV}."
+                  displayName: 'Record the deployment on the promoted build'
+                  env:
+                    SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                    TARGET_ENV: ${{ parameters.targetEnvironment }}
+                    CI_RUN_ID: ${{ parameters.ciRunId }}
+
+            # ── Rollback: restore the last known-good version on ANY failure above.
+            # Rehearsed in TEST during Phase 8's rehearsal week, by the client's own operators,
+            # before it is ever pointed at production. A rollback that has never run is a wish.
+            on:
+              failure:
+                steps:
+                  - bash: |
+                      set -euo pipefail
+                      echo "##vso[task.logissue type=warning]Promotion to ${TARGET_ENV} failed — restoring last known-good version: $(previousVersion)"
+                      # <<RESTORE_LAST_GOOD>> — put $(previousVersion) back (swap the slot back,
+                      # route to the previous revision, redeploy the previous image tag, roll back
+                      # the release). The trigger condition for doing this by hand instead lives in
+                      # ROLLBACK.md, written down in advance. Reference:
+                      #   az webapp deployment slot swap ...
+                      echo "Rollback placeholder — wire <<RESTORE_LAST_GOOD>>."
+                      # Keep the job RED so the failed promotion is visible even though service was
+                      # restored — a rolled-back promotion is still a promotion that did not land,
+                      # and Phase 8's record must show it.
+                      exit 1
+                    displayName: 'Restore last known-good version (rollback)'
+                    env:
+                      TARGET_ENV: ${{ parameters.targetEnvironment }}
+                    # DELIBERATELY no `and(succeeded(), ...)` — this step lives in the `on.failure`
+                    # hook, which by definition only runs when the deploy hook has ALREADY failed.
+                    # Composing succeeded() here risks evaluating false against that failed state and
+                    # skipping the rollback entirely, turning the one path that must never be skipped
+                    # into the one path that silently is.
+                    condition: eq(variables['DEPLOY_WIRED'], 'true')

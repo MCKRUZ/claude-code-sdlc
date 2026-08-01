@@ -1,0 +1,141 @@
+# =============================================================================
+# The STANDING STOCK of third-party vulnerabilities — periodic, never blocking.
+# =============================================================================
+# The other half of the dependency position (GOLD-STANDARD §7). Its sibling, the
+# `dependency-gate` stage in ci.yml, is diff-scoped: it blocks a change that INTRODUCES a
+# vulnerable package. This pipeline owns everything already here — packages that were fine
+# when they landed and became advisories later.
+#
+# ── WHY THIS DOES NOT BLOCK ANYTHING ────────────────────────────────────────────────────
+# A vulnerability published overnight is not a regression anyone caused, and failing every
+# open PR the next morning would teach the team that red is normal — degrading the signal on
+# every other gate. So this raises a WORK ITEM, and the fix rides the normal rails as an
+# ordinary spec, prioritised by a human against everything else in flight.
+#
+# ── WHY IT IS ON BY DEFAULT, WHERE eval-suite IS OPT-IN ─────────────────────────────────
+# `eval-suite.yml` is off until a repo opts in because every run spends real money at a judge
+# model. This costs a few agent minutes. A security scan you have to remember to switch on is
+# a security scan that is not running anywhere. Set the pipeline variable
+# DEPENDENCY_SCAN_ENABLED = false to suppress it, and expect to justify that in the client's
+# security review.
+#
+# ── THE HONEST GAP: NO FIRST-PARTY DEPENDABOT ON AZURE DEVOPS ───────────────────────────
+# The github pack ships `dependabot.yml`, which OPENS THE UPGRADE PRs that clear what these
+# scans find. Azure DevOps has no first-party equivalent — Dependabot there is a community
+# marketplace extension ("Dependabot" by Tingle Software), not a platform feature, and
+# installing a third-party extension with repo write access is a client security decision,
+# not something this kit should make silently on their behalf.
+#
+# So on this platform the loop is: this pipeline REPORTS, and a human RAISES the upgrade.
+# That is genuinely weaker than the github pack, and it is written down here rather than
+# papered over, because a pipeline that quietly does less than its twin is worse than one
+# that says so. Two ways to close it, both a deliberate client decision:
+#   1. Install the marketplace Dependabot extension and add its config.
+#   2. On .NET specifically, `dotnet package update --vulnerable` upgrades every vulnerable
+#      package to the first version without a known advisory — a scheduled pipeline can run
+#      it on a branch and open the PR. It still rides the full merge bar like any other change.
+#
+# ── PLACEHOLDERS ─────────────────────────────────────────────────────────────────────────
+#   <<CI_DEPENDENCY_SCAN_CMD>>  «stack pack: ci-profile.dependency_scan.command»
+#   <<DEFAULT_BRANCH>>          the protected branch to scan (reference: main)
+#   <<WORK_ITEM_TYPE>>          the work item type to raise (reference: Issue; some process
+#                               templates use Bug or Task — an unknown type fails the API call)
+# =============================================================================
+
+trigger: none
+pr: none
+
+schedules:
+  # Monday 07:00 UTC — a working morning, so what it finds gets triaged the same day rather
+  # than ageing over a weekend.
+  - cron: '0 7 * * 1'
+    displayName: 'Weekly dependency scan'
+    branches:
+      include:
+        - main                  # <<DEFAULT_BRANCH>>
+    always: true                # run even with no code change: the advisories change, not the code
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+  - job: dependency_scan
+    displayName: 'dependency-scan'
+    # Manual runs always proceed; scheduled runs honour the opt-out.
+    condition: or(eq(variables['Build.Reason'], 'Manual'), ne(variables['DEPENDENCY_SCAN_ENABLED'], 'false'))
+    steps:
+      - checkout: self
+
+      - template: templates/setup-toolchain.yml
+
+      - bash: |
+          set -uo pipefail
+          # «stack pack: ci-profile.dependency_scan.command»
+          # Contracted to exit 0 whether or not it finds anything — findings are DATA. At least
+          # one supported tool (.NET) exits 0 on a High advisory while another (npm) exits
+          # non-zero, so never infer the result from the status; read the output.
+          if ! <<CI_DEPENDENCY_SCAN_CMD>> > "$(Agent.TempDirectory)/findings.tsv" 2> "$(Agent.TempDirectory)/scan.err"; then
+            echo "##vso[task.logissue type=error]The scan did not complete, so this repo's vulnerability status is UNKNOWN — which is not the same as clean. Fix the scan."
+            sed -n '1,40p' "$(Agent.TempDirectory)/scan.err" || true
+            exit 1
+          fi
+          sort -u -o "$(Agent.TempDirectory)/findings.tsv" "$(Agent.TempDirectory)/findings.tsv"
+          COUNT="$(wc -l < "$(Agent.TempDirectory)/findings.tsv" | tr -d ' ')"
+          echo "##vso[task.setvariable variable=findingCount]$COUNT"
+          echo "Advisories across all dependencies: $COUNT"
+          cat "$(Agent.TempDirectory)/findings.tsv" || true
+        displayName: 'Scan every dependency'
+
+      - bash: |
+          set -euo pipefail
+          COUNT="$(findingCount)"
+          if [ "${COUNT:-0}" -eq 0 ]; then
+            echo "OK: no known vulnerabilities in this repo's dependencies."
+            exit 0
+          fi
+
+          API="${SYSTEM_COLLECTIONURI%/}/${SYSTEM_TEAMPROJECT}/_apis"
+          AUTH="Authorization: Bearer ${SYSTEM_ACCESSTOKEN}"
+          TAG="dependency-advisory"
+
+          # One canonical work item, found by tag — updated in place rather than a fresh one
+          # every Monday. A tracker that grows a duplicate per week is a tracker people mute,
+          # and a muted tracker is the same as no scan at all.
+          WIQL='{"query":"SELECT [System.Id] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.Tags] CONTAINS '"'"'dependency-advisory'"'"' AND [System.State] <> '"'"'Closed'"'"' ORDER BY [System.Id] DESC"}'
+          EXISTING="$(curl -sf -H "$AUTH" -H 'Content-Type: application/json' -d "$WIQL" \
+                      "${API}/wit/wiql?api-version=7.1" | jq -r '.workItems[0].id // empty' || true)"
+
+          {
+            printf '<p>The scheduled dependency scan found <b>%s</b> advisory/advisories in this repo&#39;s dependencies.</p>' "$COUNT"
+            printf '<p>These are <b>pre-existing</b> &mdash; the <code>dependency-gate</code> check blocks anything a change newly introduces, so nothing here was added by a recent PR. That is why this is a work item and not a red build.</p>'
+            printf '<table><tr><th>Severity</th><th>Package</th><th>Version</th><th>Advisory</th></tr>'
+            while IFS=$'\t' read -r sev pkg ver url; do
+              printf '<tr><td>%s</td><td><code>%s</code></td><td>%s</td><td><a href="%s">%s</a></td></tr>' "$sev" "$pkg" "$ver" "$url" "$url"
+            done < "$(Agent.TempDirectory)/findings.tsv"
+            printf '</table>'
+            printf '<p><b>What to do with this.</b> Triage it like any other work: it becomes a spec, gets a risk tier, and rides the same rails. Upgrading a package that handles auth, payments or client data is a <code>risk:high</code> change. If an advisory is being accepted rather than fixed, record it in <code>.azuredevops/rails/dependency-exceptions.md</code> with an expiry &mdash; the ledger is what makes that a decision rather than a silence.</p>'
+          } > "$(Agent.TempDirectory)/body.html"
+
+          BODY="$(jq -Rs . < "$(Agent.TempDirectory)/body.html")"
+          TITLE="Dependency advisories: ${COUNT} package(s) with known vulnerabilities"
+
+          if [ -n "$EXISTING" ]; then
+            PATCH="[{\"op\":\"replace\",\"path\":\"/fields/System.Title\",\"value\":\"${TITLE}\"},{\"op\":\"replace\",\"path\":\"/fields/System.Description\",\"value\":${BODY}}]"
+            curl -sf -X PATCH -H "$AUTH" -H 'Content-Type: application/json-patch+json' -d "$PATCH" \
+              "${API}/wit/workitems/${EXISTING}?api-version=7.1" -o /dev/null
+            echo "Updated work item ${EXISTING}."
+          else
+            PATCH="[{\"op\":\"add\",\"path\":\"/fields/System.Title\",\"value\":\"${TITLE}\"},{\"op\":\"add\",\"path\":\"/fields/System.Description\",\"value\":${BODY}},{\"op\":\"add\",\"path\":\"/fields/System.Tags\",\"value\":\"${TAG}\"}]"
+            # <<WORK_ITEM_TYPE>> — 'Issue' exists in Agile; Basic uses 'Issue' too, Scrum does not.
+            # An unknown type fails this call, which is why the failure below is loud rather than
+            # swallowed: a scan whose finding never reached anyone is the same as no scan.
+            if ! curl -sf -X POST -H "$AUTH" -H 'Content-Type: application/json-patch+json' -d "$PATCH" \
+                 "${API}/wit/workitems/\$Issue?api-version=7.1" -o /dev/null; then
+              echo "##vso[task.logissue type=error]Found ${COUNT} advisory/advisories but could not raise a work item. Check that <<WORK_ITEM_TYPE>> exists in this project's process template and that the build service identity may create work items. The findings are in this log, but nothing is tracking them."
+              exit 1
+            fi
+            echo "Raised a new advisory work item."
+          fi
+        displayName: 'Raise or update the advisory work item'
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)

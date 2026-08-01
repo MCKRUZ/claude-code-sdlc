@@ -197,3 +197,120 @@ stages:
             inputs:
               targetPath: 'eval-results'
               artifact: 'eval-gate-results'
+
+  # ── dependency-gate ──────────────────────────────────────────
+  # The standard's position on third-party components (GOLD-STANDARD §7).
+  #
+  # Blocks a PR that INTRODUCES a package with a known vulnerability. Does NOT block on what was
+  # already there — the weekly dependency-scan pipeline owns the standing stock and raises a work
+  # item, which rides the normal rails as an ordinary spec.
+  #
+  # That split is the whole design. Every other gate here measures the diff; a vulnerability scan
+  # measures the repo. Blocking on the repo means a CVE published overnight reddens every open PR
+  # the next morning for reasons nobody caused — the failure deploy-dev.yml argues against at
+  # length: a job red by design teaches the team that red is normal, degrading every OTHER job's
+  # signal. Diff-scoping is what keeps this gate meaning something when it fires.
+  #
+  # HOW: run the stack's scan against the TARGET branch and against THIS branch, then compare the
+  # two sets of findings. A set difference, not lockfile parsing — which is why one mechanism
+  # serves .NET, Node and Python without this pipeline knowing anything about any of them. The
+  # normalizing belongs to the stack pack (ci-profile.dependency_scan), same seam as commands.*.
+  - stage: dependency_gate
+    displayName: 'dependency-gate'
+    dependsOn: []                 # independent of the other stages; nothing here needs a build
+    condition: eq(variables['Build.Reason'], 'PullRequest')
+    jobs:
+      - job: dependency_gate
+        displayName: 'dependency-gate'
+        steps:
+          - checkout: self
+            fetchDepth: 0         # the target branch is scanned too, so shallow will not do
+
+          - template: templates/setup-toolchain.yml
+
+          # ── Scan THIS branch ────────────────────────────────────────────────
+          # The scan command is contracted (ci-profile.dependency_scan) to print one TSV finding
+          # per line and EXIT 0 whether or not it finds anything. A non-zero exit therefore means
+          # the TOOLING broke, not that the code is vulnerable — and those need different
+          # messages, because they have different fixes.
+          - bash: |
+              set -uo pipefail
+              # «stack pack: ci-profile.dependency_scan.command»
+              if ! <<CI_DEPENDENCY_SCAN_CMD>> > "$(Agent.TempDirectory)/head.tsv" 2> "$(Agent.TempDirectory)/head.err"; then
+                echo "##vso[task.logissue type=error]The scan of THIS branch did not complete, so this gate cannot tell whether the change introduces a vulnerable package. Failing closed rather than passing unverified."
+                sed -n '1,40p' "$(Agent.TempDirectory)/head.err" || true
+                exit 1
+              fi
+              sort -u -o "$(Agent.TempDirectory)/head.tsv" "$(Agent.TempDirectory)/head.tsv"
+              echo "Findings on this branch: $(wc -l < "$(Agent.TempDirectory)/head.tsv")"
+            displayName: 'Scan this branch'
+
+          # ── Scan the TARGET branch, to establish what is NOT this change's doing ──────────
+          - bash: |
+              set -uo pipefail
+              TARGET="$(System.PullRequest.TargetBranch)"       # e.g. refs/heads/main
+              SHORT="${TARGET#refs/heads/}"
+              git fetch --no-tags --quiet origin "$SHORT"
+              # A destructive checkout is fine: this job exists only for the comparison, and
+              # nothing after it reads the working tree.
+              git checkout --quiet --detach "origin/$SHORT"
+              # «stack pack: ci-profile.dependency_scan.command»
+              if ! <<CI_DEPENDENCY_SCAN_CMD>> > "$(Agent.TempDirectory)/base.tsv" 2> "$(Agent.TempDirectory)/base.err"; then
+                # Do NOT treat a broken baseline as "the target was clean". That would make every
+                # pre-existing finding look newly introduced and bury the real one in a false storm.
+                echo "##vso[task.logissue type=error]The scan of '$SHORT' did not complete, so this gate has no baseline. It cannot separate what this change introduced from what was already there."
+                sed -n '1,40p' "$(Agent.TempDirectory)/base.err" || true
+                exit 1
+              fi
+              sort -u -o "$(Agent.TempDirectory)/base.tsv" "$(Agent.TempDirectory)/base.tsv"
+              echo "Findings already on $SHORT: $(wc -l < "$(Agent.TempDirectory)/base.tsv")"
+            displayName: 'Scan the target branch'
+
+          - bash: |
+              set -euo pipefail
+              # In head, not in base. comm requires both inputs sorted; both were sorted above.
+              comm -13 "$(Agent.TempDirectory)/base.tsv" "$(Agent.TempDirectory)/head.tsv" > "$(Agent.TempDirectory)/new.tsv"
+
+              if [ ! -s "$(Agent.TempDirectory)/new.tsv" ]; then
+                echo "OK: this change introduces no new vulnerable package."
+                exit 0
+              fi
+
+              echo "New relative to the target branch:"
+              cat "$(Agent.TempDirectory)/new.tsv"
+
+              # CASE-INSENSITIVE on purpose: .NET renders 'High', npm renders 'high'. A
+              # case-sensitive match would silently match nothing on one of them — and a gate
+              # that matches nothing passes forever. Verified against both tools, 2026-07-31.
+              awk -F'\t' -v list="$BLOCK_SEVERITIES" '
+                BEGIN { n = split(tolower(list), a, /,/)
+                        for (i = 1; i <= n; i++) { gsub(/^[ \t]+|[ \t]+$/, "", a[i]); block[a[i]] = 1 } }
+                tolower($1) in block { print }
+              ' "$(Agent.TempDirectory)/new.tsv" > "$(Agent.TempDirectory)/blocking.tsv"
+
+              if [ ! -s "$(Agent.TempDirectory)/blocking.tsv" ]; then
+                echo "##vso[task.logissue type=warning]This change introduces packages with known advisories below $BLOCK_SEVERITIES. Reported, not blocked."
+                exit 0
+              fi
+
+              echo "Blocking ($BLOCK_SEVERITIES):"
+              cat "$(Agent.TempDirectory)/blocking.tsv"
+
+              # Azure DevOps puts no labels in the pipeline context, so read them from the REST API,
+              # the same way the spec-gate stage reads no-spec:chore. The label is an AUDITED manual
+              # override, not an authorization check — the branch policy's required non-author
+              # approval still gates completion after this passes.
+              LABELS_URL="${SYSTEM_COLLECTIONURI%/}/${SYSTEM_TEAMPROJECT}/_apis/git/repositories/${BUILD_REPOSITORY_ID}/pullRequests/${SYSTEM_PULLREQUEST_PULLREQUESTID}/labels?api-version=7.1"
+              LABELS_JSON="$(curl -sf -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" "$LABELS_URL" || echo '{}')"
+              if printf '%s' "$LABELS_JSON" | jq -e '(.value // .)[]? | select(.name == "accepted-risk:dependency")' >/dev/null; then
+                echo "##vso[task.logissue type=warning]This change introduces a vulnerable package, but the 'accepted-risk:dependency' label records an accepted-risk override (audited in the PR timeline). Record the reason and an expiry in .azuredevops/rails/dependency-exceptions.md. The branch policy's required non-author approval still gates completion."
+                exit 0
+              fi
+
+              echo "##vso[task.logissue type=error]This change introduces a package with a known $BLOCK_SEVERITIES vulnerability. Upgrade it, drop it, or apply the 'accepted-risk:dependency' label AND record the reason and expiry in .azuredevops/rails/dependency-exceptions.md (audited; completion still needs the branch policy's non-author approval)."
+              exit 1
+            displayName: 'Block on what this change introduced'
+            env:
+              SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+              # «stack pack: ci-profile.dependency_scan.block_severities»
+              BLOCK_SEVERITIES: '<<CI_DEPENDENCY_BLOCK_SEVERITIES>>'

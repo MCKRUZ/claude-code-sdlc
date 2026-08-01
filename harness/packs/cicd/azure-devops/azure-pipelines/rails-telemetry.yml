@@ -1,0 +1,230 @@
+# =============================================================================
+# One week of THIS repo's gate outcomes, written down where a human can read it.
+# =============================================================================
+# Overrides and gate outcomes were already recorded per repo — the eval-bypasses ledger, the
+# accepted-risk PR labels, the PR timeline. Nothing aggregated them, so across a portfolio
+# nobody could answer three questions: are the gates firing, are they being routinely waved
+# through, and has one been quietly switched off.
+#
+# This pipeline answers them for one repo and commits `.github/rails-telemetry.json`. The
+# fleet collector (operator-side, not installed here) reads that file across every reachable
+# repo. SAME SCHEMA as the github pack's version — different APIs, one output shape, so one
+# collector reads a mixed GitHub/Azure fleet without caring which platform wrote a file.
+#
+# ── THE ONE THAT MATTERS: A GATE HAS TWO HALVES ──────────────────────────────────────────
+# There is the build validation, and there is the branch POLICY requiring it. Delete the
+# policy — deliberately, or in a reorganisation nobody reviewed — and the pipeline still runs,
+# still reports, and looks entirely normal on the PR. But a red run completes anyway. From the
+# outside, a disarmed gate is indistinguishable from a gate that never caught anything. No
+# amount of counting finds that; only comparing what IS REQUIRED against what EXISTS does.
+#
+# ── CLIENT DATA BOUNDARY ──────────────────────────────────────────────────────────────────
+# NO EXTERNAL CALLS. Everything queries this project's own history through the Azure DevOps
+# REST API with the pipeline's own OAuth token, and writes the result into this repo. Nothing
+# leaves the client's tenancy — a deliberate constraint, and what lets a client security team
+# say yes to it.
+#
+# ── NO ACTIVITY METRICS ───────────────────────────────────────────────────────────────────
+# Counts are per GATE, never per author. `pull_requests_merged` exists only as a denominator:
+# two overrides against three PRs is a very different week from two against ninety. It is not
+# a productivity number and must never be reported as one.
+#
+# ── PLACEHOLDERS ──────────────────────────────────────────────────────────────────────────
+#   <<DEFAULT_BRANCH>>  the protected branch this reports on (reference: main)
+# =============================================================================
+
+trigger: none
+pr: none
+
+schedules:
+  # Monday 06:00 UTC — ahead of dependency-scan.yml's 07:00 so the two do not contend.
+  - cron: '0 6 * * 1'
+    displayName: 'Weekly rails telemetry'
+    branches:
+      include:
+        - main                  # <<DEFAULT_BRANCH>>
+    always: true                # the gates' behaviour changes even when the code does not
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+jobs:
+  - job: rails_telemetry
+    displayName: 'rails-telemetry'
+    condition: or(eq(variables['Build.Reason'], 'Manual'), ne(variables['RAILS_TELEMETRY_ENABLED'], 'false'))
+    steps:
+      - checkout: self
+        persistCredentials: true      # the report is committed back
+
+      - bash: |
+          set -euo pipefail
+          OUT=.github/rails-telemetry.json
+          mkdir -p .github
+          T="$(Agent.TempDirectory)"
+          TO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          FROM="$(date -u -d "-${WINDOW_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+          API="${SYSTEM_COLLECTIONURI%/}/${SYSTEM_TEAMPROJECT}/_apis"
+          AUTH="Authorization: Bearer ${SYSTEM_ACCESSTOKEN}"
+
+          # ── activity: build results per pipeline definition, over the window ────────────
+          curl -sf -H "$AUTH" "${API}/build/builds?minTime=${FROM}&api-version=7.1&\$top=1000" \
+            > "${T}/builds.json" || echo '{"value":[]}' > "${T}/builds.json"
+          jq -c '.value[]? | {name: .definition.name, conclusion: (.result // "unknown")}' \
+            "${T}/builds.json" > "${T}/runs.ndjson" || : > "${T}/runs.ndjson"
+
+          # ── merged PRs and their labels ─────────────────────────────────────────────────
+          # Labels are not on the PR list payload, so they are fetched per PR — the same
+          # extra call ci.yml's spec-gate makes to honour no-spec:chore.
+          curl -sf -H "$AUTH" "${API}/git/repositories/${BUILD_REPOSITORY_ID}/pullrequests?searchCriteria.status=completed&searchCriteria.targetRefName=refs/heads/${DEFAULT_BRANCH}&api-version=7.1&\$top=200" \
+            > "${T}/prs_raw.json" || echo '{"value":[]}' > "${T}/prs_raw.json"
+          : > "${T}/prs.ndjson"
+          for ID in $(jq -r --arg from "$FROM" '.value[]? | select(.closedDate >= $from) | .pullRequestId' "${T}/prs_raw.json"); do
+            LBL="$(curl -sf -H "$AUTH" "${API}/git/repositories/${BUILD_REPOSITORY_ID}/pullRequests/${ID}/labels?api-version=7.1" \
+                   | jq -c '[(.value // .)[]?.name]' || echo '[]')"
+            jq -c --argjson id "$ID" --argjson labels "$LBL" \
+              '.value[] | select(.pullRequestId == $id) | {number: .pullRequestId, title: .title, merged_at: .closedDate, labels: $labels}' \
+              "${T}/prs_raw.json" >> "${T}/prs.ndjson" || true
+          done
+
+          # ── enforcement: what the branch POLICY actually requires ──────────────────────
+          # Prefer live policy — the only reading that catches someone changing it in the UI.
+          # Fall back to the committed desired-state file, recording WHICH, because reporting
+          # intent as though it were reality is precisely the silent-green failure this file
+          # exists to expose.
+          ENF_SOURCE=unavailable
+          : > "${T}/required.txt"
+          if curl -sf -H "$AUTH" "${API}/policy/configurations?api-version=7.1" > "${T}/policy.json" 2>/dev/null; then
+            jq -r '.value[]? | select(.isEnabled and .isBlocking)
+                   | select(.type.displayName == "Build") | .settings.displayName // empty' \
+              "${T}/policy.json" | sort -u > "${T}/required.txt" || true
+            if [ -s "${T}/required.txt" ]; then ENF_SOURCE=live; fi
+          fi
+          if [ "$ENF_SOURCE" != "live" ] && [ -f .azuredevops/rails/branch-policies.json ]; then
+            jq -r '.build_validation[]? | select(.isBlocking) | .displayName' \
+              .azuredevops/rails/branch-policies.json | sort -u > "${T}/required.txt" || true
+            if [ -s "${T}/required.txt" ]; then ENF_SOURCE=committed; fi
+          fi
+
+          # Pipelines/stages that CALL THEMSELVES merge gates.
+          grep -rhoE '^\s+displayName:\s*.(build-and-test|spec-gate|eval-gate|dependency-gate|grader|correctness-review|security-review|eval-regression).' \
+            .azuredevops/pipelines/*.yml 2>/dev/null \
+            | grep -oE '(build-and-test|spec-gate|eval-gate|dependency-gate|grader|correctness-review|security-review|eval-regression)' \
+            | sort -u > "${T}/gatejobs.txt" || : > "${T}/gatejobs.txt"
+
+          # ── ledgers ────────────────────────────────────────────────────────────────────
+          TODAY="$(date -u +%Y-%m-%d)"
+          ledger_json() {
+            local path="$1"
+            if [ ! -f "$path" ]; then
+              jq -n --arg p "$path" '{path:$p, present:false, active_entries:0, expired_entries:0}'
+              return
+            fi
+            local total expired
+            total="$(grep -cE '^[[:space:]]*expires:' "$path" || true)"
+            expired="$(grep -oE '^[[:space:]]*expires:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' "$path" \
+                       | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' \
+                       | awk -v today="$TODAY" '$0 < today' | wc -l | tr -d ' ')"
+            jq -n --arg p "$path" --argjson t "${total:-0}" --argjson e "${expired:-0}" \
+              '{path:$p, present:true, active_entries:($t - $e), expired_entries:$e}'
+          }
+          ledger_json .azuredevops/rails/eval-bypasses.md         > "${T}/ledgers.ndjson"
+          ledger_json .azuredevops/rails/dependency-exceptions.md >> "${T}/ledgers.ndjson"
+
+          # ── assemble — IDENTICAL shape to the github pack's, by contract ───────────────
+          jq -n \
+            --arg repo "${SYSTEM_TEAMPROJECT}/${BUILD_REPOSITORY_NAME}" \
+            --arg gen "$TO" --arg from "$FROM" --arg to "$TO" \
+            --argjson days "${WINDOW_DAYS}" --arg enf_source "$ENF_SOURCE" \
+            --slurpfile ledgers "${T}/ledgers.ndjson" \
+            --rawfile runs_raw "${T}/runs.ndjson" \
+            --rawfile prs_raw "${T}/prs.ndjson" \
+            --rawfile required_raw "${T}/required.txt" \
+            --rawfile gatejobs_raw "${T}/gatejobs.txt" '
+            def lines(s): (s | split("\n") | map(select(length > 0)));
+            def objs(s):  (s | split("\n") | map(select(length > 0) | fromjson));
+
+            (objs($runs_raw))      as $runs |
+            (objs($prs_raw))       as $prs |
+            (lines($required_raw)) as $required |
+            (lines($gatejobs_raw)) as $gatejobs |
+
+            ([$runs[] | .name] | unique) as $names |
+            ($names | map(. as $n | ($runs | map(select(.name == $n))) as $r | {
+               context: $n,
+               runs:    ($r | length),
+               passed:  ($r | map(select(.conclusion == "succeeded")) | length),
+               failed:  ($r | map(select(.conclusion == "failed"))    | length),
+               skipped: ($r | map(select(.conclusion == "canceled"))  | length)
+             })) as $gates |
+
+            (["accepted-risk:correctness","accepted-risk:dependency","gate-exception","risk:high"]
+             | map(. as $lbl | ($prs | map(select(.labels | index($lbl)))) as $hit | {
+                 label: $lbl,
+                 count: ($hit | length),
+                 uses:  ($hit | map({pr: .number, title: .title, merged_at: .merged_at}))
+               })) as $labels |
+
+            ([ ($gatejobs - $required | map({
+                 kind: "gate_not_required", severity: "high", context: .,
+                 detail: ("The pipeline stage (" + . + ") declares itself a required build validation, but no blocking branch policy requires it. It runs, it reports, and a red run completes anyway — a disarmed gate.")
+               })),
+               ($required - $gatejobs | map({
+                 kind: "required_context_has_no_job", severity: "high", context: .,
+                 detail: ("A blocking branch policy requires (" + . + "), but no pipeline produces it. Every pull request waits on a validation that will never report.")
+               })),
+               ($required | map(select(. as $c | ($gates | map(.context) | index($c)) == null)) | map({
+                 kind: "required_context_never_reported", severity: "medium", context: .,
+                 detail: ("Required validation (" + . + ") produced no builds in this window. Either nothing triggered it, or it is quietly broken — from here those look the same.")
+               })),
+               (if $enf_source == "unavailable" then [{
+                 kind: "telemetry_incomplete", severity: "high",
+                 detail: "Branch policy could not be read, live or committed, so no enforcement check was possible. Treat this repo gate status as UNKNOWN, never as clean."
+               }] elif $enf_source == "committed" then [{
+                 kind: "telemetry_incomplete", severity: "low",
+                 detail: "Branch policy was read from the committed desired-state file, not the live API, so this reports intent rather than what Azure DevOps is actually enforcing."
+               }] else [] end),
+               ($ledgers | map(select(.expired_entries > 0)) | map({
+                 kind: "ledger_entry_expired", severity: "medium",
+                 detail: (.path + " has " + (.expired_entries|tostring) + " acceptance(s) past their review date. An acceptance that outlives its expiry has quietly become permanent.")
+               }))
+             ] | flatten) as $findings |
+
+            {
+              schema_version: 1,
+              repo: $repo,
+              generated_at: $gen,
+              window: { days: $days, from: $from, to: $to },
+              activity: { gates: $gates, pull_requests_merged: ($prs | length) },
+              overrides: { labels: $labels, ledgers: $ledgers },
+              enforcement: {
+                source: $enf_source,
+                required_contexts: $required,
+                gate_jobs_present: $gatejobs,
+                findings: $findings
+              }
+            }' > "$OUT"
+
+          echo "Wrote $OUT"
+          jq '{repo, gates: (.activity.gates|length), findings: (.enforcement.findings|length), source: .enforcement.source}' "$OUT"
+        displayName: 'Build the telemetry report'
+        env:
+          SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+          WINDOW_DAYS: '7'
+          DEFAULT_BRANCH: 'main'      # <<DEFAULT_BRANCH>>
+
+      - bash: |
+          set -euo pipefail
+          git config user.name  "Azure Pipelines"
+          git config user.email "azuredevops@microsoft.com"
+          git add .github/rails-telemetry.json
+          # Nothing changed is the common case on a quiet week, and an empty commit every
+          # Monday is noise in the history everyone learns to scroll past.
+          if git diff --cached --quiet; then
+            echo "No change since the last report."
+            exit 0
+          fi
+          git commit -m "chore: rails telemetry $(date -u +%Y-%m-%d)"
+          git push origin "HEAD:${DEFAULT_BRANCH}"
+        displayName: 'Commit the report'
+        env:
+          DEFAULT_BRANCH: 'main'      # <<DEFAULT_BRANCH>>

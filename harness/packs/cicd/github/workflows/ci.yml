@@ -295,3 +295,123 @@ jobs:
         with:
           name: eval-gate-results
           path: eval-results/
+
+  dependency-gate:
+    name: dependency-gate         # <-- required status-check context (branch-protection.json)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
+    # ── THE STANDARD'S POSITION ON THIRD-PARTY COMPONENTS (GOLD-STANDARD §7) ───────────────
+    # This gate blocks a PR that INTRODUCES a package with a known vulnerability. It does NOT
+    # block on what was already there — the weekly dependency-scan workflow owns the standing
+    # stock and raises an issue, which rides the normal rails as an ordinary spec.
+    #
+    # That split is the whole design. Every other gate here measures the diff; a vulnerability
+    # scan measures the repo. Blocking on the repo would mean a CVE published overnight reddens
+    # every open PR the next morning, for reasons nobody caused — the exact failure that
+    # deploy-dev.yml argues against: a job red by design teaches the team red is normal, and
+    # that degrades the signal on every OTHER job. Diff-scoping keeps this one meaningful.
+    #
+    # HOW: run the stack's scan against the BASE branch and against THIS branch, then compare
+    # the two sets of findings. Set difference, not lockfile parsing — which is why one
+    # mechanism serves .NET, Node and Python without this workflow knowing anything about any
+    # of them. The normalizing is the stack pack's job (ci-profile.dependency_scan).
+    #
+    # BASE BRANCH TIP, not merge-base, deliberately: the question a merge gate answers is "what
+    # will be true after this lands that is not true now". Merge-base gets that wrong the moment
+    # someone merges main into their branch — inherited findings would be blamed on them.
+    steps:
+      - name: Checkout (full history — the base tree is scanned too)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup toolchain
+        uses: <<CI_TOOLCHAIN_ACTION>>          # «stack pack: ci-profile.toolchain.id» via toolchain_map
+        with:
+          <<CI_TOOLCHAIN_INPUT>>: '<<CI_TOOLCHAIN_VERSION>>'   # «stack pack: ci-profile.toolchain.version»
+      # ── Scan THIS branch ────────────────────────────────────────────────────────────────────
+      # The scan command is contracted (ci-profile.dependency_scan) to print one TSV finding per
+      # line and EXIT 0 whether or not it finds anything. A non-zero exit therefore means the
+      # TOOLING broke, not that the code is vulnerable — and those need different messages.
+      - name: Scan this branch
+        run: |
+          set -uo pipefail
+          # «stack pack: ci-profile.dependency_scan.command»
+          if ! <<CI_DEPENDENCY_SCAN_CMD>> > "${RUNNER_TEMP}/head.tsv" 2> "${RUNNER_TEMP}/head.err"; then
+            echo "::error title=Dependency scan failed::The scan of THIS branch did not complete, so this gate cannot tell whether the change introduces a vulnerable package. Failing closed rather than passing unverified."
+            sed -n '1,40p' "${RUNNER_TEMP}/head.err" || true
+            exit 1
+          fi
+          sort -u -o "${RUNNER_TEMP}/head.tsv" "${RUNNER_TEMP}/head.tsv"
+          echo "Findings on this branch: $(wc -l < "${RUNNER_TEMP}/head.tsv")"
+
+      # ── Scan the BASE branch, to establish what is NOT this change's doing ───────────────────
+      - name: Scan the base branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -uo pipefail
+          git fetch --no-tags --quiet origin "$BASE_REF"
+          # A destructive checkout is fine here: this job exists only for the comparison, and
+          # nothing after it reads the working tree.
+          git checkout --quiet --detach "origin/$BASE_REF"
+          if ! <<CI_DEPENDENCY_SCAN_CMD>> > "${RUNNER_TEMP}/base.tsv" 2> "${RUNNER_TEMP}/base.err"; then
+            # Do NOT treat a broken baseline as "the base was clean". That would make every
+            # pre-existing finding look newly introduced and bury the real one in a false storm.
+            echo "::error title=Baseline scan failed::The scan of '$BASE_REF' did not complete, so this gate has no baseline. It cannot separate what this change introduced from what was already there."
+            sed -n '1,40p' "${RUNNER_TEMP}/base.err" || true
+            exit 1
+          fi
+          sort -u -o "${RUNNER_TEMP}/base.tsv" "${RUNNER_TEMP}/base.tsv"
+          echo "Findings already on $BASE_REF: $(wc -l < "${RUNNER_TEMP}/base.tsv")"
+
+      - name: Block on what this change introduced
+        env:
+          BLOCK_SEVERITIES: '<<CI_DEPENDENCY_BLOCK_SEVERITIES>>'
+          # An AUDITED manual override, exactly like correctness.yml's: who applied it is in the
+          # PR timeline, and the ruleset's required non-author approval still gates the merge.
+          # The label says a human decided; .github/dependency-exceptions.md says what they
+          # decided and when that acceptance expires.
+          HAS_ACCEPTED_RISK: ${{ contains(github.event.pull_request.labels.*.name, 'accepted-risk:dependency') }}
+        run: |
+          set -euo pipefail
+          # In head, not in base. comm requires both inputs sorted; both were sorted above.
+          comm -13 "${RUNNER_TEMP}/base.tsv" "${RUNNER_TEMP}/head.tsv" > "${RUNNER_TEMP}/new.tsv"
+
+          if [ ! -s "${RUNNER_TEMP}/new.tsv" ]; then
+            echo "OK: this change introduces no new vulnerable package."
+            exit 0
+          fi
+
+          echo "New relative to the base branch:"
+          cat "${RUNNER_TEMP}/new.tsv"
+
+          # CASE-INSENSITIVE on purpose: .NET renders 'High', npm renders 'high'. A case-sensitive
+          # match would silently match nothing on one of them — and a gate that matches nothing
+          # passes forever. Verified against both tools' real output, 2026-07-31.
+          awk -F'\t' -v list="$BLOCK_SEVERITIES" '
+            BEGIN { n = split(tolower(list), a, /,/)
+                    for (i = 1; i <= n; i++) { gsub(/^[ \t]+|[ \t]+$/, "", a[i]); block[a[i]] = 1 } }
+            tolower($1) in block { print }
+          ' "${RUNNER_TEMP}/new.tsv" > "${RUNNER_TEMP}/blocking.tsv"
+
+          if [ ! -s "${RUNNER_TEMP}/blocking.tsv" ]; then
+            echo "::warning title=New advisories below the blocking threshold::This change introduces packages with known advisories below $BLOCK_SEVERITIES. Reported, not blocked."
+            exit 0
+          fi
+
+          echo "Blocking ($BLOCK_SEVERITIES):"
+          while IFS=$'\t' read -r sev pkg ver url; do
+            echo "  [$sev] $pkg $ver — $url"
+          done < "${RUNNER_TEMP}/blocking.tsv"
+
+          if [ "$HAS_ACCEPTED_RISK" = "true" ]; then
+            echo "::warning::This change introduces a vulnerable package, but the 'accepted-risk:dependency' label records an accepted-risk override (audited in the PR timeline). Record the reason and an expiry in .github/dependency-exceptions.md. The branch ruleset's required non-author approval still gates the merge."
+            exit 0
+          fi
+
+          echo "::error::This change introduces a package with a known $BLOCK_SEVERITIES vulnerability. Upgrade it, drop it, or apply the 'accepted-risk:dependency' label AND record the reason and expiry in .github/dependency-exceptions.md (audited; the merge still needs the ruleset's non-author approval)."
+          exit 1
