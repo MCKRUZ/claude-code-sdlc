@@ -25,29 +25,31 @@ Ensure all documentation reflects the system as built — not as planned. A new 
 
 > **HITL GATE:** Before writing any documentation, read `phase7-handoff.md` and review the current state of any existing docs. Present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Who is the primary audience for each document — developers, operators, end users? (2) Which docs already exist and need updating vs. which must be created from scratch? (3) Are there company-specific documentation standards or templates to follow? (4) For `library`/`skill` projects: confirm which artifacts are applicable and which should be skipped. Do not begin Step 1 until the human confirms the documentation scope.
 
-### Step 1: Parallel Documentation Launch
+### Step 1: Write the Two Documentation Domains
 
-Spawn `doc-updater` and `backend-architect` in a **single message** to work on different documentation domains simultaneously:
+Phase 7 has two distinct audiences and they are written differently. Do both, in either order.
 
-```
-# Single message — both agents spawn simultaneously (parallel group doc-A):
-Agent(doc-updater, "Update README and user-facing documentation based on the implementation. Use phase7-handoff.md for gaps discovered during testing. Ensure local setup instructions work against a fresh checkout. Produce updated README.md.")
-Agent(backend-architect, "Generate API documentation by reading current endpoint implementations. Diff against api-contracts.md from Phase 2. Document any drift — what changed, why, and whether contracts need updating. Produce api-docs.md.")
-```
+**The README — for someone who has never seen this repo.** Update it against what was actually
+built, using `phase7-handoff.md` for the gaps testing exposed. The setup instructions must work
+against a fresh checkout, not against your machine with its history. Step 4 is where that claim
+gets tested, so write it to be testable.
 
-**For `library` / `cli` projects:** Replace the `backend-architect` API docs task with:
-```
-Agent(backend-architect, "Generate public API reference from code. Document all exported functions, classes, and types. Write CHANGELOG entries for this release. Produce api-docs.md and CHANGELOG.md.")
-```
+**`api-docs.md` — for someone integrating against it.** Read the current endpoint implementations
+rather than the design, then diff them against `api-contracts.md` from Phase 2. What the code does
+is the fact; the contract is the intention. Where they disagree, both the drift and its reason
+belong in the file.
 
-**For `skill` projects:** Replace the `backend-architect` task with:
-```
-Agent(doc-updater, "Refine SKILL.md: verify all instructions are current, edge cases are handled, and examples demonstrate real usage. Create an example gallery showing 3–5 common invocations with expected output.")
-```
+**For `library` / `cli` projects:** `api-docs.md` is the public API reference instead — every
+exported function, class and type, generated from the code — plus CHANGELOG entries for this
+release.
+
+**For `skill` projects:** there are no endpoints. Refine `SKILL.md` in place of `api-docs.md`:
+verify every instruction is current, edge cases are handled, and add an example gallery of 3–5
+common invocations with their expected output.
 
 ### Step 2: API Documentation — Diff-Based Approach
 
-When `backend-architect` completes, verify the API docs against the Phase 2 contracts:
+Verify the API docs against the Phase 2 contracts:
 - Load `api-contracts.md` from Phase 2 artifacts
 - Diff every endpoint: URL, method, request schema, response schema, auth requirements
 - For each drift: document **what** changed, **when** (which phase/section), and **why**

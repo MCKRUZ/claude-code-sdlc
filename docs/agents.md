@@ -8,7 +8,7 @@ Authoritative reference for how the claude-code-sdlc plugin spawns, coordinates,
 
 1. [Agent Architecture Overview](#1-agent-architecture-overview)
 2. [Custom Agents](#2-custom-agents)
-3. [Built-in Subagents Used by SDLC](#3-built-in-subagents-used-by-sdlc)
+3. [Harness and Built-in Subagents Used by SDLC](#3-harness-and-built-in-subagents-used-by-sdlc)
 4. [Phase-to-Agent Mapping](#4-phase-to-agent-mapping)
 5. [Parallel Execution Rules](#5-parallel-execution-rules)
 6. [Mandatory vs Optional Spawns](#6-mandatory-vs-optional-spawns)
@@ -26,14 +26,22 @@ Agents in the claude-code-sdlc plugin are invoked through Claude Code's `Agent()
 - **Composability.** The sdlc-orchestrator agent can spawn other agents, creating multi-level orchestration without polluting the user-facing conversation.
 - **Parallelism.** Independent agents can be spawned simultaneously in a single message via multiple `Agent()` tool calls, enabling concurrent work across domains.
 
-There are two categories of agents:
+There are three categories of agents:
 
 | Category | Defined In | Count | Examples |
 |----------|-----------|-------|---------|
-| Custom SDLC agents | `agents/*.md` | 8 | sdlc-orchestrator, compliance-checker, requirements-analyst, section-evaluator, gate-repair, multi-reviewer, narrative-enhancer, discovery-analyst |
-| Built-in Claude Code subagents | Claude Code runtime | 13+ | code-reviewer, security-reviewer, backend-architect, Explore |
+| SDLC agents | `agents/*.md` | 13 | sdlc-orchestrator, compliance-checker, requirements-analyst, section-evaluator, gate-repair, multi-reviewer, narrative-enhancer, discovery-analyst, feature-architect, bizreq-analyst, data-analyst, visual-designer, conversation-designer |
+| Harness agents | `harness/agents/*.md`, installed into the target repo | 6 | architect, build-error-resolver, debugger, grader, planner, security-reviewer |
+| Claude Code built-ins | Claude Code runtime | 2 used here | `Explore`, `Plan` |
 
-Custom agents carry SDLC-specific system prompts, tool permissions, and output format contracts. Built-in subagents are standard Claude Code agents referenced by name in phase workflows; they bring their own capabilities but are directed by the SDLC orchestration layer.
+SDLC agents carry SDLC-specific system prompts, tool permissions, and output format contracts and live in the plugin. Harness agents are installed into the client repo by `/sdlc-harness`, so they are available to any session in that repo, not only to `/sdlc` commands.
+
+> **The runtime supplies almost nothing.** An earlier version of this table claimed thirteen-plus
+> "built-in Claude Code subagents" including `backend-architect` and `code-reviewer`. Those do not
+> exist. Believing they came free with the runtime is why phases 7–9 spent several releases
+> spawning agents that were never built — and a spawn that resolves to nothing fails **silently**,
+> so the phase reported the work as done. If an agent is not in one of the three rows above, it is
+> not available; `scripts/tests/test_agent_references.py` now enforces that.
 
 ---
 
@@ -252,190 +260,153 @@ Cross-document analysis for discovery: finds where the intake corpus disagrees w
 
 ---
 
-## 3. Built-in Subagents Used by SDLC
+## 3. Harness and Built-in Subagents Used by SDLC
 
-These are standard Claude Code agents that the SDLC plugin references by name in phase workflows. They are not defined in `agents/` but are invoked via the `Agent()` tool during orchestration.
+Agents referenced by name in phase workflows that are not defined in `agents/`. The harness agents are installed into the target repo by `/sdlc-harness`; the two built-ins come from the Claude Code runtime.
 
-| Agent | Primary Phases | Purpose |
-|-------|---------------|---------|
-| `code-reviewer` | Build (per-change review) | Code correctness, maintainability, convention adherence |
-| `security-reviewer` | 2, Build | OWASP Top 10, auth, secrets, injection, PII handling |
-| `build-error-resolver` | Build, 8 (conditional) | Diagnose and fix build/compilation failures |
-| `backend-architect` | 2, Build, 7 (conditional) | Architecture design, backend implementation, API docs |
-| `frontend-developer` | 2, Build (conditional) | UI implementation, frontend fixes |
-| `test-writer-fixer` | Build (testing per change + hardening passes) | Write and fix unit/integration tests |
-| `e2e-runner` | Build, 8 (sequential) | End-to-end test execution, smoke tests |
-| `api-tester` | Build | API contract testing |
-| `performance-benchmarker` | Build/hardening (conditional), 9 (primary) | Performance NFR validation, baseline establishment |
-| `doc-updater` | Build (bg), 7 (primary), 9 | Documentation generation and updates |
-| `refactor-cleaner` | Build (bg) | Dead code cleanup |
-| `feedback-synthesizer` | 0, 1 (conditional), 9 (bg) | User feedback analysis for retrospectives |
-| `Explore` | 0, 1, 2, 3, Build, 7, close (conditional) | Codebase exploration, ADR gap analysis |
-| `architect` | 2 (primary) | High-level system architecture design |
-| `Plan` | 3 (conditional) | Complex feature decomposition |
-| `tdd-guide` | Build (conditional) | TDD enforcement when profile requires it |
-| `rapid-prototyper` | Build (conditional) | Spike and proof-of-concept implementations |
-| `devops-automator` | 8 (primary) | Staging and production deployment automation |
-| `deep-plan:section-writer` | 3 Foundation (parallel) | Section plan generation within `/deep-plan` |
-| `deep-implement:code-reviewer` | Build (bg) | Diff review of implementation against section plan |
+| Agent | Source | Primary Phases | Purpose |
+|-------|--------|---------------|---------|
+| `security-reviewer` | harness | 2, Build | OWASP Top 10, auth, secrets, injection, PII handling |
+| `build-error-resolver` | harness | Build, 8 (conditional) | Diagnose and fix build/compilation failures |
+| `architect` | harness | 2 (primary) | System architecture design |
+| `grader` | harness | Build (Discern) | Prove a change against its spec, independently of whoever built it |
+| `debugger` | harness | Build (conditional) | Root-cause investigation when a check fails unexpectedly |
+| `planner` | harness | 3 (conditional) | Complex feature decomposition |
+| `Explore` | built-in | 0, 1, 2, 3, Build, 7, close (conditional) | Codebase exploration, ADR gap analysis |
+| `Plan` | built-in | 3 (conditional) | Implementation planning |
+| `deep-plan:section-writer` | `/deep-plan` | 3 Foundation (parallel) | Section plan generation within `/deep-plan` |
+| `deep-implement:code-reviewer` | `/deep-implement` | Build (bg) | Diff review of implementation against section plan |
+
+### Work that is done directly, not delegated
+
+These are the jobs earlier versions of this document assigned to agents that were never built. Each
+is now a step in the phase definition:
+
+| Work | Where it happens now |
+|------|----------------------|
+| README and API documentation | `phases/07-documentation.md` Steps 1–2, written directly and diffed against the Phase 2 contracts |
+| Staging and production deployment | `phases/08-deployment.md` Steps 2 and 4, following `RUNBOOK.md` |
+| Smoke tests | `phases/08-deployment.md` Step 3 |
+| Performance baseline | `phases/09-monitoring.md` Step 1, measured before any threshold is set |
+| Feedback synthesis | `phases/09-monitoring.md` Step 5, as part of the retrospective |
+| Writing tests | the `test-writer` skill |
+| API contract work | the `api-pattern` skill |
+| Failure investigation | the `diagnose` skill, or the `debugger` agent |
+| Spikes and prototypes | `/sdlc-spike` |
+
+A skill runs in the main context with the surrounding work in view, which is what authoring needs.
+An agent starts cold, which is what reviewing needs. That distinction — not a persona name — is
+what decides whether something should be delegated.
 
 ---
 
 ## 4. Phase-to-Agent Mapping
+
+Every agent named below exists. Where a phase does most of its work directly, that is stated
+rather than filled out with agents that would have to be invented.
 
 ### Phase 0: Discovery
 
 | Agent | Mode | Condition |
 |-------|------|-----------|
 | `Explore` | Foreground | Existing codebase to analyze |
-| `feedback-synthesizer` | Foreground | User feedback data available |
+| `discovery-analyst` | Foreground | Document intake ran AND a stakeholder workshop is planned |
 
-Phase 0 is primarily human-driven. Agent use is minimal, mostly exploratory reads and structured interviews. The requirements-analyst custom agent may also be invoked for discovery interviews.
-
----
+Phase 0 is primarily human-driven. `discovery-analyst` produces questions for humans, never answers.
 
 ### Phase 1: Requirements
 
 | Agent | Mode | Condition |
 |-------|------|-----------|
-| `requirements-analyst` | Foreground | Always (HITL-driven) |
 | `Explore` | Foreground | Existing codebase to understand |
-| `feedback-synthesizer` | Foreground | User feedback/analytics available |
-
-The requirements-analyst drives structured interviews, requirements decomposition, and acceptance criteria writing. This phase is heavily interactive with the user.
-
----
+| `requirements-analyst` | Foreground | Decomposing the problem into FR/NFR with acceptance criteria |
+| `feature-architect` | Foreground | Featuring a channel-bound feature (via `/sdlc-feature`) |
+| `bizreq-analyst` | Foreground | Business rules or golden scenarios to capture (via `/sdlc-rules`) |
 
 ### Phase 2: Design
 
 | Agent | Mode | Condition | Parallel Group |
 |-------|------|-----------|----------------|
 | `architect` | Foreground | Always | -- |
-| `backend-architect` | Foreground | Project has backend/API layer | design-A |
-| `frontend-developer` | Foreground | Project has frontend | design-A |
 | `security-reviewer` | Foreground | Auth, payments, or sensitive data in scope | -- |
+| `compliance-checker` | Foreground | The domain carries regulatory obligations | -- |
+| `data-analyst` | Foreground | Feature touches data or PII (via `/sdlc-data`) | -- |
+| `visual-designer` | Foreground | A web/`ag-ui` surface is in scope | design-B |
+| `conversation-designer` | Foreground | A voice/chat surface is in scope | design-B |
+| `multi-reviewer` | Foreground | Suggested before `/sdlc-gate`; `--council` mode | -- |
 | `Explore` | Foreground | Existing codebase being extended | -- |
 
-**Parallel group `design-A`:** When the project has both backend and frontend, spawn `backend-architect` and `frontend-developer` in the same message.
+**Parallel group `design-B`:** When a feature spans a web surface and a voice/chat surface, spawn `visual-designer` and `conversation-designer` in a single message. They author different interaction specs and do not conflict.
 
-**`/deep-plan` integration (steps 1-15):** When `/deep-plan` is invoked in this phase, it manages its own internal subagents (Explore for codebase research, web-search-researcher for web research, opus-plan-reviewer for review). These do not need separate spawning. The agents listed above operate alongside `/deep-plan` for SDLC-native work like ADR generation and security review.
-
----
+Design is not split by tier. `architect` covers the system as a whole; a tier needing deep specialist attention is a spike (`/sdlc-spike`), not a permanent agent.
 
 ### Phase 3: Foundation
 
 | Agent | Mode | Condition | Parallel Group |
 |-------|------|-----------|----------------|
 | `deep-plan:section-writer` | Foreground | 3+ sections to plan | plan-A |
-| `Plan` | Foreground | Complex feature decomposition | -- |
+| `Plan` or `planner` | Foreground | Complex feature decomposition | -- |
 | `Explore` | Foreground | Need to understand existing code structure | -- |
 
-Foundation completes the section-planning that began in `/deep-plan` AND stands up the factory: install/adapt the harness, bring up CI/CD rails + gates + dev infra, and run a walking skeleton end-to-end through the Build loop. The agents above cover the section-planning work; the rails/harness/dev-infra setup is largely HITL plus `devops-automator`-style automation.
-
-**Parallel group `plan-A`:** When multiple section plans have no dependency on each other, spawn one `deep-plan:section-writer` per independent section in a single message. Section plans now land under `.sdlc/artifacts/03-foundation/section-plans/`.
-
-**`/deep-plan` integration (steps 16-22):** `/deep-plan` resumes from the Phase 2 checkpoint and manages `deep-plan:section-writer` subagents internally (batch size up to 7 concurrent). After generation, run `scripts/map_deep_plan_artifacts.py --phase 3` to transform `/deep-plan`'s output into SDLC format (the artifact map keeps id `3`).
-
----
+Foundation completes the section-planning that began in `/deep-plan` AND stands up the factory: install/adapt the harness, bring up CI/CD rails + gates + dev infra, and run a walking skeleton end-to-end through the Build loop. The agents above cover the section-planning work; the rails, harness and dev-infra setup is HITL plus scripted automation (`/sdlc-harness`, `scripts/rails/*`, `/sdlc-doctor`), not an agent.
 
 ### Build Loop
 
-The Build Loop replaces the old batch Implementation/Quality/Testing phases. It is continuous: every change runs three beats -- Intent (decide + write a spec), Delegate (bound + build from an approved plan), Discern (prove against the spec, by someone other than the author, then merge). There is no batch checking phase -- all checking happens per-change inside the loop.
+Building is not delegated to a domain agent. The Delegate beat is Claude building from an approved
+plan under the rails, and the checking ladder is what makes that safe -- not a specialist persona.
+The agents below serve the Discern beat, where a subagent buys something real: a perspective that
+did not write the code.
 
-| Agent | Mode | Condition | Parallel Group |
-|-------|------|-----------|----------------|
-| `tdd-guide` | Foreground (sequential before building a spec) | Profile requires TDD | -- |
-| `backend-architect` | Foreground | Spec is Python/C#/server-side | impl-A |
-| `frontend-developer` | Foreground | Spec is HTML/CSS/Angular/React | impl-A |
-| `rapid-prototyper` | Foreground | Spec is a spike or proof-of-concept | -- |
-| `section-evaluator` | Foreground (blocking) | After each spec completes | -- |
-| `code-reviewer` | Background | Rolling, per-change | -- |
-| `security-reviewer` | Foreground | Change is HIGH-risk: auth/payments/secrets/PII | -- |
-| `build-error-resolver` | Foreground (immediate) | Build or compilation fails | -- |
-| `test-writer-fixer` | Foreground | Testing per change + hardening passes | test-A |
-| `e2e-runner` | Foreground | User-facing flows (per change + hardening) | test-A |
-| `api-tester` | Foreground | API endpoints (per change + hardening) | test-A |
-| `doc-updater` | Background | Change alters public interfaces | -- |
-| `deep-implement:code-reviewer` | Background | Per change, review diff vs spec | -- |
+| Agent | Mode | Condition |
+|-------|------|-----------|
+| `section-evaluator` | Foreground (blocking) | Discern beat -- after each change |
+| `grader` | Foreground | Discern beat -- proves the change against its spec |
+| `security-reviewer` | Foreground | Change touches auth/payments/secrets/PII |
+| `multi-reviewer` | Foreground | Suggested; `--adversarial` and `--edge-cases` |
+| `deep-implement:code-reviewer` | Background | Diff review against the spec/section plan |
+| `build-error-resolver` | Foreground (immediate) | Build, compile, or test compilation fails |
+| `debugger` or `Explore` | Foreground | A check fails unexpectedly |
+| `gate-repair` | Foreground | A gate fails because the harness is wrong, not the change |
 
-**Parallel group `impl-A`:** When independent specs target different domains, spawn domain-specific agents in the same message.
+**Authoring work uses skills, not agents:** tests come from `test-writer`, API surfaces from `api-pattern`, specs from `spec-writer`, PR bodies from `pr-writer`, LLM golden sets from `eval-builder`, failure investigation from `diagnose`.
 
-**Parallel group `test-A`:** Spawn applicable test agents in a single message -- they operate on different test domains and do not conflict.
-
-**Mandatory spawns in the Build Loop (all per-change, never a batch phase):**
+**Mandatory:**
 - `build-error-resolver` on ANY build failure -- do not attempt manual fixes first.
-- `security-reviewer` on ANY HIGH-risk change touching auth, payments, secrets, or PII.
-- `tdd-guide` BEFORE each spec when the profile enables TDD.
-- `section-evaluator` after EACH completed spec -- foreground, blocking. The spec is not marked complete until the evaluator returns PASS or CONDITIONAL PASS. On FAIL, the implementation agent addresses blocking issues and the evaluator re-runs.
-- The author never approves their own work: the non-author Checker (Discern beat) holds the merge bar.
-
-**Session handoff:** At the end of each session (or when context nears limits), the orchestrator MUST update `session-handoff.json` in `.sdlc/artifacts/build/`. At session start, it MUST read this file before beginning work.
-
----
+- `security-reviewer` on ANY change touching auth, payments, secrets, or PII.
+- `section-evaluator` after EACH change -- foreground and blocking; the change does not merge until it returns PASS or CONDITIONAL PASS.
 
 ### Phase 7: Documentation
 
-| Agent | Mode | Condition | Parallel Group |
-|-------|------|-----------|----------------|
-| `doc-updater` | Foreground | Always | doc-A |
-| `backend-architect` | Foreground | API docs need updating (service/app/library/cli projects) | doc-A |
-| `Explore` | Foreground (sequential) | Always -- search git history for undocumented decisions | -- |
+| Agent | Mode | Condition |
+|-------|------|-----------|
+| `Explore` | Foreground | Always -- search git history for undocumented decisions |
 
-**Parallel group `doc-A`:** Spawn `doc-updater` and `backend-architect` in a single message. They write different documents and do not conflict.
-
-**Conditional:** For `skill` projects, replace `backend-architect` with a second `doc-updater` spawn for SKILL.md refinement and example gallery.
-
-**Sequential:** After `doc-A` completes, spawn `Explore` for ADR gap analysis -- it reads the outputs of the doc agents to avoid duplicate work.
-
----
+The documentation itself is written directly. Phase 7 has two audiences -- the README for a stranger, `api-docs.md` for an integrator -- written from the implementation and diffed against the Phase 2 contracts. Run the `Explore` ADR gap analysis afterwards, so it reads the finished documents.
 
 ### Phase 8: Deployment
 
 | Agent | Mode | Condition |
 |-------|------|-----------|
-| `devops-automator` | Foreground | Always |
-| `e2e-runner` | Foreground (sequential) | After staging deploy succeeds |
 | `build-error-resolver` | Foreground (immediate) | Deployment build fails |
 
-**Sequential flow:** `devops-automator` (staging) then `e2e-runner` (smoke tests) then production decision. For production, re-spawn `devops-automator` followed by `e2e-runner` for production smoke tests. This phase is mostly HITL with human approval gates.
-
----
+Deployment and smoke tests are executed directly, following `RUNBOOK.md`. This phase is mostly HITL with human approval gates; Step 0's go/no-go is the most consequential gate in the lifecycle.
 
 ### Phase 9: Monitoring
 
-| Agent | Mode | Condition |
-|-------|------|-----------|
-| `performance-benchmarker` | Foreground | Always (service/app); NFR-dependent for others |
-| `doc-updater` | Foreground | Always -- writes monitoring-config.md |
-| `feedback-synthesizer` | Background | User feedback exists post-launch |
-
-**Sequential:** `performance-benchmarker` runs first to establish baselines. `doc-updater` uses its output to write `monitoring-config.md`. `feedback-synthesizer` runs in background during the retrospective; its output is incorporated when available but does not block the phase.
-
----
+No agents are spawned during Monitoring. The baseline is measured, `monitoring-config.md` is written from those measurements, the alert drill is run by a real human responder -- Claude cannot page anyone -- and the retrospective is written with the client.
 
 ### Phase C: Close & Transfer
 
-| Agent | Mode | Condition |
-|-------|------|-----------|
-| `Explore` | Foreground (read-only) | Harness audit sweep for transfer risk |
-
-This terminal phase proves the client can run everything without the pod. Agent use is minimal -- mostly HITL. `Explore` performs a read-only audit sweep of the harness to surface transfer risk. The close gate is human-run: the client orchestrates one real spec end-to-end unassisted while the pod observes. Access revocation and the harvest PR to the delivery-standard repo are human-driven.
+No agents are spawned during Close. The phase exists to prove the client can run the system without the pod; delegating it would defeat the point.
 
 ---
 
 ## 5. Parallel Execution Rules
 
-Parallel execution is a core optimization in the SDLC plugin. The rules are strict:
-
-1. **Same-group agents MUST be spawned in a single message.** When multiple agents belong to the same parallel group (e.g., `design-A`, `test-A`, `impl-A`), they MUST be launched via multiple `Agent()` tool calls within a single response. Never spawn them in separate messages.
-
-2. **Never run parallel agents sequentially.** If agents are marked as a parallel group, running them one-at-a-time defeats the purpose and wastes context window on intermediate results.
-
-3. **Background agents are non-blocking.** Agents run with `run_in_background: true` return control immediately. Their results are consumed when available but do not gate the main workflow.
-
-4. **Sequential agents have explicit ordering.** When one agent's output is an input to the next (e.g., `devops-automator` then `e2e-runner`), the first must complete before the second starts. This is indicated in the phase mapping tables.
-
-5. **Foreground blocking agents must complete before the workflow advances.** The `section-evaluator` is the canonical example: the section is not done until the evaluator returns its verdict.
+1. **Same-message spawning.** Agents in the same parallel group MUST be launched in one message with multiple `Agent()` calls. Sequential spawning wastes wall-clock time for no benefit.
+2. **Independence is the precondition.** Only group agents whose work cannot conflict -- different files, different documents, different test domains.
+3. **Background for non-blocking work only.** If the current phase gate needs the output, it runs foreground.
+4. **Sequential agents have explicit ordering.** When one agent's output feeds the next, the first must complete before the second starts. This is stated in the phase mapping tables.
 
 ---
 
@@ -443,61 +414,44 @@ Parallel execution is a core optimization in the SDLC plugin. The rules are stri
 
 ### Mandatory (no user prompt needed)
 
-These agents are spawned automatically when their trigger condition is met. The orchestrator does not ask the user for permission.
-
-| Trigger | Agent | Behavior |
-|---------|-------|----------|
-| Build or compilation failure | `build-error-resolver` | Spawn immediately. Do not attempt manual fixes first. |
-| Code touches auth, payments, secrets, or PII | `security-reviewer` | Foreground. STOP on CRITICAL/HIGH findings. |
-| Profile requires TDD | `tdd-guide` | Spawn BEFORE each section implementation. |
-| Build Loop (Discern beat) | `code-reviewer` + `security-reviewer` | Per-change review; security on HIGH-risk changes. |
-| Spec/section completes (Build Loop) | `section-evaluator` | Foreground, blocking. Section not done until PASS or CONDITIONAL PASS. |
-| Gate check fails unexpectedly | `Explore` | Investigate root cause before attempting fixes. |
-| Test suite failure after implementation | `test-writer-fixer` | Spawn to diagnose and fix. |
+| Trigger | Agent | Notes |
+|---------|-------|-------|
+| Build or compilation failure | `build-error-resolver` | Immediately. Do not attempt manual fixes first. |
+| Change touches auth, payments, secrets, or PII | `security-reviewer` | Foreground. STOP on CRITICAL/HIGH findings. |
+| Build Loop (Discern beat) | `section-evaluator` | Foreground and blocking, after every change. |
 
 ### Optional (suggest to user)
 
-These agents are available when beneficial but require user agreement or context-dependent judgment.
-
-| Scenario | Agent | Guidance |
-|----------|-------|----------|
-| Complex multi-file feature | `Plan` | Suggest when 5+ files are involved. |
-| After implementation | `code-reviewer` | For PR preparation, not every edit. |
-| TDD workflow | `tdd-guide` | When user explicitly wants TDD. |
-| Performance concerns | `performance-benchmarker` | When NFRs exist or user raises concerns. |
+| Situation | Agent | Notes |
+|-----------|-------|-------|
+| Design-heavy phase before the gate | `multi-reviewer` | `--council`, `--adversarial`, or `--edge-cases`. |
+| A gate fails and the harness looks wrong | `gate-repair` | Repair the harness; never weaken the gate to pass. |
+| A check fails for reasons nobody can explain | `debugger` | Root cause before remediation. |
 
 ---
 
 ## 7. Background Agent Policy
 
-Agents that run with `run_in_background: true` are non-blocking. Their output is consumed when available but does not gate the current workflow.
+Run with `run_in_background: true`:
+- `deep-implement:code-reviewer` -- diff review against the spec/section plan
 
-**Always background:**
-- `doc-updater` -- documentation updates during build-loop changes
-- `refactor-cleaner` -- dead code cleanup during Build-loop change review
-- `code-reviewer` -- rolling per-change reviews in the Build Loop
-- `deep-implement:code-reviewer` -- diff review against section plans
-- `feedback-synthesizer` -- feedback analysis during Phase 9 retrospective
-
-**Never background:**
-- `security-reviewer` -- always foreground, always blocking. Security findings may require immediate workflow changes.
-- `build-error-resolver` -- always foreground, always blocking. Build failures halt progress.
-- `section-evaluator` -- always foreground, always blocking. The section's completion status depends on the verdict.
-- Any agent producing artifacts required by the current phase gate.
+Never background:
+- Security reviews (always foreground, always blocking)
+- Build error resolution (always foreground, always blocking)
+- Spec/section evaluation (it decides whether the change merges)
+- Any work producing artifacts required by the current phase gate
 
 ---
 
 ## 8. Automatic Escalation Rules
 
-These rules apply across ALL phases. When a trigger condition is detected, the corresponding agent is spawned without user prompt.
-
 | Trigger | Agent | Behavior |
 |---------|-------|----------|
 | Build or compilation failure | `build-error-resolver` | Spawn immediately. Do not attempt manual fixes first. |
 | Code touches auth, payments, secrets, or PII | `security-reviewer` | Foreground. STOP on CRITICAL/HIGH findings. |
-| Gate check fails unexpectedly | `Explore` | Investigate root cause before attempting fixes. |
-| Test suite failure after implementation | `test-writer-fixer` | Spawn to diagnose and fix. |
-| CRITICAL/HIGH security finding | Domain agent (`backend-architect` or `frontend-developer`) | Fix the finding, then re-run `security-reviewer`. |
+| Gate check fails unexpectedly | `Explore` or `debugger` | Investigate root cause before attempting fixes. |
+| A gate fails because the harness is wrong | `gate-repair` | Repair the harness, never the threshold. |
+| CRITICAL/HIGH security finding | -- | Fix inline, then re-run `security-reviewer` to confirm. The fix belongs to whoever holds the context. |
 
 ---
 
