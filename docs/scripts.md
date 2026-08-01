@@ -492,7 +492,7 @@ Run /sdlc to see full phase guidance.
 uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --phase 0
 
 # Single phase with custom output path
-uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --phase 0 --output .sdlc/reports/phase00-report.html
+uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --phase 0 --output .sdlc/reports/00-discovery-report.html
 
 # All phases (generates individual reports + index.html)
 uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --all
@@ -545,8 +545,8 @@ uv run scripts/generate_phase_report.py --state .sdlc/state.yaml --all
 
 ```
 .sdlc/reports/
-  phase00-report.html
-  phase01-report.html
+  00-discovery-report.html
+  01-requirements-report.html
   ...
   index.html            (only with --all)
 ```

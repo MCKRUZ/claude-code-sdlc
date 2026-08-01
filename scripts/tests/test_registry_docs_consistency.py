@@ -108,6 +108,35 @@ def test_no_required_artifact_is_also_listed_as_optional():
     )
 
 
+def test_phase_reports_use_the_registry_slug_convention():
+    """Report filenames are `<slug>-report.html`, never `phase9-` or `phase09-`.
+
+    Three conventions were in use at once: the phase bodies wrote `phase09-report.html`, the
+    registry's optional lists said `phase9-report.html`, and `docs/commands.md` documented
+    `<slug>-report.html` — so `03-foundation.md` alone used both padded and unpadded forms.
+    `commands/sdlc-gate.md` pre-checks the visual report by slug, so a team following the phase
+    body wrote a file the gate then failed to find.
+
+    The slug wins because it is what `generate_phase_report.py` is invoked with and the only form
+    that survives the non-numeric phases (`build`, `close`).
+    """
+    offenders = []
+    for path in sorted(
+        set(REPO_ROOT.glob("phases/*.md"))
+        | set(REPO_ROOT.glob("docs/*.md"))
+        | set(REPO_ROOT.glob("commands/*.md"))
+        | {REGISTRY}
+    ):
+        for match in re.finditer(r"\bphase\d+-(?:report|visual)\.html\b",
+                                 path.read_text(encoding="utf-8")):
+            offenders.append(f"{path.relative_to(REPO_ROOT)}: {match.group(0)}")
+
+    assert not offenders, (
+        "report filenames must use the registry slug (e.g. `09-monitoring-report.html`); these "
+        "will never match what the gate looks for:\n  " + "\n  ".join(offenders)
+    )
+
+
 @pytest.mark.parametrize("path", [REGISTRY, LIFECYCLE])
 def test_sources_exist(path: Path):
     """Guard the guard: a moved or renamed source must fail loudly, not pass vacuously."""

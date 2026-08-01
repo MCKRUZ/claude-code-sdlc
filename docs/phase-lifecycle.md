@@ -164,7 +164,7 @@ Understand the problem space, quantify impact, map stakeholders, and define scop
 - `stakeholder-notes.md` -- raw notes from stakeholder conversations
 - `market-research.md` -- competitive analysis or market context
 - `document-registry.md` -- document intake index (opt-in via profile documentation)
-- `phase0-report.html` -- self-contained HTML phase report
+- `00-discovery-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
 
@@ -245,7 +245,7 @@ Decompose the problem into functional and non-functional requirements with user 
 ### Optional Artifacts
 
 - `glossary.md` -- domain terminology definitions
-- `phase1-report.html` -- self-contained HTML phase report
+- `01-requirements-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
 
@@ -333,7 +333,7 @@ Create software architecture, API contracts, data models, and Architecture Decis
 
 - `data-model.md` -- entity-relationship diagrams and schema definitions
 - `sequence-diagrams.md` -- interaction sequences for key flows
-- `phase2-report.html` -- self-contained HTML phase report
+- `02-design-report.html` -- self-contained HTML phase report
 - `research-notes.md` -- codebase and web research findings from /deep-plan
 - `integration-notes.md` -- cross-system integration concerns
 - `external-reviews/` -- multi-LLM review outputs
@@ -428,7 +428,7 @@ Build the factory and prove it on real software. Install and adapt the harness, 
 - `harness-inventory.md` -- what the kit installed and per-file adaptation notes
 - `pipeline-proof.md` -- forced-failure evidence, one entry per rail
 - `walking-skeleton-spec.md` -- the skeleton slices with per-slice loop evidence (spec, PR, grader verdict, Checker, deploy)
-- `phase3-report.html` -- the generated phase report
+- `03-foundation-report.html` -- the generated phase report
 
 ### Primary Skills
 
@@ -612,7 +612,7 @@ Prove that someone who isn't the pod can understand, run, and operate the system
 - `CHANGELOG.md` -- version history
 - `CONTRIBUTING.md` -- contribution guidelines
 - `drift-catalog.md` -- drift between the Phase 2 contracts and what Build shipped
-- `phase7-report.html` -- self-contained HTML phase report
+- `07-documentation-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
 
@@ -701,7 +701,7 @@ Promote to production through the pipeline that has existed since Foundation. Ph
 
 - `rollback-procedure.md` -- the rehearsed rollback steps
 - `deployment-log.md` -- the promotion log
-- `phase8-report.html` -- self-contained HTML phase report
+- `08-deployment-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
 
@@ -790,7 +790,7 @@ Make production observable, make alerts real (thresholds from measured baselines
 ### Optional Artifacts
 
 - `baseline-data.md` -- the measured baselines behind the alert thresholds
-- `phase9-report.html` -- self-contained HTML phase report
+- `09-monitoring-report.html` -- self-contained HTML phase report
 
 ### Primary Skills
 
