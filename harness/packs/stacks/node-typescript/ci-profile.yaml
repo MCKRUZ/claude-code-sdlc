@@ -116,6 +116,43 @@ eval_gate:
 
 # Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
 # --noEmit: a health check answers "does this still type-check?" — it must not write build output.
+# ── DEPENDENCY SCAN — the third-party-component position (GOLD-STANDARD §7) ───────────────────────
+# Contract and rationale: see packs/stacks/dotnet/ci-profile.yaml, the reference profile. In short —
+# print ONE FINDING PER LINE as TSV `<severity>\t<package>\t<version-or-range>\t<advisory-url>`,
+# print nothing else, and EXIT 0 whether or not findings exist. The CI/CD pack runs this against the
+# base tree and the head tree and blocks only on what the change INTRODUCED.
+#
+# ── VERIFIED EMPIRICALLY, 2026-07-31, npm 11.5.2 / node 22.17.1 ──────────────────────────────────
+# Probe: lodash@4.17.15 + minimist@1.2.0 (real published High and Critical advisories).
+#
+#   *** `npm audit --json` EXITS 1 WHEN IT FINDS ANYTHING. ***
+#
+# The exact opposite of the .NET tool, which exits 0 even on a High finding. Two traps pointing in
+# two directions: .NET's silently PASSES a gate that trusts its status, npm's silently ABORTS the
+# step under `set -euo pipefail` before jq ever runs — which, in a naive pipeline, also reads as
+# "no findings". Hence `|| true` in a subshell below. It is not sloppiness; removing it breaks the
+# gate in the passing direction.
+#
+# Verified shape: `.vulnerabilities` is an OBJECT KEYED BY PACKAGE NAME (not an array), each entry
+# carrying {name, severity, range, via[]}. `via[]` holds a MIX of objects (the advisories) and bare
+# strings (cross-references to other package names) — hence `select(type=="object")`; without it jq
+# errors on the strings and the step dies.
+#
+# npm reports the affected RANGE (`<=4.17.23`), not a single resolved version, so field 3 is a range
+# here where .NET puts an exact version. Both are stable identities for set-comparison, which is all
+# the gate needs.
+#
+# npm severities are LOWERCASE (`high`, `critical`); .NET's are capitalized (`High`, `Critical`).
+# That is why the pack compares `block_severities` case-insensitively — verified necessity, not
+# defensive habit.
+dependency_scan:
+  enabled: true
+  # -> <<CI_DEPENDENCY_SCAN_CMD>>
+  command: >-
+    (npm audit --json || true) | jq -r '.vulnerabilities[]? | . as $v | ($v.via[]? | select(type=="object") | [$v.severity, $v.name, $v.range, .url] | @tsv)' | sort -u
+  # -> <<CI_DEPENDENCY_BLOCK_SEVERITIES>>. npm's scale is info/low/moderate/high/critical.
+  block_severities: "high,critical"
+
 session_health:
   command: npx tsc --project tsconfig.json --noEmit
   timeout_seconds: 120

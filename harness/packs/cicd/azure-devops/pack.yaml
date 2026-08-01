@@ -19,6 +19,10 @@ provides:
     - azure-pipelines/correctness.yml      # correctness-review — BLOCKS on a high-confidence defect
     - azure-pipelines/security.yml         # security-review — BLOCKS on HIGH
     - azure-pipelines/deploy-dev.yml        # deployment job + environment + rollback (STARTER)
+    - azure-pipelines/deploy-promote.yml   # dev→test→prod — manual only; the target Environment's
+                                           # approval check IS the human go/no-go (STARTER)
+    - azure-pipelines/dependency-scan.yml  # weekly standing-stock scan — raises a work item, never blocks
+    - azure-pipelines/rails-telemetry.yml  # weekly gate-outcome report — same schema as the github pack's
     - azure-pipelines/eval-regression.yml  # per-PR eval-regression gate — BLOCKS
     - azure-pipelines/eval-suite.yml       # full benchmark — manual + scheduled, ADVISORY
   templates:
@@ -96,6 +100,9 @@ overlays:
   - { src: azure-pipelines/correctness.yml,                     dest: .azuredevops/pipelines/correctness.yml }
   - { src: azure-pipelines/security.yml,                        dest: .azuredevops/pipelines/security.yml }
   - { src: azure-pipelines/deploy-dev.yml,                      dest: .azuredevops/pipelines/deploy-dev.yml }
+  - { src: azure-pipelines/deploy-promote.yml,                  dest: .azuredevops/pipelines/deploy-promote.yml }
+  - { src: azure-pipelines/dependency-scan.yml,                 dest: .azuredevops/pipelines/dependency-scan.yml }
+  - { src: azure-pipelines/rails-telemetry.yml,                 dest: .azuredevops/pipelines/rails-telemetry.yml }
   - { src: azure-pipelines/eval-regression.yml,                 dest: .azuredevops/pipelines/eval-regression.yml }
   - { src: azure-pipelines/eval-suite.yml,                      dest: .azuredevops/pipelines/eval-suite.yml }
   - { src: azure-pipelines/templates/setup-toolchain.yml,       dest: .azuredevops/pipelines/templates/setup-toolchain.yml }

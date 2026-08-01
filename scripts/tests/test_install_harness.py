@@ -231,6 +231,12 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     _write(payload / "CLAUDE.md.template", CLAUDE_TEMPLATE)
     _write(payload / "spec-template.md", "# spec template\n")
     _write(payload / "spike-template.md", "# spike template\n")
+    # The closing-phase skeletons (Phase 8/9). Present here because the installer fails closed
+    # on any FILE_MAP source it cannot find — this fixture must grow with the map, which is the
+    # point: adding a mapping without a payload file is exactly the breakage worth catching.
+    _write(payload / "rollback-template.md", "# rollback\n")
+    _write(payload / "alert-definitions-template.md", "# alerts\n")
+    _write(payload / "incident-playbook-template.md", "# playbook\n")
     _write(payload / "settings.json", json.dumps(CORE_SETTINGS, indent=2) + "\n")
     _write(payload / "mcp.json", json.dumps(CORE_MCP, indent=2) + "\n")
     _write(payload / "HARNESS.md", "# harness tour\n")
@@ -244,6 +250,8 @@ def make_payload(root: Path, *, stack_requires_cicd=None, cicd_present=True, too
     _write(payload / "profile" / "rulesets" / "main.json", "{}\n")
     _write(payload / "profile" / "scripts" / "diff-anchors.sh", "#!/bin/sh\n")
     _write(payload / "profile" / "eval-bypasses.md", "# bypasses\n")
+    _write(payload / "profile" / "dependency-exceptions.md", "# dependency acceptances\n")
+    _write(payload / "profile" / "rails-telemetry.schema.json", '{"schema_version": 1}\n')
     _write(payload / "profile" / "CODEOWNERS", "* @team\n")
     _write(payload / "eval-datasets" / "cases.jsonl", "{}\n")
     _write(payload / "prompts" / "review.md", "# prompt\n")

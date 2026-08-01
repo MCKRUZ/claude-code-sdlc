@@ -21,6 +21,14 @@
       "note": "OPTIONAL — keep only if ci.yml still contains the eval-gate stage AND you split it into its own pipeline, OR drop this entry and rely on the build-and-test policy (the eval-gate stage runs inside CI)."
     },
     {
+      "pipelineName": "dependency-gate",
+      "displayName": "dependency-gate",
+      "isBlocking": true,
+      "pathFilters": [],
+      "validDurationMinutes": 720,
+      "note": "BLOCKS when the change INTRODUCES a package with a known vulnerability (severity per ci-profile.dependency_scan.block_severities). Deliberately diff-scoped — it compares this branch against the target branch, so a CVE published overnight in untouched code does not redden every open PR; the standing stock belongs to the scheduled dependency-scan pipeline, which raises a work item instead. Override: the accepted-risk:dependency label, with the reason and expiry recorded in .azuredevops/rails/dependency-exceptions.md. NOTE like eval-gate, this stage lives inside ci.yml — either split it into its own pipeline to use this entry, or drop this entry and rely on the build-and-test policy."
+    },
+    {
       "pipelineName": "grader",
       "displayName": "grader",
       "isBlocking": true,

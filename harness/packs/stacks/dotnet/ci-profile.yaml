@@ -97,6 +97,75 @@ eval_gate:
     --results-directory eval-results
     -- RunConfiguration.TreatNoTestsAsError=true
 
+# ── DEPENDENCY SCAN — the third-party-component position (GOLD-STANDARD §7) ───────────────────────
+# Realized by the CI/CD pack as TWO things from this one declaration: a diff-scoped `dependency-gate`
+# job in ci.yml (blocks a PR that INTRODUCES a vulnerable package) and a weekly full scan that raises
+# an issue for what is already there.
+#
+# ── WHY THE GATE IS DIFF-SCOPED, AND WHY THAT IS NOT A WEAKENING ─────────────────────────────────
+# Every other gate here measures the DIFF. A vulnerability scan measures the whole repo, so a CVE
+# published overnight in a package nobody touched would redden every open PR the next morning. That
+# is the failure deploy-dev.yml's header argues against at length: a job red for reasons nobody
+# caused teaches the team that red is normal, which degrades the signal on every OTHER job. So the
+# gate blocks on what THIS CHANGE introduced, and the scheduled scan owns the standing stock — which
+# rides the normal rails as an ordinary spec, with a human deciding the priority.
+#
+# ── THE CONTRACT (read before changing `command`) ────────────────────────────────────────────────
+# `command` MUST print ONE FINDING PER LINE as TSV:
+#
+#     <severity>\t<package-id>\t<resolved-version>\t<advisory-url>
+#
+# and print NOTHING ELSE. It must exit 0 whether or not findings exist — findings are DATA here, not
+# failure; the pack decides what blocks. Normalizing HERE, in the stack pack, is deliberate: it keeps
+# the CI/CD packs from having to learn three unrelated JSON schemas, which is the same reason
+# `commands.*` are declared here rather than hardcoded per platform. The pack just runs this on the
+# base tree and on the head tree and compares the two sets of lines.
+#
+# ── VERIFIED EMPIRICALLY, 2026-07-31, SDK 11.0.100-preview.1 ─────────────────────────────────────
+# Probe: a net8.0 classlib with System.Net.Http 4.3.0 (a real, published High advisory).
+#
+#   *** `dotnet list package --vulnerable` EXITS 0 WITH A HIGH VULNERABILITY PRESENT. ***
+#
+# Confirmed by running it. A CI step that trusts the exit code reports GREEN while the project ships
+# a known-vulnerable package. This is the same shape of trap as `dotnet test --filter` matching zero
+# tests (see eval_gate above) — the tool tells you in its OUTPUT, never in its status. Findings must
+# be parsed, never inferred from success. Do not "simplify" this to `&& echo ok`.
+#
+# Verified JSON shape (`--output-version 1`), which the jq below walks:
+#   .projects[].frameworks[].topLevelPackages[]   -> {id, requestedVersion, resolvedVersion,
+#                                                     vulnerabilities:[{severity, advisoryurl}]}
+#   .projects[].frameworks[].transitivePackages[] -> same shape (only topLevelPackages appeared in
+#                                                     the probe; the transitive key is handled too
+#                                                     because --include-transitive is set)
+#
+# `--output-version 1` is PINNED ON PURPOSE. Microsoft documents that when a new JSON version ships,
+# the command produces the NEW format by default — which would silently change every field the jq
+# reads. An unpinned parser is a parser that breaks on an SDK bump, quietly, in the passing direction.
+#
+# `--include-transitive` is NOT the default, and NuGet's own CI guidance calls this out. Without it
+# the scan sees only what you referenced directly, which is where the minority of real CVEs live.
+#
+# `--vulnerable` needs SDK >= 9.0.300; `--format json` needs >= 7.0.200. Both satisfied by the 10.x
+# pinned above. Vulnerability data comes from `<AuditSources>`, defaulting to the configured
+# `<PackageSources>` — an offline or mirror-only feed that lacks VulnerabilityInfoResource yields NO
+# findings and warns rather than failing, so on a private-feed client CONFIRM the audit source
+# resolves before trusting a green gate.
+#
+# NOTE the command rename: .NET 10 introduced the noun-first `dotnet package list`. The verb-first
+# form below still works and also works on 9.x, so it is the portable spelling. Do not "modernize" it
+# without checking the SDK floor of every repo using this profile.
+dependency_scan:
+  enabled: true
+  # -> <<CI_DEPENDENCY_SCAN_CMD>>. Single line, like every other command here.
+  command: >-
+    dotnet list package --vulnerable --include-transitive --format json --output-version 1
+    | jq -r '.projects[]?.frameworks[]? | (.topLevelPackages[]?, .transitivePackages[]?) | . as $p | ($p.vulnerabilities[]? | [.severity, $p.id, $p.resolvedVersion, .advisoryurl] | @tsv)'
+  # -> <<CI_DEPENDENCY_BLOCK_SEVERITIES>>. Compared case-insensitively against field 1. Anything not
+  # listed is reported and does not block, matching security.yml's "blocks on HIGH" dial. NuGet renders
+  # severity as words; only High/Critical are load-bearing here, so the exact spelling of the middle
+  # tier (Moderate vs Medium — not observed in the probe) cannot change the outcome.
+  block_severities: "High,Critical"
+
 # Feeds profile.quality.session_health_check when the CI/CD pack / hooks wire a session-start smoke test.
 session_health:
   command: dotnet build {{SOLUTION_OR_PROJECT}} --no-restore --verbosity quiet

@@ -131,6 +131,44 @@ eval_gate:
 # env sync entirely and `compileall` byte-compiles the tree offline, exiting non-zero on a syntax
 # error. This is the cheapest honest answer to "is the tree sound right now" — the full type check
 # is the `build` gate's job, not a session-start hook's.
+# ── DEPENDENCY SCAN — the third-party-component position (GOLD-STANDARD §7) ───────────────────────
+# Contract and rationale: see packs/stacks/dotnet/ci-profile.yaml, the reference profile. In short —
+# print ONE FINDING PER LINE as TSV `<severity>\t<package>\t<version>\t<advisory-url>`, print nothing
+# else, and EXIT 0 whether or not findings exist. The CI/CD pack runs this against the base tree and
+# the head tree and blocks only on what the change INTRODUCED.
+#
+# ── NOT EMPIRICALLY VERIFIED (unlike the dotnet and node profiles) ───────────────────────────────
+# The .NET and Node commands in the sibling profiles were run against real published advisories and
+# their output shapes confirmed by hand. This one was NOT — it is written from pip-audit's documented
+# JSON schema. Treat it as unproven until the dependency-gate shakedown drill (RAILS.md) has been run
+# on a Python repo: add a knowingly vulnerable package, watch the gate go red. If the jq below is
+# wrong it emits NOTHING, and a gate that finds nothing looks exactly like a gate with nothing to
+# find — which is precisely why that drill is not optional.
+#
+# ── PIP-AUDIT REPORTS NO SEVERITY. THIS IS WHY THE POLICY BELOW IS STRICTER. ─────────────────────
+# pip-audit's JSON gives {name, version, vulns:[{id, fix_versions, aliases, description}]} — an
+# advisory ID and a description, but NO severity rating. There is therefore nothing to threshold on,
+# and inventing one from the description text would be a guess wearing a number's clothing.
+#
+# So this profile emits the literal token `unknown` in the severity field and blocks on it: on
+# Python, ANY newly introduced vulnerability blocks, not merely the high ones. That is deliberately
+# stricter than .NET and Node, and it is the honest reading of the tool — "we cannot tell which of
+# these are severe" argues for stopping, not for waving them through. It stays tolerable only
+# because the gate is diff-scoped: it fires on what THIS change pulled in, never on the standing
+# stock, which the weekly scan owns.
+#
+# `uv run --frozen` matches the other commands in this profile: pip-audit must be declared in the
+# project's dev dependency group, exactly as mypy, pytest and ruff already are.
+dependency_scan:
+  enabled: true
+  # -> <<CI_DEPENDENCY_SCAN_CMD>>
+  command: >-
+    (uv run --frozen pip-audit --format json || true) | jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' | sort -u
+  # -> <<CI_DEPENDENCY_BLOCK_SEVERITIES>>. See above: the tool supplies no severity, so the single
+  # token it does emit is the one that blocks. Do NOT "fix" this to High/Critical — that would make
+  # the gate match nothing and pass forever.
+  block_severities: "unknown"
+
 session_health:
   command: uv run --frozen --no-sync python -m compileall -q {{SOLUTION_OR_PROJECT}}
   timeout_seconds: 60

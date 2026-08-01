@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mckruz.dev/delivery-standard/rails-telemetry.schema.json",
+  "title": "Rails telemetry",
+  "description": "One week of gate outcomes for ONE repo, written by the rails-telemetry workflow into .github/rails-telemetry.json and committed. The fleet collector reads these files across every reachable repo. Client-owned data: the workflow queries only the repo's own history through its own platform's API and makes no external calls, which is what makes it acceptable to a client security team. Fixed at version 1 BEFORE the install wave, deliberately — a schema retrofitted across installed repos is a migration nobody schedules.",
+  "type": "object",
+  "required": ["schema_version", "repo", "generated_at", "window", "activity", "overrides", "enforcement"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Bump only for a breaking shape change. The collector refuses a version it does not know rather than silently misreading it."
+    },
+    "repo": {
+      "type": "string",
+      "description": "owner/name (GitHub) or project/repo (Azure DevOps). The fleet key."
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "window": {
+      "type": "object",
+      "required": ["days", "from", "to"],
+      "additionalProperties": false,
+      "description": "The period covered. Explicit rather than implied, so a collector reading files written on different days never compares mismatched spans.",
+      "properties": {
+        "days": { "type": "integer", "minimum": 1 },
+        "from": { "type": "string", "format": "date-time" },
+        "to": { "type": "string", "format": "date-time" }
+      }
+    },
+
+    "activity": {
+      "type": "object",
+      "required": ["gates", "pull_requests_merged"],
+      "additionalProperties": false,
+      "description": "Did the gates run, and what did they conclude. Counts only — never per-author attribution. The standard forbids activity metrics in client materials and does not track them internally either (GOLD-STANDARD section 9); this measures the RAILS, not the people.",
+      "properties": {
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["context", "runs", "passed", "failed"],
+            "additionalProperties": false,
+            "properties": {
+              "context": { "type": "string", "description": "The status-check context / job name." },
+              "runs": { "type": "integer", "minimum": 0 },
+              "passed": { "type": "integer", "minimum": 0 },
+              "failed": { "type": "integer", "minimum": 0 },
+              "skipped": { "type": "integer", "minimum": 0 }
+            }
+          }
+        },
+        "pull_requests_merged": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Denominator only. Present so an override count can be read as a rate rather than a bare number; two overrides against three PRs is a different story from two against ninety. NOT a productivity measure and never reported as one."
+        }
+      }
+    },
+
+    "overrides": {
+      "type": "object",
+      "required": ["labels", "ledgers"],
+      "additionalProperties": false,
+      "description": "Where a human consciously stepped past a gate. Every one of these is legitimate by design — the point is not to eliminate them but to make them visible and countable, because an override nobody can see is indistinguishable from a gate that never fired.",
+      "properties": {
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["label", "count", "uses"],
+            "additionalProperties": false,
+            "properties": {
+              "label": {
+                "type": "string",
+                "description": "accepted-risk:correctness | accepted-risk:dependency | gate-exception | risk:high"
+              },
+              "count": { "type": "integer", "minimum": 0 },
+              "uses": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["pr"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "pr": { "type": ["integer", "string"] },
+                    "title": { "type": "string" },
+                    "merged_at": { "type": "string", "format": "date-time" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "ledgers": {
+          "type": "array",
+          "description": "The committed accepted-risk files. An acceptance is meant to expire; an expired entry still sitting here is a decision that quietly became permanent.",
+          "items": {
+            "type": "object",
+            "required": ["path", "present", "active_entries", "expired_entries"],
+            "additionalProperties": false,
+            "properties": {
+              "path": { "type": "string" },
+              "present": { "type": "boolean" },
+              "active_entries": { "type": "integer", "minimum": 0 },
+              "expired_entries": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+
+    "enforcement": {
+      "type": "object",
+      "required": ["source", "required_contexts", "gate_jobs_present", "findings"],
+      "additionalProperties": false,
+      "description": "THE SECTION THAT JUSTIFIES THIS FILE. A gate has two halves: the check, and the rule requiring it to pass. Remove the second and the check still runs, still reports, and looks entirely normal — but a red run merges anyway. From the outside, a disarmed gate is indistinguishable from a gate that never caught anything. Counts cannot tell them apart; only this comparison can.",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["live", "committed", "unavailable"],
+          "description": "Where required_contexts came from. 'live' is the platform's actual branch protection — the only reading that catches someone editing it in the UI. 'committed' is the repo's desired-state ruleset file, used when the API is unreadable: still worth having, but it reports intent rather than reality, and the collector says so rather than implying a check it did not make."
+        },
+        "required_contexts": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Status checks branch protection actually requires."
+        },
+        "gate_jobs_present": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Jobs in the repo's workflows that declare themselves merge gates."
+        },
+        "findings": {
+          "type": "array",
+          "description": "Structured, not prose, so the collector can rank a fleet by severity without parsing English.",
+          "items": {
+            "type": "object",
+            "required": ["kind", "severity", "detail"],
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "gate_not_required",
+                  "required_context_has_no_job",
+                  "required_context_never_reported",
+                  "override_without_ledger_entry",
+                  "ledger_entry_expired",
+                  "telemetry_incomplete"
+                ],
+                "description": "gate_not_required — a job calls itself a gate but nothing requires it. THE DISARMED CASE, and the reason this file exists. required_context_has_no_job — required but nothing produces it, so every PR waits forever. required_context_never_reported — required, produced, but silent all window: either nothing triggered it or it is quietly broken, and the two look the same from here. override_without_ledger_entry — a label used with no written justification. ledger_entry_expired — an acceptance past its review date. telemetry_incomplete — this file could not be fully built; treat its absences as unknown, never as clean."
+              },
+              "severity": { "type": "string", "enum": ["high", "medium", "low"] },
+              "context": { "type": "string" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -25,6 +25,7 @@ live, and — the part most teams skip — how to **prove they actually catch th
 | **correctness-review** | `correctness.yml` | every PR; reviews when source changed | **Blocks** on a high-confidence defect |
 | **security-review** | `security.yml` | every PR; reviews on gated paths / `risk:high` | **Blocks** on HIGH |
 | **deploy-dev** | `deploy-dev.yml` | successful CI on `main` (merge) | n/a — it ships; rolls back on failure |
+| **deploy-promote** | `deploy-promote.yml` | **manual only** — never a trigger | n/a — it ships to test/prod once a named approver signs; rolls back on failure |
 | **Stop gate** | `.claude/hooks/stop-gate.ps1` | agent tries to finish locally | **Blocks** a red build or red tests (tests opt-out: `RAILS_STOP_RUN_TESTS=0`) |
 
 Branch protection (`profile/rulesets/branch-protection.json`) makes the blocking
@@ -77,20 +78,35 @@ These are deliberate, outward-facing actions. Nothing in the kit performs them.
    ```
    This is the only sanctioned way to change branch protection — edit the JSON,
    re-run the script. Do not hand-edit rules in the GitHub UI.
-5. **Wire and rehearse `deploy-dev`.** It ships as a STARTER that fails until its
-   placeholder deploy/rollback steps are adapted to the client platform. Wire them,
-   point it at a real dev environment, then rehearse the rollback (§9 shakedown)
-   before trusting it.
+5. **Wire and rehearse `deploy-dev`.** It ships as a STARTER whose placeholder
+   deploy/rollback steps must be adapted to the client platform. Until they are, the
+   job runs, warns loudly that deploy is not wired, and stops — deliberately, because a
+   job that is red on every merge by design teaches the team that red is normal. Wire
+   the steps, point it at a real dev environment, set the repository variable
+   `DEPLOY_WIRED=true`, then rehearse the rollback (§9 shakedown) before trusting it.
+6. **Configure required reviewers on every promotion target, then wire
+   `deploy-promote`.** Settings → Environments → `test` / `prod` → Required reviewers.
+   This is the go/no-go: without it, promotion beyond dev becomes automatic. The
+   workflow **refuses to run** against a target with no reviewers configured, so this
+   is not optional — but configure it deliberately rather than discovering it as an
+   error. `deploy-promote` shares `DEPLOY_WIRED` with `deploy-dev`, and unlike its
+   sibling it **fails** rather than warns when unwired: a human asked for the promotion
+   and is waiting on the answer, so reporting green having shipped nothing would be a
+   lie to the one person who most needs the truth.
 
 ## Required status checks
 
 The ruleset requires exactly these check contexts to be green before merge:
 
 - `build-and-test`
+- `spike-guard` (no PR may be opened from a `spike/` branch — no label escape)
+- `risk-signoff` (a `risk:high` PR carries a named human's sentence accepting the risk)
+- `repro-gate` (a `type:bugfix` PR ships a test that fails against the pre-fix tree)
 - `spec-gate` (a source PR must carry its committed spec — `no-spec:chore` label is the recorded escape)
 - `grader` (required to have RUN — its verdict never blocks)
 - `correctness-review`
 - `security-review`
+- `dependency-gate` (the change introduces no new High/Critical advisory — `accepted-risk:dependency` is the recorded override)
 
 If you keep the optional `eval-gate` job in `ci.yml`, add `eval-gate` to the
 `required_status_checks` array too and re-apply.
@@ -164,6 +180,25 @@ gate is only proven when **both its block and its escape** have been seen to wor
   **restore the last known-good version** — the rollback the rails rehearse. Run
   deploy → roll back → redeploy in test, with the rollback trigger condition written
   down in advance, not invented mid-incident.
+- **deploy-promote** — three drills, and the first two are the ones people skip:
+  1. **The gate holds.** Run a promotion to a target environment. It must **pause**
+     waiting for a reviewer, and must not proceed until a named person approves. If it
+     sails through, the environment has no required reviewers and the promotion is
+     automatic — the standard's most protected stop, silently absent.
+  2. **You cannot skip an environment.** Try to promote a CI run straight to `prod`
+     that has only ever been deployed to `dev`. The preflight must **refuse** it.
+     A promotion path that lets you jump test is not a promotion path.
+  3. **The rollback still works up here.** Repeat the known-bad deploy against **test**
+     via `deploy-promote` — the rollback rehearsal Phase 8 requires, run by the
+     client's own operators with their own permissions, before prod is ever a target.
+- **dependency-gate** — open a throwaway PR that adds a package with a **published advisory**
+  (any well-known vulnerable version will do). The check must go **red**, naming the package and
+  the advisory URL. Then apply `accepted-risk:dependency` and confirm it goes **green** — the
+  override clears it. Close it unmerged.
+  Run this one even if you skip others. Every other rail here fails loudly when misconfigured;
+  this one fails **silent and green** — a scan that cannot parse its tool's output reports no
+  findings, which looks exactly like a clean repo. Planting a real advisory is the only proof
+  the gate is wired at all.
 - **security** — open a **probe PR touching a guarded path** (e.g. add a comment in a
   file under `**/Auth/`) with a planted HIGH issue. The check must go red. Close it
   unmerged.

@@ -1,0 +1,66 @@
+# Dependabot — automated upgrade proposals.
+#
+# The third leg of the dependency position (GOLD-STANDARD §7), and the only one that
+# proposes a FIX rather than reporting a problem:
+#
+#   dependency-gate (ci.yml)      blocks what a change introduces
+#   dependency-scan.yml           reports the standing stock, weekly, as an issue
+#   THIS FILE                     opens the upgrade PRs that clear both
+#
+# ── DEPENDABOT'S PRs ARE NOT PRIVILEGED ──────────────────────────────────────────
+# They ride exactly the same rails as a human's: CI, the grader, correctness, security,
+# the dependency gate, and a required non-author approval. Nothing here auto-merges.
+# "The bot wrote it" is not a reason to skip the merge bar — a dependency upgrade is a
+# behavioural change to code you did not write, which is a strange thing to trust more
+# than a colleague's diff, not less. The rule is unchanged: the agent proposes, the gate
+# disposes (docs/the-rails.md §1).
+#
+# ── ADAPT BEFORE RELYING ON IT ───────────────────────────────────────────────────
+#   <<PACKAGE_ECOSYSTEM>>  nuget | npm | pip | cargo | gomod | … — must match the stack
+#                          pack in use. The reference value below is .NET's.
+#   <<MANIFEST_DIR>>       the directory holding the manifest, repo-relative ("/" = root).
+#                          A repo with several manifests needs one block per directory.
+#   <<REVIEWER>>           the team that owns upgrade review. Leave it out and the PRs
+#                          land on whoever CODEOWNERS catches, which is usually nobody
+#                          in particular.
+#
+# Docs: https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+
+updates:
+  - package-ecosystem: "nuget"        # <<PACKAGE_ECOSYSTEM>>
+    directory: "/"                    # <<MANIFEST_DIR>>
+    schedule:
+      # Weekly, on the same morning as dependency-scan.yml, so upgrade proposals and the
+      # advisory report arrive together rather than as two unrelated streams of noise.
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+    # A cap, deliberately. Dependabot will happily open thirty PRs, and thirty PRs against
+    # a merge bar that requires a human reviewer on each is not thirty upgrades — it is a
+    # queue nobody starts. Five that get reviewed beat thirty that get closed in a batch.
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+    # reviewers:
+    #   - "<<REVIEWER>>"
+    groups:
+      # Group the routine churn into one PR so the reviewer reads one diff, not twelve.
+      # Major versions stay OUT of the group on purpose: a major is a breaking change that
+      # deserves its own spec and its own review, not a line in a batch someone skims.
+      minor-and-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # Keep the pipeline's own dependencies current too. The rails are code, and an action
+  # pinned to a stale major is the same supply-chain exposure as a stale package — with
+  # the difference that this one runs with a token.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"

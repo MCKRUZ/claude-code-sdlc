@@ -29,6 +29,22 @@
 #   <<DEPLOY_STEP>> / <<HEALTH_CHECK>> / <<CAPTURE_LAST_GOOD>> / <<RESTORE_LAST_GOOD>>  the real deploy,
 #                             health probe, live-version capture, and rollback for your platform.
 # ───────────────────────────────────────────────────────────────────────────────
+#
+# ── WHY THIS DOES NOT FAIL UNTIL ADAPTED ───────────────────────────────────────
+# This starter used to `exit 1` at the deploy step, so a fresh install had a permanently-red
+# post-merge job until someone adapted it. That was the wrong place to apply the pressure: a job
+# that is red on every merge by design teaches the team that red is normal, which degrades the
+# signal on every OTHER job too.
+#
+# The adaptation is enforced where it belongs — Phase 8's Step 0 go/no-go and its Step 1 rollback
+# verification ("deploy, then roll back, then redeploy"), both human-gated. That is a stronger
+# check than a red tick nobody reads.
+#
+# So until you wire it: this job runs, says loudly that deploy is not wired, and stops. Set the
+# pipeline variable DEPLOY_WIRED = true (Pipeline → Edit → Variables) once <<DEPLOY_STEP>>,
+# <<HEALTH_CHECK>> and the last-known-good steps are real. An unset variable reads as empty and
+# every real step below stays skipped.
+# ───────────────────────────────────────────────────────────────────────────────
 
 trigger: none
 pr: none
@@ -59,10 +75,18 @@ jobs:
       runOnce:
         deploy:
           steps:
+            # ── Is the deploy actually wired yet? (see the header note) ──────────────────
+            - bash: |
+                set -euo pipefail
+                echo "##vso[task.logissue type=warning]This is the starter deploy-dev pipeline. Its deploy, health-check and rollback steps are still placeholders, so nothing was deployed. Wire them (the-rails.md §5), rehearse deploy -> roll back -> redeploy (Phase 8 Step 1), then set the pipeline variable DEPLOY_WIRED = true."
+              displayName: 'Deploy is not wired — nothing shipped'
+              condition: and(succeeded(), ne(variables['DEPLOY_WIRED'], 'true'))
+
             # ── Promote, never rebuild: fetch the artifact CI already produced, from the TRIGGERING run.
             - download: ci                 # <<CI_PIPELINE_RESOURCE>>
               artifact: '<<ARTIFACT_NAME>>' # the proven bytes CI published (CI must publish a deployable, not just coverage)
               displayName: 'Download the CI-built artifact'
+              condition: and(succeeded(), eq(variables['DEPLOY_WIRED'], 'true'))
 
             # ── Record the current live version so we can put it back on failure.
             - bash: |
@@ -75,6 +99,7 @@ jobs:
                 echo "##vso[task.setvariable variable=previousVersion]$PREV"
                 echo "Last known-good version: $PREV"
               displayName: 'Capture last known-good version'
+              condition: and(succeeded(), eq(variables['DEPLOY_WIRED'], 'true'))
 
             # ── Deploy the promoted artifact.
             - bash: |
@@ -83,9 +108,13 @@ jobs:
                 # Replace with AzureWebApp@1 / AzureCLI@2 (`az deployment` / `az containerapp update`) /
                 # kubectl. Must exit non-zero on a failed deploy so on.failure fires.
                 echo "Deploying $(Pipeline.Workspace)/ci/<<ARTIFACT_NAME>> to dev..."
-                echo "##vso[task.logissue type=error]<<DEPLOY_STEP>> not yet wired — this starter intentionally fails until adapted."
+                # Reaching this line means DEPLOY_WIRED=true was set while <<DEPLOY_STEP>> is still a
+                # placeholder. Failing is right here: the repo has DECLARED the deploy wired, so a silent
+                # no-op would be the pipeline lying about having shipped something.
+                echo "##vso[task.logissue type=error]DEPLOY_WIRED is set, but <<DEPLOY_STEP>> is still a placeholder. Either wire the real deploy or unset DEPLOY_WIRED."
                 exit 1
               displayName: 'Deploy to dev'
+              condition: and(succeeded(), eq(variables['DEPLOY_WIRED'], 'true'))
 
             # ── Prove the new version actually serves.
             - bash: |
@@ -95,6 +124,36 @@ jobs:
                 #   curl --fail --retry 5 --retry-delay 10 "https://<<DEV_URL>>/health"
                 echo "Health check placeholder — wire <<HEALTH_CHECK>>."
               displayName: 'Health check'
+              condition: and(succeeded(), eq(variables['DEPLOY_WIRED'], 'true'))
+
+            # ── Record, on the CI BUILD ITSELF, that dev now runs these bytes.
+            # deploy-promote.yml refuses to promote a build that does not carry the tag for its
+            # source environment — "you cannot promote what the previous environment never ran".
+            # This step is what earns that tag, so REMOVING IT MAKES DEV A DEAD END: nothing would
+            # ever be promotable to test.
+            #
+            # Deliberately the REST API, NOT `##vso[build.addbuildtag]`. That logging command tags
+            # the RUN THAT EMITS IT — this deploy run — whereas the fact being recorded is about the
+            # CI build whose artifact went live. Tagging the wrong build fails silently: the tag
+            # exists, just never where the promotion looks for it.
+            #
+            # Last on the happy path, and gated on succeeded(): a build that failed its deploy or
+            # health check must NOT be marked as running in dev.
+            - bash: |
+                set -euo pipefail
+                API="${SYSTEM_COLLECTIONURI}${SYSTEM_TEAMPROJECT}/_apis"
+                if ! curl -sf -X PUT -H "Authorization: Bearer ${SYSTEM_ACCESSTOKEN}" \
+                     "${API}/build/builds/${CI_RUN_ID}/tags/deployed-dev?api-version=7.1" \
+                     -o /dev/null; then
+                  echo "##vso[task.logissue type=error]Deployed to dev, but could not tag build ${CI_RUN_ID} as deployed-dev. The deploy LANDED; the record of it did not, so this build cannot be promoted to test until fixed — check System.AccessToken has build tag write access."
+                  exit 1
+                fi
+                echo "Tagged build ${CI_RUN_ID} as deployed-dev."
+              displayName: 'Record the deployment on the CI build'
+              condition: and(succeeded(), eq(variables['DEPLOY_WIRED'], 'true'))
+              env:
+                SYSTEM_ACCESSTOKEN: $(System.AccessToken)
+                CI_RUN_ID: $(resources.pipeline.ci.runID)
         # ── Rollback: restore the last known-good version on ANY failure above.
         # A rollback that has never run is a wish. This path is REHEARSED in the §9 shakedown with a
         # deliberately known-bad deploy, before it is ever needed live.
@@ -112,3 +171,13 @@ jobs:
                   # rolled-back deploy is still a deploy that did not land.
                   exit 1
                 displayName: 'Restore last known-good version (rollback)'
+                # Never fire for a run that never deployed — a 'rollback' of nothing is noise that
+                # would make the not-wired path look like a real incident.
+                #
+                # DELIBERATELY NOT `and(succeeded(), ...)`, unlike every condition above. This step
+                # lives in the `on.failure` hook, which by definition only runs when the deploy hook
+                # has ALREADY failed. Composing succeeded() here risks evaluating false against that
+                # failed state and skipping the rollback entirely — turning the one path that must
+                # never be skipped into the one path that silently is. An explicit condition replaces
+                # the default succeeded(), and here that replacement is the whole point.
+                condition: eq(variables['DEPLOY_WIRED'], 'true')

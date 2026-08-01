@@ -80,6 +80,12 @@ FILE_MAP: list[tuple[str, str]] = [
     ("CLAUDE.md.template", "CLAUDE.md"),            # governance base; SDLC section appended by setup
     ("spec-template.md", "specs/spec-template.md"),
     ("spike-template.md", "spikes/spike-template.md"),  # bounded-discovery findings (Build loop §3a)
+    # The closing-phase skeletons. Unlike specs and spikes these are SINGLE-INSTANCE documents —
+    # one rollback procedure, one alert set, one playbook per repo — so they land at their final
+    # name to be filled in, the way CLAUDE.md.template does, rather than as templates to copy.
+    ("rollback-template.md", "ROLLBACK.md"),            # Phase 8: the written "roll back if X"
+    ("alert-definitions-template.md", "ALERTS.md"),     # Phase 9: baselines, thresholds, who is woken
+    ("incident-playbook-template.md", "INCIDENT-PLAYBOOK.md"),  # Phase 9: detect/diagnose/escalate
     ("settings.json", ".claude/settings.json"),
     ("mcp.json", ".mcp.json"),                      # team MCP servers; packs merge their fragments in
     ("HARNESS.md", "docs/harness.md"),              # the developer-facing tour of what's installed
@@ -101,6 +107,8 @@ DIR_MAP: list[tuple[str, str]] = [
 EXTRA_FILES: list[tuple[str, str]] = [
     ("workflows/RAILS.md", ".github/RAILS.md"),
     ("profile/eval-bypasses.md", ".github/eval-bypasses.md"),
+    ("profile/dependency-exceptions.md", ".github/dependency-exceptions.md"),   # dependency-gate ledger
+    ("profile/rails-telemetry.schema.json", ".github/rails-telemetry.schema.json"),  # the report's shape
     ("profile/CODEOWNERS", ".github/CODEOWNERS"),
 ]
 GITIGNORE_LINES = [".claude/.review-receipts/", ".claude/settings.local.json"]

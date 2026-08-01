@@ -1,0 +1,137 @@
+name: Dependency Scan
+
+# =============================================================================
+# The STANDING STOCK of third-party vulnerabilities — periodic, never blocking.
+# =============================================================================
+# The other half of the dependency position (GOLD-STANDARD §7). Its sibling, the
+# `dependency-gate` job in ci.yml, is diff-scoped: it blocks a change that
+# INTRODUCES a vulnerable package. This workflow owns everything that is already
+# here — packages that were fine when they landed and became advisories later.
+#
+# ── WHY THIS DOES NOT BLOCK ANYTHING ─────────────────────────────────────────
+# A vulnerability published overnight is not a regression anyone caused, and
+# failing every open PR the next morning would teach the team that red is normal
+# — which degrades the signal on every other gate in the repo. So this raises an
+# ISSUE, and the fix rides the normal rails as an ordinary spec, prioritised by a
+# human against everything else in flight. That is slower than a hard stop, and
+# deliberately so: the alternative is a gate everyone learns to route around.
+#
+# ── WHY IT IS ON BY DEFAULT, WHERE eval-suite IS OPT-IN ──────────────────────
+# `eval-suite.yml` is off until a repo opts in because every run spends real
+# money at a judge model. This one costs a few CI minutes. A security scan you
+# have to remember to switch on is a security scan that is not running anywhere,
+# and "nobody enabled it" is not a finding anyone discovers until it matters.
+# Set the repository variable DEPENDENCY_SCAN_ENABLED=false to suppress it, and
+# expect to justify that in the client's security review.
+#
+# ── PLACEHOLDER ───────────────────────────────────────────────────────────────
+#   <<DEPENDENCY_SCAN_CMD>>  the stack's scan command. Reference value below is
+#                            .NET's, from packs/stacks/dotnet/ci-profile.yaml
+#                            (dependency_scan.command). Contract: one TSV finding
+#                            per line — severity, package, version, advisory-url —
+#                            and exit 0 whether or not it finds anything.
+# =============================================================================
+
+on:
+  schedule:
+    # Monday 07:00 UTC — a working morning, so what it finds gets triaged the same
+    # day rather than ageing over a weekend.
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write        # the finding is an issue; that is this workflow's whole output
+
+concurrency:
+  group: dependency-scan
+  cancel-in-progress: true
+
+jobs:
+  dependency-scan:
+    name: dependency-scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.DEPENDENCY_SCAN_ENABLED != 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # <<BUILD_TOOLCHAIN>>
+      - name: Setup toolchain
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.x'
+
+      - name: Scan every dependency
+        id: scan
+        run: |
+          set -uo pipefail
+          # <<DEPENDENCY_SCAN_CMD>> — .NET reference value, verbatim from the stack profile.
+          # This tool EXITS 0 even when it finds a High advisory; the findings are in its
+          # OUTPUT, never its status. Verified 2026-07-31. Do not infer success from the exit
+          # code — that is the trap this whole file exists to avoid.
+          if ! dotnet list package --vulnerable --include-transitive --format json --output-version 1 \
+             | jq -r '.projects[]?.frameworks[]? | (.topLevelPackages[]?, .transitivePackages[]?) | . as $p | ($p.vulnerabilities[]? | [.severity, $p.id, $p.resolvedVersion, .advisoryurl] | @tsv)' \
+             > "${RUNNER_TEMP}/findings.tsv" 2> "${RUNNER_TEMP}/scan.err"; then
+            echo "::error title=Dependency scan failed::The scan did not complete, so this repo's vulnerability status is UNKNOWN — which is not the same as clean. Fix the scan."
+            sed -n '1,40p' "${RUNNER_TEMP}/scan.err" || true
+            exit 1
+          fi
+          sort -u -o "${RUNNER_TEMP}/findings.tsv" "${RUNNER_TEMP}/findings.tsv"
+          COUNT="$(wc -l < "${RUNNER_TEMP}/findings.tsv" | tr -d ' ')"
+          echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "Advisories across all dependencies: ${COUNT}"
+          cat "${RUNNER_TEMP}/findings.tsv" || true
+
+      - name: Raise, update, or close the advisory issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          COUNT: ${{ steps.scan.outputs.count }}
+          LABEL: 'dependency-advisory'
+        run: |
+          set -euo pipefail
+
+          # One canonical issue, found by label — updated in place rather than a fresh issue
+          # every Monday. A tracker that grows a duplicate per week is a tracker people mute,
+          # and a muted tracker is the same as no scan at all.
+          gh label create "$LABEL" --description "Known vulnerabilities in third-party dependencies" --color B60205 2>/dev/null || true
+          EXISTING="$(gh issue list --repo "$REPO" --label "$LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')"
+
+          if [ "${COUNT:-0}" -eq 0 ]; then
+            if [ -n "$EXISTING" ]; then
+              # Self-closing on purpose: an issue that stays open after the advisories are
+              # gone trains everyone to ignore the label.
+              gh issue close "$EXISTING" --repo "$REPO" \
+                --comment "No known vulnerabilities remain in this repo's dependencies as of $(date -u +%Y-%m-%d). Closed by the scheduled dependency scan."
+              echo "Closed #${EXISTING} — clean."
+            else
+              echo "OK: no known vulnerabilities, and no open advisory issue."
+            fi
+            exit 0
+          fi
+
+          {
+            echo "The scheduled dependency scan found **${COUNT}** advisory/advisories in this repo's dependencies."
+            echo
+            echo "These are **pre-existing** — the \`dependency-gate\` check blocks anything a change newly introduces, so nothing here was added by a recent PR. That is why this is an issue and not a red build."
+            echo
+            echo "| Severity | Package | Version | Advisory |"
+            echo "| --- | --- | --- | --- |"
+            while IFS=$'\t' read -r sev pkg ver url; do
+              echo "| ${sev} | \`${pkg}\` | ${ver} | ${url} |"
+            done < "${RUNNER_TEMP}/findings.tsv"
+            echo
+            echo "**What to do with this.** Triage it like any other work: it becomes a spec, gets a risk tier, and rides the same rails. Upgrading a package that handles auth, payments or client data is a \`risk:high\` change (GOLD-STANDARD §5.1). If an advisory is being accepted rather than fixed, record it in \`.github/dependency-exceptions.md\` with an expiry — the ledger is what makes that a decision rather than a silence."
+            echo
+            echo "_Updated by the scheduled dependency scan, $(date -u +%Y-%m-%d). This issue closes itself when the advisories clear._"
+          } > "${RUNNER_TEMP}/body.md"
+
+          TITLE="Dependency advisories: ${COUNT} package(s) with known vulnerabilities"
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --repo "$REPO" --title "$TITLE" --body-file "${RUNNER_TEMP}/body.md"
+            echo "Updated #${EXISTING}."
+          else
+            gh issue create --repo "$REPO" --title "$TITLE" --label "$LABEL" --body-file "${RUNNER_TEMP}/body.md"
+            echo "Opened a new advisory issue."
+          fi

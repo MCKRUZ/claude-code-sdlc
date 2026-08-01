@@ -76,11 +76,42 @@ jobs:
       github.event.workflow_run.head_branch == 'main'
 
     steps:
+      # ── Is the deploy actually wired yet? ───────────────────────────────────────
+      # This starter used to `exit 1` here, so a fresh install had a permanently-red
+      # post-merge job until someone adapted it. That was the wrong place to apply the
+      # pressure: a job that is red on every merge by design teaches the team that red
+      # is normal, which degrades the signal on every OTHER job too.
+      #
+      # The adaptation is enforced where it belongs — Phase 8's Step 0 go/no-go and its
+      # Step 1 rollback verification ("deploy, then roll back, then redeploy"), both
+      # human-gated. That is a stronger check than a red tick nobody reads.
+      #
+      # So until you wire it: this job runs, says loudly that deploy is not wired, and
+      # stops. Set the repository variable DEPLOY_WIRED=true once <<DEPLOY_STEP>>,
+      # <<HEALTH_CHECK>> and the last-known-good steps are real.
+      - name: Check the deploy is wired
+        id: wiring
+        run: |
+          set -euo pipefail
+          if [ "${DEPLOY_WIRED:-}" = "true" ]; then
+            echo "wired=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "wired=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Deploy not wired::This is the starter deploy-dev workflow. \
+          Its deploy, health-check and rollback steps are still placeholders, so nothing was \
+          deployed. Wire them (the-rails.md §5), rehearse deploy -> roll back -> redeploy \
+          (Phase 8 Step 1), then set the repository variable DEPLOY_WIRED=true."
+          fi
+        env:
+          DEPLOY_WIRED: ${{ vars.DEPLOY_WIRED }}
+
       - name: Checkout (deploy scripts only — NOT for building)
+        if: steps.wiring.outputs.wired == 'true'
         uses: actions/checkout@v7
 
       # ── Promote, never rebuild: fetch the artifact CI already produced ──────────
       - name: Download the CI-built artifact
+        if: steps.wiring.outputs.wired == 'true'
         uses: actions/download-artifact@v8
         with:
           name: <<ARTIFACT_NAME>>
@@ -91,6 +122,7 @@ jobs:
 
       # ── Record the current live version so we can put it back on failure ────────
       - name: Capture last known-good version
+        if: steps.wiring.outputs.wired == 'true'
         id: lastgood
         run: |
           set -euo pipefail
@@ -104,6 +136,7 @@ jobs:
 
       # ── Deploy the promoted artifact ────────────────────────────────────────────
       - name: Deploy to dev
+        if: steps.wiring.outputs.wired == 'true'
         id: deploy
         run: |
           set -euo pipefail
@@ -112,11 +145,15 @@ jobs:
           # kubectl / release command. Must exit non-zero on a failed deploy so the
           # rollback below fires.
           echo "Deploying ./artifact to dev..."
-          echo "::error::<<DEPLOY_STEP>> not yet wired — this starter intentionally fails until adapted."
+          # Reaching this line means DEPLOY_WIRED=true was set while <<DEPLOY_STEP>> is still
+          # a placeholder. Failing is right here: the repo has DECLARED the deploy wired, so a
+          # silent no-op would be the pipeline lying about having shipped something.
+          echo "::error::DEPLOY_WIRED is set, but <<DEPLOY_STEP>> is still a placeholder. Either wire the real deploy or unset DEPLOY_WIRED."
           exit 1
 
       # ── Prove the new version actually serves ───────────────────────────────────
       - name: Health check
+        if: steps.wiring.outputs.wired == 'true'
         id: health
         run: |
           set -euo pipefail
@@ -131,7 +168,9 @@ jobs:
       # A rollback that has never run is a wish. This path is REHEARSED in the §9
       # shakedown with a deliberately known-bad deploy, before it is ever needed live.
       - name: Restore last known-good version (rollback)
-        if: failure()
+        # Never fire for a run that never deployed — a 'rollback' of nothing is noise
+        # that would make the not-wired path look like a real incident.
+        if: failure() && steps.wiring.outputs.wired == 'true'
         env:
           PREVIOUS: ${{ steps.lastgood.outputs.previous }}
         run: |

@@ -38,10 +38,13 @@ the selected stack's value. To swap stacks by hand today, replace the value on e
 | **build-and-test** | `ci.yml` | every PR | **Blocks** (hard gate) — includes the enforced coverage floor |
 | **spec-gate** | `ci.yml` | every PR | **Blocks** — a source change with no spec in the diff is a fact; `no-spec:chore` label is the recorded escape |
 | **eval-gate** *(optional)* | `ci.yml` | every PR | **Blocks** (hard gate) — keep only if you ship an eval-fixture suite (`ci-profile.eval_gate.enabled`) |
+| **dependency-gate** | `ci.yml` | every PR | **Blocks** when the change INTRODUCES a High/Critical advisory (`accepted-risk:dependency` = recorded override) |
+| **dependency-scan** | `dependency-scan.yml` | weekly + manual | **Advises** — raises one self-closing issue for the standing stock |
 | **grader** | `grader.yml` | every PR | **Advises** — never blocks; required to RUN |
 | **correctness-review** | `correctness.yml` | every PR; reviews when source changed | **Blocks** on a high-confidence defect |
 | **security-review** | `security.yml` | every PR; reviews on gated paths / `risk:high` | **Blocks** on HIGH |
 | **deploy-dev** | `deploy-dev.yml` | successful CI on `main` (merge) | n/a — it ships; rolls back on failure |
+| **deploy-promote** | `deploy-promote.yml` | **manual only** — never a trigger | n/a — it ships to test/prod once a named approver signs; rolls back on failure |
 | **Stop gate** | `.claude/hooks/stop-gate.ps1` | agent tries to finish locally | **Blocks** a red build or red tests (tests opt-out: `RAILS_STOP_RUN_TESTS=0`) |
 
 The two `eval-*` workflows (`eval-regression.yml`, `eval-suite.yml`) implement §11:
@@ -106,10 +109,17 @@ These are deliberate, outward-facing actions. Nothing in the kit performs them.
    ```
    This is the only sanctioned way to change branch protection — edit the JSON,
    re-run the script. Do not hand-edit rules in the GitHub UI.
-6. **Wire and rehearse `deploy-dev`.** It ships as a STARTER that fails until its
-   placeholder deploy/rollback steps are adapted to the client platform. Wire them,
-   point it at a real dev environment, then rehearse the rollback (§9 shakedown)
-   before trusting it.
+6. **Wire and rehearse `deploy-dev`.** It ships as a STARTER whose placeholder
+   deploy/rollback steps must be adapted to the client platform. Until they are, the job
+   runs, warns that deploy is not wired, and stops — a job red on every merge by design
+   teaches the team that red is normal. Wire the steps, point it at a real dev
+   environment, set the repository variable `DEPLOY_WIRED=true`, then rehearse the
+   rollback (§9 shakedown) before trusting it.
+7. **Put required reviewers on every promotion target, then wire `deploy-promote`.**
+   Settings → Environments → `test` / `prod` → Required reviewers. That approval **is**
+   the go/no-go; without it, promotion beyond dev is automatic. `deploy-promote` refuses
+   to run against a target with none configured, and unlike `deploy-dev` it **fails**
+   rather than warns when unwired — a human asked for the promotion and is waiting.
 
 ## Required status checks
 
@@ -195,6 +205,20 @@ gate is only proven when **both its block and its escape** have been seen to wor
   **restore the last known-good version** — the rollback the rails rehearse. Run
   deploy → roll back → redeploy in test, with the rollback trigger condition written
   down in advance, not invented mid-incident.
+- **deploy-promote** — three drills, and the first two are the ones people skip:
+  1. **The gate holds.** Run a promotion. It must **pause** for a reviewer and not
+     proceed until a named person approves. If it sails through, the environment has no
+     required reviewers and promotion is automatic — the standard's most protected stop,
+     silently absent.
+  2. **You cannot skip an environment.** Try to promote a CI run straight to `prod` that
+     has only ever reached `dev`. The preflight must **refuse** it.
+  3. **The rollback still works up here.** Repeat the known-bad deploy against **test**
+     via `deploy-promote`, executed by the client's own operators with their own
+     permissions — the Phase 8 rehearsal, run before prod is ever a target.
+- **dependency-gate** — open a throwaway PR adding a package with a **published advisory**. The
+  check must go **red**, naming the package and advisory. Apply `accepted-risk:dependency` and
+  confirm it clears. Close it unmerged. Run this one even if you skip others: every other rail
+  fails loudly when misconfigured, this one fails **silent and green**.
 - **security** — open a **probe PR touching a guarded path** (e.g. add a comment in a
   file under `**/Auth/`) with a planted HIGH issue. The check must go red. Close it
   unmerged.

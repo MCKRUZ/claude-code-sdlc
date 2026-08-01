@@ -1,0 +1,245 @@
+name: Rails Telemetry
+
+# =============================================================================
+# One week of THIS repo's gate outcomes, written down where a human can read it.
+# =============================================================================
+# Overrides and gate outcomes were already recorded per repo — the eval-bypasses
+# ledger, the accepted-risk labels, the PR timeline. Nothing aggregated them, so
+# across a portfolio nobody could answer three questions: are the gates firing,
+# are they being routinely waved through, and has one been quietly switched off.
+#
+# This workflow answers them for one repo and commits the answer as
+# `.github/rails-telemetry.json`. The fleet collector (operator-side, not
+# installed here) reads that file across every reachable repo.
+#
+# ── THE ONE THAT MATTERS: A GATE HAS TWO HALVES ──────────────────────────────
+# There is the check, and there is the rule requiring it to pass. Delete the
+# second — deliberately, or by a repo reorganisation nobody reviewed — and the
+# check still runs, still reports, and looks completely normal on the PR page.
+# But a red run merges anyway. From the outside, a disarmed gate is
+# indistinguishable from a gate that simply never caught anything.
+#
+# No amount of counting finds that. Only comparing what IS REQUIRED against what
+# EXISTS finds it, which is the `enforcement` section below and the reason this
+# file is worth committing at all.
+#
+# ── CLIENT DATA BOUNDARY ─────────────────────────────────────────────────────
+# NO EXTERNAL CALLS. Everything here queries this repo's own history through its
+# own platform's API, using the token the platform already issued, and writes the
+# result into this repo. Nothing leaves the client's tenancy. That is a deliberate
+# constraint, not an implementation detail — it is what lets a client security
+# team say yes to it, and anything that phones home would have to be argued for
+# from scratch.
+#
+# ── NO ACTIVITY METRICS ──────────────────────────────────────────────────────
+# Counts are per GATE, never per author. The standard forbids activity metrics in
+# client materials and does not track them internally either (§9): agents inflate
+# every one of them. `pull_requests_merged` is here solely as a denominator, so
+# two overrides can be read against three PRs or against ninety — those are very
+# different weeks. It is not a productivity number and must never be reported as
+# one.
+#
+# ── PLACEHOLDER ───────────────────────────────────────────────────────────────
+#   <<DEFAULT_BRANCH>>  the protected branch this reports on (reference: main)
+# =============================================================================
+
+on:
+  schedule:
+    # Monday 06:00 UTC — before the working week, so the fleet report is ready when
+    # someone looks. Deliberately ahead of dependency-scan.yml's 07:00 so the two
+    # do not contend for the same runner minute.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write        # it commits the report
+  actions: read          # workflow run conclusions
+  pull-requests: read    # merged PRs and their labels
+  checks: read
+
+concurrency:
+  group: rails-telemetry
+  cancel-in-progress: true
+
+jobs:
+  rails-telemetry:
+    name: rails-telemetry
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || vars.RAILS_TELEMETRY_ENABLED != 'false'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Build the telemetry report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          WINDOW_DAYS: '7'
+          DEFAULT_BRANCH: 'main'        # <<DEFAULT_BRANCH>>
+        run: |
+          set -euo pipefail
+          OUT=.github/rails-telemetry.json
+          mkdir -p .github
+          TO="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          FROM="$(date -u -d "-${WINDOW_DAYS} days" +%Y-%m-%dT%H:%M:%SZ)"
+          T="${RUNNER_TEMP}"
+
+          # ── activity ────────────────────────────────────────────────────────
+          # Workflow-run conclusions per job name, over the window. `gh api --paginate`
+          # so a busy week is not silently truncated at page one — a report that
+          # quietly drops half its data is worse than no report.
+          gh api --paginate "repos/${REPO}/actions/runs?created=>${FROM}&per_page=100" \
+            --jq '.workflow_runs[]? | {id, name, conclusion}' > "${T}/runs.ndjson" || echo '' > "${T}/runs.ndjson"
+
+          gh api --paginate "repos/${REPO}/pulls?state=closed&base=${DEFAULT_BRANCH}&per_page=100" \
+            --jq '.[] | select(.merged_at != null) | {number, title, merged_at, labels: [.labels[].name]}' \
+            > "${T}/prs_all.ndjson" || echo '' > "${T}/prs_all.ndjson"
+          jq -c --arg from "$FROM" 'select(.merged_at >= $from)' "${T}/prs_all.ndjson" > "${T}/prs.ndjson" || : > "${T}/prs.ndjson"
+
+          # ── enforcement: what is ACTUALLY required ──────────────────────────
+          # Prefer the live ruleset: it is the only reading that catches someone
+          # editing branch protection in the UI. Fall back to the committed
+          # desired-state file when the API is unreadable — worth having, but it
+          # describes INTENT rather than reality, so the source is recorded and the
+          # collector is told which it got. Reporting intent as though it were
+          # reality is exactly the silent-green failure this file exists to expose.
+          ENF_SOURCE=unavailable
+          : > "${T}/required.txt"
+          if gh api "repos/${REPO}/rules/branches/${DEFAULT_BRANCH}" > "${T}/rules.json" 2>/dev/null; then
+            jq -r '.[]? | select(.type == "required_status_checks")
+                   | .parameters.required_status_checks[]?.context' "${T}/rules.json" \
+              | sort -u > "${T}/required.txt" || true
+            if [ -s "${T}/required.txt" ]; then ENF_SOURCE=live; fi
+          fi
+          if [ "$ENF_SOURCE" != "live" ] && [ -f .github/rulesets/branch-protection.json ]; then
+            jq -r '.rules[]? | select(.type == "required_status_checks")
+                   | .parameters.required_status_checks[]?.context' .github/rulesets/branch-protection.json \
+              | sort -u > "${T}/required.txt" || true
+            if [ -s "${T}/required.txt" ]; then ENF_SOURCE=committed; fi
+          fi
+
+          # Jobs that CALL THEMSELVES merge gates. The marker comment is the same one
+          # check_standard.py keys on in the standard's own repo, so the two agree on
+          # what "declares itself a gate" means.
+          grep -rhoE '^\s{4}name:\s*\S+\s*#\s*<--\s*required status-check context' \
+            .github/workflows/*.yml 2>/dev/null \
+            | sed -E 's/^[[:space:]]*name:[[:space:]]*//; s/[[:space:]]*#.*$//' \
+            | sort -u > "${T}/gatejobs.txt" || : > "${T}/gatejobs.txt"
+
+          # ── ledgers ─────────────────────────────────────────────────────────
+          TODAY="$(date -u +%Y-%m-%d)"
+          ledger_json() {
+            local path="$1"
+            if [ ! -f "$path" ]; then
+              jq -n --arg p "$path" '{path:$p, present:false, active_entries:0, expired_entries:0}'
+              return
+            fi
+            # `expires: YYYY-MM-DD` lines, per the ledger templates' documented format.
+            local total expired
+            total="$(grep -cE '^[[:space:]]*expires:' "$path" || true)"
+            expired="$(grep -oE '^[[:space:]]*expires:[[:space:]]*[0-9]{4}-[0-9]{2}-[0-9]{2}' "$path" \
+                       | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' \
+                       | awk -v today="$TODAY" '$0 < today' | wc -l | tr -d ' ')"
+            jq -n --arg p "$path" --argjson t "${total:-0}" --argjson e "${expired:-0}" \
+              '{path:$p, present:true, active_entries:($t - $e), expired_entries:$e}'
+          }
+          # Concatenated into ONE file rather than passed via process substitution:
+          # `--slurpfile` reads every JSON value in a file into an array, so this hands
+          # jq a flat array of ledgers directly. Process substitution would work on the
+          # runner but not everywhere the drill might be rehearsed by hand, and a report
+          # that only builds on one machine is a report nobody verifies.
+          ledger_json .github/eval-bypasses.md         > "${T}/ledgers.ndjson"
+          ledger_json .github/dependency-exceptions.md >> "${T}/ledgers.ndjson"
+
+          # ── assemble ────────────────────────────────────────────────────────
+          jq -n \
+            --arg repo "$REPO" --arg gen "$TO" --arg from "$FROM" --arg to "$TO" \
+            --argjson days "${WINDOW_DAYS}" --arg enf_source "$ENF_SOURCE" \
+            --slurpfile ledgers "${T}/ledgers.ndjson" \
+            --rawfile runs_raw "${T}/runs.ndjson" \
+            --rawfile prs_raw "${T}/prs.ndjson" \
+            --rawfile required_raw "${T}/required.txt" \
+            --rawfile gatejobs_raw "${T}/gatejobs.txt" '
+            def lines(s): (s | split("\n") | map(select(length > 0)));
+            def objs(s):  (s | split("\n") | map(select(length > 0) | fromjson));
+
+            (objs($runs_raw))      as $runs |
+            (objs($prs_raw))       as $prs |
+            (lines($required_raw)) as $required |
+            (lines($gatejobs_raw)) as $gatejobs |
+
+            ([$runs[] | .name] | unique) as $names |
+            ($names | map(. as $n | ($runs | map(select(.name == $n))) as $r | {
+               context: $n,
+               runs:    ($r | length),
+               passed:  ($r | map(select(.conclusion == "success"))   | length),
+               failed:  ($r | map(select(.conclusion == "failure"))   | length),
+               skipped: ($r | map(select(.conclusion == "skipped"))   | length)
+             })) as $gates |
+
+            (["accepted-risk:correctness","accepted-risk:dependency","gate-exception","risk:high"]
+             | map(. as $lbl | ($prs | map(select(.labels | index($lbl)))) as $hit | {
+                 label: $lbl,
+                 count: ($hit | length),
+                 uses:  ($hit | map({pr: .number, title: .title, merged_at: .merged_at}))
+               })) as $labels |
+
+            # findings: the whole point. Structured so a fleet can be ranked without
+            # parsing prose.
+            ([ ($gatejobs - $required | map({
+                 kind: "gate_not_required", severity: "high", context: .,
+                 detail: ("The job '" + . + "' declares itself a required status check, but branch protection does not require it. It runs, it reports, and a red run merges anyway — a disarmed gate.")
+               })),
+               ($required - $gatejobs | map({
+                 kind: "required_context_has_no_job", severity: "high", context: .,
+                 detail: ("Branch protection requires '" + . + "', but no workflow job produces it. Every pull request waits on a check that will never report.")
+               })),
+               ($required | map(select(. as $c | ($gates | map(.context) | index($c)) == null)) | map({
+                 kind: "required_context_never_reported", severity: "medium", context: .,
+                 detail: ("Required check '" + . + "' produced no runs in this window. Either nothing triggered it, or it is quietly broken — from here those look the same.")
+               })),
+               (if $enf_source == "unavailable" then [{
+                 kind: "telemetry_incomplete", severity: "high",
+                 detail: "Branch protection could not be read, live or committed, so no enforcement check was possible. Treat this repo's gate status as UNKNOWN, never as clean."
+               }] elif $enf_source == "committed" then [{
+                 kind: "telemetry_incomplete", severity: "low",
+                 detail: "Branch protection was read from the committed ruleset, not the live API, so this reports intent rather than what the platform is actually enforcing. A change made in the UI would not show up here."
+               }] else [] end),
+               ($ledgers | map(select(.expired_entries > 0)) | map({
+                 kind: "ledger_entry_expired", severity: "medium",
+                 detail: (.path + " has " + (.expired_entries|tostring) + " acceptance(s) past their review date. An acceptance that outlives its expiry has quietly become permanent.")
+               }))
+             ] | flatten) as $findings |
+
+            {
+              schema_version: 1,
+              repo: $repo,
+              generated_at: $gen,
+              window: { days: $days, from: $from, to: $to },
+              activity: { gates: $gates, pull_requests_merged: ($prs | length) },
+              overrides: { labels: $labels, ledgers: $ledgers },
+              enforcement: {
+                source: $enf_source,
+                required_contexts: $required,
+                gate_jobs_present: $gatejobs,
+                findings: $findings
+              }
+            }' > "$OUT"
+
+          echo "Wrote $OUT"
+          jq '{repo, window: .window.days, gates: (.activity.gates|length), findings: (.enforcement.findings|length), source: .enforcement.source}' "$OUT"
+
+      - name: Commit the report
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/rails-telemetry.json
+          # Nothing changed is the common case on a quiet week, and an empty commit
+          # every Monday is noise in the history everyone learns to scroll past.
+          if git diff --cached --quiet; then
+            echo "No change since the last report."
+            exit 0
+          fi
+          git commit -m "chore: rails telemetry $(date -u +%Y-%m-%d)"
+          git push

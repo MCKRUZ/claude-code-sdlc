@@ -1,5 +1,58 @@
 # Changelog
 
+## 1.1.0 — 2026-07-31
+
+Regenerated `harness/` from the canonical kit. Three additions to the delivery standard: the
+second half of the deploy rail, the standard's first position on third-party components, and
+fleet-level visibility of gate outcomes.
+
+**Nothing changes in an installed repo until you upgrade it and re-apply branch protection.**
+That is why this is a minor version rather than a major one — but read the migration note, because
+one of the additions is a new blocking gate.
+
+### Deploy promotion and rollback
+
+- `deploy-promote.yml` (both CI/CD packs) — dev→test→prod, manual trigger only. The go/no-go is
+  the target environment's own approval mechanism (GitHub required reviewers / Azure DevOps
+  environment checks), and the workflow **refuses to run** against an environment that has none.
+  It also refuses to promote a build the source environment has never run, so nobody can skip test.
+- `ROLLBACK.md`, `ALERTS.md`, `INCIDENT-PLAYBOOK.md` — the Phase 8/9 skeletons, installed at their
+  final names to be filled in.
+- **Fixes drift:** both pack copies of `deploy-dev.yml` still hard-failed every merge; only the
+  core file had received the `DEPLOY_WIRED` guard. The pack copies are what clients install.
+
+### A position on third-party components
+
+- `dependency-gate` (a job in `ci.yml`) — **a new blocking gate.** Diff-scoped: it compares this
+  branch against the target branch and blocks only on a vulnerable package the change *introduces*.
+  A CVE published overnight against untouched code will not redden open PRs.
+- `dependency-scan.yml` — weekly, reports the standing stock as an issue/work item, never blocks.
+- `dependabot.yml` (github pack) — upgrade PRs that ride the full merge bar; nothing auto-merges.
+- Override is `accepted-risk:dependency`, with `dependency-exceptions.md` as its ledger.
+
+### Fleet visibility
+
+- `rails-telemetry.yml` — weekly, commits `.github/rails-telemetry.json`: what ran, every override
+  by name, and which checks branch protection **actually requires** against which gate jobs exist.
+  That last comparison is the point: a gate that has been unrequired still runs, still reports, and
+  blocks nothing, and no amount of counting tells you which one you have.
+- `rails-telemetry.schema.json` — fixed at version 1 now, before the install wave, so it is not
+  retrofitted across live repos.
+- No external calls: it reads the repo's own history through the platform's API and writes into the
+  same repo. Counts are per gate, never per author.
+
+### Migration
+
+1. `/sdlc-upgrade` — new files install; anything you adapted is left alone.
+2. **Re-apply branch protection.** `dependency-gate` is a new required status check. Until you
+   re-apply, it runs and reports but does not block; after you re-apply, a PR introducing a
+   High/Critical advisory will be stopped.
+3. Configure **required reviewers** on `test` and `prod` environments before using
+   `deploy-promote` — it fails closed without them, deliberately.
+4. Run the new shakedown drills in `RAILS.md`. The dependency gate especially: unlike every other
+   rail it fails *silent and green* when misconfigured, so planting a known-vulnerable package is
+   the only way to know it is wired.
+
 ## 1.0.0 — 2026-07-31
 
 **Breaking. Gates that previously passed will now block.** Read the migration note before upgrading
