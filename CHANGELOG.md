@@ -41,6 +41,23 @@ one of the additions is a new blocking gate.
 - No external calls: it reads the repo's own history through the platform's API and writes into the
   same repo. Counts are per gate, never per author.
 
+### The rail that catches the next release mistake
+
+`scripts/tests/test_release_manifest_agreement.py` asserts that `.claude-plugin/plugin.json` and
+`.claude-plugin/marketplace.json` agree on version and on plugin name, that the version is semver,
+and that it is the newest release heading in this file.
+
+It exists because this release nearly shipped wrong. `RELEASING.md` step 3 has always said to bump
+both manifests — "they must match" — but only `plugin.json` was bumped, so merging after the 1.0.1
+stack let git **auto-merge** `marketplace.json` back to 1.0.1. No conflict, no marker, no failing
+test: a valid JSON file holding the wrong number. The two values have different readers —
+`plugin.json` is stamped into every installed repo's manifest and is what `/sdlc-upgrade` compares
+against, while `marketplace.json` is what decides an update is on offer — so the lagging one would
+have published a release nobody was told about.
+
+Verified the same way as the 1.0.1 rails: every check proven by reintroducing the defect it targets
+and confirming it fails.
+
 ### Migration
 
 1. `/sdlc-upgrade` — new files install; anything you adapted is left alone.
