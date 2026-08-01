@@ -126,7 +126,7 @@ Draft `build-handoff.md` (and `foundation-report.md`): the ordered spec backlog 
 
 ### Step 9: Generate Visual Report
 
-Generate an interactive HTML visual report at `.sdlc/reports/phase03-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+Generate an interactive HTML visual report at `.sdlc/reports/03-foundation-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
 **Required visualizations for Phase 3 (Foundation):**
 - Rails status board — the five workflows + branch protection, each marked present / proven (with the forced-failure evidence)
@@ -138,7 +138,7 @@ See the Visual Report Protocol in `SKILL.md` for rendering standards and fallbac
 
 ### Step 10: Generate Phase Report
 
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase03-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/03-foundation-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Standalone or Workflow
 
@@ -179,7 +179,7 @@ Must contain ALL of:
 - `harness-inventory.md` — what the kit installed and the per-file adaptation notes
 - `pipeline-proof.md` — the forced-failure evidence, one entry per rail
 - `walking-skeleton-spec.md` — the skeleton slices with per-slice loop evidence (spec, PR, grader verdict, Checker, deploy)
-- `phase3-report.html` — the generated phase report
+- `03-foundation-report.html` — the generated phase report
 
 ### `data-flow-brief.md` (REQUIRED)
 
@@ -220,7 +220,7 @@ Must contain:
 - [ ] Stakeholder reviewed and approved (manual gate)
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase03-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/03-foundation-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 

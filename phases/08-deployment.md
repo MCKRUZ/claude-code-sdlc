@@ -26,6 +26,11 @@ Deploy the system to production safely, with documented rollback capability, ver
 
 > **HITL GATE (most critical gate in the lifecycle):** Before any deployment activity, read `phase8-handoff.md` and present the following to the human using the `AskUserQuestion` tool — do not use inline markdown for HITL questions: (1) Deployment target and strategy — blue/green, rolling, canary, or direct replacement? (2) Rollback plan — what is the trigger condition, what is the exact procedure? (3) Who must be notified before, during, and after deployment? (4) Is this staging-only or staging + production? (5) Deployment window — when does it start, how long is the maintenance window? **Do NOT proceed to Step 1 without explicit human go/no-go.** A deployment without human approval is not a deployment — it is an incident.
 
+Record the outcome in `go-no-go-record.md` as the ceremony happens: the decision, and every named
+role's answer with any condition they attached. Write it during the gate, not afterwards — the
+point of the record is that it captures what people actually said before anyone knew how the
+deployment went.
+
 ### Step 1: Pre-Deployment Checklist
 Verify all deployment prerequisites:
 - All tests passing on the deployment candidate
@@ -38,26 +43,28 @@ Verify all deployment prerequisites:
 
 ### Step 2: Staging Deployment
 
-Spawn `devops-automator` to execute the staging deployment:
+Execute the staging deployment using the procedure in `RUNBOOK.md` — the runbook is the
+authority, and a deployment that needs a step the runbook does not contain has found a defect in
+the runbook. Verify every service starts without errors, then check the health endpoints. Report
+failures with the full error context rather than a summary; the context is what makes the next
+step possible.
+
+**On build failure during deployment:** spawn `build-error-resolver` immediately. Do not attempt
+manual fixes first — a hand-patched build hides the cause and the same failure returns in
+production.
 
 ```
-Agent(devops-automator, "Configure and execute staging deployment using the procedure in RUNBOOK.md. Verify all services start without errors. Check health endpoints. Report any failures with full error context.")
-```
-
-**On build failure during deployment:** Spawn `build-error-resolver` immediately. Do not attempt manual fixes.
-
-```
-# Only if deployment build fails:
+# Only if the deployment build fails:
 Agent(build-error-resolver, "Deployment build failed. Analyze the build output, identify root cause, and fix. Verify the fix compiles and passes tests before re-attempting deployment.")
 ```
 
 ### Step 3: Smoke Test Execution
 
-Spawn `e2e-runner` to execute smoke tests against staging:
+Run the smoke test suite against staging: one test per P0 user story, minimum. Capture screenshots
+as evidence and record pass/fail per test with timestamps.
 
-```
-Agent(e2e-runner, "Execute smoke test suite against the staging environment. One test per P0 user story minimum. Capture screenshots as evidence. Report pass/fail per test with timestamps. All smoke tests must be non-destructive — read operations and harmless writes only.")
-```
+**Every smoke test must be non-destructive** — read operations and harmless writes only. A smoke
+test that mutates real state is an outage waiting for the day someone runs it against production.
 
 Verify:
 - One test per P0 user story (minimum)
@@ -68,8 +75,8 @@ Verify:
 ### Step 4: Production Deployment
 Deploy to production following the same procedure:
 - Execute pre-production gate checklist
-- Deploy using the same `devops-automator` procedure validated in staging
-- Run smoke tests against production (re-spawn `e2e-runner` with production target)
+- Deploy using the same runbook procedure validated in staging — same steps, not a variant
+- Run the same smoke tests against production
 - Confirm monitoring dashboards show healthy state
 
 **For `skill` / `library` projects:** Production deployment = package publish or file distribution. Verify install works in a clean environment.
@@ -79,7 +86,7 @@ Document the deployment state and what monitoring needs to cover.
 
 ### Step 6: Generate Visual Report
 
-Generate an interactive HTML visual report at `.sdlc/reports/phase08-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+Generate an interactive HTML visual report at `.sdlc/reports/08-deployment-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
 **Required visualizations for Phase 8 (Deployment):**
 - Deployment readiness checklist (items → pass/fail)
@@ -90,7 +97,7 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase08-visual.html
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
 ### Step 7: Generate Phase Report
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase08-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/08-deployment-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
 
@@ -176,6 +183,36 @@ Must contain:
 > `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
 > approver signs against. A missing file still blocks. The escape is from the work, not the
 > record — an exception nobody can see is how a gate stops being a gate.
+
+### `go-no-go-record.md` (REQUIRED)
+
+The recorded output of the Step 0 ceremony: the decision to deploy, with every named role's answer
+captured at the time it was given.
+
+The gate itself already happens — Step 0 is the most consequential HITL gate in the lifecycle. What
+was missing was the receipt. A go/no-go that leaves no record is indistinguishable, a quarter later,
+from a deployment nobody was asked about, and "who approved this?" is the first question after any
+production incident.
+
+Must contain:
+- **The decision** — go, no-go, or go-with-conditions, and the date and time it was made
+- **Every role polled** — named person, their answer, and any condition they attached. A role that
+  was not polled is recorded as not polled, not as assent
+- **What was being deployed** — the version or release, so the record ties to a specific artifact
+- **Known risks accepted at the time**, and who accepted each
+- **The conditions**, if any, and who owns clearing them before or after cutover
+
+Silence is not agreement. An unrecorded answer is a missing answer.
+
+> **HITL GATE:** The answers belong to the people who gave them. Capture them with
+> `AskUserQuestion` during the ceremony — Claude records the decision and must never supply an
+> answer on a named person's behalf.
+
+> **If it genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
+
 ### `rollout-shape-decision.md` (OPTIONAL)
 
 Cutover, pilot or parallel-run — chosen by the client, in writing, before the go/no-go ceremony
@@ -187,6 +224,7 @@ the conditions that would trigger it. Named owner, dated.
 > **Optional by design.** Its absence does not by itself mean the phase went badly, so the gate
 > does not block on it — but the approver is asked about it at sign-off. Write it when the work
 > happens; a receipt written later from memory is worth less than no receipt at all.
+
 ## Exit Criteria
 - [ ] Staging deployment successful
 - [ ] All staging smoke tests passing
@@ -196,7 +234,7 @@ the conditions that would trigger it. Named owner, dated.
 - [ ] Stakeholder sign-off received (manual gate)
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase08-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/08-deployment-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 

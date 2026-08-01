@@ -12,8 +12,8 @@ Maps each SDLC phase to the Claude Code skills/commands that execute it.
 | 3 Foundation | `/deep-plan` | `/tdd`, `/e2e` | Section-level planning with TDD; stand up rails + walking skeleton through the full Build loop |
 | build Build Loop | — | `/deep-implement`, `/tdd`, `/code-review`, `/security-review`, `/e2e`, `/test-coverage` | Continuous Intent → Delegate → Discern per change. Replaces batch Implementation/Quality/Testing; checking is per change, no batch gate. |
 | 7 Documentation | `/update-docs` | — | Sync docs with code |
-| 8 Deployment | `/e2e` | — | Smoke tests via `e2e-runner`; `devops-automator` agent for deployment execution |
-| 9 Monitoring | — | `/session-insights` | Retrospective analysis; `performance-benchmarker` agent for baseline |
+| 8 Deployment | `/e2e` | — | Smoke tests and deployment executed directly, following RUNBOOK.md |
+| 9 Monitoring | — | `/session-insights` | Retrospective analysis; the performance baseline is measured directly |
 | close Close & Transfer | — | — | Prove unassisted client run end-to-end; harness audit + access revocation + harvest. Orchestrate agents per phase definition. |
 
 ## Skill Details

@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.0 — 2026-07-31
+## 1.1.0 — 2026-08-01
 
 Regenerated `harness/` from the canonical kit. Three additions to the delivery standard: the
 second half of the deploy rail, the standard's first position on third-party components, and
@@ -52,6 +52,167 @@ one of the additions is a new blocking gate.
 4. Run the new shakedown drills in `RAILS.md`. The dependency gate especially: unlike every other
    rail it fails *silent and green* when misconfigured, so planting a known-vulnerable package is
    the only way to know it is wired.
+## 1.0.1 — 2026-08-01
+
+**A patch release, and entirely corrective.** 1.0.0 changed what the gates enforce and left the
+prose describing the old behaviour; everything here reconciles the two. Eight issues (#29–#36)
+turned out to be four root causes.
+
+**Nothing here makes a gate stricter.** One requirement is *removed* — Phase 1 no longer blocks on
+`decision-list.md`, a file nothing ever produced, so no passing gate regresses. The receipts that
+already blocked (`threat-model.md`, `drill-record.md`, `go-no-go-record.md`) still block; the
+difference is that the plugin now tells you what to write and ships a template.
+
+> **Ordering:** this releases from 1.0.0 and must land **before** the 1.1.0 kit sync, which is
+> based on the same 1.0.0 tree.
+
+### The 1.0.0 receipt migration is now actually wired (#31, #33, #34, #35)
+
+1.0.0 added twelve required receipts to `phases/phase-registry.yaml` and updated almost none of the
+prose around them. `check_gates.py` blocks on `artifacts.required` and nothing else, so the registry
+was the only thing telling the truth — and it was telling it to nobody. Four separately-reported
+issues turned out to be one unfinished migration.
+
+**Two receipts were required by the gate and described nowhere.** A team hit them as a blocked phase
+with no instruction anywhere for what the file should contain:
+
+- `drill-record.md` — Phase 9 now has a **Step 4: Alert Drill** (the playbook is written first, so
+  the drill tests `incident-response.md` as much as it tests the alert), an artifact spec, and a
+  template. Steps 4–6 renumbered to 5–7.
+- `go-no-go-record.md` — the Step 0 ceremony already existed and is the most consequential HITL
+  gate in the lifecycle; only its receipt was missing. Added a spec, a template, and a line in
+  Step 0 to record the decision *as it happens*. Silence is not agreement: a role that was not
+  polled is recorded as not polled.
+
+**`docs/phase-lifecycle.md` was missing eleven of the twelve** from its Required Artifacts tables,
+and listed `go-no-go-record.md` and `drill-record.md` as *optional* — the direct contradiction that
+makes a team skip an artifact and then fail the gate on it. All corrected.
+
+**`threat-model.md` was documented `RECOMMENDED — required for any system handling auth, payments
+or PII`** while the registry blocked on it unconditionally. The registry is right and the promotion
+was deliberate: the phase body's own note asked for it to be promoted "on a major version with a
+migration note", which is exactly what 1.0.0 was. The prose now says REQUIRED, with the `WAIVED:`
+escape spelled out. Every system has guarded paths — deploy credentials and CI secrets at minimum —
+and Phase 3 has nothing to wire its security gates from without the map.
+
+**`decision-list.md` is gone; the work it named was already done by two shipped mechanisms.** The
+phase-spanning `.sdlc/decision-log.md` (`DL-NN`, read by `track_decisions.py`, surfaced by
+`/sdlc-status`) and a spec's own `## Decision List` section (enforced per-spec by `check_spec.py` at
+Definition of Ready) already cover it, and three places in the repo warn against confusing the two.
+A third file would have been the confusion. Dropped from `artifacts.required`; the Phase 1 spec now
+points at the decision log; and because that log lives outside the phase's artifact directory where
+the gate cannot see it, the exit gate gains a prose check so the approver is still asked — the same
+pattern the `close` phase already uses for its off-gate receipts.
+
+**A runaway code fence in `phases/01-requirements.md`** swallowed 59 lines, turning three artifact
+specifications and a section heading into sample code. This was the migration's insertion landing
+inside an existing fence. The fence now wraps only the `AQ-NN` example it was meant to.
+
+### Report filenames use one convention (#36)
+
+Three were in use simultaneously: the phase bodies wrote `phase09-report.html`, the registry's
+optional lists said `phase9-report.html`, and `docs/commands.md` documented `<slug>-report.html`.
+`03-foundation.md` alone used both the padded and unpadded forms.
+
+Two things were actually broken by it, not merely untidy. `commands/sdlc-gate.md` pre-checks the
+**visual** report by slug, so a team following the phase definition wrote `phase09-visual.html`
+while the gate looked for `09-monitoring-visual.html` and reported it missing. And the registry's
+`artifacts.optional` entries could never match a real file under either of the other conventions,
+so those entries were dead.
+
+All 38 references now use `<slug>-report.html` / `<slug>-visual.html`. The slug wins because it is
+what `generate_phase_report.py` is invoked with, and the only form that survives the non-numeric
+`build` and `close` phases.
+
+### `/sdlc-spike` and `/sdlc-doctor` are documented (#32)
+
+Both shipped and appeared nowhere in `docs/commands.md` — not the contents, the overview table, or
+the additional-commands table. Spikes are a first-class part of the method with their own Phase 2
+step, and `/sdlc-doctor` is the single most useful command for a first-time setup (it catches the
+missing interpreter, the rails script without its executable bit, the unset secret — each of which
+otherwise fails silently). A reader working from the reference would conclude neither existed.
+
+Both added, and the stale "Eight commands" count corrected to ten.
+
+### Gate 2 catches less than the docs claimed (#30)
+
+`docs/templates-artifacts.md` stated that Gate 2 fails on "any remaining `[bracket text]`, `TODO`,
+or `TBD`". It does not. The real set is exactly six strings — `TODO`, `TBD`, `${`, `PLACEHOLDER`,
+`[INSERT`, `<!-- REQUIRED:` — and **bare bracket prose is not among them**, deliberately: templates
+use `- [ ]` checkboxes and `[text](links)` throughout, so a general bracket rule would fail nearly
+every artifact.
+
+The consequence is that `[Describe the situation]` left in an ADR passes completeness. Overstating
+what a gate checks is worse than understating it — it turns a tripwire into a proofreader in the
+reader's head, and then the proofreading stops being done. All three docs that list the markers now
+state the real set and name the gap.
+
+The same docs described `<!-- REQUIRED: ... -->` as "not a placeholder to fill, but a validation
+hint", which reads as *leave it in place* — while its presence is exactly what fails the artifact.
+It is a template-enforcement marker: **delete it once you have written the section it names.** That
+deletion is the completeness contract, and nothing had ever said so.
+
+### Thirteen agents that never existed (#29)
+
+Phases 7, 8 and 9 instructed Claude to spawn seven subagents by name. **Six did not exist.** The
+reference documents were worse: `references/agent-roster.md` — which calls itself "the
+authoritative reference for agent orchestration decisions" — and `docs/agents.md` between them
+presented **thirteen** non-existent agents as usable, six of those in the Build-loop table, the
+most-exercised part of the product. `SKILL.md`, the file Claude actually reads, carried the same
+list plus a worked `Agent(backend-architect, ...)` example.
+
+**A spawn that resolves to nothing does not raise and does not warn.** The phase carries on as
+though the work were done. A team ran Phase 7, the definition said the API documentation was being
+generated, and `api-docs.md` never appeared.
+
+The root cause was a single false claim: `docs/agents.md` listed these under **"Built-in Claude
+Code subagents — Claude Code runtime — 13+"**. They were never runtime built-ins. Believing they
+came free is why nobody built them. Only `Explore` and `Plan` come from the runtime; everything
+else ships in `agents/` (13) or `harness/agents/` (6).
+
+**The fix follows what already worked.** Phases 0–3 and the Build loop spawn nothing via
+`Agent(...)` and never did — they describe their work as steps. Phases 7–9 now do the same:
+
+| Was delegated to a non-existent agent | Now |
+|---|---|
+| README + API docs (`doc-updater`, `backend-architect`) | Written directly — `07-documentation.md` Steps 1–2 |
+| Staging/production deploy (`devops-automator`) | Executed directly from `RUNBOOK.md` — `08-deployment.md` Steps 2, 4 |
+| Smoke tests (`e2e-runner`) | Executed directly — `08-deployment.md` Step 3 |
+| Performance baseline (`performance-benchmarker`) | Measured directly, before any threshold is set — `09-monitoring.md` Step 1 |
+| Feedback synthesis (`feedback-synthesizer`) | Part of the retrospective — `09-monitoring.md` Step 5 |
+| Tests, API work, spikes (`test-writer-fixer`, `api-tester`, `rapid-prototyper`, `tdd-guide`) | The `test-writer` / `api-pattern` skills and `/sdlc-spike` |
+
+`build-error-resolver` spawns are kept — it genuinely ships. The distinction now stated in the docs
+is that a **skill** runs in the main context with the surrounding work in view, which is what
+authoring needs, while an **agent** starts cold, which is what reviewing needs. That, not a persona
+name, is what decides whether something should be delegated.
+
+`docs/phase-lifecycle.md` had said "No custom SDLC agents are spawned during Documentation /
+Deployment / Monitoring" the whole time. It was right, and nothing reconciled it against the phase
+files that disagreed.
+
+### The rails that catch the next one
+
+`scripts/tests/test_registry_docs_consistency.py` asserts that:
+
+- every registry-required artifact has a `### <name>` spec in its phase definition, appears in
+  `docs/phase-lifecycle.md`'s Required Artifacts table, and is not simultaneously listed as optional
+- report filenames use the registry slug, never `phase9-` or `phase09-`
+- every shipped command appears in `docs/commands.md`, and the additional-commands count matches
+  its own table
+- all three docs that list Gate 2's placeholder markers match `check_gates.PLACEHOLDER_MARKERS`,
+  with the specific `[bracket text]` false claim kept as a named regression
+
+`scripts/tests/test_agent_references.py` asserts that every agent named in an `Agent(...)` spawn or
+an agent-table column — across `phases/`, `SKILL.md`, all of `docs/` and all of `references/` —
+ships in `agents/` or `harness/agents/`, or appears on an explicit allowlist of Claude Code
+built-ins and sibling-plugin agents. It parses the tables rather than pattern-matching backticks,
+so phase slugs and spec statuses are not mistaken for agent names. Its file list is derived by glob:
+the first pass at this fix corrected two documents by hand and left the same claims standing in
+three others, which is exactly how the original drift happened.
+
+Every check was verified by reintroducing the original defect and confirming it fails — a guard
+that has never failed is a configuration, not a control.
 
 ## 1.0.0 — 2026-07-31
 

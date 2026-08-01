@@ -118,7 +118,7 @@ properties:
         description: "MUST have security review for sensitive code"
       visual_verification:
         type: object
-        description: "Optional visual regression testing via screenshots during Phase 6. When enabled, the e2e-runner captures screenshots at key user flows and stores them as baseline evidence. Inspired by Anthropic's long-running agent harness research."
+        description: "Optional visual regression testing via screenshots during Phase 6. When enabled, the E2E run captures screenshots at key user flows and stores them as baseline evidence. Inspired by Anthropic's long-running agent harness research."
         properties:
           enabled:
             type: boolean
@@ -127,7 +127,7 @@ properties:
             type: array
             items:
               type: string
-            description: "Named capture points (e.g., 'login-page', 'dashboard-loaded', 'form-submitted'). If omitted, e2e-runner captures at each P0 user story completion."
+            description: "Named capture points (e.g., 'login-page', 'dashboard-loaded', 'form-submitted'). If omitted, the E2E run captures at each P0 user story completion."
           baseline_comparison:
             type: string
             enum: [manual, pixel-diff, none]

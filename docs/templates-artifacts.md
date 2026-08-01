@@ -30,14 +30,24 @@ gate system checks that it does.
 ### Core Principles
 
 - **Templates are blueprints, not content.** They contain placeholder markers (`[brackets]`,
-  `TODO`, `TBD`) that must be replaced with real project-specific content during phase work.
+  `TODO`, `TBD`) that must be replaced with real project-specific content during phase work, and
+  `<!-- REQUIRED: ... -->` comments that must be **deleted** once the section they mark is written.
 - **Stored in the plugin directory.** Templates live under `templates/` inside the
   claude-code-sdlc plugin repository, not in target projects.
 - **Copied at initialization.** When `/sdlc-setup` runs, templates are copied to the target
   project's `.sdlc/artifacts/` directory, organized by phase.
 - **Gate validation depends on templates.** Gate 1 (Existence) checks that every required
-  artifact file exists. Gate 2 (Completeness) scans for unfilled placeholders -- any remaining
-  `[bracket text]`, `TODO`, or `TBD` markers cause the gate to fail.
+  artifact file exists. Gate 2 (Completeness) fails the artifact if it still contains any of
+  exactly six strings: `TODO`, `TBD`, `${`, `PLACEHOLDER`, `[INSERT`, or `<!-- REQUIRED:`
+  (`check_gates.py`, `PLACEHOLDER_MARKERS`).
+
+  **Know what this does *not* catch.** Ordinary bracket prose — `[Describe the situation]`,
+  `[Project Name]` — is **not** detected, because templates legitimately use `- [ ]` checkboxes
+  and `[text](links)` and a general bracket rule would fail every artifact that has either. So a
+  carelessly half-filled artifact can pass Gate 2. The `<!-- REQUIRED: -->` comments are what
+  carry the real completeness contract: each one names a section that must be written, and
+  deleting it is the author's assertion that it was. Gate 2 is a tripwire for an untouched
+  template, not a proofreader.
 - **Phase-specific organization.** Each phase has its own template subdirectory, named by its
   phase slug (`00-discovery`, `03-foundation`, `build`, `close`, ...), containing the artifacts
   required for that phase.
@@ -129,6 +139,7 @@ templates/
     │   └── phase9-handoff.md                # Handoff to Monitoring phase
     ├── 09-monitoring/
     │   ├── alert-definitions.md             # Alert rules and thresholds
+    │   ├── drill-record.md                  # Proof each critical alert fired and was answered
     │   ├── incident-response.md             # Incident classification and procedures
     │   ├── monitoring-config.md             # Dashboard and metrics configuration
     │   └── project-retrospective.md         # Final project retrospective
@@ -695,11 +706,12 @@ Documentation.
 | `smoke-test-results.md` | Post-deployment smoke test results per environment |
 | `phase9-handoff.md` | Handoff to Monitoring with deployment summary |
 
-### Phase 9: Monitoring (4 artifacts + handoff)
+### Phase 9: Monitoring (5 artifacts + handoff)
 
 | Artifact | Purpose |
 |----------|---------|
 | `alert-definitions.md` | Alert rules, thresholds, and notification routing |
+| `drill-record.md` | Per critical alert: trigger, detection time, routing, responder, outcome — the proof the pager works |
 | `incident-response.md` | Incident classification levels and response procedures |
 | `monitoring-config.md` | Dashboard inventory and metrics configuration |
 | `project-retrospective.md` | Final project retrospective covering the entire SDLC cycle |
@@ -839,9 +851,9 @@ Templates use these placeholder patterns consistently:
 
 | Pattern | Meaning | Example |
 |---------|---------|---------|
-| `[Text in brackets]` | Must be replaced with project-specific content | `[Project Name]`, `[Specific number/condition]` |
-| `${VARIABLE}` | System-replaced during initialization | `${PROFILE_ID}`, `${PROJECT_NAME}`, `${CREATED_AT}` |
-| `<!-- REQUIRED: ... -->` | HTML comment marking required sections (not a placeholder to fill, but a validation hint) | `<!-- REQUIRED: risk-entry -- all attributes filled in -->` |
+| `[Text in brackets]` | Must be replaced with project-specific content. **Not detected by Gate 2** — see the note in §1; leaving these in place does not fail the gate | `[Project Name]`, `[Specific number/condition]` |
+| `${VARIABLE}` | System-replaced during initialization. Gate 2 fails while any remain | `${PROFILE_ID}`, `${PROJECT_NAME}`, `${CREATED_AT}` |
+| `<!-- REQUIRED: ... -->` | Marks a section that must be written. **Delete the comment once you have written that section** — Gate 2 fails the artifact while any remain, which is how an untouched template is caught | `<!-- REQUIRED: risk-entry -- all attributes filled in -->` |
 | `NNN` in identifiers | Sequential numbering placeholder | `FR-NNN`, `RISK-NNN`, `ADR-NNN` |
 
 ---

@@ -66,7 +66,7 @@ phases:
         - "stakeholder-notes.md"
         - "market-research.md"
         - "document-registry.md"  # Document intake index (opt-in via profile.documentation)
-        - "phase0-report.html"
+        - "00-discovery-report.html"
         - "po-decision-record.md"
         - "tooling-record.md"
         - "workshop-brief.md"
@@ -101,16 +101,19 @@ phases:
         - check: "No unresolved P0 conflicts or ambiguities between stakeholders"
         - check: "Every numeric NFR threshold states its Measurement Basis, and each [aspirational] one has an agreed Build-loop measurement method with a named owner"
         - check: "Every P0 requirement traces to a Phase 0 pain point"
+        # The decision log is phase-spanning and lives at .sdlc/decision-log.md, outside this
+        # phase's artifact directory — so the gate cannot see it and the question is the only
+        # mechanism available. Same pattern as the close phase's off-gate receipts.
+        - check: "Every open product decision is recorded in .sdlc/decision-log.md as a DL-NN with a named owner and a due date — an entry with no owner is the failure this log exists to prevent"
     artifacts:
       required:
         - "requirements.md"
         - "non-functional-requirements.md"
         - "epics.md"
         - "phase2-handoff.md"
-        - "decision-list.md"
       optional:
         - "glossary.md"
-        - "phase1-report.html"
+        - "01-requirements-report.html"
         - "scope-out-record.md"
         - "adversarial-review-record.md"
 
@@ -160,7 +163,7 @@ phases:
       optional:
         - "data-model.md"
         - "sequence-diagrams.md"
-        - "phase2-report.html"
+        - "02-design-report.html"
         - "research-notes.md"
         - "integration-notes.md"
         - "external-reviews/"
@@ -205,7 +208,7 @@ phases:
         - "harness-inventory.md"
         - "pipeline-proof.md"
         - "walking-skeleton-spec.md"
-        - "phase3-report.html"
+        - "03-foundation-report.html"
 
   - id: build
     slug: "build"
@@ -291,7 +294,7 @@ phases:
         - "CHANGELOG.md"
         - "CONTRIBUTING.md"
         - "drift-catalog.md"
-        - "phase7-report.html"
+        - "07-documentation-report.html"
         - "spec-audit-record.md"
 
   - id: 8
@@ -333,7 +336,7 @@ phases:
       optional:
         - "rollback-procedure.md"
         - "deployment-log.md"
-        - "phase8-report.html"
+        - "08-deployment-report.html"
         - "rollout-shape-decision.md"
 
   - id: 9
@@ -374,7 +377,7 @@ phases:
         - "drill-record.md"
       optional:
         - "baseline-data.md"
-        - "phase9-report.html"
+        - "09-monitoring-report.html"
         - "what-healthy-table.md"
         - "fatigue-review-record.md"
         - "outcome-metric-first-read.md"

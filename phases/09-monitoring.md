@@ -30,17 +30,18 @@ Establish production observability so the team knows about problems before users
 
 ### Step 1: Monitoring Configuration
 
-Spawn `performance-benchmarker` to establish the production baseline:
+**Establish the production baseline first.** Measure response times, throughput, error rates and
+resource usage against the NFR targets in `non-functional-requirements.md`. These measurements
+become the definition of "normal" that every alert threshold in Step 2 is set against — which is
+why they come first. A threshold chosen before the baseline exists is a guess wearing a number.
 
-```
-Agent(performance-benchmarker, "Establish production performance baseline. Measure response times, throughput, error rates, and resource usage against NFR targets from non-functional-requirements.md. Output baseline measurements for monitoring-config.md — these become the 'normal' values that alert thresholds are set against.")
-```
+Measure it; do not estimate it. Where a number genuinely cannot be measured yet, record it as
+modeled with a revisit date, and say so in `monitoring-config.md` — the gate asks for exactly that
+distinction.
 
-Once the baseline is established, spawn `doc-updater` to write the monitoring configuration document:
-
-```
-Agent(doc-updater, "Write monitoring-config.md using the baseline measurements from performance-benchmarker. Include: dashboard inventory, metrics catalog, coverage assessment for P0 features, and baseline measurements. For skill/library projects, reframe as feedback channels and issue triage criteria.")
-```
+**Then write `monitoring-config.md`** from those measurements: dashboard inventory, metrics
+catalog, coverage assessment for P0 features, and the baselines themselves. For `skill` / `library`
+projects, reframe it as feedback channels and issue triage criteria — there are no dashboards.
 
 Set up dashboards and metrics collection:
 - System health metrics (CPU, memory, disk, network)
@@ -66,13 +67,38 @@ Write the runbook for common failure modes:
 
 Cross-reference with the RUNBOOK.md failure scenarios from Phase 7. The incident response playbook should cover the same failure modes with a focus on detection and communication rather than resolution steps.
 
-### Step 4: Project Retrospective
+### Step 4: Alert Drill
 
-Spawn `feedback-synthesizer` in background to analyze any user feedback collected during deployment:
+Fire every critical alert on purpose and answer it from the playbook. Until an alert has fired it
+is a configuration, not a control — the threshold may be wrong, the routing may point at a rota
+that no longer exists, and the way to find out is not at 3am during a real incident.
 
-```
-Agent(feedback-synthesizer, "Analyze any user feedback collected during and after deployment — GitHub issues, support requests, Slack messages, survey results. Identify patterns: what confused users, what delighted them, what broke. Output a feedback summary for the retrospective.", run_in_background=true)
-```
+This is why the playbook is written first: the drill tests `incident-response.md` as much as it
+tests the alert.
+
+For each critical alert in `alert-definitions.md`:
+- **Trigger it deliberately** — synthetic load, a forced error, or the provider's own test-fire.
+  Record which method was used; a test-fire proves routing but says nothing about the threshold.
+- **Time the detection** — from the triggering condition to the page actually arriving. Observed,
+  not estimated.
+- **Follow the routing** — did it reach the person `alert-definitions.md` says it should?
+- **Answer it from `incident-response.md`** — the responder works the playbook, not their memory.
+  A step that turns out to be missing or wrong is the point of the exercise, not a failed drill.
+- **Record what changed** — thresholds corrected, routing repointed, playbook steps rewritten.
+
+Record the result in `drill-record.md`.
+
+> **HITL GATE:** The drill needs a real responder; Claude cannot page anyone. Use the
+> `AskUserQuestion` tool to confirm who is running each drill and when, then capture what actually
+> happened. Claude prepares the drill plan and writes the record — it must never report a detection
+> time or an outcome it did not observe.
+
+### Step 5: Project Retrospective
+
+Start by gathering whatever user feedback the deployment produced — GitHub issues, support
+requests, Slack messages, survey results — and look for patterns rather than incidents: what
+confused people, what they liked, what broke. Where there is no feedback yet, record that as the
+finding; "we shipped and heard nothing" is itself worth knowing at Close.
 
 Capture what worked, what didn't, and what to carry forward. The retrospective must address **both** the product and the process:
 
@@ -91,11 +117,11 @@ Capture what worked, what didn't, and what to carry forward. The retrospective m
 - Concrete changes for the next project — not "communicate better" but "add a daily async standup during the Build loop"
 - Patterns to reuse and patterns to avoid
 
-Incorporate findings from `feedback-synthesizer` when available.
+Incorporate the feedback patterns gathered above, where any exist.
 
-### Step 5: Generate Visual Report
+### Step 6: Generate Visual Report
 
-Generate an interactive HTML visual report at `.sdlc/reports/phase09-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
+Generate an interactive HTML visual report at `.sdlc/reports/09-monitoring-visual.html` using the `/visual-explainer` skill (or equivalent HTML generation). This report is the stakeholder review artifact.
 
 **Required visualizations for Phase 9 (Monitoring):**
 - Monitoring configuration status (health checks, alerts)
@@ -105,8 +131,8 @@ Generate an interactive HTML visual report at `.sdlc/reports/phase09-visual.html
 
 See the Visual Report Protocol in `SKILL.md` for rendering standards and fallback behavior.
 
-### Step 6: Generate Phase Report
-Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/phase09-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
+### Step 7: Generate Phase Report
+Run `/sdlc-gate` to validate exit criteria and automatically generate the phase HTML report at `.sdlc/reports/09-monitoring-report.html`. Share this report with stakeholders for review before requesting sign-off. The report includes artifact inventory and gate status.
 
 ## Artifact Specifications
 
@@ -115,7 +141,7 @@ Must contain ALL of:
 - **Dashboard inventory** — what dashboards exist and what they show
 - **Metrics catalog** — every metric being collected, its source, and its meaning
 - **Coverage assessment** — is every P0 feature observable? What's the gap?
-- **Baseline measurements** — what "normal" looks like for each key metric (from `performance-benchmarker` output, set within first 48h of production)
+- **Baseline measurements** — what "normal" looks like for each key metric, measured within the first 48h of production
 
 ### `alert-definitions.md` (REQUIRED)
 Must contain ALL of:
@@ -141,7 +167,7 @@ Must contain ALL of:
 - **Technical debt log** — known debt incurred, with priority and suggested resolution timing
 - **Patterns to reuse** — decisions and approaches worth repeating
 - **Patterns to avoid** — decisions that created problems
-- **User feedback summary** — patterns from feedback-synthesizer analysis (if available)
+- **User feedback summary** — the patterns in whatever feedback the deployment produced (if any)
 
 ### `close-handoff.md` (REQUIRED)
 
@@ -168,6 +194,28 @@ Must contain ALL of:
 > **HITL GATE:** Every name in this file is a real person who has agreed. Ask the human to confirm
 > each one; do not infer availability from an org chart. If a name cannot be filled in, record the
 > gap explicitly — Close needs to know what is missing, not a plausible-looking list.
+
+### `drill-record.md` (REQUIRED)
+
+The output of Step 4, and the one proof that the pager works. One entry per critical alert, written
+as the drill runs rather than reconstructed afterwards from memory.
+
+Must contain, per critical alert:
+- **The alert** — its id or name as it appears in `alert-definitions.md`
+- **How it was triggered** — synthetic load, forced error, or provider test-fire, and the date
+- **Detection time** — from the triggering condition to the page arriving, observed not estimated
+- **Routing** — who it actually reached, and whether that is who it was supposed to reach
+- **Responder and outcome** — who answered, whether `incident-response.md` was sufficient, and
+  what changed as a result
+
+An alert that has never fired is a configuration, not a control. A drill that found nothing wrong
+is still worth recording as one — it is the difference between believing it works and having
+watched it work.
+
+> **If the drill genuinely did not happen**, say so *in this file*: a line reading
+> `WAIVED: <name> — <reason>`. The gate accepts it and reports it, by name, in the record the
+> approver signs against. A missing file still blocks. The escape is from the work, not the
+> record — an exception nobody can see is how a gate stops being a gate.
 
 ### `what-healthy-table.md` (OPTIONAL)
 
@@ -217,11 +265,13 @@ sponsor.
 - [ ] All P0 features have at least one observable metric
 - [ ] At least one alert exists for each CRITICAL failure mode
 - [ ] Incident response playbook covers top 5 alert types
+- [ ] Every critical alert has been fired in a drill and answered from the playbook, with the
+      detection time, routing and outcome recorded in `drill-record.md`
 - [ ] Project retrospective completed with actionable improvements
 - [ ] Stakeholder reviewed and approved (manual gate)
 
 ## HTML Report
-The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/phase09-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
+The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/09-monitoring-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
 
 To regenerate at any time: `/sdlc-phase-report`
 
