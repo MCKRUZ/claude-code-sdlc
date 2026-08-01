@@ -30,17 +30,18 @@ Establish production observability so the team knows about problems before users
 
 ### Step 1: Monitoring Configuration
 
-Spawn `performance-benchmarker` to establish the production baseline:
+**Establish the production baseline first.** Measure response times, throughput, error rates and
+resource usage against the NFR targets in `non-functional-requirements.md`. These measurements
+become the definition of "normal" that every alert threshold in Step 2 is set against — which is
+why they come first. A threshold chosen before the baseline exists is a guess wearing a number.
 
-```
-Agent(performance-benchmarker, "Establish production performance baseline. Measure response times, throughput, error rates, and resource usage against NFR targets from non-functional-requirements.md. Output baseline measurements for monitoring-config.md — these become the 'normal' values that alert thresholds are set against.")
-```
+Measure it; do not estimate it. Where a number genuinely cannot be measured yet, record it as
+modeled with a revisit date, and say so in `monitoring-config.md` — the gate asks for exactly that
+distinction.
 
-Once the baseline is established, spawn `doc-updater` to write the monitoring configuration document:
-
-```
-Agent(doc-updater, "Write monitoring-config.md using the baseline measurements from performance-benchmarker. Include: dashboard inventory, metrics catalog, coverage assessment for P0 features, and baseline measurements. For skill/library projects, reframe as feedback channels and issue triage criteria.")
-```
+**Then write `monitoring-config.md`** from those measurements: dashboard inventory, metrics
+catalog, coverage assessment for P0 features, and the baselines themselves. For `skill` / `library`
+projects, reframe it as feedback channels and issue triage criteria — there are no dashboards.
 
 Set up dashboards and metrics collection:
 - System health metrics (CPU, memory, disk, network)
@@ -94,11 +95,10 @@ Record the result in `drill-record.md`.
 
 ### Step 5: Project Retrospective
 
-Spawn `feedback-synthesizer` in background to analyze any user feedback collected during deployment:
-
-```
-Agent(feedback-synthesizer, "Analyze any user feedback collected during and after deployment — GitHub issues, support requests, Slack messages, survey results. Identify patterns: what confused users, what delighted them, what broke. Output a feedback summary for the retrospective.", run_in_background=true)
-```
+Start by gathering whatever user feedback the deployment produced — GitHub issues, support
+requests, Slack messages, survey results — and look for patterns rather than incidents: what
+confused people, what they liked, what broke. Where there is no feedback yet, record that as the
+finding; "we shipped and heard nothing" is itself worth knowing at Close.
 
 Capture what worked, what didn't, and what to carry forward. The retrospective must address **both** the product and the process:
 
@@ -117,7 +117,7 @@ Capture what worked, what didn't, and what to carry forward. The retrospective m
 - Concrete changes for the next project — not "communicate better" but "add a daily async standup during the Build loop"
 - Patterns to reuse and patterns to avoid
 
-Incorporate findings from `feedback-synthesizer` when available.
+Incorporate the feedback patterns gathered above, where any exist.
 
 ### Step 6: Generate Visual Report
 
@@ -141,7 +141,7 @@ Must contain ALL of:
 - **Dashboard inventory** — what dashboards exist and what they show
 - **Metrics catalog** — every metric being collected, its source, and its meaning
 - **Coverage assessment** — is every P0 feature observable? What's the gap?
-- **Baseline measurements** — what "normal" looks like for each key metric (from `performance-benchmarker` output, set within first 48h of production)
+- **Baseline measurements** — what "normal" looks like for each key metric, measured within the first 48h of production
 
 ### `alert-definitions.md` (REQUIRED)
 Must contain ALL of:
@@ -167,7 +167,7 @@ Must contain ALL of:
 - **Technical debt log** — known debt incurred, with priority and suggested resolution timing
 - **Patterns to reuse** — decisions and approaches worth repeating
 - **Patterns to avoid** — decisions that created problems
-- **User feedback summary** — patterns from feedback-synthesizer analysis (if available)
+- **User feedback summary** — the patterns in whatever feedback the deployment produced (if any)
 
 ### `close-handoff.md` (REQUIRED)
 

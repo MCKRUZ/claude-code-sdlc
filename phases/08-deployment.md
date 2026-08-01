@@ -43,26 +43,28 @@ Verify all deployment prerequisites:
 
 ### Step 2: Staging Deployment
 
-Spawn `devops-automator` to execute the staging deployment:
+Execute the staging deployment using the procedure in `RUNBOOK.md` — the runbook is the
+authority, and a deployment that needs a step the runbook does not contain has found a defect in
+the runbook. Verify every service starts without errors, then check the health endpoints. Report
+failures with the full error context rather than a summary; the context is what makes the next
+step possible.
+
+**On build failure during deployment:** spawn `build-error-resolver` immediately. Do not attempt
+manual fixes first — a hand-patched build hides the cause and the same failure returns in
+production.
 
 ```
-Agent(devops-automator, "Configure and execute staging deployment using the procedure in RUNBOOK.md. Verify all services start without errors. Check health endpoints. Report any failures with full error context.")
-```
-
-**On build failure during deployment:** Spawn `build-error-resolver` immediately. Do not attempt manual fixes.
-
-```
-# Only if deployment build fails:
+# Only if the deployment build fails:
 Agent(build-error-resolver, "Deployment build failed. Analyze the build output, identify root cause, and fix. Verify the fix compiles and passes tests before re-attempting deployment.")
 ```
 
 ### Step 3: Smoke Test Execution
 
-Spawn `e2e-runner` to execute smoke tests against staging:
+Run the smoke test suite against staging: one test per P0 user story, minimum. Capture screenshots
+as evidence and record pass/fail per test with timestamps.
 
-```
-Agent(e2e-runner, "Execute smoke test suite against the staging environment. One test per P0 user story minimum. Capture screenshots as evidence. Report pass/fail per test with timestamps. All smoke tests must be non-destructive — read operations and harmless writes only.")
-```
+**Every smoke test must be non-destructive** — read operations and harmless writes only. A smoke
+test that mutates real state is an outage waiting for the day someone runs it against production.
 
 Verify:
 - One test per P0 user story (minimum)
@@ -73,8 +75,8 @@ Verify:
 ### Step 4: Production Deployment
 Deploy to production following the same procedure:
 - Execute pre-production gate checklist
-- Deploy using the same `devops-automator` procedure validated in staging
-- Run smoke tests against production (re-spawn `e2e-runner` with production target)
+- Deploy using the same runbook procedure validated in staging — same steps, not a variant
+- Run the same smoke tests against production
 - Confirm monitoring dashboards show healthy state
 
 **For `skill` / `library` projects:** Production deployment = package publish or file distribution. Verify install works in a clean environment.

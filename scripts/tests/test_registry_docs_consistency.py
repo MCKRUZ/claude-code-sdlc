@@ -125,8 +125,11 @@ def test_phase_reports_use_the_registry_slug_convention():
         set(REPO_ROOT.glob("phases/*.md"))
         | set(REPO_ROOT.glob("docs/*.md"))
         | set(REPO_ROOT.glob("commands/*.md"))
-        | {REGISTRY}
+        | set(REPO_ROOT.glob("references/*.md"))
+        | {REGISTRY, REPO_ROOT / "SKILL.md"}
     ):
+        if path.name == "CHANGELOG.md":
+            continue  # a changelog records what the names used to be
         for match in re.finditer(r"\bphase\d+-(?:report|visual)\.html\b",
                                  path.read_text(encoding="utf-8")):
             offenders.append(f"{path.relative_to(REPO_ROOT)}: {match.group(0)}")

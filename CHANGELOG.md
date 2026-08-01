@@ -100,6 +100,45 @@ hint", which reads as *leave it in place* — while its presence is exactly what
 It is a template-enforcement marker: **delete it once you have written the section it names.** That
 deletion is the completeness contract, and nothing had ever said so.
 
+### Thirteen agents that never existed (#29)
+
+Phases 7, 8 and 9 instructed Claude to spawn seven subagents by name. **Six did not exist.** The
+reference documents were worse: `references/agent-roster.md` — which calls itself "the
+authoritative reference for agent orchestration decisions" — and `docs/agents.md` between them
+presented **thirteen** non-existent agents as usable, six of those in the Build-loop table, the
+most-exercised part of the product. `SKILL.md`, the file Claude actually reads, carried the same
+list plus a worked `Agent(backend-architect, ...)` example.
+
+**A spawn that resolves to nothing does not raise and does not warn.** The phase carries on as
+though the work were done. A team ran Phase 7, the definition said the API documentation was being
+generated, and `api-docs.md` never appeared.
+
+The root cause was a single false claim: `docs/agents.md` listed these under **"Built-in Claude
+Code subagents — Claude Code runtime — 13+"**. They were never runtime built-ins. Believing they
+came free is why nobody built them. Only `Explore` and `Plan` come from the runtime; everything
+else ships in `agents/` (13) or `harness/agents/` (6).
+
+**The fix follows what already worked.** Phases 0–3 and the Build loop spawn nothing via
+`Agent(...)` and never did — they describe their work as steps. Phases 7–9 now do the same:
+
+| Was delegated to a non-existent agent | Now |
+|---|---|
+| README + API docs (`doc-updater`, `backend-architect`) | Written directly — `07-documentation.md` Steps 1–2 |
+| Staging/production deploy (`devops-automator`) | Executed directly from `RUNBOOK.md` — `08-deployment.md` Steps 2, 4 |
+| Smoke tests (`e2e-runner`) | Executed directly — `08-deployment.md` Step 3 |
+| Performance baseline (`performance-benchmarker`) | Measured directly, before any threshold is set — `09-monitoring.md` Step 1 |
+| Feedback synthesis (`feedback-synthesizer`) | Part of the retrospective — `09-monitoring.md` Step 5 |
+| Tests, API work, spikes (`test-writer-fixer`, `api-tester`, `rapid-prototyper`, `tdd-guide`) | The `test-writer` / `api-pattern` skills and `/sdlc-spike` |
+
+`build-error-resolver` spawns are kept — it genuinely ships. The distinction now stated in the docs
+is that a **skill** runs in the main context with the surrounding work in view, which is what
+authoring needs, while an **agent** starts cold, which is what reviewing needs. That, not a persona
+name, is what decides whether something should be delegated.
+
+`docs/phase-lifecycle.md` had said "No custom SDLC agents are spawned during Documentation /
+Deployment / Monitoring" the whole time. It was right, and nothing reconciled it against the phase
+files that disagreed.
+
 ### The rails that catch the next one
 
 `scripts/tests/test_registry_docs_consistency.py` asserts that:
@@ -111,6 +150,14 @@ deletion is the completeness contract, and nothing had ever said so.
   its own table
 - all three docs that list Gate 2's placeholder markers match `check_gates.PLACEHOLDER_MARKERS`,
   with the specific `[bracket text]` false claim kept as a named regression
+
+`scripts/tests/test_agent_references.py` asserts that every agent named in an `Agent(...)` spawn or
+an agent-table column — across `phases/`, `SKILL.md`, all of `docs/` and all of `references/` —
+ships in `agents/` or `harness/agents/`, or appears on an explicit allowlist of Claude Code
+built-ins and sibling-plugin agents. It parses the tables rather than pattern-matching backticks,
+so phase slugs and spec statuses are not mistaken for agent names. Its file list is derived by glob:
+the first pass at this fix corrected two documents by hand and left the same claims standing in
+three others, which is exactly how the original drift happened.
 
 Every check was verified by reintroducing the original defect and confirming it fails — a guard
 that has never failed is a configuration, not a control.

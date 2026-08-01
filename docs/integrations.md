@@ -42,8 +42,8 @@ This table is the authoritative mapping, sourced from `phases/phase-registry.yam
 | 3 Foundation | (no primary skill) | `/tdd`, `/e2e` | Stand up the harness + rails + dev infra; the section planning that finishes `/deep-plan` (steps 16-22) lands here, writing `section-plans/` under `03-foundation/`; run a walking skeleton through the Build loop |
 | Build Loop | (no primary skill) | `/tdd`, `/code-review`, `/e2e` | Per-change Intent->Delegate->Discern: `/deep-implement`-style building, TDD when required, code+security review and E2E run per change, never as a batch |
 | 7 Documentation | `/update-docs` | -- | Sync README, API docs, RUNBOOK with code changes |
-| 8 Deployment | `/e2e` | -- | Smoke tests via `e2e-runner` agent; `devops-automator` agent for deployment execution |
-| 9 Monitoring | -- | `/session-insights` | Retrospective analysis; `performance-benchmarker` agent for baseline metrics |
+| 8 Deployment | `/e2e` | -- | Smoke tests and deployment executed directly, following RUNBOOK.md |
+| 9 Monitoring | -- | `/session-insights` | Retrospective analysis; the performance baseline is measured directly before any threshold is set |
 | close (Close & Transfer) | -- | -- | Shadow-flip, harness audit, close gate (client runs one real spec end-to-end unassisted) |
 
 ### Agent Mapping

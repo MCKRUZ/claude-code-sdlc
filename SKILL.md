@@ -237,15 +237,20 @@ An index page at `.sdlc/reports/index.html` MUST exist. It serves as the single 
 
 All reports are written to `.sdlc/reports/`:
 - `index.html` -- project dashboard (single entry point)
-- `phase00-visual.html`, `phase01-visual.html`, ..., `build-visual.html`, ..., `close-visual.html` -- phase summary reports (numeric phases use `phaseNN-`; the Build loop and Close use their `build` / `close` slug)
-- `phase00-<artifact>.html`, `phase01-<artifact>.html`, ... -- artifact sub-pages
-- Additional named reports (e.g., `architecture-diagrams.html`, `phase03-section-review.html`) are encouraged alongside the numbered report
+- `00-discovery-visual.html`, `01-requirements-visual.html`, ..., `build-visual.html`, ..., `close-visual.html` -- phase summary reports. **Every phase uses its registry slug**, including the non-numeric `build` and `close`
+- `00-discovery-<artifact>.html`, `01-requirements-<artifact>.html`, ... -- artifact sub-pages
+- Additional named reports (e.g., `architecture-diagrams.html`, `03-foundation-section-review.html`) are encouraged alongside the phase report
 
 ## Agent Orchestration Protocol
 
-Claude MUST use the Agent tool to spawn specialized subagents rather than doing all work inline. The Agent tool produces better results for non-trivial tasks: subagents have focused context, specialized instructions, and independent execution. This is not optional.
+Claude uses the Agent tool where a subagent buys something real: a perspective that did not write
+the work, or a bounded search that would otherwise flood the main context. **Most phase work is not
+delegated** — it is performed directly, as the phase definitions describe.
 
-See `references/agent-roster.md` for the full phase-by-phase mapping with conditions, parallel groups, and background policy.
+**Only spawn an agent that exists.** A spawn that resolves to nothing does not raise and does not
+warn; the phase simply carries on as though the work were done. Every name below ships in
+`agents/` or `harness/agents/`, or is a Claude Code built-in. See `references/agent-roster.md` for
+the full mapping, and `scripts/tests/test_agent_references.py` for the check that keeps it honest.
 
 ### Mandatory Spawns (No Exceptions)
 
@@ -253,65 +258,54 @@ See `references/agent-roster.md` for the full phase-by-phase mapping with condit
 |---------|-------|----------|
 | Build or compilation fails | `build-error-resolver` | Spawn immediately. Do not attempt manual fixes first. |
 | Code touches auth, payments, secrets, or PII | `security-reviewer` | Foreground. STOP on CRITICAL/HIGH findings. |
-| Build loop + profile requires TDD | `tdd-guide` | Spawn BEFORE writing any code for the change. |
-| Per-change check in the Build loop | `code-reviewer` + `security-reviewer` | Spawn both in a single message (parallel, foreground). |
 | A change in the Build loop completes | `section-evaluator` | Foreground, blocking. FAIL verdict = fix before proceeding. |
-| Build loop with independent changes | Domain-specific agents | Spawn in parallel (single message) for non-dependent changes. |
-| Gate check fails unexpectedly | `Explore` | Investigate root cause before attempting fixes. |
+| Gate check fails unexpectedly | `Explore` or `debugger` | Investigate root cause before attempting fixes. |
 
 ### Phase-by-Phase Agent Roster (Summary)
 
 | Phase | Primary Agents | Conditional Agents |
 |-------|---------------|--------------------|
-| 0 Discovery | — | `Explore` (existing codebase) |
-| 1 Requirements | — | `Explore`, `feedback-synthesizer` |
-| 2 Design | `architect` | `backend-architect`, `frontend-developer`, `security-reviewer` |
-| 3 Foundation | `deep-plan:section-writer` | `Plan`, `Explore` |
-| build Build Loop | Domain agents per change | `tdd-guide`, `section-evaluator`, `code-reviewer`, `security-reviewer`, `build-error-resolver`, `test-writer-fixer`, `e2e-runner`, `api-tester`, `performance-benchmarker`, `refactor-cleaner` (background) |
-| 7 Documentation | `doc-updater` | `backend-architect` (API docs) |
-| 8 Deployment | `devops-automator` | `e2e-runner` (smoke tests), `build-error-resolver` |
-| 9 Monitoring | — | `performance-benchmarker`, `feedback-synthesizer` |
-| close Close & Transfer | — | `doc-updater`, `feedback-synthesizer` |
+| 0 Discovery | — | `Explore`, `discovery-analyst` |
+| 1 Requirements | — | `Explore`, `requirements-analyst`, `feature-architect`, `bizreq-analyst` |
+| 2 Design | `architect` | `security-reviewer`, `compliance-checker`, `data-analyst`, `visual-designer`, `conversation-designer`, `multi-reviewer` |
+| 3 Foundation | `deep-plan:section-writer` | `Plan`, `planner`, `Explore` |
+| build Build Loop | `section-evaluator` | `grader`, `security-reviewer`, `multi-reviewer`, `build-error-resolver`, `debugger`, `gate-repair`, `deep-implement:code-reviewer` (background) |
+| 7 Documentation | — | `Explore` (ADR gap analysis) |
+| 8 Deployment | — | `build-error-resolver` |
+| 9 Monitoring | — | none |
+| close Close & Transfer | — | none |
+
+**Building is not delegated to a domain agent.** The Delegate beat is Claude building from an
+approved plan under the rails; the checking ladder is what makes that safe, not a specialist
+persona. Authoring work uses **skills** — `test-writer`, `api-pattern`, `spec-writer`, `pr-writer`,
+`eval-builder`, `diagnose` — because a skill runs in the main context with the surrounding work in
+view. Agents serve the Discern beat, where starting cold is the point.
 
 ### Parallel Execution Rules
 
 **Use a single message with multiple Agent tool calls when:**
-- Two or more Build loop changes have no dependency on each other (e.g., backend + frontend changes).
-- A per-change check fires in the Build loop — always launch `code-reviewer` and `security-reviewer` simultaneously.
-- Testing in the Build loop — launch `test-writer-fixer`, `e2e-runner`, and `api-tester` simultaneously when all apply.
+- A feature spans a web surface and a voice/chat surface — `visual-designer` and `conversation-designer` author different specs and do not conflict.
 - Phase 3 (Foundation) has multiple independent section plans to generate.
+- Several independent review lenses apply to the same change.
 
 **Use sequential Agent calls when:**
-- One agent's output is the input to the next (e.g., `tdd-guide` must complete before the implementation agent starts).
+- One agent's output is the input to the next.
 - A security CRITICAL/HIGH finding must be resolved before proceeding.
 - A build failure must be fixed before continuing.
 
-**Pattern for parallel change implementation:**
+**Pattern for parallel section planning:**
 ```
 # Single message — two Agent tool calls fire simultaneously:
-Agent(backend-architect, "Implement SECTION-002 per .sdlc/artifacts/03-foundation/section-plans/SECTION-002.md")
-Agent(frontend-developer, "Implement SECTION-003 per .sdlc/artifacts/03-foundation/section-plans/SECTION-003.md")
+Agent(deep-plan:section-writer, "Generate the section plan for SECTION-002 per .sdlc/artifacts/03-foundation/")
+Agent(deep-plan:section-writer, "Generate the section plan for SECTION-003 per .sdlc/artifacts/03-foundation/")
 ```
 
 ### Background Agents
 
 Run with `run_in_background: true` (non-blocking):
-- `doc-updater` — documentation updates during the Build loop
-- `refactor-cleaner` — dead code cleanup during the Build loop
-- `code-reviewer` — rolling per-change review in the Build loop
 - `deep-implement:code-reviewer` — diff review against section plans
 
-Never background: security reviews, build error resolution, or any work producing phase gate artifacts.
-
-### Domain Agent Selection (Build loop)
-
-| Change domain | Primary agent |
-|----------------|---------------|
-| Python / C# / server-side logic | `backend-architect` |
-| HTML / CSS / Angular / React | `frontend-developer` |
-| CI/CD / cloud infrastructure | `devops-automator` |
-| Spike / proof-of-concept | `rapid-prototyper` |
-| Any change with auth / payments / secrets | + `security-reviewer` (foreground) |
+Never background: security reviews, build error resolution, spec/section evaluation, or any work producing phase gate artifacts.
 
 ---
 
