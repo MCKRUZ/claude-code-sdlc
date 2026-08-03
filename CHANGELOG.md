@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.0 — 2026-08-03
+
+Finishes what 1.0.0 started. Fix 3 was written because "the approver was shown a file list and
+asked to sign" — it fixed that in the terminal and left the report alone. The report is the thing
+the approver actually opens.
+
+### The phase report now carries the judgement calls
+
+- `<slug>-report.html` renders the registry's prose exit conditions in a **Before you sign**
+  section, above the artifacts rather than below ten of them. Unticked, because nothing in the
+  pipeline can know the answers — only the signer can.
+- The sidebar's Exit Gate Status gains an **N decisions for a human** row, so a page whose file
+  checks are all green can no longer read as "everything passed" while four questions are open.
+- `generate_report()` returns `exit_criteria` alongside `found`/`missing`.
+
+**Why it mattered:** `check_gates.py` has surfaced these as G7 REVIEW items since 1.0.0, but
+`build_gate_items()` was built from the artifact list alone. A Phase 0 with every required file
+present and complete produced a report showing five green ticks and no indication that scope
+boundaries, metric sources, and persona provenance were still nobody's confirmed answer. The
+terminal told the truth; the artifact of record did not.
+
+### The rails that catch the next one
+
+- `scripts/tests/test_phase_report_exit_criteria.py` — sixteen checks. The registry reader excludes
+  machine-checked artifact conditions, every criterion reaches the page, criteria are escaped, the
+  section precedes the artifacts, and the report's list is pinned equal to what `check_gates.py`
+  renders in the terminal so the two readers of that registry field cannot drift apart.
+- All six mutations proven to fail, starting with the real defect. 598 passed, 6 skipped.
+
 ## 1.1.0 — 2026-08-01
 
 Regenerated `harness/` from the canonical kit. Three additions to the delivery standard: the
