@@ -89,6 +89,30 @@ def phase_artifacts(phase_id) -> list[tuple[str, str]]:
     ]
 
 
+def phase_exit_criteria(phase_id) -> list[str]:
+    """The phase's exit conditions that no machine can settle, registry-driven.
+
+    `exit_gate.conditions[]` carries two shapes, and only the second belongs here:
+
+      - {"artifact": "design-doc.md", "check": "exists_and_complete"}  -> a file check
+      - {"check": "Scope boundaries are unambiguous"}                  -> a human's judgement
+
+    `check_gates.py` already surfaces these in the terminal as G7 REVIEW items. This
+    report is what the approver actually reads before signing, so it has to carry them
+    too — a page that shows only which files exist is the exact failure 1.0.0 set out
+    to fix, reproduced one layer up.
+    """
+    meta = pm.get_phase(phase_id)
+    if meta is None:
+        return []
+    conditions = (meta.get("exit_gate") or {}).get("conditions") or []
+    return [
+        c["check"]
+        for c in conditions
+        if isinstance(c, dict) and "artifact" not in c and c.get("check")
+    ]
+
+
 # Presentational scheme keyed by canonical string phase id. Purely cosmetic
 # (icon + accent colour); identity/ordering never read from here.
 PHASE_PRESENTATION = {
@@ -392,6 +416,64 @@ body {{
 .gate-item.pass {{ color: var(--green); }}
 .gate-item.fail {{ color: var(--red); }}
 .gate-item.warn {{ color: var(--yellow); }}
+.gate-item.warn a {{ color: inherit; text-decoration: none; }}
+.gate-item.warn a:hover {{ text-decoration: underline; }}
+
+/* Exit criteria — the questions only a human can close */
+.judgement {{
+  margin-bottom: 40px;
+  padding: 24px 28px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--yellow);
+  border-radius: var(--radius);
+}}
+.judgement-header {{
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}}
+.judgement-header h2 {{
+  font-size: 19px;
+  font-weight: 700;
+}}
+.judgement-count {{
+  font-size: 12px;
+  color: var(--yellow);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}}
+.judgement-lead {{
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 18px;
+  max-width: 68ch;
+}}
+.judgement-list {{
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}}
+.judgement-list li {{
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 1.55;
+}}
+.judgement-box {{
+  flex: none;
+  width: 15px; height: 15px;
+  margin-top: 3px;
+  border: 1.5px solid var(--yellow);
+  border-radius: 3px;
+}}
+.judgement-text {{ max-width: 76ch; }}
 
 /* Main content */
 #main {{
@@ -625,6 +707,8 @@ body {{
     </div>
   </div>
 
+  {judgement_section}
+
   {artifact_sections}
 
   <div class="report-footer">
@@ -727,9 +811,12 @@ def build_nav_items(artifacts: list[tuple[str, str]], found_set: set[str]) -> st
     return "\n    ".join(items)
 
 
-def build_gate_items(artifacts: list[tuple[str, str]], found_set: set[str]) -> str:
+def build_gate_items(
+    artifacts: list[tuple[str, str]],
+    found_set: set[str],
+    criteria: list[str] | None = None,
+) -> str:
     items = []
-    all_found = len(found_set) == len(artifacts)
     for filename, label in artifacts:
         found = filename in found_set
         cls = "pass" if found else "fail"
@@ -739,7 +826,49 @@ def build_gate_items(artifacts: list[tuple[str, str]], found_set: set[str]) -> s
             f'<span class="gate-icon">{icon}</span>'
             f'{label}</div>'
         )
+    # The file checks above can all be green while the phase is nowhere near done.
+    # Carry the human decisions into the same summary so the sidebar never reads as
+    # "everything passed" when four questions are still unanswered.
+    if criteria:
+        plural = "s" if len(criteria) != 1 else ""
+        items.append(
+            f'<div class="gate-item warn">'
+            f'<span class="gate-icon">?</span>'
+            f'<a href="#exit-criteria">{len(criteria)} decision{plural} for a human</a>'
+            f'</div>'
+        )
     return "\n    ".join(items)
+
+
+def build_judgement_section(criteria: list[str]) -> str:
+    """The exit conditions a human has to answer, rendered for the person signing.
+
+    Deliberately placed above the artifacts: the approver meets the questions before
+    the evidence, not after scrolling past ten documents. Rendered unticked because
+    nothing in this pipeline can know the answers — only the signer can.
+    """
+    if not criteria:
+        return ""
+    rows = "\n    ".join(
+        f'<li><span class="judgement-box"></span>'
+        f'<span class="judgement-text">{html.escape(c)}</span></li>'
+        for c in criteria
+    )
+    plural = "s" if len(criteria) != 1 else ""
+    return f"""\
+<section class="judgement" id="exit-criteria">
+  <div class="judgement-header">
+    <h2>Before you sign</h2>
+    <span class="judgement-count">{len(criteria)} judgement call{plural}</span>
+  </div>
+  <p class="judgement-lead">
+    The checks below cannot be automated, and nothing above answers them. The gate
+    reports; you decide. Each one needs a person's answer before this phase closes.
+  </p>
+  <ul class="judgement-list">
+    {rows}
+  </ul>
+</section>"""
 
 
 def build_artifact_section(
@@ -822,8 +951,11 @@ def generate_report(
     found_count = len(found_set)
     missing_count = len(artifacts) - found_count
 
+    exit_criteria = phase_exit_criteria(phase_id)
+
     nav_items = build_nav_items(artifacts, found_set)
-    gate_items = build_gate_items(artifacts, found_set)
+    gate_items = build_gate_items(artifacts, found_set, exit_criteria)
+    judgement_section = build_judgement_section(exit_criteria)
 
     sections: list[str] = []
     for filename, label in artifacts:
@@ -853,6 +985,7 @@ def generate_report(
         missing_plural="s" if missing_count != 1 else "",
         nav_items=nav_items,
         gate_items=gate_items,
+        judgement_section=judgement_section,
         artifact_sections=artifact_sections,
     )
 
@@ -866,6 +999,7 @@ def generate_report(
         "found": found_count,
         "missing": missing_count,
         "total": len(artifacts),
+        "exit_criteria": len(exit_criteria),
         "artifacts": {
             filename: (artifact_paths[filename] is not None)
             for filename, _ in artifacts
