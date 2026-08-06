@@ -1,5 +1,6 @@
 """Tests for audit_artifacts — record/impact/report, the staleness scenario, and exit-0 invariant."""
 
+import io
 import json
 import os
 import sys
@@ -290,3 +291,64 @@ class TestExitZero:
         build_corpus(tmp_path)
         code, _ = run_cli(argv + ["--repo", str(tmp_path)], capsys)
         assert code == 0
+
+
+# --- narrow console encodings (Windows cp1252) -------------------------------------------------
+
+def _run_on_cp1252_console(argv, monkeypatch) -> tuple[int, str]:
+    """Invoke main() with stdout bound to a real cp1252 stream — a default Windows console.
+
+    capsys buffers as UTF-8, so it can NEVER surface an encoding fault; CI is Linux/UTF-8 for the
+    same reason. This helper is the only instrument in the suite that reproduces what a Windows
+    user actually sees."""
+    buf = io.BytesIO()
+    stream = io.TextIOWrapper(buf, encoding="cp1252", newline="")
+    monkeypatch.setattr(sys, "stdout", stream)
+    sys.argv = ["audit_artifacts.py"] + argv
+    with pytest.raises(SystemExit) as ei:
+        aa.main()
+    stream.flush()
+    return ei.value.code, buf.getvalue().decode("cp1252")
+
+
+class TestNarrowConsoleEncoding:
+    """The freshness dashboard must render on a console that cannot encode '<-' or a checkmark.
+
+    Both glyphs sit on the ordinary happy path — the arrow prints for every stale item, the
+    checkmark for every signed-off phase — so on a default Windows console the tool used to die
+    with UnicodeEncodeError and a NON-ZERO exit precisely when it had something to report. That
+    breaks the exit-0 advisory guarantee this module is built on.
+    """
+
+    def test_stale_items_render_on_cp1252(self, tmp_path, monkeypatch):
+        _baseline_and_upstream_change(tmp_path)
+        code, out = _run_on_cp1252_console(["report", "--repo", str(tmp_path)], monkeypatch)
+        assert code == 0
+        assert "STALE" in out          # it still reports the staleness it found
+        assert "<-" in out             # via the ASCII fallback, not a dropped line
+
+    def test_signoff_marker_renders_on_cp1252(self, tmp_path, monkeypatch):
+        """A signed-off phase alone is enough — no staleness required."""
+        build_corpus(tmp_path)
+        write_ledger(tmp_path, [
+            am.change_entry(ts="2026-07-01T00:00:00+00:00", artifact=REQ,
+                            event="created", hash="sha256:req1", actor="kai"),
+        ])
+        (tmp_path / ".sdlc" / "state.yaml").write_text(
+            "phases:\n  '1':\n    sign_off: matt\n", encoding="utf-8")
+        code, out = _run_on_cp1252_console(["report", "--repo", str(tmp_path)], monkeypatch)
+        assert code == 0
+        assert "signed-off" in out
+
+    def test_utf8_console_keeps_the_nicer_glyphs(self, tmp_path, monkeypatch):
+        """The fallback is a degradation for narrow consoles only — a UTF-8 console is unchanged."""
+        _baseline_and_upstream_change(tmp_path)
+        buf = io.BytesIO()
+        stream = io.TextIOWrapper(buf, encoding="utf-8", newline="")
+        monkeypatch.setattr(sys, "stdout", stream)
+        sys.argv = ["audit_artifacts.py", "report", "--repo", str(tmp_path)]
+        with pytest.raises(SystemExit) as ei:
+            aa.main()
+        stream.flush()
+        assert ei.value.code == 0
+        assert "←" in buf.getvalue().decode("utf-8")

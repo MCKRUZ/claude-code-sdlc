@@ -428,6 +428,24 @@ def _report_history(base_dir: Path, sdlc_dir: Path, ledger: list[dict], args) ->
     return 0
 
 
+def _glyph(preferred: str, fallback: str) -> str:
+    """`preferred` if the console can encode it, else a plain-ASCII `fallback`.
+
+    A default Windows console is cp1252 and cannot encode '←' or '✓'. Printing one raises
+    UnicodeEncodeError and kills the process with a NON-ZERO exit — precisely what this advisory
+    module promises never to do — and it fires on the happy path, since the arrow prints for every
+    stale item and the check for every signed-off phase. So the tool would die exactly when it had
+    something to report. Resolved per call rather than at import because stdout may be replaced
+    after this module loads (test capture, redirection, a wrapping harness).
+    """
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    try:
+        preferred.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        return fallback
+    return preferred
+
+
 def _format_freshness(sdlc_dir, latest, items, debt, acknowledged, scope, has_history) -> str:
     state = load_state(sdlc_dir)
     phases = state.get("phases", {}) if isinstance(state, dict) else {}
@@ -445,6 +463,7 @@ def _format_freshness(sdlc_dir, latest, items, debt, acknowledged, scope, has_hi
         lines.append("ADVISORY — nothing to assess (advisory surface — never blocks).")
         return "\n".join(lines)
 
+    arrow = _glyph("←", "<-")
     stale_by_down: dict[str, list[dict]] = {}
     for i in items:
         stale_by_down.setdefault(i["downstream"], []).append(i)
@@ -466,7 +485,7 @@ def _format_freshness(sdlc_dir, latest, items, debt, acknowledged, scope, has_hi
             disp = am.normalize_disposition(i.get("disposition")) or "OPEN"
             owner = f" {i['owner']}" if i.get("owner") else ""
             conf = "" if i["confidence"] == "declared" else " [coarse]"
-            lines.append(f"         ← {i['upstream']}{conf}  ({disp}{owner})")
+            lines.append(f"         {arrow} {i['upstream']}{conf}  ({disp}{owner})")
 
     lines.append("=" * 50)
     lines.append(f"{len(latest)} artifact(s) tracked · "
@@ -481,7 +500,7 @@ def _signoff_note(node: str, phases: dict) -> str:
     pdata = phases.get(pid) if isinstance(phases, dict) else None
     if isinstance(pdata, dict):
         if pdata.get("sign_off") or pdata.get("signed_by"):
-            return "signed-off ✓"
+            return f"signed-off {_glyph('✓', '(y)')}"
         if pdata.get("status") == "completed":
             return "phase completed"
     return "unsigned"
