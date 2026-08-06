@@ -62,8 +62,19 @@ Run exit gate checks for the current phase and advance to the next phase if all 
    7. If validation fails, fix issues and re-validate before proceeding
    8. See `references/frozen-layers.md` for format details and condensation strategy
 
-6. **Advance phase:** Perform the advance via `advance_phase.py` (it applies the state updates below
-   and records any discipline sign-offs captured in step 4 on the phase's existing sign-off record):
+6. **Advance phase:**
+
+   - **First, snapshot the artifact ledger (advisory, exit 0):** capture any direct edits to this
+     phase's artifacts before they freeze, so the change history and staleness stay current even for
+     edits made outside `/sdlc-revise`:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py record --scan --state .sdlc/state.yaml
+     ```
+     This appends only to `.sdlc/metrics/artifact-log.jsonl` (the audit trail) — it never modifies
+     artifacts or `state.yaml`, and never blocks the advance. If the script is absent, skip it.
+
+   Then perform the advance via `advance_phase.py` (it applies the state updates below and records any
+   discipline sign-offs captured in step 4 on the phase's existing sign-off record):
    ```bash
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/advance_phase.py \
      --state .sdlc/state.yaml --confirmed \
