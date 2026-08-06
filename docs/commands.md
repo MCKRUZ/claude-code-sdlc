@@ -717,7 +717,7 @@ The Build loop's Intent beat — before building any change. A spec that `check_
 
 ## Additional Commands (summaries)
 
-Ten commands have their full flow documented in their command files rather than here. One
+Twelve commands have their full flow documented in their command files rather than here. One
 line each; see `commands/<name>.md` for the complete instructions.
 
 | Command | What it does |
