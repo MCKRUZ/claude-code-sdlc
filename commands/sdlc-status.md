@@ -38,6 +38,16 @@ Display the current SDLC progress for this project.
      shown). If `track_decisions.py` or `.sdlc/decision-log.md` is absent, read `.sdlc/decision-log.md`
      directly for open items, or skip silently if neither exists. Advisory only (exit 0) — never blocks.
 
+   - **Artifact staleness rollup** — surface how many artifacts have drifted out of date with the
+     things they depend on:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py report --state .sdlc/state.yaml --json
+     ```
+     If `has_history` is true, render one line — `Artifacts: N stale (X acknowledged, Y open)` —
+     using `stale`, `acknowledged`, and `open` from the JSON. If `has_history` is false (no ledger
+     yet) or the script is absent, skip silently — no baseline has been recorded. Advisory only
+     (exit 0) — never blocks. See `/sdlc-audit-artifacts` for the full dashboard.
+
 6. **Suggest next action:** Based on current phase status:
    - If phase is `active`: suggest running `/sdlc` for phase guidance
    - If all gates would pass: suggest running `/sdlc-next` to advance

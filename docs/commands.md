@@ -715,7 +715,7 @@ The Build loop's Intent beat — before building any change. A spec that `check_
 
 ## Additional Commands (summaries)
 
-Eight commands have their full flow documented in their command files rather than here. One
+Ten commands have their full flow documented in their command files rather than here. One
 line each; see `commands/<name>.md` for the complete instructions.
 
 | Command | What it does |
@@ -728,6 +728,8 @@ line each; see `commands/<name>.md` for the complete instructions.
 | `/sdlc-data` | Author the data contract, readiness, and lineage for a feature |
 | `/sdlc-rules` | Author business rules and golden scenarios |
 | `/sdlc-evals` | Author the versioned golden set for an LLM-powered spec |
+| `/sdlc-revise` | Change one specific artifact (id or section) — discipline agent proposes, human decides; records the why to the change-ledger + a linked `DL-NN`, re-gates, shows downstream staleness to disposition |
+| `/sdlc-audit-artifacts` | Read-only sibling to `/sdlc-audit`: artifact freshness dashboard, forward `--impact`, and `--history` change trail (advisory; never blocks) |
 
 ---
 
