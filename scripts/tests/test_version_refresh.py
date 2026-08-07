@@ -24,8 +24,15 @@ REQ = ".sdlc/artifacts/01-requirements/requirements.md"
 
 
 def _write(p: Path, text: str) -> None:
+    """Write fixture content with LF endings on every platform.
+
+    The `newline` argument is load-bearing, not cosmetic: the store captures — and
+    `version show` returns — the exact bytes on disk, so a plain text-mode write (which
+    expands each newline to CRLF on Windows) makes a byte-exact assertion pass on Linux
+    and fail on Windows. Every fixture write of artifact content goes through this helper
+    so the corpus is byte-identical on both."""
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text, encoding="utf-8")
+    p.write_text(text, encoding="utf-8", newline="\n")
 
 
 def run_cli(argv, capsys) -> tuple[int, str]:
@@ -56,7 +63,7 @@ def _two_versions(tmp_path: Path, capsys) -> str:
     req = tmp_path / REQ
     _write(req, "line one\nline two\n")
     run_cli(["record", "--scan", "--repo", str(tmp_path)], capsys)
-    req.write_text("line one EDITED\nline two\nline three\n", encoding="utf-8")
+    _write(req, "line one EDITED\nline two\nline three\n")
     run_cli(["record", "--scan", "--repo", str(tmp_path)], capsys)
     return REQ
 
@@ -114,7 +121,7 @@ def _proposed(tmp_path: Path, spec_rel: str, stem: str) -> Path:
 
 def _agent_edits(tmp_path: Path, spec_rel: str, stem: str, text: str) -> None:
     """Simulate the discipline agent editing ONLY the .proposed draft."""
-    _proposed(tmp_path, spec_rel, stem).write_text(text, encoding="utf-8")
+    _write(_proposed(tmp_path, spec_rel, stem), text)
 
 
 def _apply(tmp_path, spec_rel, stem, capsys, *, actor="kai", reviewed=None, ack=True, extra=None):
@@ -531,8 +538,7 @@ class TestRefreshDetect:
         _write_upstreams(tmp_path)
         spec = _write_spec(tmp_path, accept="within 4 hours returns HTTP 409")
         run_cli(["record", "--scan", "--repo", str(tmp_path)], capsys)       # baseline: spec + req at ts0
-        (tmp_path / REQ).write_text("# Requirements\n\n## FR-001\nNow within 4 hours; HTTP 409.\n",
-                                    encoding="utf-8")
+        _write(tmp_path / REQ, "# Requirements\n\n## FR-001\nNow within 4 hours; HTTP 409.\n")
         run_cli(["record", "--scan", "--repo", str(tmp_path)], capsys)       # req now at ts1 > spec ts0
         code, out = run_cli(["refresh", "detect", "--spec", spec, "--repo", str(tmp_path), "--json"], capsys)
         assert code == 0
@@ -707,8 +713,7 @@ class TestRefreshApply:
 
     def test_staleness_guard_when_upstream_moves(self, tmp_path, capsys):
         spec = self._drift_and_draft(tmp_path, capsys)
-        (tmp_path / REQ).write_text("# Requirements\n\n## FR-001\nmoved on disk after draft\n",
-                                    encoding="utf-8")
+        _write(tmp_path / REQ, "# Requirements\n\n## FR-001\nmoved on disk after draft\n")
         _, prev = _apply(tmp_path, spec, "requirements", capsys, actor=None, ack=False)
         code, out = _apply(tmp_path, spec, "requirements", capsys, reviewed="sha256:whatever")
         assert code == 0 and "moved since the draft" in out

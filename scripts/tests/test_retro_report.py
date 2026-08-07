@@ -31,8 +31,15 @@ ACTOR_SENTINEL = "ZZ_ACTOR_SENTINEL_ZZ"
 # --- helpers -----------------------------------------------------------------------------------
 
 def _write(p: Path, text: str) -> None:
+    """Write fixture content with LF endings on every platform.
+
+    The `newline` argument is load-bearing, not cosmetic: the store captures — and
+    `version show` returns — the exact bytes on disk, so a plain text-mode write (which
+    expands each newline to CRLF on Windows) makes a byte-exact assertion pass on Linux
+    and fail on Windows. Every fixture write of artifact content goes through this helper
+    so the corpus is byte-identical on both."""
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(text, encoding="utf-8")
+    p.write_text(text, encoding="utf-8", newline="\n")
 
 
 def _append_jsonl(p: Path, rows: list[dict]) -> None:
@@ -192,9 +199,9 @@ def test_repeat_stale_excludes_refresh_reject_edges(tmp_path, capsys):
 def test_repeat_stale_currently_stale_from_scan(tmp_path, capsys):
     _write_upstreams(tmp_path)
     run_aa(["record", "--scan", "--repo", str(tmp_path)], capsys)     # v1 baseline (both created)
-    (tmp_path / REQ).write_text(
-        "# Requirements\n\n## FR-001 Duplicate claim\n"
-        "Reject a duplicate within 12 hours; return HTTP 409.\n", encoding="utf-8")
+    _write(tmp_path / REQ,
+           "# Requirements\n\n## FR-001 Duplicate claim\n"
+           "Reject a duplicate within 12 hours; return HTTP 409.\n")
     run_aa(["record", "--scan", "--repo", str(tmp_path)], capsys)     # requirements drifts later
     data = _json_out(["--repo", str(tmp_path)], capsys)
     epics = next((r for r in data["repeat_stale"] if r["artifact"] == EPICS), None)
@@ -272,8 +279,7 @@ def test_debt_rollup_names_each_ledger(tmp_path, capsys):
     _append_jsonl(tmp_path / FINDINGS, [_finding("null-check", "auth.py:10", _iso(1), disp="OPEN")])
     _write_upstreams(tmp_path)
     run_aa(["record", "--scan", "--repo", str(tmp_path)], capsys)
-    (tmp_path / REQ).write_text("# Requirements\n\n## FR-001\nwithin 12 hours; HTTP 409.\n",
-                                encoding="utf-8")
+    _write(tmp_path / REQ, "# Requirements\n\n## FR-001\nwithin 12 hours; HTTP 409.\n")
     run_aa(["record", "--scan", "--repo", str(tmp_path)], capsys)
 
     data = _json_out(["--repo", str(tmp_path)], capsys)
