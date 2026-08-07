@@ -1,5 +1,60 @@
 # Changelog
 
+## 1.3.0 — 2026-08-07
+
+An artifact could always be changed. Nothing recorded that it had been, or noticed what the change
+put at risk. This connects two facts the tool already held — *when* each artifact changed (SHA-256)
+and *what depends on what* (declared traceability) — so staleness falls out of them for free.
+
+### Changing a pre-Build artifact, and auditing the trail
+
+- `/sdlc-revise` — change one artifact by id or section, record why (optionally against a `DL-NN`
+  decision), re-gate, and see what downstream may now be stale.
+- `/sdlc-audit-artifacts` — the read-only sibling of `/sdlc-audit`: a freshness dashboard, plus
+  `--impact` (what a change here would put at risk) and `--history` (an artifact's change trail).
+  Commands 21 → 23.
+- `artifact_lineage.py` harvests `upstream → downstream` edges, cycle-safe. `audit_artifacts.py` is
+  the engine; its ledger is a standalone JSONL (`.sdlc/metrics/artifact-log.jsonl`), never inside
+  `gate_results` — that dict is expanded into phantom rows by `audit_gates.extract_gate_history`,
+  and `/sdlc-audit` output is byte-identical with or without this layer.
+- **Advisory throughout.** Staleness is a candidate a human dispositions, never a gate.
+
+**Honest counting, same rule as findings.** `artifact_model.py` owns the disposition state machine:
+`ACKNOWLEDGED` is off the books only with an owner, `NOT_AFFECTED` only with a reason, and
+`REFRESHED` is **derived from the ledger, never a word anyone types** — a downstream that changed
+after its upstream simply stops being stale. A typed `REFRESHED` is exactly the relabelling the
+machine exists to reject, so it is rejected and still counts as debt.
+
+### The freshness dashboard died on a Windows console
+
+The advisory surface promises exit 0 always, and broke that promise on the happy path. The
+dashboard printed two glyphs a default Windows console (cp1252) cannot encode — an arrow on every
+stale line, a check on every signed-off phase. Printing either raises `UnicodeEncodeError` and kills
+the process with exit 1. The tool worked right up until it had something to report, then crashed
+instead of reporting it. Both now degrade to ASCII when, and only when, the console cannot encode
+them; a UTF-8 terminal is unchanged.
+
+**Why the suite could not catch it:** pytest captures as UTF-8 and CI is Linux, so both instruments
+are blind to this by construction. `TestNarrowConsoleEncoding` binds stdout to a real cp1252 stream
+— the first check in the suite that reproduces what a Windows user actually sees — and one case
+pins the UTF-8 rendering so the fallback cannot quietly become everyone's default.
+
+### Known limit, stated rather than discovered later
+
+On a corpus that declares little, the **coarse** phase-order fallback dominates: a representative
+ten-artifact project harvested 2 declared edges and 18 coarse ones. Coarse edges are always labeled
+as inferences and only ever added where an artifact declares no upstream at all, but "you changed a
+requirement, so every design document may be stale" is a tautology, not information. The dashboard
+is most useful where traceability is actually declared.
+
+### The rails
+
+- 65 new checks across `artifact_model`, `artifact_lineage`, and `audit_artifacts`, plus the three
+  narrow-console cases above. 658 passed, 7 skipped.
+- `docs/commands.md` said "Ten commands" above a twelve-row table. Caught by
+  `test_registry_docs_consistency` only *after* the merge — the PR branch predated that check, so
+  the branch was green and only the merge result was red.
+
 ## 1.2.0 — 2026-08-03
 
 Finishes what 1.0.0 started. Fix 3 was written because "the approver was shown a file list and
