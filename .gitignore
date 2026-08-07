@@ -32,5 +32,15 @@ desktop.ini
 /tmp/
 *.log
 
+# Artifact versioning & refresh — transient / non-authoritative local state.
+# The committed source of truth stays the metadata ledger (.sdlc/metrics/artifact-log.jsonl);
+# the object store and refresh drafts are a local safety net a fresh clone/CI degrades past cleanly.
+.sdlc/refresh/**/*.proposed
+.sdlc/refresh/**/candidates.json
+.sdlc/refresh/_rollback/
+.sdlc/versions/objects/
+# Override (opt in per repo): to make content snapshots portable across clones/CI, comment out the
+# `.sdlc/versions/objects/` line above and commit the store. History stays lean by default.
+
 # Do not ignore .sdlc/ — it's part of the plugin's test data
 # Target projects will have their own .gitignore

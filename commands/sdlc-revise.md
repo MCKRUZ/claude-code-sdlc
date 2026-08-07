@@ -35,7 +35,17 @@ decides** it. No agent silently rewrites an artifact.
    Show the human what depends on this target (declared vs. coarse) so they revise with eyes open.
 
 4. **Interview to change it — route to the owning discipline agent.** The agent proposes concrete
-   wording; the human confirms or edits. Then apply the confirmed edit to the artifact file.
+   wording; the human confirms or edits.
+
+   **Before applying the confirmed edit, snapshot the pre-image (advisory, exit 0)** so the change is
+   reversible — this captures the artifact's *current* content into the local version store lockstep
+   with the ledger:
+   ```bash
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py record --scan --state .sdlc/state.yaml
+   ```
+   Then apply the confirmed edit to the artifact file. (Step 5a's `record --event revised` then
+   captures the post-image, so `/sdlc-version diff`/`rollback` sees both sides of the change.) Content
+   capture is best-effort; if the store can't be written the ledger append is byte-identical.
 
    | Target | Owning discipline agent |
    |--------|-------------------------|
@@ -119,3 +129,7 @@ decides** it. No agent silently rewrites an artifact.
   account for the change. Disposition it; the tool never blocks on it.
 - When behavior changes, the artifact changes here — and if a spec or code already realizes it, that
   change belongs in the **same PR** as the code. A stale artifact lies to the next agent and human.
+- **Undo path.** A revise that went wrong is reversible: `/sdlc-version diff <target> prev latest`
+  shows what changed and `/sdlc-version rollback <target> prev` restores it (preview → named-human
+  confirm), provided the pre-image was captured in step 4. The reverse direction — pulling a built
+  spec's shipped reality *up* into these artifacts — is `/sdlc-refresh`.

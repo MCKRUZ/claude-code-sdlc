@@ -48,6 +48,18 @@ Display the current SDLC progress for this project.
      yet) or the script is absent, skip silently — no baseline has been recorded. Advisory only
      (exit 0) — never blocks. See `/sdlc-audit-artifacts` for the full dashboard.
 
+   - **Merged-spec drift nudge** — surface pre-Build artifacts a merged spec implies an edit to
+     (reverse propagation), so the drift is visible without anyone remembering to look:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py refresh scan --state .sdlc/state.yaml --json
+     ```
+     If `drifted_total` is 0 (every merged spec is faithful) or there are no merged specs, skip
+     silently. Otherwise, for each `results[]` entry with `drifted > 0`, render one nudge line —
+     `↩ {drifted} upstream artifact(s) may have drifted from merged spec {spec} — /sdlc-refresh detect --spec {spec_node}`.
+     Entries whose upstreams are all trace-only (`drifted == 0`) produce no line. If the script is
+     absent, skip silently. Advisory only (exit 0) — never blocks. See `/sdlc-refresh` for the
+     draft+confirm path.
+
 6. **Suggest next action:** Based on current phase status:
    - If phase is `active`: suggest running `/sdlc` for phase guidance
    - If all gates would pass: suggest running `/sdlc-next` to advance

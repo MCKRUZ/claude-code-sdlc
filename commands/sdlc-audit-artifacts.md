@@ -47,6 +47,10 @@ gate, changes a verdict, or edits your artifacts, specs, or `state.yaml`.
      ```bash
      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py report --history FR-012 --state .sdlc/state.yaml
      ```
+     `--history` shows the change **metadata** (when/who/why). To see what the artifact actually
+     **said** at each version — or to diff two versions — point the user at the read-only
+     `/sdlc-version list|show|diff <id|file>` command (the content complement). Rolling one back lives
+     there too, behind its own named-human confirm; this command never mutates.
 
 4. **Display results** with the honest confidence labels intact:
    - Every downstream edge is tagged **declared** (a written-down link: a frozen layer's
@@ -80,8 +84,11 @@ gate, changes a verdict, or edits your artifacts, specs, or `state.yaml`.
 
 - The user runs `/sdlc-audit-artifacts` — never `audit_artifacts.py` by hand. The command owns the
   scan, the lens selection, and the disposition recording.
-- **Read-only with respect to your project.** The only thing this command ever writes is the
-  change-ledger (`.sdlc/metrics/artifact-log.jsonl`) — the audit trail itself. It never edits an
-  artifact, a spec, or `state.yaml`. To *change* an artifact, use `/sdlc-revise`.
+- **Read-only with respect to your project.** The only authoritative thing this command writes is the
+  change-ledger (`.sdlc/metrics/artifact-log.jsonl`) — the audit trail itself; the `record --scan` in
+  step 2 also best-effort captures each changed artifact's content into the gitignored, non-
+  authoritative version store (`.sdlc/versions/`), which a store fault silently skips without changing
+  this command's output. It never edits an artifact, a spec, or `state.yaml`. To *change* an artifact,
+  use `/sdlc-revise`; to *roll one back*, `/sdlc-version`.
 - **Advisory by construction** — `audit_artifacts.py` exits 0 always. Staleness is never a gate; a
   candidate is a prompt for a human's judgement, not a verdict.
