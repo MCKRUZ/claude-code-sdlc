@@ -169,7 +169,9 @@ def test_the_additional_commands_count_matches_its_table():
     section = re.search(r"## Additional Commands \(summaries\)(.*?)(?=\n## |\Z)", text, re.S)
     assert section, "the Additional Commands section was renamed or removed"
 
-    words = {"Six": 6, "Seven": 7, "Eight": 8, "Nine": 9, "Ten": 10, "Eleven": 11, "Twelve": 12}
+    words = {"Six": 6, "Seven": 7, "Eight": 8, "Nine": 9, "Ten": 10, "Eleven": 11, "Twelve": 12,
+             "Thirteen": 13, "Fourteen": 14, "Fifteen": 15, "Sixteen": 16, "Seventeen": 17,
+             "Eighteen": 18}
     stated = re.search(r"^(\w+) commands have their full flow", section.group(1), re.M)
     assert stated, "the count sentence was reworded — update this check or the sentence"
 

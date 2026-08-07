@@ -717,7 +717,7 @@ The Build loop's Intent beat — before building any change. A spec that `check_
 
 ## Additional Commands (summaries)
 
-Twelve commands have their full flow documented in their command files rather than here. One
+Fifteen commands have their full flow documented in their command files rather than here. One
 line each; see `commands/<name>.md` for the complete instructions.
 
 | Command | What it does |
@@ -734,6 +734,9 @@ line each; see `commands/<name>.md` for the complete instructions.
 | `/sdlc-evals` | Author the versioned golden set for an LLM-powered spec |
 | `/sdlc-revise` | Change one specific artifact (id or section) — discipline agent proposes, human decides; records the why to the change-ledger + a linked `DL-NN`, re-gates, shows downstream staleness to disposition |
 | `/sdlc-audit-artifacts` | Read-only sibling to `/sdlc-audit`: artifact freshness dashboard, forward `--impact`, and `--history` change trail (advisory; never blocks) |
+| `/sdlc-version` | Content history for any pre-Build artifact — list/show/diff versions derived from the change-ledger's hashes; rollback is preview → named-human confirm, append-only ("restored from vX"), `--ack-signoff` for signed-off artifacts; `gc` prunes the local store safely |
+| `/sdlc-refresh` | Reverse propagation — back-propagate a merged spec's shipped reality into pre-Build artifacts: detect (review-first, divergence-aware) → draft a `.proposed` → named-human apply/reject → status. The One Rule throughout: agent proposes, human decides |
+| `/sdlc-retro` | Read-only cross-ledger retro roll-up: recurring findings (permanent-check candidates), repeat-stale artifacts, the refresh funnel (divergence-heuristic tuning signal), and a disposition-debt rollup. Patterns, not people; never blocks |
 
 ---
 

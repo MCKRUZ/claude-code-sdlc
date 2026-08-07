@@ -70,8 +70,21 @@ Run exit gate checks for the current phase and advance to the next phase if all 
      ```bash
      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py record --scan --state .sdlc/state.yaml
      ```
-     This appends only to `.sdlc/metrics/artifact-log.jsonl` (the audit trail) — it never modifies
-     artifacts or `state.yaml`, and never blocks the advance. If the script is absent, skip it.
+     This appends only to `.sdlc/metrics/artifact-log.jsonl` (the audit trail) and captures each
+     changed artifact's **content** lockstep into the local version store (`.sdlc/versions/`), so the
+     edit is diffable and roll-back-able via `/sdlc-version`. Content capture is best-effort — a store
+     fault leaves the ledger append and this command byte-identical. It never modifies artifacts or
+     `state.yaml`, and never blocks the advance. If the script is absent, skip it.
+
+   - **Then, optionally surface merged-spec drift (advisory, exit 0):** if any specs reached
+     `status: merged` during the loop just completed, offer to back-propagate what they shipped into
+     the pre-Build artifacts. Run the read-only scan and, for any spec with drifted upstreams, suggest
+     the human run `/sdlc-refresh detect --spec <path>`:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py refresh scan --state .sdlc/state.yaml
+     ```
+     This writes nothing and never blocks — it only points at candidates a named human may choose to
+     refresh. Skip silently if there are no merged specs or the script is absent.
 
    Then perform the advance via `advance_phase.py` (it applies the state updates below and records any
    discipline sign-offs captured in step 4 on the phase's existing sign-off record):
