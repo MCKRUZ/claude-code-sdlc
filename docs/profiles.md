@@ -46,6 +46,10 @@ profiles/
     profile.yaml                        # Full enterprise profile
     compliance/
       soc2-gates.yaml                   # SOC 2 gate definitions per phase
+  ado-enterprise/
+    profile.yaml                        # microsoft-enterprise's stack on Azure Repos + Azure Pipelines
+    compliance/
+      soc2-gates.yaml                   # SOC 2 gate definitions per phase
   creative-tooling/
     profile.yaml                        # Claude Code plugin development profile
 ```
@@ -483,22 +487,21 @@ Supported `check_type` values:
 | `metric` | Compares a metric against a profile threshold | `metric`, `threshold_key` |
 | `manual` | Flags for human verification | `description` |
 
-### Step 5: Register in plugin.json
+### Step 5: Done — There Is No Registration Step
 
-Add your profile to the `profiles` section of `plugin.json`:
+Profiles are **auto-discovered**: `/sdlc-setup` lists the `profiles/` directory at runtime
+(excluding `_schema.yaml`) and presents every profile it finds — including ones not named in
+any documentation. The plugin manifest (`.claude-plugin/plugin.json`) is metadata only and has
+no profile registry; the plugin ships the whole repository directory
+(`.claude-plugin/marketplace.json` declares `"source": "."`), so your new directory ships with
+it automatically.
 
-```json
-{
-  "profiles": {
-    "my-company": {
-      "description": "Python/FastAPI + React 18 + AWS + GDPR compliance",
-      "source": "profiles/my-company"
-    }
-  }
-}
-```
+Two things must be true for the profile to work fully, both enforced by
+`scripts/tests/test_validate_profile.py::TestOnDiskProfiles` the moment the directory exists:
 
-The `source` field points to the profile directory. Optionally, include a `skills` array to associate stack-specific skills with the profile.
+1. `profile.yaml` passes the schema (Step 3).
+2. `company.profile_id` equals the directory name — compliance gates are resolved at
+   `profiles/<profile_id>/compliance/`, so a mismatched id silently loses its gates (Step 4).
 
 ---
 
@@ -695,5 +698,5 @@ When writing evaluation criteria for your custom profile:
 | Phase registry | `phases/phase-registry.yaml` | Phase metadata and gate definitions |
 | Schema file | `profiles/_schema.yaml` | The validation schema itself |
 | SOC 2 gates | `profiles/microsoft-enterprise/compliance/soc2-gates.yaml` | SOC 2 gate definitions |
-| Plugin manifest | `plugin.json` | Profile registration and metadata |
+| Plugin manifest | `.claude-plugin/plugin.json` | Plugin metadata only — profiles are auto-discovered from `profiles/`, not registered |
 | Validation rules | `references/validation-rules.md` | Additional validation rule documentation |

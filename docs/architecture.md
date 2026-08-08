@@ -18,61 +18,47 @@ Comprehensive architectural documentation for `claude-code-sdlc` -- a Claude Cod
 
 ## 1. Plugin Anatomy
 
-### 1.1 Plugin Manifest (`plugin.json`)
+### 1.1 Plugin Manifest (`.claude-plugin/plugin.json`)
 
-The plugin manifest is the discovery entry point for Claude Code. It declares every component the plugin provides:
+The plugin manifest is **metadata only** — name, version, description, author, homepage,
+license, keywords. It does not register components; there is no component or profile
+registry inside it. The marketplace entry (`.claude-plugin/marketplace.json`) declares
+`"source": "."`, so the whole repository directory ships as the plugin payload.
 
 ```json
 {
   "name": "claude-code-sdlc",
-  "version": "0.1.0",
-  "description": "SDLC orchestration plugin for Claude Code -- configurable, company-profile-driven lifecycle management from discovery through monitoring.",
-  "author": {
-    "name": "Matt Kruczek",
-    "url": "https://github.com/MCKRUZ"
-  },
-  "category": "sdlc",
-  "skills": "SKILL.md",
-  "commands": "commands/",
-  "agents": "agents/",
-  "profiles": {
-    "microsoft-enterprise": {
-      "description": "C#/.NET 8 + Angular 17 + Azure + SOC 2 compliance",
-      "source": "profiles/microsoft-enterprise",
-      "skills": ["azure-entra-auth", "azure-app-service", "azure-sql",
-                 "azure-key-vault", "azure-app-insights"]
-    },
-    "starter": {
-      "description": "Minimal profile, no compliance, quick start for any stack",
-      "source": "profiles/starter"
-    }
-  },
-  "hooks": [
-    "hooks/sdlc-session-start.ps1",
-    "hooks/sdlc-phase-inject.ps1"
-  ],
-  "scripts": {
-    "runtime": "uv",
-    "root": "scripts/"
-  }
+  "version": "1.3.0",
+  "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (...)",
+  "author": { "name": "Matt Kruczek", "url": "https://github.com/MCKRUZ" },
+  "homepage": "https://github.com/MCKRUZ/claude-code-sdlc",
+  "repository": "https://github.com/MCKRUZ/claude-code-sdlc",
+  "license": "MIT",
+  "keywords": ["sdlc", "lifecycle", "compliance", "quality", "orchestration", "..."]
 }
 ```
 
-### 1.2 Field-by-Field Breakdown
+(Abridged — see `.claude-plugin/plugin.json` for the current contents; the `version` there is
+the source of truth.)
 
-| Field | Type | Purpose |
-|-------|------|---------|
-| `name` | string | Unique plugin identifier. Used in Claude Code's plugin registry. |
-| `version` | semver | Plugin version. Follows semantic versioning. |
-| `description` | string | Human-readable summary shown in plugin listings. |
-| `author` | object | Author metadata with `name` and `url` fields. |
-| `category` | string | Plugin category for discovery (`"sdlc"`). |
-| `skills` | path | Path to `SKILL.md` -- the primary entry point loaded when the plugin activates. |
-| `commands` | path | Directory containing slash command definitions (`.md` files). |
-| `agents` | path | Directory containing custom agent definitions (`.md` files). |
-| `profiles` | object | Map of company/stack profiles. Each entry has a `description`, `source` directory, and optional `skills` array for domain-specific Claude Code skills. |
-| `hooks` | array | PowerShell scripts triggered on session lifecycle events. |
-| `scripts` | object | Automation scripts config: `runtime` specifies the runner (`uv` for Python), `root` is the scripts directory. |
+### 1.2 Component Discovery (by convention, not registration)
+
+Every component is discovered from its conventional location in the plugin directory:
+
+| Component | Location | How it is discovered |
+|-----------|----------|----------------------|
+| Main skill | `SKILL.md` | Loaded when the plugin activates. |
+| Slash commands | `commands/*.md` | One file per command, picked up by filename. |
+| Agents | `agents/*.md` | One file per agent definition. |
+| Hooks | `hooks/` | Session/phase context-injection scripts, wired via hook configuration. |
+| **Profiles** | `profiles/*/profile.yaml` | **Runtime directory listing** — `/sdlc-setup` lists `profiles/` (excluding `_schema.yaml`) and presents every profile found, including ones it has never seen. Adding a profile is creating the directory; no registration step exists. |
+| Scripts | `scripts/*.py` | Invoked explicitly by commands/hooks via `uv run`. |
+
+Two consequences of the profiles row: a new profile ships automatically (the payload is the
+whole directory), and its `company.profile_id` must equal its directory name — compliance
+gates resolve at `profiles/<profile_id>/compliance/`, and
+`scripts/tests/test_validate_profile.py::TestOnDiskProfiles` pins both properties for every
+profile on disk.
 
 ### 1.3 Component Loading Sequence
 
@@ -366,6 +352,8 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |   |   |-- profile.yaml                   C#/.NET 8 + Angular 17 + Azure + SOC 2
 |   |   |-- claude-md-template.md          CLAUDE.md template for target projects
 |   |   +-- switchboard-rules.json         Agent routing rules for this profile
+|   |-- ado-enterprise/
+|   |   +-- profile.yaml                   microsoft-enterprise's stack on Azure Repos + Azure Pipelines
 |   |-- starter/
 |   |   +-- profile.yaml                   Minimal profile, no compliance
 |   +-- creative-tooling/

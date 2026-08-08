@@ -15,6 +15,7 @@ List available profiles from the plugin's `profiles/` directory (exclude `_schem
 
 Present every profile found there to the user. The current built-ins:
 - **microsoft-enterprise** — C#/.NET 8 + Angular 17 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required
+- **ado-enterprise** — microsoft-enterprise's stack on Azure Repos + Azure Pipelines (`platform: azure-devops`); same SOC 2 gates, coverage, and TDD bar
 - **starter** — Minimal profile, no compliance gates, quick start for any stack
 - **creative-tooling** — Python/uv-scripts + pytest for creative pipelines (ComfyUI registry/inventory tooling); 80% coverage, TDD + code/security review required, schema- and cross-reference-integrity evaluation criteria, no compliance frameworks
 

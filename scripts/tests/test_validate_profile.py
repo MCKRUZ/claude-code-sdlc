@@ -1,5 +1,7 @@
 """Tests for validate_profile.py."""
 
+from pathlib import Path
+
 import pytest
 
 from validate_profile import (
@@ -279,6 +281,40 @@ class TestBoolNotInteger:
         profile["quality"] = {"coverage_minimum": True}
         errors = validate_profile(profile, SCHEMA)
         assert any("coverage_minimum" in e for e in errors), errors
+
+
+_PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "profiles"
+_ON_DISK_PROFILES = sorted(p for p in _PROFILES_DIR.glob("*/profile.yaml"))
+
+
+class TestOnDiskProfiles:
+    """Every profile shipped in profiles/ must pass the real schema — new profile
+    directories are picked up automatically, so a future profile gets CI coverage
+    the moment it exists."""
+
+    @pytest.fixture
+    def real_schema(self):
+        from validate_profile import SCHEMA_PATH, load_yaml
+        return load_yaml(SCHEMA_PATH)
+
+    def test_profiles_discovered(self):
+        assert _ON_DISK_PROFILES, f"no profiles found under {_PROFILES_DIR}"
+
+    @pytest.mark.parametrize("profile_path", _ON_DISK_PROFILES,
+                             ids=[p.parent.name for p in _ON_DISK_PROFILES])
+    def test_on_disk_profile_passes_real_schema(self, profile_path, real_schema):
+        from validate_profile import load_yaml
+        errors = validate_profile(load_yaml(profile_path), real_schema)
+        assert errors == [], f"{profile_path.parent.name}: {errors}"
+
+    @pytest.mark.parametrize("profile_path", _ON_DISK_PROFILES,
+                             ids=[p.parent.name for p in _ON_DISK_PROFILES])
+    def test_profile_id_matches_directory(self, profile_path):
+        # check_gates.py resolves compliance gates at profiles/<company.profile_id>/compliance/,
+        # so a shipped profile whose id differs from its directory silently loses its gates.
+        from validate_profile import load_yaml
+        profile = load_yaml(profile_path)
+        assert profile["company"]["profile_id"] == profile_path.parent.name
 
 
 class TestSchemaStructuralLayer:
