@@ -9,9 +9,15 @@ So this checks the things that are invisible when they are wrong:
 
     uv run scripts/doctor.py                 # in the client repo
     uv run scripts/doctor.py --repo <path>
-    uv run scripts/doctor.py --offline       # skip the checks that need gh
+    uv run scripts/doctor.py --offline       # skip the checks that need gh/az
 
 Exit 1 if anything FAILs. WARN never fails the run — it marks what could not be determined.
+
+Platform-aware: the manifest's composed pack ids say which CI platform this install realized
+(cicd/github vs cicd/azure-devops), and the platform-facing checks follow it — an Azure DevOps
+install is checked with az (variable groups, branch policies), never told to install gh for a
+platform it does not use. Anything that is not recognizably an ADO install gets the GitHub
+checks, exactly as before the packs existed.
 """
 
 from __future__ import annotations
@@ -38,6 +44,7 @@ if hasattr(sys.stdout, "reconfigure"):
 # token is not corruption — it is unfinished setup — so the report says who finishes it.
 TOKEN_OWNER = {
     "ADO_ORGANIZATION": "Phase 3 — your Azure DevOps organization name",
+    "VARIABLE_GROUP": "Phase 3 — the variable group exposing ANTHROPIC_API_KEY (Key-Vault-backed)",
     "GATED_PATHS": "Phase 3 — the paths that trigger the security review",
     "EVAL_TEST_PROJECT": "Phase 3 — the project holding your eval fixtures",
     "SOLUTION_OR_PROJECT": "Phase 3 — the solution or project CI builds",
@@ -57,6 +64,15 @@ TOKEN_OWNER = {
 RESIDUAL_TOKEN = re.compile(r"<<([A-Z][A-Z0-9_]*)>>|\b([A-Z][A-Z0-9_]*)_NOT_SET\b")
 SCANNED_SUFFIXES = {".json", ".yml", ".yaml", ".md", ".sh", ".ps1"}
 
+# A pipeline's `- group: NAME` variable-group reference. Quoted names are captured whole; a bare
+# name runs to end-of-line minus a trailing ` # comment` (in YAML a '#' opens a comment only after
+# whitespace, and a name containing '#' must be quoted anyway). Comment-only lines never match —
+# they cannot begin with `- group:`.
+_GROUP_REF = re.compile(
+    r"""^\s*-\s*group:\s*(?:'([^']+)'|"([^"]+)"|(\S[^#]*?))\s*(?:\#.*)?$""",
+    re.MULTILINE,
+)
+
 
 @dataclass
 class Result:
@@ -66,13 +82,42 @@ class Result:
     fix: str = ""
 
 
-def _run(cmd: list[str], timeout: int = 30) -> tuple[int, str]:
+def _run(cmd: list[str], timeout: int = 30, cwd: str | None = None) -> tuple[int, str]:
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
-                           encoding="utf-8", errors="replace")
+                           encoding="utf-8", errors="replace", cwd=cwd)
         return p.returncode, (p.stdout or "") + (p.stderr or "")
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         return 127, str(exc)
+
+
+def _az() -> str:
+    """Resolve az through shutil.which, which honors PATHEXT. On Windows the Azure CLI installs
+    as az.cmd — subprocess.run(["az", ...]) without a shell raises FileNotFoundError there, so
+    the bare name would turn every ADO network check into a permanent, misdiagnosed WARN on the
+    platform most of this module's users are on."""
+    return shutil.which("az") or "az"
+
+
+# ── platform ──────────────────────────────────────────────────────────────────────────────────
+
+def installed_platform(repo: Path) -> str:
+    """Which CI platform this install realized, read from the manifest's composed pack ids.
+
+    The install manifest is the one artifact that records what actually composed (the frozen
+    profile records what was *asked* for; an axis can degrade). Only a manifest that names the
+    azure-devops CI/CD pack flips the platform-facing checks to az — a missing, corrupt, or
+    pack-less manifest gets the GitHub checks, which is exactly the pre-pack behavior, so
+    nothing that exists today changes.
+    """
+    manifest = repo / ".claude" / "harness-manifest.json"
+    try:
+        packs = json.loads(manifest.read_text(encoding="utf-8")).get("packs") or []
+        return "azure-devops" if "cicd/azure-devops" in packs else "github"
+    except (OSError, json.JSONDecodeError, AttributeError, TypeError):
+        # TypeError covers a type-corrupt manifest ("packs": 5) — a diagnostic tool
+        # must never be the thing that crashes.
+        return "github"
 
 
 # ── tools ─────────────────────────────────────────────────────────────────────────────────────
@@ -83,11 +128,21 @@ def check_tools(repo: Path) -> list[Result]:
     settings.json registers the hooks via `pwsh` (PowerShell 7 is cross-platform). Without it the
     Stop hook never fires — the agent can end a turn on a red build and nothing objects. The
     harness looks installed and the highest-value rung of the ladder is simply absent.
+
+    The platform CLI follows the installed pack: demanding gh on an Azure DevOps repo is a FAIL
+    for a tool nothing there uses — the doctor equivalent of telling you to fix a working setup.
     """
+    if installed_platform(repo) == "azure-devops":
+        platform_cli = ("az", "branch policies, variable groups, PR gates",
+                        "install the Azure CLI (https://aka.ms/azure-cli), "
+                        "then: az extension add --name azure-devops")
+    else:
+        platform_cli = ("gh", "branch protection, secrets, PR gates",
+                        "install the GitHub CLI: https://cli.github.com")
     out = []
     for tool, why, fix in [
         ("git", "everything", "install git"),
-        ("gh", "branch protection, secrets, PR gates", "install the GitHub CLI: https://cli.github.com"),
+        platform_cli,
         ("pwsh", "THE HOOKS — settings.json runs them through pwsh", "install PowerShell 7: https://aka.ms/powershell"),
     ]:
         path = shutil.which(tool)
@@ -229,7 +284,7 @@ def check_residual_tokens(repo: Path) -> list[Result]:
     later as whatever the tool does with a literal `<<TOKEN>>`, which on Windows can be a raw
     cmd.exe syntax error that names neither the token nor the tool.
     """
-    roots = [repo / ".github", repo / ".claude", repo / "scripts" / "rails"]
+    roots = [repo / ".github", repo / ".azuredevops", repo / ".claude", repo / "scripts" / "rails"]
     candidates = [p for root in roots if root.exists() for p in root.rglob("*")]
     if (repo / ".mcp.json").exists():
         candidates.append(repo / ".mcp.json")
@@ -273,7 +328,7 @@ def check_mcp(repo: Path) -> list[Result]:
     return [Result(PASS, f"{len(servers)} MCP server(s) declared", ", ".join(sorted(servers)))]
 
 
-# ── repo state (needs gh) ─────────────────────────────────────────────────────────────────────
+# ── repo state (needs gh / az) ────────────────────────────────────────────────────────────────
 
 def required_secrets(repo: Path) -> dict[str, list[str]]:
     """Secrets THIS repo's workflows actually reference, mapped to the workflows needing them.
@@ -299,7 +354,7 @@ def required_secrets(repo: Path) -> dict[str, list[str]]:
     return needed
 
 
-def check_secrets(repo: Path) -> list[Result]:
+def _check_secrets_github(repo: Path) -> list[Result]:
     needed = required_secrets(repo)
     if not needed:
         return [Result(WARN, "no workflow secrets to check",
@@ -327,7 +382,85 @@ def check_secrets(repo: Path) -> list[Result]:
     return results
 
 
-def check_branch_protection(repo: Path) -> list[Result]:
+def required_variable_groups(repo: Path) -> dict[str, list[str]]:
+    """Variable groups THIS repo's pipelines actually reference, mapped to the pipelines needing them.
+
+    The ADO twin of required_secrets, with the same lesson baked in: read from the installed
+    pipelines rather than a fixed list, so a repo that renamed its group (or deleted the eval
+    pipelines) is never told to "fix" a working setup. ADO pipelines get their secrets from
+    variable groups (`- group: NAME`, ideally Key-Vault-backed), not per-repo secrets — so the
+    group's existence is what the doctor can check from here; which variables it exposes lives
+    server-side. A still-unfilled `<<VARIABLE_GROUP>>` token never matches the name pattern:
+    that is unfinished setup, owned by the residual-token check, not a missing group.
+    """
+    pipe_dir = repo / ".azuredevops" / "pipelines"
+    if not pipe_dir.exists():
+        return {}
+    needed: dict[str, list[str]] = {}
+    for yml in sorted(pipe_dir.glob("*.yml")):
+        body = yml.read_text(encoding="utf-8", errors="replace")
+        names = set()
+        for quoted1, quoted2, bare in _GROUP_REF.findall(body):
+            # Quoted names are captured whole (spaces, parens, unicode, even '#' — quoting is
+            # the escape hatch for exotic-but-legal group names). A mangled name would FAIL
+            # demanding a group that does not exist under that name — telling the user to fix
+            # a working setup, the exact failure this module's header forbids.
+            name = (quoted1 or quoted2 or bare).strip()
+            # Not group references: unfinished setup (the residual-token check owns both
+            # placeholder forms) and runtime template expressions.
+            if not name or "<<" in name or "${{" in name or name.endswith("_NOT_SET"):
+                continue
+            names.add(name)
+        for name in names:
+            needed.setdefault(name, []).append(yml.name)
+    return needed
+
+
+def _check_secrets_ado(repo: Path) -> list[Result]:
+    """The variable groups the pipelines reference must exist server-side, or the key-consuming
+    gates fail closed on their first run — the same silent-absence shape as a missing secret."""
+    needed = required_variable_groups(repo)
+    if not needed:
+        return [Result(WARN, "no pipeline variable groups to check",
+                       "no installed pipeline references a variable group (an unfilled "
+                       "<<VARIABLE_GROUP>> token is reported under Unfinished setup)")]
+
+    # cwd=repo so az's org/project auto-detection reads THIS repo's remote, not wherever the
+    # doctor happens to be running from; --only-show-errors keeps az's success-path stderr
+    # chatter (extension notices, preview warnings) out of the JSON we parse.
+    rc, out = _run([_az(), "pipelines", "variable-group", "list", "--output", "json",
+                    "--only-show-errors"], timeout=30, cwd=str(repo))
+    if rc != 0:
+        return [Result(WARN, "variable groups not checked",
+                       "az could not list variable groups (not logged in, azure-devops extension "
+                       "missing, or org/project not detectable from this repo's remote)",
+                       "az login && az extension add --name azure-devops — run from the repo clone")]
+    try:
+        present = {g["name"] for g in json.loads(out)}
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return [Result(WARN, "variable groups not checked", "unexpected az output")]
+
+    results = []
+    for group, pipelines in sorted(needed.items()):
+        if group in present:
+            results.append(Result(PASS, f"variable group '{group}' exists", ", ".join(pipelines)))
+        else:
+            results.append(Result(
+                FAIL, f"variable group '{group}' missing",
+                f"{', '.join(pipelines)} reference it — those gates fail closed without it",
+                f"create it (ideally Key-Vault-backed) with the keys the pipelines read, "
+                f"e.g. az pipelines variable-group create --name '{group}' "
+                f"--variables ANTHROPIC_API_KEY=<value>"))
+    return results
+
+
+def check_secrets(repo: Path) -> list[Result]:
+    if installed_platform(repo) == "azure-devops":
+        return _check_secrets_ado(repo)
+    return _check_secrets_github(repo)
+
+
+def _check_branch_protection_github(repo: Path) -> list[Result]:
     rc, out = _run(["gh", "api", "repos/{owner}/{repo}/rulesets"], timeout=30)
     if rc != 0:
         return [Result(WARN, "branch protection not checked",
@@ -347,6 +480,48 @@ def check_branch_protection(repo: Path) -> list[Result]:
                        "set enforcement: active")]
     return [Result(PASS, f"{len(active)} active ruleset(s)",
                    ", ".join(r.get("name", "?") for r in active))]
+
+
+def _check_branch_policies_ado(repo: Path) -> list[Result]:
+    """Branch policies are ADO's branch protection: build-validation per gate pipeline plus the
+    non-author approver count. Without them the gates run and nothing makes them mandatory.
+    Enforcing means isEnabled AND isBlocking — an enabled-but-optional policy is advice, not a
+    gate, the same "exists but is not enforcing" condition the GitHub twin checks via
+    enforcement == active. Project-level listing (az detects org/project from the repo's
+    remote): sibling repos' policies can inflate the count — and can mask a repo with none of
+    its own — so a PASS here means the PROJECT enforces policies, not necessarily this repo;
+    configure-branch-policies.sh is what scopes them per-repo. Zero is still unambiguous."""
+    rc, out = _run([_az(), "repos", "policy", "list", "--output", "json",
+                    "--only-show-errors"], timeout=30, cwd=str(repo))
+    if rc != 0:
+        return [Result(WARN, "branch policies not checked",
+                       "az could not list branch policies (not logged in, azure-devops extension "
+                       "missing, or org/project not detectable from this repo's remote)",
+                       "az login && az extension add --name azure-devops — run from the repo clone")]
+    try:
+        policies = json.loads(out)
+    except json.JSONDecodeError:
+        return [Result(WARN, "branch policies not checked", "unexpected az output")]
+    if not isinstance(policies, list):
+        return [Result(WARN, "branch policies not checked", "unexpected az output shape")]
+    if not policies:
+        return [Result(FAIL, "no branch policies",
+                       "the gates run but nothing makes them mandatory — a red PR can complete",
+                       "scripts/rails/configure-branch-policies.sh (dry-run first)")]
+    enforcing = [p for p in policies if p.get("isEnabled") and p.get("isBlocking")]
+    if not enforcing:
+        return [Result(FAIL, f"{len(policies)} branch policy(ies), none enabled AND blocking",
+                       "policies exist but none enforces — an optional policy is advice, not a gate",
+                       "enable/make blocking: az repos policy update, or re-run "
+                       "configure-branch-policies.sh")]
+    kinds = sorted({(p.get("type") or {}).get("displayName") or "?" for p in enforcing})
+    return [Result(PASS, f"{len(enforcing)} enforcing branch policy(ies)", ", ".join(kinds))]
+
+
+def check_branch_protection(repo: Path) -> list[Result]:
+    if installed_platform(repo) == "azure-devops":
+        return _check_branch_policies_ado(repo)
+    return _check_branch_protection_github(repo)
 
 
 # ── report ────────────────────────────────────────────────────────────────────────────────────
@@ -392,7 +567,7 @@ def run(repo: Path, offline: bool = False) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", default=".", help="repo to check (default: current directory)")
-    ap.add_argument("--offline", action="store_true", help="skip checks that need gh")
+    ap.add_argument("--offline", action="store_true", help="skip checks that need gh/az")
     args = ap.parse_args()
     return run(Path(args.repo), offline=args.offline)
 

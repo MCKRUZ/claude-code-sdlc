@@ -24,12 +24,16 @@ from doctor import (
     FAIL,
     PASS,
     WARN,
+    check_branch_protection,
     check_executable_bits,
     check_harness_present,
     check_hooks,
     check_residual_tokens,
     check_secrets,
+    check_tools,
+    installed_platform,
     required_secrets,
+    required_variable_groups,
 )
 
 
@@ -244,6 +248,249 @@ class TestRun:
         monkeypatch.setattr(doctor, "SECTIONS", [("Synthetic", lambda r: [
             doctor.Result(WARN, "undetermined", "")], False)])
         assert doctor.run(repo, offline=True) == 0
+
+
+# ── platform awareness: an ADO repo is never told to fix a GitHub it does not have ────────────
+
+def _make_ado(repo):
+    """Flip the standard fixture to an Azure DevOps install: manifest names the azure-devops
+    CI/CD pack, pipelines live in .azuredevops/pipelines/."""
+    (repo / ".claude" / "harness-manifest.json").write_text(json.dumps({
+        "profile_id": "ado-test", "packs": ["stacks/dotnet", "cicd/azure-devops"],
+        "files": {"CLAUDE.md": "x"},
+    }), encoding="utf-8")
+    (repo / ".azuredevops" / "pipelines").mkdir(parents=True)
+    return repo
+
+
+class TestInstalledPlatform:
+    def test_the_ado_pack_flips_the_platform(self, repo):
+        assert installed_platform(_make_ado(repo)) == "azure-devops"
+
+    def test_the_github_pack_is_github(self, repo):
+        assert installed_platform(repo) == "github"
+
+    def test_no_manifest_defaults_to_github(self, tmp_path):
+        """The pre-pack behavior. A missing manifest must not change what the doctor says."""
+        assert installed_platform(tmp_path) == "github"
+
+    def test_a_corrupt_manifest_defaults_to_github_rather_than_raising(self, repo):
+        (repo / ".claude" / "harness-manifest.json").write_text("{not json", encoding="utf-8")
+        assert installed_platform(repo) == "github"
+
+    def test_a_packless_manifest_defaults_to_github(self, repo):
+        (repo / ".claude" / "harness-manifest.json").write_text(
+            json.dumps({"profile_id": "core-only", "files": {}}), encoding="utf-8")
+        assert installed_platform(repo) == "github"
+
+    def test_a_type_corrupt_packs_value_defaults_to_github_rather_than_raising(self, repo):
+        """Valid JSON, wrong type. A diagnostic tool must never be the thing that crashes."""
+        (repo / ".claude" / "harness-manifest.json").write_text(
+            json.dumps({"profile_id": "x", "packs": 5, "files": {}}), encoding="utf-8")
+        assert installed_platform(repo) == "github"
+
+
+class TestToolsFollowThePlatform:
+    def test_an_ado_repo_requires_az_not_gh(self, repo, monkeypatch):
+        """Demanding gh on an Azure DevOps repo is telling you to fix a working setup."""
+        monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+        titles = _titles(check_tools(_make_ado(repo)))
+        assert "az missing" in titles
+        assert "gh" not in titles
+
+    def test_a_github_repo_still_requires_gh(self, repo, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+        titles = _titles(check_tools(repo))
+        assert "gh missing" in titles
+        assert "az missing" not in titles  # no az row at all
+
+    def test_git_and_pwsh_are_required_on_both(self, repo, monkeypatch):
+        monkeypatch.setattr(doctor.shutil, "which", lambda name: None)
+        for r in (repo, _make_ado(repo)):
+            titles = _titles(check_tools(r))
+            assert "git missing" in titles and "pwsh missing" in titles
+
+
+class TestRequiredVariableGroups:
+    def _pipe(self, repo, name, body):
+        (repo / ".azuredevops" / "pipelines" / name).write_text(body, encoding="utf-8")
+
+    def test_groups_come_from_the_installed_pipelines(self, repo):
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: rails-secrets\n")
+        assert required_variable_groups(repo) == {"rails-secrets": ["grader.yml"]}
+
+    def test_a_group_named_only_in_a_comment_is_not_required(self, repo):
+        _make_ado(repo)
+        self._pipe(repo, "ci.yml", "# reference `- group: rails-secrets` once wired\njobs: []\n")
+        assert required_variable_groups(repo) == {}
+
+    def test_an_unfilled_variable_group_token_is_not_a_missing_group(self, repo):
+        """`- group: <<VARIABLE_GROUP>>` is unfinished setup — the residual-token check owns it.
+        Demanding a variable group literally named <<VARIABLE_GROUP>> would be a wrong instruction."""
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: <<VARIABLE_GROUP>>\n")
+        assert required_variable_groups(repo) == {}
+
+    def test_the_argv_safe_sentinel_form_is_not_a_missing_group_either(self, repo):
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: VARIABLE_GROUP_NOT_SET\n")
+        assert required_variable_groups(repo) == {}
+
+    def test_a_quoted_exotic_name_is_captured_whole_not_mangled(self, repo):
+        """'My Group (Prod)' truncated to 'My Group' would FAIL demanding a group that does not
+        exist under that name while the real one works — telling the user to fix a working
+        setup, the module's cardinal sin. Quoting is the escape hatch for exotic legal names."""
+        _make_ado(repo)
+        self._pipe(repo, "ci.yml", "variables:\n  - group: 'My Group (Prod)'\n")
+        assert required_variable_groups(repo) == {"My Group (Prod)": ["ci.yml"]}
+
+    def test_a_bare_name_with_spaces_parens_and_unicode_survives(self, repo):
+        _make_ado(repo)
+        self._pipe(repo, "ci.yml", "variables:\n  - group: naïve rails (dev)   # exposes KEY\n")
+        assert required_variable_groups(repo) == {"naïve rails (dev)": ["ci.yml"]}
+
+    def test_a_runtime_template_expression_is_not_a_group_name(self, repo):
+        _make_ado(repo)
+        self._pipe(repo, "ci.yml", "variables:\n  - group: ${{ parameters.groupName }}\n")
+        assert required_variable_groups(repo) == {}
+
+    def test_a_github_only_repo_has_no_variable_groups(self, repo):
+        assert required_variable_groups(repo) == {}
+
+
+class TestAdoSecrets:
+    def _pipe(self, repo, name, body):
+        (repo / ".azuredevops" / "pipelines" / name).write_text(body, encoding="utf-8")
+
+    def test_dispatch_uses_az_on_an_ado_repo(self, repo, monkeypatch):
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: rails-secrets\n")
+        seen = []
+        monkeypatch.setattr(doctor.shutil, "which", lambda name: name)  # az.cmd resolution aside
+        monkeypatch.setattr(doctor, "_run",
+                            lambda cmd, **k: (seen.append((cmd, k)), (0, "[]"))[1])
+        check_secrets(repo)
+        cmd, kwargs = seen[0]
+        assert cmd[0] == "az", "an ADO repo must be checked with az, not gh"
+        assert "--only-show-errors" in cmd, "az stderr chatter must not corrupt the JSON parse"
+        assert kwargs.get("cwd") == str(repo), \
+            "az must detect org/project from --repo's remote, not the doctor's CWD"
+
+    def test_dispatch_still_uses_gh_on_a_github_repo(self, repo, monkeypatch):
+        (repo / ".github" / "workflows" / "g.yml").write_text(
+            "  key: ${{ secrets.ANTHROPIC_API_KEY }}\n", encoding="utf-8")
+        seen = []
+        monkeypatch.setattr(doctor, "_run", lambda cmd, **k: (seen.append(cmd), (0, "[]"))[1])
+        check_secrets(repo)
+        assert seen and seen[0][0] == "gh"
+
+    def test_a_present_group_passes(self, repo, monkeypatch):
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: rails-secrets\n")
+        monkeypatch.setattr(doctor, "_run",
+                            lambda *a, **k: (0, json.dumps([{"name": "rails-secrets"}])))
+        results = check_secrets(repo)
+        assert FAIL not in _statuses(results)
+
+    def test_a_missing_group_fails_and_names_the_pipeline(self, repo, monkeypatch):
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: rails-secrets\n")
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (0, json.dumps([])))
+        results = check_secrets(repo)
+        assert FAIL in _statuses(results)
+        assert "grader.yml" in results[0].detail, "say which pipeline needs it"
+
+    def test_unreachable_az_warns_rather_than_fails(self, repo, monkeypatch):
+        """Offline is not a broken harness — same rule as the gh path."""
+        _make_ado(repo)
+        self._pipe(repo, "grader.yml", "variables:\n  - group: rails-secrets\n")
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (1, "az login required"))
+        assert check_secrets(repo)[0].status == WARN
+
+    def test_no_group_references_warns_rather_than_inventing_a_requirement(self, repo):
+        _make_ado(repo)
+        assert check_secrets(repo)[0].status == WARN
+
+
+class TestAdoBranchPolicies:
+    def test_dispatch_uses_az_on_an_ado_repo(self, repo, monkeypatch):
+        _make_ado(repo)
+        seen = []
+        monkeypatch.setattr(doctor.shutil, "which", lambda name: name)
+        monkeypatch.setattr(doctor, "_run", lambda cmd, **k: (seen.append(cmd), (0, "[]"))[1])
+        check_branch_protection(repo)
+        assert seen and seen[0][:3] == ["az", "repos", "policy"]
+
+    def test_no_policies_fails_and_points_at_the_configure_script(self, repo, monkeypatch):
+        _make_ado(repo)
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (0, "[]"))
+        results = check_branch_protection(repo)
+        assert results[0].status == FAIL
+        assert "configure-branch-policies.sh" in results[0].fix
+
+    def test_enforcing_policies_pass_naming_their_kinds(self, repo, monkeypatch):
+        _make_ado(repo)
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (0, json.dumps([
+            {"isEnabled": True, "isBlocking": True, "type": {"displayName": "Build"}},
+            {"isEnabled": True, "isBlocking": True,
+             "type": {"displayName": "Minimum number of reviewers"}},
+        ])))
+        results = check_branch_protection(repo)
+        assert results[0].status == PASS
+        assert "Build" in results[0].detail
+
+    def test_disabled_policies_fail_rather_than_passing_on_existence(self, repo, monkeypatch):
+        """A policy that exists but does not enforce is the same silent absence as none at all."""
+        _make_ado(repo)
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (0, json.dumps([
+            {"isEnabled": False, "isBlocking": True, "type": {"displayName": "Build"}},
+        ])))
+        assert check_branch_protection(repo)[0].status == FAIL
+
+    def test_an_enabled_but_optional_policy_is_not_enforcement(self, repo, monkeypatch):
+        """isEnabled without isBlocking is advice, not a gate — the ADO twin of a GitHub
+        ruleset whose enforcement is not 'active'. Passing on it would claim a protection
+        that does not block a red PR."""
+        _make_ado(repo)
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (0, json.dumps([
+            {"isEnabled": True, "isBlocking": False, "type": {"displayName": "Build"}},
+        ])))
+        assert check_branch_protection(repo)[0].status == FAIL
+
+    def test_a_dict_shaped_response_warns_rather_than_raising(self, repo, monkeypatch):
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (0, json.dumps({"value": []})))
+        assert check_branch_protection(_make_ado(repo))[0].status == WARN
+
+    def test_unreachable_az_warns_rather_than_fails(self, repo, monkeypatch):
+        _make_ado(repo)
+        monkeypatch.setattr(doctor, "_run", lambda *a, **k: (1, "not logged in"))
+        assert check_branch_protection(repo)[0].status == WARN
+
+    def test_a_github_repo_is_still_checked_via_gh_api(self, repo, monkeypatch):
+        seen = []
+        monkeypatch.setattr(doctor, "_run", lambda cmd, **k: (seen.append(cmd), (0, "[]"))[1])
+        check_branch_protection(repo)
+        assert seen and seen[0][0] == "gh"
+
+
+class TestResidualTokensScanAdoHome:
+    def test_a_token_in_an_ado_pipeline_is_reported(self, repo):
+        """.azuredevops/ is a scan root — an unfilled <<GATED_PATHS>> in security.yml was
+        invisible before the platform-aware pass, exactly the silent-absence shape."""
+        _make_ado(repo)
+        (repo / ".azuredevops" / "pipelines" / "security.yml").write_text(
+            "env:\n  GATED: <<GATED_PATHS>>\n", encoding="utf-8")
+        results = check_residual_tokens(repo)
+        assert WARN in _statuses(results)
+        assert "GATED_PATHS" in _titles(results)
+
+    def test_the_variable_group_token_names_its_owner(self, repo):
+        _make_ado(repo)
+        (repo / ".azuredevops" / "pipelines" / "grader.yml").write_text(
+            "variables:\n  - group: <<VARIABLE_GROUP>>\n", encoding="utf-8")
+        fix = [r.fix for r in check_residual_tokens(repo) if "VARIABLE_GROUP" in r.title][0]
+        assert "Phase 3" in fix
 
 
 class TestArgvSafePlaceholders:
