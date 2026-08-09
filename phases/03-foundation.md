@@ -55,7 +55,7 @@ The five workflows:
 - **security** (blocks on HIGH): runs the security-reviewer agent. Fires on the `risk:high` label **or** any PR touching a registered gated path (auth, migrations, the pipeline, infra), independent of the spec's tier.
 - **deploy-dev** (ships): merge to main deploys the merged artifact to the client's dev environment, and restores the last good version when a deploy fails.
 
-**Branch protection** turns the workflows from suggestions into rails. Every PR, to merge, must clear: CI green, the grader has run, correctness passed (or a named-human override is recorded), and a non-author approval. A `risk:high` change adds the security workflow pass and a named human sign-off recorded in the PR. The agent can push only to branches it creates, can never approve or merge its own work, and every agent commit is co-authored so provenance is in the history.
+**Branch protection** (branch policies on Azure DevOps) turns the workflows from suggestions into rails. Every PR, to merge, must clear: CI green, the grader has run, correctness passed (or a named-human override is recorded), and a non-author approval. A `risk:high` change adds the security workflow pass and a named human sign-off recorded in the PR. The agent can push only to branches it creates, can never approve or merge its own work, and every agent commit is co-authored so provenance is in the history.
 
 **The Stop hook** is the highest-value automation in the standard: a script that fires when an agent tries to finish its turn and refuses to let it stop on a failing build or red tests. It turns "the tests must pass" from a request the agent might rationalize past into a fact about the world. Wire it in `.claude/` settings.
 
@@ -83,7 +83,7 @@ The Phase 2 security gates MUST appear on the map with their guarded paths.
 
 Draft the IaC for the dev environment (Bicep on the .NET/Azure default; the pattern is stack-independent). HIGH risk — human-reviewed on every change; the environment provisions from code, not from clicks. Run it through the agent-safe IaC funnel: schema-validate → policy-as-code gate → dry-run (`bicep what-if` or equivalent) → human approval → scoped least-privilege apply.
 
-Secrets land in the client's vault (Key Vault and GitHub secrets) — never in code, never in `CLAUDE.md`, never in a spec. A secret in the repo is the one unrecoverable mistake of the phase: a rotation event and an audit-log review, not an edit. Draft the data-flow brief for client security: what goes to the API, what doesn't, where keys live, who can see usage.
+Secrets land in the client's vault (Key Vault and GitHub secrets on GitHub; Key-Vault-backed variable groups on Azure DevOps) — never in code, never in `CLAUDE.md`, never in a spec. A secret in the repo is the one unrecoverable mistake of the phase: a rotation event and an audit-log review, not an edit. Draft the data-flow brief for client security: what goes to the API, what doesn't, where keys live, who can see usage.
 
 **For `library`/`cli`/`skill`:** there is no environment to provision. Record `N/A — {project_type}` for the IaC artifacts and proceed; the rails still apply.
 
@@ -209,7 +209,7 @@ Must contain:
 - [ ] `foundation-report.md`, `risk-tier-map.md`, `cadence-plan.md`, and `build-handoff.md` exist and are complete
 - [ ] The harness is installed, adapted to the client, committed, and reviewed by the Setup Owner's deputy (never sole-approved by its author)
 - [ ] The pipeline runs: CI hard gates, the grader required to run, correctness blocking on a high-confidence defect, security on `risk:high`, deploy-dev on merge — all reviewed by the client's DevOps
-- [ ] Branch protection enforces CI green + grader-ran + correctness-passed + non-author approval; `risk:high` adds the security workflow and a named sign-off
+- [ ] Branch protection (branch policies on ADO) enforces CI green + grader-ran + correctness-passed + non-author approval; `risk:high` adds the security workflow and a named sign-off
 - [ ] The dev environment is provisioned from code; secrets live in the client's vault, never in code (N/A for `library`/`cli`/`skill`)
 - [ ] The build-time security gates from Phase 2 are wired, and each has fired on a real PR
 - [ ] The walking skeleton is deployed to the dev environment through the real pipeline and verified against the Phase 2 definition

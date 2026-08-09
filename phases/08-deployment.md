@@ -13,7 +13,7 @@ Deploy the system to production safely, with documented rollback capability, ver
 | `library` / `cli` | Package registry publish (npm, PyPI, NuGet). Staging = local install test in a fresh environment. | Install the package in an isolated environment and run the public API smoke tests | Yank the package version from the registry; pin consumers to previous version |
 | `skill` | File distribution (copy to `.claude/commands/`). No server, no process. Staging = fresh install on a clean project. | Install the skill files in a new project; run the minimum smoke test set | Delete the skill files; re-copy the previous version |
 
-**For `skill` / `library` projects:** Skip steps that reference staging servers, database migrations, health checks, and monitoring dashboards — they do not apply. Focus on: (1) install verification, (2) smoke test execution, (3) rollback documentation (file deletion / version revert), and (4) release artifact creation (GitHub release / package publish).
+**For `skill` / `library` projects:** Skip steps that reference staging servers, database migrations, health checks, and monitoring dashboards — they do not apply. Focus on: (1) install verification, (2) smoke test execution, (3) rollback documentation (file deletion / version revert), and (4) release artifact creation (GitHub release on GitHub; Azure Artifacts or a pipeline artifact on Azure DevOps / package publish).
 
 ## Entry Criteria
 - Phase 7 exit gate passed and `phase8-handoff.md` reviewed

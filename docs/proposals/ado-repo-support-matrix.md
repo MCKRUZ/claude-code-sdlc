@@ -8,9 +8,9 @@ several parts of the core still assume GitHub regardless of that setting (the in
 files unconditionally, the doctor requires the `gh` CLI, the PR hooks/skills call `gh`, and much of the
 command prose names only GitHub paths).
 
-**This document:** the remaining work, folded into five packages (A–E). Each is one spec = one
-branch = one PR. Effort is human-scale (**S** = under half a day, **M** = 1–2 days); Claude-assisted,
-figure ≈ 1 session per fold plus your review.
+**This document:** the remaining work, folded into five packages (A–E). Planned as one spec = one
+branch = one PR each; see Sequencing for how they actually landed. Effort is human-scale (**S** =
+under half a day, **M** = 1–2 days); Claude-assisted, figure ≈ 1 session per fold plus your review.
 
 | # | Fix | Effort | Priority | Fix description | GitHub functionality today (unchanged — kept as-is) | What it adds for ADO |
 |---|-----|--------|----------|-----------------|----------------------------------|--------------------------|
@@ -55,13 +55,21 @@ composes the ADO pack (`.azuredevops/pipelines/` ×10, `configure-branch-policie
 Fold-A warts exactly as predicted (10 GitHub workflows + ruleset + CODEOWNERS installed anyway;
 rubrics at `.github/profile/rubrics/` while `.azuredevops/rails/rubrics/` is missing).
 
-## Sequencing
+## Folds A–D — DONE on this branch (consolidated; see Sequencing)
+
+- **Fold A — DONE** (landed `7a9b999`): platform-aware core install — `stack.ci_cd.platform` gates the GitHub payload and rubrics land in the pack's expected dir; verified by the new ADO golden install tree, with the GitHub golden tree byte-identical.
+- **Fold B — DONE** (landed `9c2d4ed`): pack-aware doctor — `az` login / variable-group / branch-policy checks on ADO installs; GitHub doctor output byte-identical (the `gh` pins in `test_doctor.py` unmodified).
+- **Fold C — DONE** (landed `84f4702`): PR-flow rails on ADO — `az repos pr create` added to both review-gate trigger regexes, pack-level settings fragment (az allowlist + `.azuredevops/**` edit gate), pr-writer's open step parameterized.
+- **Fold D — DONE (this commit)**: the prose sweep — commands, harness docs, phases, and profiles name both platforms; the platform-switch runbook documented in `commands/sdlc-upgrade.md`.
+
+## Sequencing — as planned vs. as landed
 
 - **Fold 0 first** (done): the profile is the fixture everything else tests against.
-- **A blocks nothing but itself** — B, C, D, E are independent of A and each other; parallelizable across worktrees. The only serialization is review bandwidth.
-- **A is the gate**: until it lands, every ADO install is polluted with GitHub artifacts and has broken rubric paths.
-- **E starts with a spike** (live drill: one rail pipeline authenticating to Foundry via workload identity federation on a real ADO project + Foundry resource) — spec the full fold only after the drill passes.
-- Acceptance for any fold: existing test suite green + new ADO golden tree + one real `--profile <ado>` install into a scratch repo, eyeball the tree.
+- **Planned:** one spec = one branch = one PR per fold; B, C, D, E independent of A and each other, parallelizable across worktrees, review bandwidth the only serialization.
+- **Landed:** Folds 0/A/B/C/D consolidated into **PR #47** — one branch, one commit per fold (`383b606` → this commit), reviewed as a unit. Review bandwidth *was* the serialization, and one consolidated review cost less than five; the additive guarantee was still checked commit-by-commit (suite green, GitHub goldens byte-identical at every fold), so the per-fold audit trail survives inside the single PR.
+- **A was still the gate** and landed first after Fold 0: until it, every ADO install was polluted with GitHub artifacts and had broken rubric paths.
+- **E stays separate, spike-first** (live drill: one rail pipeline authenticating to Foundry via workload identity federation on a real ADO project + Foundry resource) — its own branch and PR, spec'd only after the drill passes.
+- Acceptance for any fold: existing test suite green + new ADO golden tree + one real `--profile <ado>` install into a scratch repo, eyeball the tree. Held for A–D.
 
 ## Fold E references
 

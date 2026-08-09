@@ -45,6 +45,15 @@ Each piece is tagged so you adopt deliberately:
 Where each kit file goes in the client repo. The workflows and hooks reference these exact paths,
 so install here unless you also repoint the references.
 
+The `.github/...` destinations are the GitHub-Actions layout. On an `azure-devops` profile the
+platform-aware installer skips the pure-GitHub payload (`workflows/`, `profile/rulesets/`,
+`profile/CODEOWNERS`, `apply-branch-protection.sh`) and overlays the azure-devops pack instead:
+the pipelines land in `.azuredevops/pipelines/`, and the neutral governance content — the rubrics
+and the two ledgers — is redirected to `.azuredevops/rails/`, where those pipelines read it.
+**Branch policies** (`.azuredevops/rails/branch-policies.json`, applied by
+`scripts/rails/configure-branch-policies.sh`) replace the ruleset and CODEOWNERS. `.github/RAILS.md`
+keeps its path on both platforms — the ADO pack overlays its own realization there on purpose.
+
 | Kit path | Install to | Notes |
 |---|---|---|
 | `CLAUDE.md.template` | `./CLAUDE.md` | Replace every `{{TOKEN}}`; delete guidance comments. |
@@ -60,18 +69,18 @@ so install here unless you also repoint the references.
 | `hooks/*` | `./.claude/hooks/` | `stop-gate`, `review-gate`, `save-review-receipt` (`.ps1` + `.sh`), plus `sensitive-edit-nudge` — an advisory (non-blocking) example, installed but not registered. |
 | `agents/*` | `./.claude/agents/` | `planner`, `architect`, `grader`, `security-reviewer`, `build-error-resolver`, `debugger` — model-tiered; see `agents/README.md`. |
 | `skills/*` | `./.claude/skills/` | `spec-writer`, `test-writer`, `api-pattern`, `pr-writer`, `eval-builder`, `diagnose`. |
-| `workflows/{ci,grader,correctness,security,deploy-dev,eval-regression,eval-suite}.yml` | `./.github/workflows/` | The five rails + the two eval workflows. |
-| `workflows/deploy-promote.yml` | `./.github/workflows/` | The second half of the deploy rail: dev→test→prod. Manual trigger only — the target Environment's **required reviewers** are the human go/no-go, and the workflow refuses to run against an environment that has none. |
-| `workflows/RAILS.md` | `./.github/RAILS.md` | Operator's guide + shakedown drills. |
-| `profile/rubrics/*` | `./.github/profile/rubrics/` | Workflows read these by this path. |
-| `workflows/dependency-scan.yml` | `./.github/workflows/` | Weekly scan of the **standing stock** of third-party advisories. Raises (and self-closes) one issue; never blocks — the blocking, diff-scoped half is `ci.yml`'s `dependency-gate` job. On by default: a security scan you have to remember to switch on is not running. |
-| `workflows/rails-telemetry.yml` | `./.github/workflows/` | Weekly gate-outcome report, committed as `.github/rails-telemetry.json`. Records what ran, every override by name, and **which checks branch protection actually requires vs which gate jobs exist** — the comparison that catches a gate someone disarmed. No external calls: it reads this repo's own history and writes into this repo. |
-| `profile/rails-telemetry.schema.json` | `./.github/rails-telemetry.schema.json` | The report's shape, fixed at version 1 before the install wave so it is not retrofitted across live repos. The fleet collector refuses a version it does not know rather than misreading it. |
-| `profile/eval-bypasses.md` | `./.github/eval-bypasses.md` | Override/bypass ledger. |
-| `profile/dependency-exceptions.md` | `./.github/dependency-exceptions.md` | Accepted-risk ledger for `dependency-gate`. The `accepted-risk:dependency` label clears one PR; this records why, who decided, whether the vulnerable path is reachable, and when the acceptance expires. Swept at Setup review. |
-| `profile/CODEOWNERS` | `./.github/CODEOWNERS` | |
+| `workflows/{ci,grader,correctness,security,deploy-dev,eval-regression,eval-suite}.yml` | `./.github/workflows/` (ADO: `./.azuredevops/pipelines/`) | The five rails + the two eval workflows. |
+| `workflows/deploy-promote.yml` | `./.github/workflows/` (ADO: `./.azuredevops/pipelines/`) | The second half of the deploy rail: dev→test→prod. Manual trigger only — the target Environment's **required reviewers** are the human go/no-go, and the workflow refuses to run against an environment that has none. |
+| `workflows/RAILS.md` | `./.github/RAILS.md` | Operator's guide + shakedown drills. Same path on ADO installs — the ADO pack overlays its own realization here on purpose. |
+| `profile/rubrics/*` | `./.github/profile/rubrics/` (ADO: `./.azuredevops/rails/rubrics/`) | Workflows/pipelines read these by this path. |
+| `workflows/dependency-scan.yml` | `./.github/workflows/` (ADO: `./.azuredevops/pipelines/`) | Weekly scan of the **standing stock** of third-party advisories. Raises (and self-closes) one issue; never blocks — the blocking, diff-scoped half is `ci.yml`'s `dependency-gate` job. On by default: a security scan you have to remember to switch on is not running. |
+| `workflows/rails-telemetry.yml` | `./.github/workflows/` (ADO: `./.azuredevops/pipelines/`) | Weekly gate-outcome report, committed as `.github/rails-telemetry.json`. Records what ran, every override by name, and **which checks branch protection (ADO: branch policies) actually requires vs which gate jobs exist** — the comparison that catches a gate someone disarmed. No external calls: it reads this repo's own history and writes into this repo. |
+| `profile/rails-telemetry.schema.json` | `./.github/rails-telemetry.schema.json` | The report's shape, fixed at version 1 before the install wave so it is not retrofitted across live repos. The fleet collector refuses a version it does not know rather than misreading it. Deliberately `.github/` on **both** platforms: both packs' telemetry pipelines commit the report to `.github/rails-telemetry.json` so one collector reads a mixed GitHub/Azure fleet. |
+| `profile/eval-bypasses.md` | `./.github/eval-bypasses.md` (ADO: `./.azuredevops/rails/eval-bypasses.md`) | Override/bypass ledger. |
+| `profile/dependency-exceptions.md` | `./.github/dependency-exceptions.md` (ADO: `./.azuredevops/rails/dependency-exceptions.md`) | Accepted-risk ledger for `dependency-gate`. The `accepted-risk:dependency` label clears one PR; this records why, who decided, whether the vulnerable path is reachable, and when the acceptance expires. Swept at Setup review. |
+| `profile/CODEOWNERS` | `./.github/CODEOWNERS` | ADO: skipped — the required-reviewer branch policy in `branch-policies.json` is the twin. |
 | `profile/scripts/*` | `./scripts/rails/` | Workflows call `scripts/rails/diff-anchors.sh`. |
-| `profile/rulesets/branch-protection.json` | `./.github/rulesets/` | Copied on install; `scripts/rails/apply-branch-protection.sh` reads it from there and applies it to GitHub. |
+| `profile/rulesets/branch-protection.json` | `./.github/rulesets/` | Copied on install; `scripts/rails/apply-branch-protection.sh` reads it from there and applies it to GitHub. ADO: skipped — `.azuredevops/rails/branch-policies.json`, applied by `scripts/rails/configure-branch-policies.sh`, is the twin. |
 | `eval-datasets/*` | `./eval-datasets/` | Golden-set template + how-to (§11 work only). |
 | `prompts/*` | `./prompts/` | Versioned judge prompts (§11 work only). |
 | *(generated)* | `./.claude/harness-manifest.json` | Not a kit file — the installer writes it: plugin version + sha256 of every file as installed. `/sdlc-upgrade` reads it to tell factory-original files (safe to update) from repo-adapted ones (left alone). Commit it. |
@@ -103,7 +112,7 @@ have run) **and `/update-docs`** — declared there, not duplicated here.
 Plus `eval-regression.yml` (per-PR gate when prompts/models/tools/agent-behavior change) and
 `eval-suite.yml` (periodic full benchmark) for §11 agentic deliverables.
 
-The merge bar (in `branch-protection.json`): **CI green + spec-gate green + grader ran +
+The merge bar (in `branch-protection.json`; ADO: `branch-policies.json`): **CI green + spec-gate green + grader ran +
 correctness passed (or recorded override) + a non-author approval**; HIGH adds security pass + a
 named sign-off in the PR.
 
@@ -119,6 +128,8 @@ named sign-off in the PR.
 4. **Workflows + profile** — set the `<<PLACEHOLDER>>` build/test/deploy commands and gated-path
    regex. See `workflows/README.md`.
 5. **Branch protection** — run `scripts/rails/apply-branch-protection.sh` once GitHub Actions is on.
+   On Azure DevOps: **branch policies** — run `scripts/rails/configure-branch-policies.sh` once the
+   pipelines exist.
 6. **§11 only** — wire the eval runner behind the `eval-*` workflows; calibrate thresholds.
 
 ## Then prove the rails — do not assume them

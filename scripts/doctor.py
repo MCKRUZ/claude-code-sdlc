@@ -52,7 +52,7 @@ TOKEN_OWNER = {
     "DEPLOY_STEP": "Phase 8 — the real deploy command",
     "CAPTURE_LAST_GOOD": "Phase 8 — how you record the currently-live version",
     "RESTORE_LAST_GOOD": "Phase 8 — how you roll back",
-    "DEV_ENVIRONMENT": "Phase 3 — the GitHub Environment name",
+    "DEV_ENVIRONMENT": "Phase 3 — the deploy Environment name (GitHub / Azure DevOps)",
     "ARTIFACT_NAME": "Phase 3 — the CI artifact the deploy promotes",
     "CI_WORKFLOW_NAME": "Phase 3 — the CI workflow name that triggers deploy",
 }

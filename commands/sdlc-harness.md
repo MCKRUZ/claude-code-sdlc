@@ -18,15 +18,23 @@ uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/ins
 
 ### Step 2: Report
 Summarize what was written vs skipped, then remind the user:
-- Fill any remaining `{{PLACEHOLDER}}` tokens in `CLAUDE.md` and the workflows.
-- **Prove the rails** before trusting them — the shakedown drills in `.github/RAILS.md`.
+- Fill any remaining `{{PLACEHOLDER}}` tokens in `CLAUDE.md` and the workflows/pipelines.
+- **Prove the rails** before trusting them — the shakedown drills in `.github/RAILS.md`
+  (the same path holds the ADO guide on azure-devops installs — the pack deliberately overlays it).
 - Apply branch protection if on GitHub: `bash scripts/rails/apply-branch-protection.sh`.
+  On Azure DevOps, configure branch policies instead — needs `az` + the `azure-devops` extension:
+  `bash scripts/rails/configure-branch-policies.sh --dry-run` to preview, then re-run without the
+  flag to apply.
 
 ## What it installs
 `CLAUDE.md` (governance), `specs/spec-template.md`, `.claude/{settings.json,hooks,agents,skills}`,
 `.github/workflows/` (ci, grader, correctness, security, deploy-dev, eval-regression, eval-suite)
 + `RAILS.md`, `.github/{profile/rubrics,rulesets,CODEOWNERS,eval-bypasses.md}`, `scripts/rails/`,
-`eval-datasets/`, `prompts/`, and `infra/`. See `.claude/agents/README.md` for the agent/skill
+`eval-datasets/`, `prompts/`, and `infra/`. On `platform: azure-devops` profiles the platform
+surface is realized as `.azuredevops/pipelines/` (the same rails as Azure Pipelines) and
+`.azuredevops/rails/` (rubrics + `branch-policies.json` — build-validation and required-reviewer
+policies standing in for rulesets and CODEOWNERS); `.github/RAILS.md` still carries the operator
+guide. See `.claude/agents/README.md` for the agent/skill
 catalog and the on-demand menu.
 
 ## Error Handling

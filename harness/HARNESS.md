@@ -14,7 +14,7 @@ AI is doing the work. This page explains each piece in plain terms.
 | `.claude/agents/` | Six AI specialists it can call — two arrive automatically |
 | `.claude/skills/` | The team's runbooks for recurring jobs (specs, tests, bugs, PRs) |
 | `.mcp.json` | Shared plug-ins that give the AI extra abilities — approve once, done |
-| `.github/workflows/` | The pull-request checks that apply to *everyone*, human or AI |
+| `.github/workflows/` (GitHub) / `.azuredevops/pipelines/` (Azure DevOps) | The pull-request checks that apply to *everyone*, human or AI |
 | `specs/`, `.sdlc/`, `infra/` | Feature specs, project phase tracking, infrastructure starter |
 
 ## Two ideas explain the whole design
@@ -134,10 +134,12 @@ Personal plug-ins stay in your own machine's config — this file is only for wh
 team should share. Tools that install themselves (like GitNexus) come with printed
 instructions instead: `.claude/tools/<tool>/SETUP.md`.
 
-## The pull-request checks — .github/workflows/
+## The pull-request checks — .github/workflows/ or .azuredevops/pipelines/
 
-These run at the server and apply to every change, no matter who or what wrote it. The
-principle: **work can be proposed by anyone; only a gate lets it through.**
+On GitHub these are Actions workflows in `.github/workflows/`; on Azure DevOps the same
+checks are Azure Pipelines in `.azuredevops/pipelines/`. Either way they run at the server
+and apply to every change, no matter who or what wrote it. The principle: **work can be
+proposed by anyone; only a gate lets it through.**
 
 | Check | Power | Why |
 |---|---|---|
@@ -149,7 +151,8 @@ principle: **work can be proposed by anyone; only a gate lets it through.**
 | Deploy to dev | ships | after a green merge; rolls itself back on failure |
 | Eval checks | blocks / advises | for AI-powered features: blocks if quality measurably drops |
 
-On top sits **branch protection**: the blocking checks are mandatory, and a person who didn't
+On top sits **branch protection** (on Azure DevOps: **branch policies** — same idea, the
+platform's own mechanism): the blocking checks are mandatory, and a person who didn't
 write the change must approve it. Everything above in one sentence: *machines verify the
 facts; a human makes the call.*
 
@@ -161,8 +164,12 @@ never seen catch anything is decoration.
 
 - **`specs/`** — one spec per feature. The starting point of all build work.
 - **`.sdlc/`** — which project phase we're in, plus the record of decisions and artifacts.
-- **`.github/profile/rubrics/`** — the written standards the AI reviewers judge against.
-- **`scripts/rails/`** — helper scripts the checks use (branch protection, change scoping).
+- **`.github/profile/rubrics/`** (GitHub) / **`.azuredevops/rails/rubrics/`** (Azure DevOps) —
+  the written standards the AI reviewers judge against. On Azure DevOps the override and
+  accepted-risk ledgers live beside them in `.azuredevops/rails/`.
+- **`scripts/rails/`** — helper scripts the checks use (change scoping, plus the one-time
+  branch setup: `apply-branch-protection.sh` on GitHub, `configure-branch-policies.sh` on
+  Azure DevOps).
 - **`infra/`** — an infrastructure starting point. Adapt it; don't use it as-is.
 - **`.claude/harness-manifest.json`** — the install receipt: which harness version this repo
   has and a fingerprint of every file *as installed*. It's how an upgrade can tell "still

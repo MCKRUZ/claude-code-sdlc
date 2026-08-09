@@ -10,8 +10,8 @@ Establish production observability so the team knows about problems before users
 | project_type | Monitoring Approach |
 |--------------|-------------------|
 | `service` / `app` | Full infrastructure monitoring: dashboards (RED metrics), alerting rules, on-call rotation, incident response runbook. |
-| `library` / `cli` | Package health monitoring: download counts, open issues, version adoption. Alerts = GitHub issue triage criteria. No dashboards. |
-| `skill` | Qualitative monitoring only. No server, no metrics pipeline. Monitoring = GitHub Issues + user feedback. Replace all dashboard / alerting / infrastructure content with: issue triage criteria, user feedback channels, and qualitative quality signals. |
+| `library` / `cli` | Package health monitoring: download counts, open issues, version adoption. Alerts = GitHub issue (or ADO Boards work item) triage criteria. No dashboards. |
+| `skill` | Qualitative monitoring only. No server, no metrics pipeline. Monitoring = GitHub Issues (or ADO Boards work items) + user feedback. Replace all dashboard / alerting / infrastructure content with: issue triage criteria, user feedback channels, and qualitative quality signals. |
 
 **For `skill` / `library` projects:** The `monitoring-config.md`, `alert-definitions.md`, and `incident-response.md` artifacts should be reframed as: (1) feedback collection channels and issue triage criteria, (2) severity classification with response SLAs, and (3) escalation process. Do not spend time configuring Grafana dashboards or Prometheus rules that will never be used.
 
@@ -49,7 +49,7 @@ Set up dashboards and metrics collection:
 - Business metrics (what matters to stakeholders: active users, transactions, etc.)
 - Dependency health (database, external APIs, queues)
 
-**For `skill` / `library` projects:** Skip infrastructure metrics. Configure: GitHub issue monitoring, download/install tracking, user feedback channels.
+**For `skill` / `library` projects:** Skip infrastructure metrics. Configure: GitHub issue monitoring (ADO Boards work-item monitoring on Azure DevOps), download/install tracking, user feedback channels.
 
 ### Step 2: Alert Definitions
 Define alerts that require human response:
@@ -95,8 +95,9 @@ Record the result in `drill-record.md`.
 
 ### Step 5: Project Retrospective
 
-Start by gathering whatever user feedback the deployment produced — GitHub issues, support
-requests, Slack messages, survey results — and look for patterns rather than incidents: what
+Start by gathering whatever user feedback the deployment produced — GitHub issues or ADO Boards
+work items, support requests, Slack messages, survey results — and look for patterns rather than
+incidents: what
 confused people, what they liked, what broke. Where there is no feedback yet, record that as the
 finding; "we shipped and heard nothing" is itself worth knowing at Close.
 
