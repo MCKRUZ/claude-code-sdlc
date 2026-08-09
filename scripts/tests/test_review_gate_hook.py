@@ -21,9 +21,36 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SH_HOOK = _REPO_ROOT / "harness" / "hooks" / "review-gate.sh"
 PS1_HOOK = _REPO_ROOT / "harness" / "hooks" / "review-gate.ps1"
 
+
+def _bash() -> str | None:
+    """The bash that can actually run the hook.
+
+    On Windows, PATH's `bash` is System32's WSL shim, which on CI runners (no distro
+    installed) prints "Windows Subsystem for Linux has no installed distributions" and
+    exits 1 — it never runs the script at all. Git Bash is the bash a real Windows
+    install executes hooks with, so resolve it explicitly and never fall back to the shim.
+    """
+    if os.name != "nt":
+        return shutil.which("bash")
+    for var in ("ProgramFiles", "ProgramFiles(x86)"):
+        base = os.environ.get(var)
+        if base and (Path(base) / "Git" / "bin" / "bash.exe").is_file():
+            return str(Path(base) / "Git" / "bin" / "bash.exe")
+    git = shutil.which("git")
+    if git:  # <git-root>/cmd/git.exe -> <git-root>/bin/bash.exe
+        cand = Path(git).parent.parent / "bin" / "bash.exe"
+        if cand.is_file():
+            return str(cand)
+    found = shutil.which("bash")
+    return None if found and "system32" in found.lower() else found
+
+
+BASH = _bash()
+
 needs_sh = pytest.mark.skipif(
-    shutil.which("bash") is None or shutil.which("jq") is None,
-    reason="review-gate.sh needs bash + jq (the hook itself fails open without jq)")
+    BASH is None or shutil.which("jq") is None,
+    reason="review-gate.sh needs bash (Git Bash on Windows) + jq "
+           "(the hook itself fails open without jq)")
 needs_pwsh = pytest.mark.skipif(
     shutil.which("pwsh") is None, reason="review-gate.ps1 needs pwsh")
 
@@ -63,16 +90,16 @@ def _hook_env(repo: Path, extra_env: dict | None) -> dict:
 
 
 def _run_sh(repo: Path, command: str, extra_env: dict | None = None):
-    p = subprocess.run(["bash", str(SH_HOOK)], input=_payload(command), capture_output=True,
+    p = subprocess.run([BASH, str(SH_HOOK)], input=_payload(command), capture_output=True,
                        text=True, env=_hook_env(repo, extra_env), cwd=repo, timeout=30)
-    return p.returncode, p.stdout
+    return p.returncode, p.stdout, p.stderr
 
 
 def _run_ps1(repo: Path, command: str, extra_env: dict | None = None):
     p = subprocess.run(["pwsh", "-NoProfile", "-File", str(PS1_HOOK)], input=_payload(command),
                        capture_output=True, text=True, env=_hook_env(repo, extra_env),
                        cwd=repo, timeout=60)
-    return p.returncode, p.stdout
+    return p.returncode, p.stdout, p.stderr
 
 
 def _is_deny(stdout: str) -> bool:
@@ -107,10 +134,10 @@ class TestShTriggers:
     @pytest.mark.parametrize("command,must_gate", TRIGGERS,
                              ids=[t[0][:40] for t in TRIGGERS])
     def test_trigger_table(self, gated_repo, command, must_gate):
-        rc, out = _run_sh(gated_repo, command)
-        assert rc == 0, f"a hook must exit 0 either way, got {rc}"
+        rc, out, err = _run_sh(gated_repo, command)
+        assert rc == 0, f"a hook must exit 0 either way, got {rc}; stderr={err!r}"
         assert _is_deny(out) == must_gate, \
-            f"{command!r}: expected {'DENY' if must_gate else 'allow'}, stdout={out!r}"
+            f"{command!r}: expected {'DENY' if must_gate else 'allow'}, stdout={out!r}, stderr={err!r}"
 
     def test_receipts_open_the_gate_for_az(self, gated_repo):
         """The az trigger uses the same receipt evidence as push/gh — receipts for HEAD allow it."""
@@ -120,19 +147,20 @@ class TestShTriggers:
         receipts.mkdir(parents=True)
         for kind in ("code-review", "simplify"):
             (receipts / f"{sha}.{kind}").write_text("reviewed\n", encoding="utf-8")
-        rc, out = _run_sh(gated_repo, "az repos pr create --title x")
-        assert rc == 0 and not _is_deny(out), f"receipts present but still denied: {out!r}"
+        rc, out, err = _run_sh(gated_repo, "az repos pr create --title x")
+        assert rc == 0 and not _is_deny(out), \
+            f"receipts present but still denied: {out!r}, stderr={err!r}"
 
     def test_the_deny_reason_tells_the_agent_what_to_run(self, gated_repo):
-        _, out = _run_sh(gated_repo, "az repos pr create --title x")
+        _, out, _ = _run_sh(gated_repo, "az repos pr create --title x")
         reason = json.loads(out)["hookSpecificOutput"]["permissionDecisionReason"]
         assert "/code-review" in reason or "code-review" in reason
         assert "save-review-receipt" in reason
 
     def test_the_documented_bypass_still_works_for_az(self, gated_repo):
-        rc, out = _run_sh(gated_repo, "az repos pr create --title x",
-                          {"RAILS_SKIP_REVIEW_GATE": "1"})
-        assert rc == 0 and not _is_deny(out)
+        rc, out, err = _run_sh(gated_repo, "az repos pr create --title x",
+                               {"RAILS_SKIP_REVIEW_GATE": "1"})
+        assert rc == 0 and not _is_deny(out), f"stdout={out!r}, stderr={err!r}"
 
 
 @needs_pwsh
@@ -140,10 +168,10 @@ class TestPs1Triggers:
     @pytest.mark.parametrize("command,must_gate", TRIGGERS,
                              ids=[t[0][:40] for t in TRIGGERS])
     def test_trigger_table(self, gated_repo, command, must_gate):
-        rc, out = _run_ps1(gated_repo, command)
-        assert rc == 0, f"a hook must exit 0 either way, got {rc}"
+        rc, out, err = _run_ps1(gated_repo, command)
+        assert rc == 0, f"a hook must exit 0 either way, got {rc}; stderr={err!r}"
         assert _is_deny(out) == must_gate, \
-            f"{command!r}: expected {'DENY' if must_gate else 'allow'}, stdout={out!r}"
+            f"{command!r}: expected {'DENY' if must_gate else 'allow'}, stdout={out!r}, stderr={err!r}"
 
     def test_receipts_open_the_gate_for_az(self, gated_repo):
         sha = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=gated_repo,
@@ -152,5 +180,6 @@ class TestPs1Triggers:
         receipts.mkdir(parents=True)
         for kind in ("code-review", "simplify"):
             (receipts / f"{sha}.{kind}").write_text("reviewed\n", encoding="utf-8")
-        rc, out = _run_ps1(gated_repo, "az repos pr create --title x")
-        assert rc == 0 and not _is_deny(out), f"receipts present but still denied: {out!r}"
+        rc, out, err = _run_ps1(gated_repo, "az repos pr create --title x")
+        assert rc == 0 and not _is_deny(out), \
+            f"receipts present but still denied: {out!r}, stderr={err!r}"
