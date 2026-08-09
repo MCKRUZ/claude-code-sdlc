@@ -30,10 +30,11 @@ produces the PR the merge bar and the grader expect.
    - **Acceptance checks → evidence** — list each check from the spec and the test/line that
      satisfies it.
    - **Test plan** — what was run and the result (`dotnet test` etc.), not "should pass."
-   - **Risk tier + gated paths touched** — so the right gates and reviewers are triggered; add the
-     `risk:high` label if HIGH.
-5. **Open the PR** (`gh pr create`) with that title and body. Do not approve or merge it — a
-   non-author owns the verdict.
+   - **Risk tier + gated paths touched** — so the right gates and reviewers are triggered; if HIGH,
+     add the `risk:high` label (GitHub) or PR label via `--labels risk:high` (Azure DevOps).
+5. **Open the PR** with that title and body — `gh pr create` on GitHub, `az repos pr create` on
+   Azure DevOps (both are gated by the review-gate hook until the receipts exist). Do not approve
+   or merge it — a non-author owns the verdict.
 
 ## Done when
 - Branch, conventional-commit title, and co-authorship are correct.

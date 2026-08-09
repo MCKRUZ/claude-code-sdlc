@@ -207,6 +207,22 @@ class TestAdoGoldenRepo:
         assert not (target / ".github" / "eval-bypasses.md").exists()
         assert not (target / ".github" / "dependency-exceptions.md").exists()
 
+    def test_settings_carry_the_az_permission_fragment(self, ado_repo):
+        """Fold C: the ADO pack merges its settings fragment — read-only az queries allowed,
+        mutating az + the policy script behind ask, and .azuredevops/ gated like .github/."""
+        target, _, _ = ado_repo
+        settings = json.loads((target / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        allow = settings["permissions"]["allow"]
+        ask = settings["permissions"]["ask"]
+        assert "Bash(az repos pr show:*)" in allow, "az read-only queries missing from allow"
+        assert "az repos pr view" not in json.dumps(allow), \
+            "'az repos pr view' does not exist — the az read command is 'pr show' (gh vocabulary)"
+        assert "Bash(az repos policy:*)" in ask, "mutating az policy calls not behind ask"
+        assert "Edit(./.azuredevops/**)" in ask, \
+            "pipeline definitions lack the tamper protection .github/** has"
+        assert "Bash(git push --force:*)" in settings["permissions"]["deny"], \
+            "core deny rule lost in the fragment merge"
+
     def test_neutral_scripts_still_land(self, ado_repo):
         # diff-anchors.sh is platform-neutral (both packs' pipelines call it) and must survive the
         # per-file drop of its GitHub-only sibling apply-branch-protection.sh.
@@ -325,3 +341,14 @@ class TestStarterRepoIsNode:
         target, _, _ = starter_repo
         for wf in sorted((target / ".github" / "workflows").glob("*.yml")):
             yaml.safe_load(wf.read_text(encoding="utf-8"))
+
+
+class TestGithubSettingsCarryNoAzEntries:
+    """Fold C's additive guarantee: the az permission fragment ships only with the ADO pack —
+    a GitHub install's settings.json must not grow az entries it has no use for."""
+
+    def test_starter_settings_have_no_az_permissions(self, starter_repo):
+        target, _, _ = starter_repo
+        settings = (target / ".claude" / "settings.json").read_text(encoding="utf-8")
+        assert "az repos" not in settings
+        assert ".azuredevops" not in settings

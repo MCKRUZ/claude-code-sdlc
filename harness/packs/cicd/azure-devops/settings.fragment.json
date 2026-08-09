@@ -1,0 +1,19 @@
+{
+  "//": "Merged (not overwritten) into .claude/settings.json by the installer (pack.yaml: merge: true). Adds the Azure DevOps twins of the core file's GitHub entries: read-only az repos/pipelines queries on the allow-list (az repos pr show/list are the ADO analogue of gh pr view/list — az has no 'pr view'; runs list/show mirror gh run list/view), mutating az calls and the branch-policy script behind ask (the analogue of gh api and apply-branch-protection.sh), and the pipeline definitions as a gated path with the same tamper protection ./.github/** has. 'az repos policy' is grouped whole under ask even though 'policy list' is a read: ask rules take precedence over allow in Claude Code, so a list carve-out would be shadowed anyway — and doctor.py calls az via subprocess, invisible to these rules, so it stays headless either way. The core's gh entries survive the merge — harmless on an ADO repo, where nothing invokes gh.",
+  "permissions": {
+    "allow": [
+      "Bash(az repos pr show:*)",
+      "Bash(az repos pr list:*)",
+      "Bash(az pipelines runs list:*)",
+      "Bash(az pipelines runs show:*)",
+      "Bash(az pipelines build list:*)"
+    ],
+    "ask": [
+      "Bash(az repos policy:*)",
+      "Bash(az devops invoke:*)",
+      "Bash(scripts/rails/configure-branch-policies.sh:*)",
+      "Edit(./.azuredevops/**)",
+      "Write(./.azuredevops/**)"
+    ]
+  }
+}

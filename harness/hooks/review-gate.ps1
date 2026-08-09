@@ -5,7 +5,8 @@
 # which settings.json permission patterns cannot express.
 #
 # Fires on the Claude Code `PreToolUse` event for Bash. Before the agent is allowed to
-# `git push` or `gh pr create` a change that touches compilable source, this proves that
+# `git push`, `gh pr create`, or `az repos pr create` a change that touches compilable
+# source, this proves that
 # `/code-review` AND `/simplify` were actually run against the EXACT commit being pushed —
 # not the agent's recollection that it did them. A missing receipt blocks the push and
 # tells the agent to run the reviews.
@@ -69,10 +70,10 @@ $payload = $null
 if ($raw) { try { $payload = $raw | ConvertFrom-Json } catch { } }
 if (-not $payload) { Allow }
 
-# --- Only gate Bash commands that actually INVOKE git push / gh pr create. Match the
-#     start of each shell segment (split on ; && || | &) so the words appearing inside a
-#     quoted string, an echo, or `--help` text don't trip the gate. `git -C <path> push`
-#     is recognized.
+# --- Only gate Bash commands that actually INVOKE git push / gh pr create /
+#     az repos pr create. Match the start of each shell segment (split on ; && || | &) so
+#     the words appearing inside a quoted string, an echo, or `--help` text don't trip the
+#     gate. `git -C <path> push` is recognized.
 if ($payload.tool_name -ne 'Bash') { Allow }
 $cmd = [string]$payload.tool_input.command
 if (-not $cmd) { Allow }
@@ -87,9 +88,15 @@ if ($cmd -match $pipeToShellRe) {
 }
 
 $gates = $false
-foreach ($seg in ($cmd -split '\|\||&&|[;|&]')) {
+# Split on newlines too — a multi-line Bash command with the trigger on a later line must not
+# walk past this twin while the .sh form (which splits per input line via awk) denies it.
+foreach ($seg in ($cmd -split '\|\||&&|[;|&]|\r?\n')) {
   $s = $seg.Trim()
-  if ($s -match '^git\s+(-C\s+\S+\s+)?push(\s|$)' -or $s -match '^gh\s+pr\s+create(\s|$)') {
+  # Strip leading VAR=value assignments (see the .sh twin): an env-prefixed invocation like
+  # `AZURE_DEVOPS_EXT_PAT=... az repos pr create` is still an invocation.
+  while ($s -match '^[A-Za-z_][A-Za-z_0-9]*=\S*\s+') { $s = $s.Substring($Matches[0].Length) }
+  if ($s -match '^git\s+(-C\s+\S+\s+)?push(\s|$)' -or $s -match '^gh\s+pr\s+create(\s|$)' -or
+      $s -match '^az\s+repos\s+pr\s+create(\s|$)') {
     $gates = $true; break
   }
 }

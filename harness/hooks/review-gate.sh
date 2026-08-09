@@ -49,17 +49,25 @@ if [[ "$cmd" =~ $pipe_to_shell_re ]]; then
   deny "Blocked: piping a download straight into a shell (curl|sh and friends) is denied by policy. Download to a file, inspect it, then execute it as a separate, reviewable step."
 fi
 
-# --- Only gate commands that actually INVOKE git push / gh pr create. Inspect the start
-#     of each shell segment (split on ; && || | &) so the words inside a quoted string or
-#     an echo don't trip the gate. `git -C <path> push` is recognized.
+# --- Only gate commands that actually INVOKE git push / gh pr create / az repos pr create.
+#     Inspect the start of each shell segment (split on ; && || | &) so the words inside a
+#     quoted string or an echo don't trip the gate. `git -C <path> push` is recognized.
 #     awk, not sed: BSD sed renders '\n' in a replacement as a literal 'n', which would
 #     leave compound commands unsplit and let `cd x && git push` walk past the gate.
 gates=false
 segment_stream="$(printf '%s' "$cmd" | awk '{gsub(/\|\||&&|[;|&]/, "\n"); print}')"
 while IFS= read -r seg; do
   s="$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//')"
+  # Strip leading VAR=value assignments: `AZURE_DEVOPS_EXT_PAT=... az repos pr create` is a
+  # documented az auth pattern and still an invocation — the shell treats the prefix as
+  # environment, not the command. (A value with quoted whitespace defeats this; rare, and
+  # under-gating there matches the parser's documented coverage boundary.)
+  while [[ "$s" =~ ^[A-Za-z_][A-Za-z_0-9]*=[^[:space:]]*[[:space:]]+ ]]; do
+    s="${s:${#BASH_REMATCH[0]}}"
+  done
   if [[ "$s" =~ ^git[[:space:]]+(-C[[:space:]]+[^[:space:]]+[[:space:]]+)?push([[:space:]]|$) ]] \
-     || [[ "$s" =~ ^gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
+     || [[ "$s" =~ ^gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]] \
+     || [[ "$s" =~ ^az[[:space:]]+repos[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]]; then
     gates=true
     break
   fi
