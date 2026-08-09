@@ -1,0 +1,5 @@
+# Shell scripts must check out LF everywhere: bash (incl. Git Bash on Windows) chokes on
+# CRLF (`set -uo pipefail\r` is an invalid option), so an autocrlf checkout would install
+# broken hooks and rails scripts — and broke the Windows CI leg running the hook tests.
+# pwsh is CRLF-tolerant, so .ps1 files are left to the platform default.
+*.sh text eol=lf
