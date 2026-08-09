@@ -29,7 +29,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 PAYLOAD = _REPO_ROOT / "harness"
 PROFILE = _REPO_ROOT / "profiles" / "microsoft-enterprise" / "profile.yaml"
 STARTER_PROFILE = _REPO_ROOT / "profiles" / "starter" / "profile.yaml"
+ADO_PROFILE = _REPO_ROOT / "profiles" / "ado-enterprise" / "profile.yaml"
 GOLDEN_TREE = Path(__file__).resolve().parent / "golden" / "enterprise-tree.txt"
+ADO_GOLDEN_TREE = Path(__file__).resolve().parent / "golden" / "ado-enterprise-tree.txt"
 
 REGEN_HINT = (
     "installed tree diverged from tests/golden/enterprise-tree.txt.\n"
@@ -142,6 +144,112 @@ class TestGoldenRepo:
         assert workflows, "no workflows installed"
         for wf in workflows:
             yaml.safe_load(wf.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="class")
+def ado_repo(tmp_path_factory):
+    target = tmp_path_factory.mktemp("ado-repo")
+    subprocess.run(["git", "init", "-q"], cwd=target, check=True)
+    out, err = io.StringIO(), io.StringIO()
+    with redirect_stdout(out), redirect_stderr(err):
+        rc = install(PAYLOAD, target, force=False, profile_path=ADO_PROFILE)
+    assert rc == 0, f"install failed rc={rc}\n{out.getvalue()}\n{err.getvalue()}"
+    return target, out.getvalue(), err.getvalue()
+
+
+class TestAdoGoldenRepo:
+    """The Azure DevOps twin of TestGoldenRepo (Fold A): the SAME flagship stack, but
+    profiles/ado-enterprise selects platform: azure-devops, so the core install must drop the
+    GitHub mechanisms and redirect neutral governance content to the ADO rails home — while the
+    github install (TestGoldenRepo above, enterprise-tree.txt) stays byte-for-byte unchanged.
+
+    Regenerate the ADO snapshot the same way as the github one (one run does both):
+        GOLDEN_REGEN=1 uv run --project . pytest tests/test_golden_repo.py -q
+    """
+
+    def test_tree_matches_snapshot(self, ado_repo):
+        target, _, _ = ado_repo
+        tree = _installed_tree(target)
+        if os.environ.get("GOLDEN_REGEN") == "1":
+            ADO_GOLDEN_TREE.parent.mkdir(parents=True, exist_ok=True)
+            ADO_GOLDEN_TREE.write_text("\n".join(tree) + "\n", encoding="utf-8")
+            pytest.skip(f"regenerated {ADO_GOLDEN_TREE.name} ({len(tree)} paths) — review and commit it")
+        assert ADO_GOLDEN_TREE.is_file(), f"missing snapshot {ADO_GOLDEN_TREE}.\n{REGEN_HINT}"
+        expected = ADO_GOLDEN_TREE.read_text(encoding="utf-8").splitlines()
+        assert tree == expected, REGEN_HINT
+
+    def test_no_github_actions_payload(self, ado_repo):
+        # The core no longer dumps GitHub Actions machinery into an ADO repo. These are the exact
+        # dead artifacts Fold A removes; the ADO pack ships the analogue of each.
+        target, _, _ = ado_repo
+        assert not (target / ".github" / "workflows").exists(), "GitHub workflows on an ADO repo"
+        assert not (target / ".github" / "rulesets").exists(), "GitHub ruleset on an ADO repo"
+        assert not (target / ".github" / "CODEOWNERS").exists(), "CODEOWNERS on an ADO repo"
+        assert not (target / "scripts" / "rails" / "apply-branch-protection.sh").exists(), \
+            "GitHub-only branch-protection script on an ADO repo"
+
+    def test_rubrics_live_in_the_ado_rails_home(self, ado_repo):
+        # The live bug Fold A fixes: the ADO pipelines read rubrics from .azuredevops/rails/rubrics,
+        # but the core used to install them only to .github/profile/rubrics — a path nothing created.
+        target, _, _ = ado_repo
+        rubrics = target / ".azuredevops" / "rails" / "rubrics"
+        for name in ("grader.md", "correctness.md", "security.md"):
+            assert (rubrics / name).is_file(), f"rubric {name} not in the ADO rails home"
+        assert not (target / ".github" / "profile").exists(), "rubrics still under .github/ on ADO"
+
+    def test_ledgers_redirected_to_ado_rails_home(self, ado_repo):
+        # The eval-bypasses / dependency-exceptions ledgers are read by the ADO pipelines from
+        # .azuredevops/rails/ — same redirect class as the rubrics.
+        target, _, _ = ado_repo
+        rails = target / ".azuredevops" / "rails"
+        assert (rails / "eval-bypasses.md").is_file()
+        assert (rails / "dependency-exceptions.md").is_file()
+        assert not (target / ".github" / "eval-bypasses.md").exists()
+        assert not (target / ".github" / "dependency-exceptions.md").exists()
+
+    def test_neutral_scripts_still_land(self, ado_repo):
+        # diff-anchors.sh is platform-neutral (both packs' pipelines call it) and must survive the
+        # per-file drop of its GitHub-only sibling apply-branch-protection.sh.
+        target, _, _ = ado_repo
+        assert (target / "scripts" / "rails" / "diff-anchors.sh").is_file()
+
+    def test_ado_pipelines_composed(self, ado_repo):
+        target, _, _ = ado_repo
+        pipelines = sorted((target / ".azuredevops" / "pipelines").glob("*.yml"))
+        assert len(pipelines) == 10, f"expected 10 ADO pipelines, got {len(pipelines)}"
+
+    def test_emitted_pipelines_parse(self, ado_repo):
+        target, _, _ = ado_repo
+        pipelines = sorted((target / ".azuredevops" / "pipelines").rglob("*.yml"))
+        assert pipelines, "no ADO pipelines installed"
+        for pl in pipelines:
+            yaml.safe_load(pl.read_text(encoding="utf-8"))
+
+    def test_no_seam_token_survives(self, ado_repo):
+        # Same fail-closed guard the starter repo carries: a surviving <<CI_*>> SEAM token would be
+        # a pipeline referencing a value the seam never filled. Phase-3 CI_ blanks are not seam
+        # tokens and are ignored by residual_tokens (this is exactly how the installer audits).
+        from ci_tokens import residual_tokens
+        target, _, _ = ado_repo
+        for path in target.rglob("*"):
+            if path.is_file() and path.suffix in (".yml", ".yaml"):
+                left = residual_tokens(path.read_text(encoding="utf-8"))
+                assert not left, f"{path.name} kept seam tokens: {left}"
+
+    def test_manifest_records_ado_profile_and_pack(self, ado_repo):
+        target, _, _ = ado_repo
+        manifest = json.loads(
+            (target / ".claude" / "harness-manifest.json").read_text(encoding="utf-8")
+        )
+        assert manifest["profile_id"] == "ado-enterprise"
+        assert "cicd/azure-devops" in manifest["packs"], manifest["packs"]
+
+    def test_ado_install_is_warning_free(self, ado_repo):
+        # ado-enterprise declares csharp + azure-devops + angular; every axis has a pack, so a
+        # warning would mean an axis silently degraded.
+        _, _, err = ado_repo
+        warnings = [l for l in err.splitlines() if "WARNING" in l]
+        assert warnings == [], f"ado-enterprise degraded on an axis: {warnings}"
 
 
 @pytest.fixture(scope="class")
