@@ -15,7 +15,7 @@
 {{ONE_PARAGRAPH: what the system does, who uses it, the business outcome it serves —
 in the client's words.}}
 
-**Stack:** {{e.g. .NET 8 / Angular / SQL Server / Azure / GitHub Actions}}
+**Stack:** {{e.g. .NET 8 / Angular / SQL Server / Azure / GitHub Actions or Azure Pipelines}}
 **Build / test / verify:** `{{BUILD_CMD}}` · `{{TEST_CMD}}` · `{{LINT_CMD}}`
 **Done means the hook lets you stop.** A change is finished when it is proven against its
 spec by something other than its author — not when the code exists. The blocking Stop hook
@@ -74,7 +74,8 @@ HIGH = all five rungs, including security-reviewer and a named human sign-off.
 Any change touching these is held to extra review and may trip the security gate:
 - `{{AUTH_PATHS}}` — authentication / identity / authorization
 - `{{DATA_PATHS}}` — schema migrations, data access
-- `{{PIPELINE_PATHS}}` — `.github/`, the hooks, this CLAUDE.md, branch protection
+- `{{PIPELINE_PATHS}}` — `.github/` or `.azuredevops/`, the hooks, this CLAUDE.md, branch
+  protection / branch policies
 - `{{INFRA_PATHS}}` — `infra/` (IaC is HIGH risk every time)
 - `{{PROMPT_PATHS}}` — prompts, model selection, tool definitions (see "Agentic work" below)
 
@@ -117,8 +118,9 @@ The route is a **spike**: bounded, throwaway work whose deliverable is a written
   inflate all of them.
 
 ## Data boundary & secrets (non-negotiable)
-- Secrets live in {{CLIENT}}'s Key Vault and GitHub secrets. **Never in code, never in this file,
-  never in specs.** A key in a commit is the one unrecoverable mistake.
+- Secrets live in {{CLIENT}}'s Key Vault and GitHub secrets / Azure DevOps variable groups
+  (Key-Vault-backed). **Never in code, never in this file, never in specs.** A key in a commit
+  is the one unrecoverable mistake.
 - The {{LLM_PROVIDER}} key is {{CLIENT}}-procured under their own agreement.
 - Tag genuinely sensitive material out of agent context. If the engagement handles regulated or
   client-sensitive data, write `docs/data-flow-brief.md` during setup — a one-pager covering what

@@ -15,6 +15,7 @@ List available profiles from the plugin's `profiles/` directory (exclude `_schem
 
 Present every profile found there to the user. The current built-ins:
 - **microsoft-enterprise** — C#/.NET 8 + Angular 17 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required
+- **ado-enterprise** — microsoft-enterprise's stack on Azure Repos + Azure Pipelines (`platform: azure-devops`); same SOC 2 gates, coverage, and TDD bar
 - **starter** — Minimal profile, no compliance gates, quick start for any stack
 - **creative-tooling** — Python/uv-scripts + pytest for creative pipelines (ComfyUI registry/inventory tooling); 80% coverage, TDD + code/security review required, schema- and cross-reference-integrity evaluation criteria, no compliance frameworks
 
@@ -52,7 +53,10 @@ Install the standard-aligned harness (the kit) from the plugin's bundled `harnes
 the repo. This lays down the governance `CLAUDE.md`, `.claude/{settings,hooks,agents,skills}`, the
 CI workflows in `.github/workflows/` (7 files: 5 rail gates — ci, grader, correctness, security,
 deploy-dev — plus 2 eval workflows), the `profile/` rubrics + branch-protection ruleset, and the
-`infra/` starters. Idempotent — existing files are left in place and reported as SKIPPED (pass
+`infra/` starters. On `platform: azure-devops` profiles the platform surface lands as Azure
+Pipelines under `.azuredevops/pipelines/` with branch policies as code
+(`.azuredevops/rails/branch-policies.json`) instead of `.github/workflows/` + the ruleset — same
+rails, different realization. Idempotent — existing files are left in place and reported as SKIPPED (pass
 `--force` only when you intend to overwrite). One exception: the JSON merge targets (`.mcp.json`
 and `.claude/settings.json`) are re-merged on every run by design — the installer deep-merges the
 payload's entries into them rather than skipping, so pack additions always land. The install
@@ -68,7 +72,8 @@ pipeline workflows, which overlay the core placeholders). A profile may also lis
 small static surface and the installer PRINTS their manual setup steps (self-installing tools are never
 run by the installer). The install also writes `.mcp.json` at the repo root — the team's shared MCP
 servers (core: context7, sequential-thinking, playwright; the dotnet pack adds microsoft-learn; the
-azure-devops pack adds the Azure DevOps server with an `<<ADO_ORGANIZATION>>` token to fill). Each
+azure-devops pack adds the Azure DevOps server with an `ADO_ORGANIZATION_NOT_SET` sentinel to fill
+— a plain sentinel, not a `<<TOKEN>>`, because the value lands in an argv). Each
 developer approves the set once when they first open the repo; auth-requiring servers authenticate
 per developer (e.g. `az login`) — no credentials ever go in the file. If the profile declares a
 frontend (`stack.frontend`), the frontend axis also composes: the generic `ux-reviewer` agent, plus
@@ -111,15 +116,22 @@ prove the system can be operated and handed over. Quality thresholds and convent
 `.sdlc/profile.yaml`.
 ```
 
-### Step 7: Apply branch protection (optional — needs GitHub + `gh`)
-The harness ships a branch-protection ruleset (`.github/rulesets/branch-protection.json`) and an
-applier. If the repo is on GitHub and `gh` is authenticated, offer to apply it:
+### Step 7: Apply branch protection / branch policies (optional — needs the platform CLI)
+On GitHub, the harness ships a branch-protection ruleset (`.github/rulesets/branch-protection.json`)
+and an applier. If the repo is on GitHub and `gh` is authenticated, offer to apply it:
 ```bash
 bash scripts/rails/apply-branch-protection.sh
 ```
-This makes the five blocking checks (build-and-test, spec-gate, grader, correctness-review, security-review)
+On Azure DevOps, the analogue is branch policies as code (`.azuredevops/rails/branch-policies.json`)
+and its applier — needs `az` with the `azure-devops` extension, logged in (`az login`). Offer the
+dry run first, then apply:
+```bash
+bash scripts/rails/configure-branch-policies.sh --dry-run   # show the plan, no writes
+bash scripts/rails/configure-branch-policies.sh
+```
+Either way, this makes the five blocking checks (build-and-test, spec-gate, grader, correctness-review, security-review)
 + a non-author approval mandatory at merge; deploy-dev runs post-merge and is not a merge check.
-Skip if the repo isn't on GitHub yet; the ruleset stays in the repo to apply later.
+Skip if the repo isn't on its platform yet; the ruleset / policy file stays in the repo to apply later.
 
 ### Step 8: Confirmation
 Display:
@@ -132,12 +144,17 @@ Harness: CLAUDE.md, .claude/, .github/workflows (7 workflows: 5 rails + 2 eval),
 
 Next steps:
 1. Fill the {{PLACEHOLDER}} tokens in CLAUDE.md (stack, glossary, gated paths);
-   on Azure DevOps, also replace <<ADO_ORGANIZATION>> in .mcp.json
+   on Azure DevOps, also replace ADO_ORGANIZATION_NOT_SET in .mcp.json
    (docs/harness.md explains every installed piece — point the team there)
 2. PROVE THE RAILS before trusting them — run the shakedown drills in .github/RAILS.md
 3. Run /sdlc to start the Phase 0 discovery interview
 4. Run /sdlc-gate when ready to check exit criteria; /sdlc-next to advance
 ```
+
+On `platform: azure-devops` profiles, render the `Harness:` line with the ADO layout instead:
+`.azuredevops/pipelines/` (Azure Pipelines rails + eval pipelines) + branch policies in
+`.azuredevops/rails/`. Leave the `.github/RAILS.md` drills path as-is — it is correct on both
+platforms (the azure-devops pack deliberately overlays that same path with the ADO guide).
 
 ### Step 9: Validate
 Run the profile validator to confirm the setup is healthy:

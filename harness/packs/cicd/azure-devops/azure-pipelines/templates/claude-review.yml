@@ -42,8 +42,49 @@ parameters:
   - name: acceptedRiskLabel
     type: string
     default: ''                  # e.g. accepted-risk:correctness — audited PR label override (or '')
+  # ── Keyless Foundry auth (opt-in; RAILS.md §"Keyless auth via Microsoft Foundry"). All default
+  #    '' = api-key mode, byte-identical to the original template. These are COMPILE-TIME values
+  #    (service-connection inputs cannot be runtime macros): the gate pipeline passes its
+  #    FOUNDRY_* YAML variables through. When foundryServiceConnection is set, an AzureCLI@2 step
+  #    mints a short-lived Entra token from the service connection (workload identity federation —
+  #    no secret stored anywhere) and the run step hands it to the CLI; the identity needs a
+  #    data-plane role on the resource (Cognitive Services User).
+  - name: foundryResource
+    type: string
+    default: ''                  # the Foundry resource name; non-empty switches this gate keyless
+  - name: foundryServiceConnection
+    type: string
+    default: ''                  # ADO service connection (WIF) that mints the Entra token
+  - name: foundrySonnetDeployment
+    type: string
+    default: ''                  # deployment name for MODEL=sonnet (Foundry has no alias resolution)
+  - name: foundryOpusDeployment
+    type: string
+    default: ''                  # deployment name for MODEL=opus
 
 steps:
+  # ── Foundry mode: mint the Entra token from the service connection (WIF — keyless end to end).
+  #    Scoped to https://cognitiveservices.azure.com, short-lived, marked secret. Runs only when
+  #    both the mode and a service connection are configured; without a connection the CLI falls
+  #    back to the agent's Azure credential chain (and the run-claude-review.sh contract says so).
+  - ${{ if and(ne(parameters.foundryResource, ''), ne(parameters.foundryServiceConnection, '')) }}:
+      - task: AzureCLI@2
+        displayName: 'Mint Foundry token (${{ parameters.gateId }})'
+        condition: eq(variables['${{ parameters.reviewRequiredVar }}'], 'true')
+        # continueOnError: a transient mint failure (Entra blip, federation drift) must not fail
+        # the job DIRECTLY — the grader is advisory ("the job never fails") and would otherwise
+        # turn blocking. The blocking rails lose nothing: no token -> the CLI cannot
+        # authenticate -> no verdict file -> the enforce step still FAILS CLOSED.
+        continueOnError: true
+        inputs:
+          azureSubscription: ${{ parameters.foundryServiceConnection }}
+          scriptType: bash
+          scriptLocation: inlineScript
+          inlineScript: |
+            set -euo pipefail
+            TOKEN="$(az account get-access-token --resource https://cognitiveservices.azure.com --query accessToken -o tsv)"
+            echo "##vso[task.setvariable variable=FOUNDRY_AUTH_TOKEN;issecret=true]$TOKEN"
+            echo "Minted a Cognitive Services token from the service connection."
   # ── Anti-tamper: clear any verdict a PR may have COMMITTED into the tree, and any stale run output.
   - ${{ if ne(parameters.verdictToken, '') }}:
       - bash: |
@@ -66,6 +107,17 @@ steps:
       ALLOWED_TOOLS: ${{ parameters.allowedTools }}
       COMMENT_FILE: $(Agent.TempDirectory)/${{ parameters.gateId }}-comment.md
       ANTHROPIC_API_KEY: $(ANTHROPIC_API_KEY)
+      # Foundry mode (compile-time insertion — absent entirely in api-key mode, so the emitted
+      # step is byte-identical to the original template when the parameters are unset). Two
+      # SIBLING inserts rather than one nested ${{ if }}: both match the documented single-level
+      # env-map insertion form exactly, and the differing expressions keep the map keys unique.
+      ${{ if ne(parameters.foundryResource, '') }}:
+        CLAUDE_CODE_USE_FOUNDRY: '1'
+        ANTHROPIC_FOUNDRY_RESOURCE: ${{ parameters.foundryResource }}
+        ANTHROPIC_DEFAULT_SONNET_MODEL: ${{ parameters.foundrySonnetDeployment }}
+        ANTHROPIC_DEFAULT_OPUS_MODEL: ${{ parameters.foundryOpusDeployment }}
+      ${{ if and(ne(parameters.foundryResource, ''), ne(parameters.foundryServiceConnection, '')) }}:
+        ANTHROPIC_FOUNDRY_AUTH_TOKEN: $(FOUNDRY_AUTH_TOKEN)
 
   # ── Publish the verdict as a PR thread (the grader's "post a check-by-check verdict" behavior).
   - bash: |

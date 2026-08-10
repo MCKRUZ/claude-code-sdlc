@@ -153,6 +153,12 @@ Full enterprise stack with compliance:
 - **Visual verification:** Screenshot capture with manual baseline comparison
 - **Evaluation criteria:** Phase-scoped rubrics for requirements (testability, traceability), design (ADR completeness, interface specificity), foundation (section plan verifiability), and Build-loop code (Result pattern, immutable state, FluentValidation, API docs)
 
+### ado-enterprise
+microsoft-enterprise's stack, hosted on Azure DevOps:
+- **Stack:** C#/.NET 8, Angular 17, SQL Server, Azure (identical to microsoft-enterprise)
+- **Repos & CI/CD:** Azure Repos + Azure Pipelines (`.azuredevops/pipelines/`, branch policies via `az repos policy`)
+- **Quality / Compliance / Conventions:** same as microsoft-enterprise (80% coverage, TDD, SOC 2 gates)
+
 ### starter
 Minimal profile for quick start:
 - **Stack:** Configurable (defaults to TypeScript/Node)

@@ -67,7 +67,9 @@ security" without leaving low-risk PRs stuck.
 4. **Add the API key as a variable group.** Pipelines → Library → new variable group `<<VARIABLE_GROUP>>`,
    ideally **linked to Azure Key Vault**, exposing `ANTHROPIC_API_KEY` (and `EVAL_LLM_API_KEY` for the
    eval gates). There is a real per-PR token cost. Until this is set, security/correctness **fail closed
-   on the PRs they review** (by design) and the grader stays green/no-op.
+   on the PRs they review** (by design) and the grader stays green/no-op. *Running Claude through
+   Microsoft Foundry? The three LLM gates can go keyless instead — see "Keyless auth via Microsoft
+   Foundry" below.*
 5. **Allow the OAuth token + PR write.** In each gate pipeline's settings, allow the job to access the
    OAuth token (`System.AccessToken`), and grant the **build service identity** (`<Project> Build
    Service (<Org>)`) the **"Contribute to pull requests"** permission on the repo, so the rails can post
@@ -94,6 +96,50 @@ security" without leaving low-risk PRs stuck.
    `deploy-promote` refuses to promote a build that does not carry its source environment's tag.
    Remove that tagging step and dev becomes a dead end — nothing will ever be promotable.
    `System.AccessToken` therefore needs build **tag write** as well as build read.
+
+## Keyless auth via Microsoft Foundry (optional)
+
+The default gate auth is the `ANTHROPIC_API_KEY` variable group (step 4 above). If the engagement
+runs Claude through **Microsoft Foundry**, the three LLM gates can instead authenticate with a
+short-lived Entra token minted per-run from a **service connection** — no static Claude credential
+stored anywhere, revocation and audit through Entra. Opt-in per gate pipeline; leaving the
+`FOUNDRY_*` variables empty keeps the api-key path byte-for-byte.
+
+Provisioning (once, by whoever owns the Azure side):
+
+1. **Foundry resource + model deployments.** Note the deployment NAMES — Foundry does not
+   auto-resolve the `sonnet`/`opus` aliases the rails pass, so the pins below must name real
+   deployments in the resource.
+2. **Service connection** (Project settings → Service connections → Azure Resource Manager →
+   **Workload identity federation**), scoped to the resource's subscription/RG. **Pre-authorize it
+   for the three gate pipelines** (Service connections → the connection → Security → Pipeline
+   permissions) — PR-triggered build validations have an awkward first-use approval flow otherwise.
+   Note the fail-closed shape while a connection is wrong or unauthorized: resource authorization
+   happens at queue time, before any step conditions run, so **every** PR run of that gate fails —
+   including PRs that need no review — until the connection is fixed.
+3. **RBAC**: grant the service connection's identity a data-plane role on the Foundry resource —
+   **`Cognitive Services User`**. (Some tenants also offer "Azure AI User"; not all have it —
+   verified absent in at least one enterprise tenant. `Contributor` alone does NOT include the
+   data plane: the symptom is `401 Principal does not have access to API/Operation`, which is
+   authorization, not a bad credential.)
+4. **Fill the four YAML variables** in `grader.yml`, `correctness.yml`, `security.yml`
+   (compile-time values — in the YAML, not the pipeline UI):
+   `FOUNDRY_RESOURCE`, `FOUNDRY_SERVICE_CONNECTION`, `FOUNDRY_SONNET_DEPLOYMENT`,
+   `FOUNDRY_OPUS_DEPLOYMENT`. At run time an `AzureCLI@2` step mints the token
+   (`az account get-access-token --resource https://cognitiveservices.azure.com`) and hands it
+   to the CLI as `ANTHROPIC_FOUNDRY_AUTH_TOKEN` (marked secret, never logged).
+5. **The variable group**: the claude gates no longer need `ANTHROPIC_API_KEY` — you may drop the
+   `- group:` reference from those three pipelines (keep it wherever `EVAL_LLM_API_KEY` is used;
+   the eval gates are out of scope for foundry mode). `/sdlc-doctor` reads what the pipelines
+   reference, so a dropped group is simply no longer demanded — by design.
+6. **Verify** with one drill PR: the gate's log shows `Mint Foundry token (…)` followed by a
+   normal review; fail-closed semantics are unchanged (a gated change whose review cannot run
+   still BLOCKS — now including "token could not be minted").
+
+Local testing gotcha: a developer reproducing the gate locally from inside a Claude Code
+*desktop* session inherits `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` and the CLI defers to the
+app ("Foundry credentials are managed by the desktop app"). Scrub the environment first
+(`env -i HOME=... PATH=... CLAUDE_CODE_USE_FOUNDRY=1 ...`) — CI agents are clean by nature.
 
 ## Solo-repo accommodation (read this)
 

@@ -108,7 +108,10 @@ drills are in [`RAILS.md`](./RAILS.md). In short:
    `branch-policies.json`).
 2. Create the gate pipelines in Azure DevOps, each pointed at its `.azuredevops/pipelines/<gate>.yml`.
 3. Add `ANTHROPIC_API_KEY` (and `EVAL_LLM_API_KEY` if you keep the eval gates) as a **variable group** —
-   ideally Key-Vault-backed — and reference it from the gate pipelines.
+   ideally Key-Vault-backed — and reference it from the gate pipelines. *Or go keyless: if Claude runs
+   through Microsoft Foundry, the three LLM gates can authenticate with a per-run Entra token from a
+   WIF service connection instead — fill the `FOUNDRY_*` variables in the gate YAMLs (RAILS.md
+   §"Keyless auth via Microsoft Foundry").*
 4. Grant the build service identity **"Contribute to pull requests"** so the rails can post threads.
 5. `scripts/rails/configure-branch-policies.sh --dry-run`, review, then run it to apply.
 6. Wire and **rehearse** `deploy-dev` against a real dev Environment before trusting it.

@@ -1,0 +1,112 @@
+{
+  "version": "1.0",
+  "profile_id": "ado-enterprise",
+  "description": "Skill switchboard rules for Microsoft Enterprise stack. Maps phase contexts to recommended skill invocations.",
+  "rules": [
+    {
+      "phase": 0,
+      "context": "discovery",
+      "when": "User describes a new project or problem",
+      "suggest": "/plan",
+      "reason": "Structure the discovery findings into a problem statement"
+    },
+    {
+      "phase": 1,
+      "context": "requirements",
+      "when": "Problem statement exists and is approved",
+      "suggest": "/deep-project",
+      "reason": "Decompose into well-scoped planning units"
+    },
+    {
+      "phase": 2,
+      "context": "design-spec-synthesis",
+      "when": "Phase 2 starts and planning/spec.md does not exist",
+      "suggest": "uv run scripts/synthesize_spec.py",
+      "reason": "Combine Phase 0-1 artifacts into /deep-plan input"
+    },
+    {
+      "phase": 2,
+      "context": "design-deep-plan",
+      "when": "planning/spec.md exists and planning/claude-plan.md does not",
+      "suggest": "/deep-plan @planning/spec.md",
+      "reason": "Run research, interview, plan generation, and external review (steps 1-15)"
+    },
+    {
+      "phase": 2,
+      "context": "design-artifact-mapping",
+      "when": "planning/claude-plan.md exists and design-doc.md does not",
+      "suggest": "uv run scripts/map_deep_plan_artifacts.py --phase 2",
+      "reason": "Transform /deep-plan outputs into SDLC Phase 2 artifacts"
+    },
+    {
+      "phase": 3,
+      "context": "planning-deep-plan-resume",
+      "when": "deep-plan-checkpoint.yaml exists and planning/sections/index.md does not",
+      "suggest": "/deep-plan (resume from checkpoint, steps 16-22)",
+      "reason": "Generate TDD plan and section files from approved plan"
+    },
+    {
+      "phase": 3,
+      "context": "planning-artifact-mapping",
+      "when": "planning/sections/ has section files and section-plans/ is empty",
+      "suggest": "uv run scripts/map_deep_plan_artifacts.py --phase 3",
+      "reason": "Transform /deep-plan sections into SDLC section plan format"
+    },
+    {
+      "phase": 4,
+      "context": "implementation",
+      "when": "Section plans exist",
+      "suggest": "/deep-implement",
+      "reason": "Execute section plans with TDD methodology"
+    },
+    {
+      "phase": 4,
+      "context": "implementation-tdd",
+      "when": "Writing new code and quality.require_tdd is true",
+      "suggest": "/tdd",
+      "reason": "Profile requires test-driven development"
+    },
+    {
+      "phase": 5,
+      "context": "quality-review",
+      "when": "Implementation complete, entering quality phase",
+      "suggest": "/code-review",
+      "reason": "Review code for quality and maintainability"
+    },
+    {
+      "phase": 5,
+      "context": "quality-security",
+      "when": "Code touches auth, payments, or sensitive data",
+      "suggest": "/security-review",
+      "reason": "Profile requires security review; SOC 2 CC7.2 compliance"
+    },
+    {
+      "phase": 6,
+      "context": "testing-e2e",
+      "when": "Quality review passed, testing critical user flows",
+      "suggest": "/e2e",
+      "reason": "Generate and run end-to-end tests with Playwright"
+    },
+    {
+      "phase": 6,
+      "context": "testing-coverage",
+      "when": "Checking coverage against thresholds",
+      "suggest": "/test-coverage",
+      "reason": "Verify coverage meets 80% minimum / 100% critical"
+    },
+    {
+      "phase": 7,
+      "context": "documentation",
+      "when": "Testing passed, syncing documentation",
+      "suggest": "/update-docs",
+      "reason": "Keep documentation current with code"
+    }
+  ],
+  "stack_hints": {
+    "backend_test_command": "dotnet test --collect:\"XPlat Code Coverage\"",
+    "frontend_test_command": "ng test --code-coverage --watch=false --browsers=ChromeHeadless",
+    "e2e_command": "npx playwright test",
+    "build_command": "dotnet build && ng build",
+    "lint_command": "dotnet format --verify-no-changes && ng lint"
+  }
+}

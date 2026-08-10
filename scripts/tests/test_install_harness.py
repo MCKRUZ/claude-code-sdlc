@@ -528,6 +528,64 @@ class TestCiSeam:
         assert "dotnet test" in (target / ".github" / "RAILS.md").read_text(encoding="utf-8")
 
 
+class TestAdoCoreLayout:
+    """Fold A: on platform azure-devops the CORE install drops the pure-GitHub mechanisms and
+    redirects neutral governance content to .azuredevops/rails/. The github/core-only layout (every
+    OTHER test in this file) is untouched — the identity path. Uses the moved-pack trick from
+    TestCiSeam so an azure-devops CI/CD pack exists to compose; the assertions here are about the
+    CORE copy, not the pack overlay (the real-payload golden test covers pack composition)."""
+
+    def _install_ado(self, tmp_path, target, valid_profile) -> Path:
+        payload = make_payload(
+            tmp_path, toolchain_map={"dotnet": {"action": "UseDotNet@2", "input": "version"}})
+        shutil.move(str(payload / "packs" / "cicd" / "github"),
+                    str(payload / "packs" / "cicd" / "azure-devops"))
+        profile = {**valid_profile,
+                   "stack": {**valid_profile["stack"], "ci_cd": {"platform": "azure-devops"}}}
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, profile)) == 0
+        return target
+
+    def test_rubrics_redirected_to_ado_rails_home(self, tmp_path, target, valid_profile):
+        t = self._install_ado(tmp_path, target, valid_profile)
+        assert (t / ".azuredevops" / "rails" / "rubrics" / "grader.md").is_file()
+        assert not (t / ".github" / "profile").exists(), "rubrics still under .github/ on ADO"
+
+    def test_ledgers_redirected_to_ado_rails_home(self, tmp_path, target, valid_profile):
+        t = self._install_ado(tmp_path, target, valid_profile)
+        assert (t / ".azuredevops" / "rails" / "eval-bypasses.md").is_file()
+        assert (t / ".azuredevops" / "rails" / "dependency-exceptions.md").is_file()
+        assert not (t / ".github" / "eval-bypasses.md").exists()
+        assert not (t / ".github" / "dependency-exceptions.md").exists()
+
+    def test_github_mechanisms_dropped(self, tmp_path, target, valid_profile):
+        t = self._install_ado(tmp_path, target, valid_profile)
+        assert not (t / ".github" / "rulesets").exists(), "GitHub ruleset on an ADO repo"
+        assert not (t / ".github" / "CODEOWNERS").exists(), "CODEOWNERS on an ADO repo"
+
+    def test_neutral_script_survives_the_per_file_drop(self, tmp_path, target, valid_profile):
+        # profile/scripts/ is a MIXED dir: diff-anchors.sh is neutral (keep), apply-branch-
+        # protection.sh is GitHub-only (dropped). Only the sibling is dropped, per-file.
+        t = self._install_ado(tmp_path, target, valid_profile)
+        assert (t / "scripts" / "rails" / "diff-anchors.sh").is_file()
+
+    def test_telemetry_schema_stays_beside_its_output(self, tmp_path, target, valid_profile):
+        # Deliberately NOT redirected: the ADO rails-telemetry pipeline writes its report to
+        # .github/rails-telemetry.json, so the schema stays beside it.
+        t = self._install_ado(tmp_path, target, valid_profile)
+        assert (t / ".github" / "rails-telemetry.schema.json").is_file()
+
+    def test_github_platform_keeps_the_github_layout(self, payload, target, tmp_path, valid_profile):
+        # The control (additive guarantee): the SAME core files stay at their .github/ homes for a
+        # github-actions profile. Only azure-devops remaps.
+        assert install(payload, target, force=False,
+                       profile_path=_profile_file(tmp_path, valid_profile)) == 0
+        assert (target / ".github" / "profile" / "rubrics" / "grader.md").is_file()
+        assert (target / ".github" / "rulesets" / "main.json").is_file()
+        assert (target / ".github" / "CODEOWNERS").is_file()
+        assert (target / ".github" / "eval-bypasses.md").is_file()
+
+
 class TestCoverageFloorPrecedence:
     """The customer profile outranks the stack pack (composition order: profile is layer 6, the
     stack pack layer 2). The stack pack's ci-profile declares a DEFAULT floor; a profile that

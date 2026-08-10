@@ -113,6 +113,42 @@ EXTRA_FILES: list[tuple[str, str]] = [
 ]
 GITIGNORE_LINES = [".claude/.review-receipts/", ".claude/settings.local.json"]
 
+# The core kit's governance assets are laid out GitHub-flavored by default (workflows under
+# .github/workflows/, rubrics under .github/profile/rubrics/, a CODEOWNERS, a ruleset). For a
+# non-GitHub CI/CD platform that layout is remapped by source-relative path:
+#   * drop_dirs / drop_files — pure-GitHub MECHANISMS the platform's own CI/CD pack replaces, so
+#     dropping them leaves no dead GitHub artifacts in the repo.
+#   * redirect — neutral, platform-agnostic governance CONTENT that the platform's pipelines read
+#     from a different home (e.g. the azure-devops pack's pipelines reference .azuredevops/rails/).
+# Anything unlisted installs at its default, neutral path. github-actions and core-only installs
+# (platform None) are ABSENT here on purpose: they fall through to the identity layout, so those
+# installs stay byte-for-byte identical to before this seam existed (the additive guarantee).
+_CORE_LAYOUT_BY_PLATFORM: dict[str, dict] = {
+    "azure-devops": {
+        # Each GitHub mechanism has an ADO analogue shipped by packs/cicd/azure-devops:
+        #   workflows/            -> .azuredevops/pipelines/ (the pipeline YAMLs)
+        #   profile/rulesets/     -> .azuredevops/rails/branch-policies.json
+        #   profile/CODEOWNERS    -> required-reviewer branch policy (policies.json)
+        #   apply-branch-protection.sh -> scripts/rails/configure-branch-policies.sh
+        "drop_dirs": {"workflows/", "profile/rulesets/"},
+        "drop_files": {"profile/CODEOWNERS", "profile/scripts/apply-branch-protection.sh"},
+        # Neutral content the ADO pipelines read from the rails home (see the azure-devops pack's
+        # `governance_rubrics` + the .azuredevops/rails/ path references in its pipeline YAMLs).
+        # rails-telemetry.schema.json is deliberately NOT redirected: BOTH packs' telemetry
+        # pipelines commit their report to .github/rails-telemetry.json ON PURPOSE — "one
+        # collector reads a mixed GitHub/Azure fleet without caring which platform wrote a
+        # file" (azure-pipelines/rails-telemetry.yml header). The operator-side fleet collector
+        # is external to this repo, so its one-canonical-path contract cannot be updated from
+        # here; the schema stays beside the report it describes. Moving either means moving
+        # both AND the collector.
+        "redirect": {
+            "profile/rubrics/":                 ".azuredevops/rails/rubrics/",
+            "profile/eval-bypasses.md":         ".azuredevops/rails/eval-bypasses.md",
+            "profile/dependency-exceptions.md": ".azuredevops/rails/dependency-exceptions.md",
+        },
+    },
+}
+
 # Profile -> pack resolution. The profile's own stack block is the single source of truth; these
 # tables are the ONE place profile vocabulary maps to pack ids. A language/platform with no entry
 # fails closed (there is no pack for it yet) — never a silent core-only install.
@@ -211,28 +247,46 @@ def _substitute_in_place(dest: Path, tokens: dict[str, str]) -> None:
 
 
 def _copy_core(payload: Path, target: Path, force: bool, written: set[Path], log: list[str],
-               missing: list[str]) -> None:
+               missing: list[str], platform: str | None = None) -> None:
     """Copy the core maps. A mapped source absent from the payload is logged AND collected in
-    `missing` — the scan keeps going so every miss is reported, then the caller fails closed."""
+    `missing` — the scan keeps going so every miss is reported, then the caller fails closed.
+
+    `platform` (the profile's stack.ci_cd.platform) selects the on-disk layout via
+    _CORE_LAYOUT_BY_PLATFORM: github-actions and core-only (None) use the identity layout, so those
+    installs are byte-for-byte unchanged; a non-GitHub platform drops the pure-GitHub mechanisms and
+    redirects neutral governance content to that platform's rails home."""
+    layout = _CORE_LAYOUT_BY_PLATFORM.get(platform or "", {})
+    drop_dirs = layout.get("drop_dirs", frozenset())
+    drop_files = layout.get("drop_files", frozenset())
+    redirect = layout.get("redirect", {})
+    # RAILS.md reaches .github/RAILS.md via EXTRA_FILES, so the workflows/ dir scan must not ALSO
+    # copy it; fold that long-standing skip in with any platform-dropped in-directory files.
+    dir_skip = {"workflows/RAILS.md"} | set(drop_files)
+
     for src_rel, dest_rel in FILE_MAP + EXTRA_FILES:
+        if src_rel in drop_files:
+            log.append(f"OMIT    {src_rel}  (not used on {platform})")
+            continue
         src = payload / src_rel
         if not src.is_file():
             log.append(f"MISS    {src_rel}  (not in payload)")
             missing.append(f"{src_rel} (not in payload)")
             continue
-        _copy(src, target / dest_rel, force, written, log)
+        _copy(src, target / redirect.get(src_rel, dest_rel), force, written, log)
 
-    # RAILS.md is remapped by EXTRA_FILES; don't also copy it via the workflows dir.
-    remapped = {"workflows/RAILS.md"}
     for src_rel, dest_rel in DIR_MAP:
+        if src_rel in drop_dirs:
+            log.append(f"OMIT    {src_rel}  (not used on {platform})")
+            continue
         src_dir = payload / src_rel
         if not src_dir.is_dir():
             log.append(f"MISS    {src_rel}  (not in payload)")
             missing.append(f"{src_rel} (not in payload)")
             continue
+        dest_rel = redirect.get(src_rel, dest_rel)
         for src in sorted(p for p in src_dir.rglob("*") if p.is_file()):
             key = src.relative_to(payload).as_posix()
-            if key in remapped:
+            if key in dir_skip:
                 continue
             dest = target / dest_rel / src.relative_to(src_dir)
             _copy(src, dest, force, written, log)
@@ -540,7 +594,11 @@ def _install(payload: Path, target: Path, force: bool, profile_path: Path | None
         tools_packs, tool_warnings = _resolve_tools(profile, payload)
         warnings = warnings + fe_warnings + tool_warnings
 
-    _copy_core(payload, target, force, written, log, missing)
+    # The core layout follows the CI/CD platform: a non-GitHub platform drops the GitHub mechanisms
+    # and redirects neutral governance content (see _CORE_LAYOUT_BY_PLATFORM). None => identity.
+    stack = (profile or {}).get("stack", {}) or {}
+    platform = (stack.get("ci_cd", {}) or {}).get("platform")
+    _copy_core(payload, target, force, written, log, missing, platform)
     _raise_if_missing(missing)  # after the FULL core scan, so every core miss is reported
 
     packs = _compose_packs(stack_pack, cicd_pack, frontend_packs, tools_packs,

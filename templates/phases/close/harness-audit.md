@@ -9,7 +9,7 @@
 - [ ] `.claude/skills/` — every skill documented and reproducible
 - [ ] `.claude/agents/` — grader + security-reviewer behavior understood by the client
 - [ ] `.claude/hooks/` — the Stop hook and any others explained
-- [ ] `.github/workflows/` — all five rails; the client's DevOps can operate them
+- [ ] `.github/workflows/` (GitHub) / `.azuredevops/pipelines/` (Azure DevOps) — all five rails; the client's DevOps can operate them
 - [ ] `infra/` — IaC understood; client can provision/destroy environments
 - [ ] `specs/` — convention clear; a client engineer can write a Ready spec
 

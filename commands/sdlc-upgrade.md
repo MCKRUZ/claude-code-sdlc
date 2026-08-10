@@ -57,6 +57,31 @@ version; never replace the whole file.
 - Stage the upgraded files + `.claude/harness-manifest.json` and commit, e.g.
   `chore: upgrade delivery harness to <new plugin version>`.
 
+## Switching CI platform
+
+Moving a repo between CI platforms (e.g. GitHub Actions → Azure DevOps) is just an upgrade with
+a changed profile — the classification table above already describes everything that happens.
+The runbook:
+
+1. Edit `stack.ci_cd.platform` in the frozen `.sdlc/profile.yaml` (`github-actions` ↔
+   `azure-devops`). This is the one deliberate use of the Step 1 warning: here the old pack
+   classifying as RETIRED is the point, not a misreport.
+2. Dry-run the upgrade (Step 1) with that profile. Expect the old platform's pack files to
+   classify `RETIRED` and the new pack's files as `NEW` — that is the swap report, not an error.
+   The core payload has been platform-aware since Fold A, so on an ADO target the retired GitHub
+   files no longer churn as `UPDATE`/`CONFLICT` noise.
+3. Apply (Step 3). The new pack lands; retired files stay on disk with their manifest entries
+   dropped.
+4. Delete the retired files yourself — upgrade never deletes (see the `RETIRED` row). On a
+   GitHub → ADO switch that means the `.github/workflows/` rail YAMLs,
+   `rulesets/branch-protection.json` + `scripts/rails/apply-branch-protection.sh`, and
+   `CODEOWNERS`; their ADO analogues arrive as `NEW` (`.azuredevops/pipelines/`, branch policies
+   via `scripts/rails/configure-branch-policies.sh`, a required-reviewer policy in place of
+   CODEOWNERS).
+5. Re-run `/sdlc-doctor` — it follows the installed pack (`az` checks on ADO, `gh` on GitHub) —
+   and re-prove the rails with the shakedown drills in `.github/RAILS.md` (the rails guide keeps
+   that path on both platforms; the ADO pack deliberately overlays it).
+
 ## Error Handling
 - If uv is not installed: `pip install uv` or `brew install uv`.
 - Exit 2 with `ERROR:` means a bad payload/profile or corrupt manifest — fix and re-run; nothing
