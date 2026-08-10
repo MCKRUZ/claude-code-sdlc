@@ -72,6 +72,33 @@ rubrics at `.github/profile/rubrics/` while `.azuredevops/rails/rubrics/` is mis
 - **E stays separate, spike-first** (live drill: one rail pipeline authenticating to Foundry via workload identity federation on a real ADO project + Foundry resource) — its own branch and PR, spec'd only after the drill passes.
 - Acceptance for any fold: existing test suite green + new ADO golden tree + one real `--profile <ado>` install into a scratch repo, eyeball the tree. Held for A–D.
 
+## Fold E spike — PASSED with one administrative prerequisite (2026-08-09)
+
+Ran against a live sandbox Foundry deployment (`arjunm-claude-anthropic`, eastus2, deployments
+named identically to model ids: claude-sonnet-5 / claude-opus-4-8 / claude-haiku-4-5 / claude-fable-5),
+using the exact rail invocation (`npx @anthropic-ai/claude-code -p ... --output-format text`):
+
+- **End-to-end completion through Foundry: PROVEN** (`FOUNDRY-SPIKE-OK`) with
+  `CLAUDE_CODE_USE_FOUNDRY=1` + `ANTHROPIC_FOUNDRY_RESOURCE` + `ANTHROPIC_DEFAULT_*_MODEL` pins.
+- **Entra credential chain: PROVEN to authenticate** — with no key set, the CLI walked the Azure
+  chain off the `az login` context and got `401 Principal does not have access to API/Operation`,
+  an authorization (not authentication) failure: the token minted and was presented.
+- **The keyless gap is exactly one RBAC grant**: the principal needs a data-plane role on the
+  resource. **Tenant nuance: the role "Azure AI User" does not exist in this tenant — the real
+  role is `Cognitive Services User`.** Sandbox principal was Contributor-not-Owner, so could not
+  self-grant (`roleAssignments/write` denied). In the pipeline scenario the grant goes to the
+  service connection's identity at provisioning time — document it as a provisioning step.
+- **Local-testing gotcha for the docs**: a Claude Code *desktop* session exports
+  `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` (+ `ANTHROPIC_FOUNDRY_*`), and any child CLI inherits it
+  and defers to the app ("Foundry credentials are managed by the desktop app"). Spike runs must
+  scrub the env (`env -i`); CI agents are clean by nature and unaffected.
+- Pipeline WIF leg deferred to implementation: the deterministic pattern is `AzureCLI@2` →
+  `az account get-access-token --resource https://cognitiveservices.azure.com` →
+  `ANTHROPIC_FOUNDRY_AUTH_TOKEN` (pre-issued token accepted per CLI docs, v2.1.203+).
+
+**Verdict: GO** — Fold E's implementation proceeds on proven facts; the RBAC grant and role-name
+nuance land in the provisioning docs.
+
 ## Fold E references
 
 - Claude Code on Microsoft Foundry: https://code.claude.com/docs/en/microsoft-foundry.md (env vars, Entra ID default credential chain, RBAC roles)
