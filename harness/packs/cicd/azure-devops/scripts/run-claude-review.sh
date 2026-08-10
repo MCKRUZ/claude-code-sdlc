@@ -19,8 +19,24 @@
 #     MAX_TURNS        e.g. 20 / 25             (mirrors --max-turns)
 #     ALLOWED_TOOLS    e.g. "Bash Read Grep Glob"  (mirrors --allowedTools; space-separated)
 #     COMMENT_FILE     path to write Claude's final message (the PR-comment body)
-#     ANTHROPIC_API_KEY  the Claude API key
+#     ANTHROPIC_API_KEY  the Claude API key (api-key mode — the default)
 #     CLAUDE_CLI_VERSION (optional) npm version spec for @anthropic-ai/claude-code (default: latest)
+#   INPUTS (env, keyless Foundry mode — opt-in, see RAILS.md §"Keyless auth via Microsoft Foundry"):
+#     CLAUDE_CODE_USE_FOUNDRY        '1' switches the CLI to Microsoft Foundry; anything else
+#                                    (unset, '', an unresolved ADO macro) keeps api-key mode.
+#     ANTHROPIC_FOUNDRY_RESOURCE     the Foundry resource name (or set ANTHROPIC_FOUNDRY_BASE_URL)
+#     ANTHROPIC_DEFAULT_SONNET_MODEL / ANTHROPIC_DEFAULT_OPUS_MODEL
+#                                    the resource's DEPLOYMENT names for the aliases the rails
+#                                    pass as MODEL — Foundry does not auto-resolve sonnet/opus,
+#                                    so the pin for the alias in use is REQUIRED (fail closed).
+#     ANTHROPIC_FOUNDRY_AUTH_TOKEN   (optional) pre-issued Entra access token — the pipeline
+#                                    pattern: an AzureCLI@2 step mints it from the service
+#                                    connection (az account get-access-token --resource
+#                                    https://cognitiveservices.azure.com). Without it the CLI
+#                                    walks the Azure default credential chain (az login context).
+#     ANTHROPIC_FOUNDRY_API_KEY      (optional) the Foundry resource key — key-based fallback.
+#     The identity used must hold a data-plane role on the resource (Cognitive Services User;
+#     some tenants also have "Azure AI User"). ANTHROPIC_API_KEY is NOT required in this mode.
 #   OUTPUTS:
 #     COMMENT_FILE is written with Claude's final assistant message (the verdict comment).
 #     For correctness/security, Claude itself ALSO writes the verdict token file (path is in PROMPT),
@@ -39,7 +55,47 @@ set -euo pipefail
 : "${COMMENT_FILE:?COMMENT_FILE is required}"
 CLAUDE_CLI_VERSION="${CLAUDE_CLI_VERSION:-latest}"
 
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+# ── Auth. Two modes; the default is byte-for-byte the original api-key behavior.
+# Azure Pipelines leaves an UNRESOLVED $(macro) as literal text in the env, so any foundry
+# value still starting with '$(' is treated as unset rather than handed to the CLI as garbage.
+_scrub_ado_macro() { case "${1:-}" in '$('*) printf '' ;; *) printf '%s' "${1:-}" ;; esac; }
+CLAUDE_CODE_USE_FOUNDRY="$(_scrub_ado_macro "${CLAUDE_CODE_USE_FOUNDRY:-}")"
+
+if [ "$CLAUDE_CODE_USE_FOUNDRY" = "1" ]; then
+  # Keyless Foundry mode (opt-in). Scrub every foundry input of unresolved-macro literals,
+  # then fail closed on the two things the CLI cannot guess: the resource and the deployment
+  # pin for the alias this rail passes as MODEL (Foundry has no alias auto-resolution).
+  export CLAUDE_CODE_USE_FOUNDRY
+  export ANTHROPIC_FOUNDRY_RESOURCE="$(_scrub_ado_macro "${ANTHROPIC_FOUNDRY_RESOURCE:-}")"
+  export ANTHROPIC_FOUNDRY_BASE_URL="$(_scrub_ado_macro "${ANTHROPIC_FOUNDRY_BASE_URL:-}")"
+  export ANTHROPIC_FOUNDRY_AUTH_TOKEN="$(_scrub_ado_macro "${ANTHROPIC_FOUNDRY_AUTH_TOKEN:-}")"
+  export ANTHROPIC_FOUNDRY_API_KEY="$(_scrub_ado_macro "${ANTHROPIC_FOUNDRY_API_KEY:-}")"
+  export ANTHROPIC_DEFAULT_SONNET_MODEL="$(_scrub_ado_macro "${ANTHROPIC_DEFAULT_SONNET_MODEL:-}")"
+  export ANTHROPIC_DEFAULT_OPUS_MODEL="$(_scrub_ado_macro "${ANTHROPIC_DEFAULT_OPUS_MODEL:-}")"
+  export ANTHROPIC_API_KEY="$(_scrub_ado_macro "${ANTHROPIC_API_KEY:-}")"   # ignored by the foundry path; scrubbed so a dropped variable group can't leak a macro literal
+
+  if [ -z "$ANTHROPIC_FOUNDRY_RESOURCE" ] && [ -z "$ANTHROPIC_FOUNDRY_BASE_URL" ]; then
+    echo "ERROR: CLAUDE_CODE_USE_FOUNDRY=1 but neither ANTHROPIC_FOUNDRY_RESOURCE nor" >&2
+    echo "ANTHROPIC_FOUNDRY_BASE_URL is set. The Claude gate cannot run — see RAILS.md." >&2
+    exit 3
+  fi
+  case "$MODEL" in
+    sonnet) [ -n "$ANTHROPIC_DEFAULT_SONNET_MODEL" ] || {
+      echo "ERROR: foundry mode with MODEL=sonnet needs ANTHROPIC_DEFAULT_SONNET_MODEL set to the" >&2
+      echo "resource's deployment name — Foundry does not auto-resolve model aliases. See RAILS.md." >&2
+      exit 3; } ;;
+    opus)   [ -n "$ANTHROPIC_DEFAULT_OPUS_MODEL" ] || {
+      echo "ERROR: foundry mode with MODEL=opus needs ANTHROPIC_DEFAULT_OPUS_MODEL set to the" >&2
+      echo "resource's deployment name — Foundry does not auto-resolve model aliases. See RAILS.md." >&2
+      exit 3; } ;;
+    *) ;;   # a full deployment/model id — no alias to resolve, no pin needed. (The rails only
+            # pass sonnet|opus; another ALIAS, e.g. haiku, would need its own arm here.)
+  esac
+  if [ -z "$ANTHROPIC_FOUNDRY_AUTH_TOKEN" ] && [ -z "$ANTHROPIC_FOUNDRY_API_KEY" ]; then
+    echo "Foundry auth: no pre-issued token or key — the CLI will walk the Azure default" >&2
+    echo "credential chain (needs an authenticated az context, e.g. an AzureCLI@2 wrapper)." >&2
+  fi
+elif [ -z "${ANTHROPIC_API_KEY:-}" ]; then
   echo "ERROR: ANTHROPIC_API_KEY is not set. The Claude gate cannot run." >&2
   echo "Set it as a pipeline secret (ideally a Key-Vault-backed variable group) — see RAILS.md." >&2
   exit 3

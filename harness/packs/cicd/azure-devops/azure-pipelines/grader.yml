@@ -30,6 +30,18 @@ variables:
     value: 'specs'              # <<SPEC_DIR>>
   - name: RUBRIC_DIR
     value: '.azuredevops/rails/rubrics'   # <<RUBRIC_DIR>>
+  # ── Optional keyless Foundry auth (RAILS.md §"Keyless auth via Microsoft Foundry"). Leave all
+  #    four empty for the ANTHROPIC_API_KEY variable-group path. Compile-time YAML values — fill
+  #    here, not in the pipeline UI. FOUNDRY_RESOURCE non-empty flips the Claude step keyless;
+  #    FOUNDRY_SERVICE_CONNECTION names the WIF service connection that mints the Entra token.
+  - name: FOUNDRY_RESOURCE
+    value: ''
+  - name: FOUNDRY_SERVICE_CONNECTION
+    value: ''
+  - name: FOUNDRY_SONNET_DEPLOYMENT
+    value: ''
+  - name: FOUNDRY_OPUS_DEPLOYMENT
+    value: ''
 
 jobs:
   - job: grader
@@ -81,6 +93,10 @@ jobs:
           maxTurns: '20'
           allowedTools: 'Bash Read Grep Glob'
           verdictToken: ''                         # advisory — no machine verdict, no enforce step
+          foundryResource: ${{ variables.FOUNDRY_RESOURCE }}
+          foundryServiceConnection: ${{ variables.FOUNDRY_SERVICE_CONNECTION }}
+          foundrySonnetDeployment: ${{ variables.FOUNDRY_SONNET_DEPLOYMENT }}
+          foundryOpusDeployment: ${{ variables.FOUNDRY_OPUS_DEPLOYMENT }}
           prompt: |
             You are running as the grader for PR #$(System.PullRequest.PullRequestId).
             Read the grading rubric at $(RUBRIC_DIR)/grader.md and follow it exactly.

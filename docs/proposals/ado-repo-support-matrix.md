@@ -99,6 +99,22 @@ using the exact rail invocation (`npx @anthropic-ai/claude-code -p ... --output-
 **Verdict: GO** — Fold E's implementation proceeds on proven facts; the RBAC grant and role-name
 nuance land in the provisioning docs.
 
+## Fold E implementation — BUILT (branch `ado-fold-e-foundry-auth`, own PR pair)
+
+Opt-in keyless mode for the three LLM gates, api-key path untouched: `run-claude-review.sh`
+gains the foundry guard (fail-closed on missing resource/model-pin, ADO `$(macro)`-literal
+scrubbing, no-flag path byte-identical); `claude-review.yml` gains four compile-time parameters
+(all `''` = the emitted steps are byte-identical), a `continueOnError` AzureCLI@2 step minting
+the Entra token from the WIF service connection (`issecret=true`), and `${{ if }}`-guarded env
+insertion; the three gate pipelines expose `FOUNDRY_*` YAML variables; RAILS.md carries the
+provisioning runbook (Cognitive Services User grant, pre-authorization, queue-time failure
+shape, desktop-env gotcha). Verified: ADO template-expression semantics checked against
+Microsoft docs; 13-case fake-npx behavior suite; fresh-install e2e + upgrade idempotency;
+GitHub control matches the golden tree with zero FOUNDRY_ leakage. Doctor needed no change —
+it reads what pipelines reference, so a dropped variable group stops being demanded by design.
+Deferred to the client engagement: the live pipeline drill (WIF service connection in the
+client org — RAILS.md §"Keyless auth" step 6 is the drill).
+
 ## Fold E references
 
 - Claude Code on Microsoft Foundry: https://code.claude.com/docs/en/microsoft-foundry.md (env vars, Entra ID default credential chain, RBAC roles)
