@@ -24,6 +24,7 @@ Detailed documentation for all Python automation scripts in the `scripts/` direc
   - [track_specs.py](#track_specspy)
   - [scorecard.py](#scorecardpy)
   - [generate_handoff_report.py](#generate_handoff_reportpy)
+  - [doctor.py](#doctorpy)
 - [4. Dependencies](#4-dependencies)
 - [5. Error Handling](#5-error-handling)
 - [6. Cross-References](#6-cross-references)
@@ -1025,6 +1026,45 @@ uv run scripts/generate_handoff_report.py --state .sdlc/state.yaml --output hand
 **Honest by design:** missing metrics read "no data", never a fabricated zero (inherited from `scorecard.py`). A standalone run with no `state.yaml` adds a "Standalone draft" banner noting the engagement context is absent.
 
 **Exit codes:** `0` (drafted), `1` (state file not found, or the report exists and `--force` was not given)
+
+---
+
+### doctor.py
+
+**Purpose:** Backs `/sdlc-doctor` — a day-1 check that the installed harness will actually run in a repo, not just that it was copied into one. Checks the things that fail quietly: a hook registered with a missing interpreter, a rails script installed without its executable bit, a repo secret the gates need that nobody set.
+
+**CLI:**
+
+```bash
+uv run scripts/doctor.py                 # in the client repo
+uv run scripts/doctor.py --repo <path>   # check a different repo
+uv run scripts/doctor.py --offline       # skip the checks that need gh/az
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--repo` | No | Repo to check (default: current directory) |
+| `--offline` | No | Skip the checks that need `gh`/`az` (repo secrets, branch protection) |
+
+**Process:**
+
+1. **`installed_platform(repo)`** reads the composed CI/CD pack id out of `.claude/harness-manifest.json` and returns `"github"` or `"azure-devops"`. Every check below that touches the platform's CLI branches on this instead of a fixed assumption.
+2. Runs eight sections in order, printing `PASS`/`FAIL`/`WARN` per line with a `fix:` line attached to anything not `PASS`:
+   - **Tools** — required interpreters present (`pwsh`, `uv`, `node`, etc.) plus `gh` on GitHub installs or `az` (+ the `azure-devops` extension) on Azure DevOps installs, never the other
+   - **Harness** — the harness was actually installed (`.claude/harness-manifest.json` exists), otherwise the rest of the report is meaningless
+   - **Hooks** — registered hooks resolve to a present interpreter
+   - **Permissions** — installed rails scripts carry the executable bit (Windows: `WARN`, POSIX permission bits aren't visible there)
+   - **Unfinished setup** — residual `<<TOKEN>>` placeholders left in installed files, each mapped to the phase that fills it (`TOKEN_OWNER`); `.azuredevops/` is a scan root alongside `.github/`
+   - **MCP** — required MCP servers configured
+   - **Repo secrets** *(needs network)* — GitHub: `required_secrets()` reads the names referenced by installed workflows and checks each via `gh secret list`. Azure DevOps: `required_variable_groups()` reads `- group: NAME` references out of the installed pipelines (quote-aware, so a `<<VARIABLE_GROUP>>` sentinel or template expression is reported as unfinished setup rather than a missing group) and checks each via `az pipelines variable-group list`
+   - **Branch protection** *(needs network)* — GitHub: the active ruleset. Azure DevOps: `az repos policy list`, where "enforcing" means `isEnabled AND isBlocking` — an enabled-but-optional policy is advice, not a gate
+3. Exits `1` if any `FAIL` was recorded (warnings never fail the run); prints a one-line summary either way.
+
+**Platform-aware, not platform-agnostic:** nothing here asks a GitHub repo to authenticate `az`, or an Azure DevOps repo to install `gh`. A repo that `installed_platform()` cannot recognize as Azure DevOps gets the GitHub checks — the same behavior every install had before the CI/CD packs existed.
+
+**Exit codes:** `0` (no failures; warnings may be present), `1` (at least one failure — the harness is not fully working)
 
 ---
 

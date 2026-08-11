@@ -471,7 +471,37 @@ target-project/                            User's project (where code lives)
             +-- access-revocation-checklist.md
 ```
 
-### 4.3 State Machine (`state.yaml`)
+### 4.4 Platform-Aware Harness Install
+
+`scripts/install_harness.py` composes the delivery harness from a `core/` payload plus
+the packs a profile selects (`packs/cicd/<id>`, `packs/stacks/<id>`). `_copy_core` — the
+step that lays down the platform-neutral `core/` payload before any pack overlay runs —
+consults the profile's `stack.ci_cd.platform` via a layout table
+(`_CORE_LAYOUT_BY_PLATFORM`) and changes what it copies and where:
+
+- **`github-actions` / core-only (no `platform` set):** the identity layout. `core/`
+  copies byte-for-byte into the target project, unchanged from every install before this
+  table existed.
+- **`azure-devops`:** the GitHub-only payload — `workflows/`, the profile rulesets,
+  `CODEOWNERS`, `apply-branch-protection.sh` — is dropped entirely (an Azure DevOps repo
+  has no use for it), and the platform-neutral governance content that both CI/CD packs
+  read — `profile/rubrics/`, `eval-bypasses.md`, `dependency-exceptions.md` — is
+  redirected to `.azuredevops/rails/`, the path the Azure Pipelines pack's own YAML
+  actually reads. `rails-telemetry.schema.json` is the one deliberate exception: it stays
+  at `.github/` on **both** platforms, because both packs' telemetry pipelines commit
+  their report to the single canonical `.github/rails-telemetry.json` path, so a
+  fleet-level collector can read a mixed GitHub/Azure fleet without knowing which
+  platform produced any given repo's report.
+
+This is why a repo installed with the `ado-enterprise` profile never receives a
+`.github/workflows/` directory at all — the platform-aware core install and the
+`packs/cicd/azure-devops` overlay agree on `.azuredevops/` as the one home for CI/CD,
+governance rubrics, and rails state. `scripts/doctor.py` (§ see `docs/scripts.md`) reads
+the same installed-pack signal at runtime, which is why its checks (interpreters,
+required secrets, branch protection) run against `gh` on a GitHub install and `az` on an
+Azure DevOps one without being told which platform a given repo uses.
+
+### 4.5 State Machine (`state.yaml`)
 
 The state file is initialized from `templates/state-init.yaml` with variable substitution:
 

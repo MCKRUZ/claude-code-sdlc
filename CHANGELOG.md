@@ -1,5 +1,93 @@
 # Changelog
 
+## 1.4.0 — 2026-08-10
+
+`ado-enterprise` (1.3.0) declared the profile; nothing behind it actually ran differently
+yet. `/sdlc-setup` would compose the Azure Pipelines pack, but `install_harness.py` still
+laid down the GitHub-only payload underneath it, `doctor.py` still demanded `gh` on a repo
+that had never heard of it, and the review-gate hook had no idea `az repos pr create` was
+a PR. Five folds (0 already shipped, A–E here) close that gap end to end: install, doctor,
+and the PR-flow rails now follow the platform the profile actually chose.
+
+### The installer stops shipping GitHub files to Azure DevOps repos
+
+- `_copy_core` in `install_harness.py` now reads `stack.ci_cd.platform` and, on
+  `azure-devops`, drops the GitHub-only payload (`workflows/`, rulesets, `CODEOWNERS`,
+  `apply-branch-protection.sh`) and redirects the neutral governance content — rubrics,
+  `eval-bypasses.md`, `dependency-exceptions.md` — to `.azuredevops/rails/`, which is
+  where the ADO pipelines actually read them. This fixes a live bug: `<<RUBRIC_DIR>>` was
+  pointing at a path nothing had created.
+- `rails-telemetry.schema.json` deliberately stays at `.github/` on both platforms — both
+  packs' telemetry pipelines commit their report to `.github/rails-telemetry.json` on
+  purpose, so a fleet collector watching a mixed GitHub/Azure fleet has one canonical path
+  to read.
+- GitHub-Actions and core-only installs are unaffected — the identity layout is
+  byte-for-byte unchanged, pinned by the untouched `enterprise-tree.txt` golden.
+
+### `doctor.py` follows the pack it was installed with
+
+- `installed_platform()` reads the composed pack ids out of the install manifest, and the
+  platform-facing checks follow it: Azure DevOps installs are checked with `az` (+ the
+  `azure-devops` extension) and are never told to install `gh` for a platform they don't
+  use — the tools check, the repo-secrets check (now `required_variable_groups()`,
+  reading `- group: NAME` references straight out of the installed pipelines), and the
+  branch-protection check (`az repos policy list`, enforcing = `isEnabled AND isBlocking`)
+  all branch on it. `.azuredevops/` joined the residual-token scan roots, so a stray
+  `<<GATED_PATHS>>` in `security.yml` no longer goes unseen.
+- GitHub and core-only installs get the same checks as before — the `gh` bodies are
+  renamed, not rewritten.
+
+### PR-flow rails reach Azure DevOps
+
+- `review-gate.sh` / `review-gate.ps1` now gate `az repos pr create` the same way they
+  gate `git push` / `gh pr create`, segment-anchored so a mention inside a quoted string
+  still walks free. Hardening this payload also closed two bypasses in the GitHub twins:
+  a leading `VAR=value` prefix (`AZURE_DEVOPS_EXT_PAT=... az repos pr create` is a
+  documented `az` auth pattern, and `FOO=1 git push` was its GitHub sibling) no longer
+  hides the trigger, and the PowerShell twin now splits on newlines the way the shell
+  version always did, so a multi-line command with the trigger on a later line can't walk
+  past it on Windows.
+- The Azure DevOps pack ships its own settings fragment: read-only `az repos pr show`
+  allowed (`az` has no `pr view` — the GitHub-shaped assumption was caught by adversarial
+  review before it shipped), mutating `az` and `configure-branch-policies.sh` behind
+  `ask`, `.azuredevops/**` gated exactly like `.github/**`. GitHub installs get none of
+  it.
+- `pr-writer` names both platforms now, including the verified `--labels risk:high` flag
+  for `az repos pr create`.
+
+### Keyless Foundry auth for the ADO LLM gates (opt-in)
+
+- The three Claude gates (grader, correctness, security) can authenticate with a per-run
+  Entra token minted from a WIF service connection instead of a stored
+  `ANTHROPIC_API_KEY`. It's opt-in per pipeline via four compile-time `FOUNDRY_*`
+  variables — leave them empty and the emitted steps and `run-claude-review.sh`'s
+  behavior are byte-identical to today.
+- `run-claude-review.sh` fails **closed** with an actionable message on a missing
+  resource or an unresolved model alias (Foundry has no alias resolution, proven by a
+  live spike against a sandbox deployment), and scrubs any unresolved ADO `$(macro)`
+  literal so a foundry-less pipeline can never leak one into the CLI environment.
+- `doctor.py` needed no change for this: it reads what the pipelines reference, so a
+  variable group nobody wired stops being demanded, by construction.
+- Live-drilled, not just unit-tested: the review-gate ran against a real ADO repo
+  (`az repos pr create` denied without a receipt, allowed with one), and the Foundry
+  chain authenticated end-to-end against a sandbox deployment.
+
+### Fixed: a Windows clone would have installed broken hooks
+
+`review-gate.sh` checked out with CRLF under `autocrlf` on the Windows CI leg — bash
+rejects `set -uo pipefail\r` and exits 1 before the hook body runs, so every `sh`
+trigger test failed before it could assert anything. This wasn't a test-only problem:
+the same checkout happens on a real Windows clone of this plugin, which would have
+installed hooks and rails scripts that never ran. `.gitattributes` now pins `*.sh` to
+LF everywhere; `.ps1` stays platform-default (pwsh tolerates CRLF).
+
+### The rails
+
+899 passed. Verified additively at every step: install+upgrade agree byte-for-byte on
+the merged settings, the GitHub golden tree stays untouched, and upgrading an existing
+GitHub or core-only install changes nothing except the review-gate bypass hardening
+above (which applies everywhere, GitHub included).
+
 ## 1.3.0 — 2026-08-07
 
 An artifact could always be changed. Nothing recorded that it had been, or noticed what the change

@@ -158,6 +158,14 @@ microsoft-enterprise's stack, hosted on Azure DevOps:
 - **Stack:** C#/.NET 8, Angular 17, SQL Server, Azure (identical to microsoft-enterprise)
 - **Repos & CI/CD:** Azure Repos + Azure Pipelines (`.azuredevops/pipelines/`, branch policies via `az repos policy`)
 - **Quality / Compliance / Conventions:** same as microsoft-enterprise (80% coverage, TDD, SOC 2 gates)
+- **Install is platform-aware:** the harness installer ships no GitHub payload to an ADO
+  repo — no `workflows/`, rulesets, or `CODEOWNERS`. Rubrics and the other rail-governance
+  content land in `.azuredevops/rails/` instead of `.github/`, matching what the Azure
+  Pipelines pack actually reads.
+- **`/sdlc-doctor` is pack-aware:** it checks an ADO install with `az` (variable groups,
+  branch policies) and never asks it to authenticate `gh`. PR-flow rails (the review-gate
+  hook, `pr-writer`) recognize `az repos pr create` the same way they recognize `gh pr
+  create`.
 
 ### starter
 Minimal profile for quick start:

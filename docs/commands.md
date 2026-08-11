@@ -45,7 +45,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-brief` | Analyze intake corpus + draft workshop brief | No | Phase 0 Step 0d, before a stakeholder workshop; also runs standalone via `--docs` |
 | `/sdlc-spec` | Author a ready spec (scaffold → DoR → human risk tier) | Writes `specs/NNNN-name.md`; logs spec metrics | The Build-loop Intent beat, before building any change; also runs standalone via `--repo` |
 | `/sdlc-spike` | Open a bounded spike for a question nobody can answer yet | Writes `spikes/NNNN-name.md` | When a story fails the Definition of Ready because the ground truth is unknown, not because the spec is badly written |
-| `/sdlc-doctor` | Day-1 environment check — proves the installed harness can actually run here | No | After `/sdlc-setup`, when onboarding a second developer, and any time a gate behaves inexplicably |
+| `/sdlc-doctor` | Day-1 environment check — proves the installed harness can actually run here; pack-aware, checks `gh` on GitHub installs and `az` on Azure DevOps installs, never the other | No | After `/sdlc-setup`, when onboarding a second developer, and any time a gate behaves inexplicably |
 
 ---
 
@@ -724,7 +724,7 @@ line each; see `commands/<name>.md` for the complete instructions.
 | Command | What it does |
 |---|---|
 | `/sdlc-spike` | Open a bounded spike (`spikes/NNNN-name.md`) for a question the pod cannot yet answer. The deliverable is the written finding, not the code — the code is thrown away, the finding outlives the branch. Backed by `scripts/new_spike.py` |
-| `/sdlc-doctor` | Verify the installed harness will actually run in this repo — interpreters present, rails scripts executable, required secrets set, branch protection active — and print the fix for anything that will not. The harness fails quietly; this is what makes it fail loudly |
+| `/sdlc-doctor` | Verify the installed harness will actually run in this repo — interpreters present, rails scripts executable, required secrets set, branch protection active — and print the fix for anything that will not. **Pack-aware:** reads the installed CI/CD pack from the harness manifest and checks GitHub installs with `gh` (repo secrets, ruleset), Azure DevOps installs with `az` (variable groups read from the installed pipelines, branch policies) — never asks a repo to install the other platform's CLI. The harness fails quietly; this is what makes it fail loudly |
 | `/sdlc-harness` | Install or refresh the delivery harness independent of a full `/sdlc-setup` |
 | `/sdlc-upgrade` | Bring an installed harness forward safely using the install manifest — updates factory-original files, preserves adaptations, surfaces both-sides changes as `.harness-new` siblings to merge |
 | `/sdlc-feature` | Decompose an epic into channel-aware features and specs |
