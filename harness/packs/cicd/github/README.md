@@ -11,12 +11,11 @@ that proves each rail fails safely — read [`RAILS.md`](./RAILS.md).
 
 ## What's in the pack
 
-Nine workflows plus the rails guide:
+Seven workflows plus the rails guide:
 
 | Workflow | File | Fires on | Block or advise |
 | --- | --- | --- | --- |
-| **CI** | `workflows/ci.yml` | every PR + push to main | **BLOCKS** (build/test + enforced coverage floor; `spec-gate` job — no spec, no build; `dependency-gate` job — no known High/Critical advisory introduced; optional eval-gate) |
-| **Dependency Scan** | `workflows/dependency-scan.yml` | weekly + manual | **ADVISES** — raises one self-closing issue for the standing stock; never blocks |
+| **CI** | `workflows/ci.yml` | every PR + push to main | **BLOCKS** (build/test + enforced coverage floor; `spec-gate` job — no spec, no build; optional eval-gate) |
 | **Grader** | `workflows/grader.yml` | every PR | **ADVISES** — required to RUN, verdict never blocks |
 | **Correctness Review** | `workflows/correctness.yml` | every PR (reviews when source changed) | **BLOCKS** on a high-confidence defect (override label) |
 | **Security Review** | `workflows/security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH |
@@ -24,7 +23,6 @@ Nine workflows plus the rails guide:
 | **Deploy Promote** | `workflows/deploy-promote.yml` | **manual only** (`workflow_dispatch`) | ships to test/prod after a named approver signs; **rolls back** on failure — starter, adapt per client |
 | **Eval Regression Gate** | `workflows/eval-regression.yml` | PRs touching the HIGH-risk agentic surface | **BLOCKS** on a metric regression past the trip-wire (§11) |
 | **Eval Suite** | `workflows/eval-suite.yml` | manual + scheduled | **ADVISES** — periodic full benchmark, off by default |
-| **Fleet Telemetry** | `workflows/rails-telemetry.yml` | weekly + manual | **REPORTS** — commits `.github/rails-telemetry.json` (what ran, every override, which checks branch protection actually requires); never blocks |
 
 Why each block-vs-advise choice exists (the-rails.md §3): mechanical truth (CI)
 blocks; the grader **advises** because a confident AI verdict is exactly how an agent
@@ -38,7 +36,6 @@ when consciously accepted.
 | Pack source | Repo destination |
 | --- | --- |
 | `workflows/ci.yml` | `.github/workflows/ci.yml` |
-| `workflows/dependency-scan.yml` | `.github/workflows/dependency-scan.yml` |
 | `workflows/grader.yml` | `.github/workflows/grader.yml` |
 | `workflows/correctness.yml` | `.github/workflows/correctness.yml` |
 | `workflows/security.yml` | `.github/workflows/security.yml` |
@@ -46,7 +43,6 @@ when consciously accepted.
 | `workflows/deploy-promote.yml` | `.github/workflows/deploy-promote.yml` |
 | `workflows/eval-regression.yml` | `.github/workflows/eval-regression.yml` |
 | `workflows/eval-suite.yml` | `.github/workflows/eval-suite.yml` |
-| `workflows/rails-telemetry.yml` | `.github/workflows/rails-telemetry.yml` |
 | `RAILS.md` | `.github/RAILS.md` |
 
 The overlay map above is declared machine-readably in [`pack.yaml`](./pack.yaml) under
