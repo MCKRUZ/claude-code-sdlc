@@ -1,0 +1,39 @@
+# SDLC Configuration (auto-injected by /sdlc-setup)
+
+## SDLC Plugin Active
+This project uses the claude-code-sdlc plugin for lifecycle management.
+- State: `.sdlc/state.yaml`
+- Profile: `ado-enterprise-python`
+- Commands: `/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`
+
+## Stack: Python Enterprise (Azure DevOps)
+- **Backend:** Python 3.13 / FastAPI / SQLAlchemy 2.0 / pytest (uv-managed)
+- **Frontend:** TypeScript / React / Redux Toolkit / Playwright
+- **Database:** Azure Database for PostgreSQL with SQLAlchemy 2.0 + Alembic migrations
+- **Cloud:** Azure (Container Apps, Container Registry, Key Vault, App Insights, Entra ID)
+- **Repos & CI/CD:** Azure Repos + Azure Pipelines (`.azuredevops/pipelines/`, branch policies via `az repos policy`)
+
+## Quality Standards
+- Code coverage: minimum 80%, critical paths 100%
+- Max file size: 400 lines, max function: 50 lines
+- TDD required: write tests first
+- Code review required before merge
+- Security review required for auth/payment/sensitive code
+
+## Coding Conventions
+- Commits: `type: description` (feat, fix, refactor, docs, test, chore)
+- Branches: `type/ticket-description`
+- Immutability: prefer immutable patterns (frozen dataclasses, tuple over list for fixed data; in reducers, mutate only the Immer draft)
+- No console.log in production code
+
+## Compliance: SOC 2
+- Audit trail maintained in `.sdlc/state.yaml`
+- Change approval: peer review required
+- Security review per change inside the Build loop (the security rail blocks at merge)
+- Documentation current at the Phase 7 (Documentation) gate
+
+## Phase Awareness
+Before making changes, check the current SDLC phase with `/sdlc`:
+- Opening phases (0 Discovery – 3 Foundation): produce and gate the documents; no feature code before Foundation
+- Build loop: one spec at a time — Intent → Delegate → Discern; TDD required, checking happens per change, the author never approves their own work
+- Closing phases (7 Documentation – 9 Monitoring, then Close & Transfer): prove docs by cold use, deploy through the existing pipeline, alerts from measured baselines

@@ -1,0 +1,128 @@
+version: "1.0"
+
+company:
+  name: "Example Corp"
+  profile_id: "ado-enterprise-python"
+
+stack:
+  backend:
+    language: python
+    framework: fastapi
+    orm: sqlalchemy
+    testing: pytest
+  frontend:
+    language: typescript
+    framework: react
+    state: redux-toolkit
+    e2e: playwright
+  database:
+    # Default engine. /sdlc-setup offers Azure SQL as the alternative and edits the frozen
+    # .sdlc/profile.yaml copy — the engine is advisory metadata (nothing mechanical branches
+    # on it); Alembic is the migration tool either way.
+    engine: azure-postgresql
+    migrations: alembic
+  cloud:
+    provider: azure
+    services:
+      - container-apps
+      - container-registry
+      - azure-postgresql
+      - key-vault
+      - app-insights
+      - entra-id
+    auth_pattern: DefaultAzureCredential
+    secrets: azure-key-vault
+    monitoring: app-insights
+  ci_cd:
+    # Selects the Azure DevOps CI/CD pack: Azure Pipelines rails in .azuredevops/pipelines/,
+    # branch policies as code (az repos policy), ADO MCP server fragment. The repo host is
+    # Azure Repos — this profile is the Python/React sibling of `ado-enterprise` (same rails,
+    # FastAPI + React stack instead of .NET + Angular).
+    platform: azure-devops
+
+quality:
+  coverage_minimum: 80
+  coverage_critical: 100
+  # 400/50 aligned with the python stack pack's own standard (functions under 50 lines,
+  # files under 400 — harness/packs/stacks/python/claude/stack-standards.md), not the .NET
+  # siblings' 800.
+  max_file_lines: 400
+  max_function_lines: 50
+  require_tdd: true
+  require_code_review: true
+  require_security_review: true
+  visual_verification:
+    enabled: true
+    baseline_comparison: manual
+  session_health_check:
+    enabled: true
+    # The python pack's session-health command with its {{SOLUTION_OR_PROJECT}} placeholder
+    # deliberately instantiated as `src` (the src-layout source root the pack prescribes).
+    # Fast, offline, no env mutation; exits non-zero on a syntax error.
+    command: "uv run --frozen --no-sync python -m compileall -q src"
+    timeout_seconds: 60
+    min_phase: build
+  evaluation_criteria:
+    # Phase 1: Requirements quality
+    - name: "Requirement testability"
+      phases: [1]
+      description: "Every requirement must have a concrete acceptance criterion that can be verified by a test or demonstration. Vague criteria like 'the system should be fast' fail; 'P95 response time < 200ms' passes."
+      severity: warn
+    - name: "Requirement traceability"
+      phases: [1]
+      description: "Every requirement must have a unique ID (REQ-NNN) and trace to at least one stakeholder need from Phase 0. Orphan requirements with no stakeholder justification fail."
+      severity: warn
+    # Phase 2: Design quality
+    - name: "ADR completeness"
+      phases: [2]
+      description: "Each ADR must state the problem, options considered (minimum 2), decision rationale, and consequences. Missing any of these sections is a fail."
+      severity: fail
+    - name: "Interface contract specificity"
+      phases: [2]
+      description: "API contracts must specify request/response schemas, error codes, and auth requirements. Contracts that say 'returns data' without specifying the shape fail."
+      severity: warn
+    # Phase 3: Planning quality
+    - name: "Section plan verifiability"
+      phases: [3]
+      description: "Each section plan must include verification criteria that the section-evaluator can check mechanically. Vague criteria like 'works correctly' fail; 'all endpoints return 200 for valid input and 400 for invalid input' passes."
+      severity: warn
+    # Build loop: code quality (checked per change by the section-evaluator)
+    - name: "Boundary validation (Pydantic)"
+      phases: ["build"]
+      description: "FastAPI request/response bodies are Pydantic models declared at the boundary; no handler passes raw dict[str, Any] inward. Evaluator checks route signatures for untyped dict parameters."
+      severity: fail
+    - name: "Immutable React state"
+      phases: ["build"]
+      description: "Redux Toolkit reducers mutate only the Immer draft or return new state. No state mutation outside createSlice reducers; no Array.push()/Object.assign() on state objects outside reducers."
+      severity: fail
+    - name: "Typed public signatures"
+      phases: ["build"]
+      description: "Every public Python function is annotated (params and return); mypy is the build gate. Untyped public signatures fail; a # type: ignore needs a narrow code and a reason."
+      severity: warn
+    - name: "Domain exceptions"
+      phases: ["build"]
+      description: "No bare except: or except Exception: without re-raise; raised errors derive from the project's domain exception base class rather than a bare ValueError."
+      severity: warn
+    - name: "API contract documentation"
+      phases: ["build"]
+      description: "Public FastAPI endpoints declare response_model and a docstring, with a corresponding entry in api-contracts.md."
+      severity: warn
+
+compliance:
+  frameworks:
+    - soc2
+  audit_trail: true
+  change_approval: peer-review
+
+# documentation:
+#   intake_path: "docs/intake"
+#   types: [pdf, markdown, text]
+#   index_budget_tokens: 5000
+#   summary_budget_tokens: 750
+#   max_documents: 50
+
+conventions:
+  commit_format: "type: description"
+  branch_naming: "type/ticket-description"
+  immutability: true
+  no_console_log: true
