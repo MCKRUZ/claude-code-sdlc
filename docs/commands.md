@@ -69,12 +69,14 @@ Available profiles are listed from the plugin's `profiles/` directory (excluding
 
 - **microsoft-enterprise** -- C#/.NET 8 + Angular 17 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required.
 - **ado-enterprise** -- microsoft-enterprise's stack on Azure Repos + Azure Pipelines; SOC 2 compliance, 80% coverage minimum, TDD required.
+- **ado-enterprise-python** -- ado-enterprise's Python sibling: FastAPI + SQLAlchemy + React/Redux Toolkit on the same Azure Repos + Azure Pipelines rails; SOC 2, 80% coverage, TDD required.
 - **starter** -- Minimal profile with no compliance gates; a quick start suitable for any stack.
 
 **Step 3: Project Configuration**
 The user is prompted for:
 - **Project name** (defaults to the current directory name).
 - Confirmation that the selected profile settings are appropriate.
+- **Database engine** (ado-enterprise-python only): Azure Database for PostgreSQL (default) or Azure SQL. The choice is applied after init — the wizard edits the frozen `.sdlc/profile.yaml` before the harness install re-validates it, and rewrites the Database line in the project's CLAUDE.md after the template append. Advisory metadata only: pack selection never reads the engine, and Alembic is the migration tool either way.
 
 **Step 4: Initialize .sdlc/ Directory**
 The init script is invoked:

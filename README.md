@@ -167,6 +167,15 @@ microsoft-enterprise's stack, hosted on Azure DevOps:
   hook, `pr-writer`) recognize `az repos pr create` the same way they recognize `gh pr
   create`.
 
+### ado-enterprise-python
+ado-enterprise's Python sibling — same rails, FastAPI + React stack:
+- **Stack:** Python 3.13 / FastAPI / SQLAlchemy 2.0 / pytest (uv-managed); TypeScript / React / Redux Toolkit / Playwright
+- **Repos & CI/CD:** Azure Repos + Azure Pipelines (identical rails to ado-enterprise); Azure Container Apps
+- **Database:** setup-time choice — Azure Database for PostgreSQL (default) or Azure SQL, Alembic migrations either way; `/sdlc-setup` asks and edits the frozen profile
+- **Quality / Compliance / Conventions:** same bar as ado-enterprise (80% coverage, TDD, SOC 2 gates verbatim), with the python pack's 400-line file cap
+- **Health check:** `uv run --frozen --no-sync python -m compileall -q src` at session start (Build loop)
+- **Evaluation criteria:** same phase-scoped rubrics for requirements/design/foundation; Build-loop code criteria are Python/React — Pydantic boundary validation and immutable Redux Toolkit state (fail), typed public signatures, domain exceptions, API contract docs (warn)
+
 ### starter
 Minimal profile for quick start:
 - **Stack:** Configurable (defaults to TypeScript/Node)

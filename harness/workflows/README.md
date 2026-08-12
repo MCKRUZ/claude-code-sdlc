@@ -1,21 +1,17 @@
 # Kit workflows — the rails layer
 
-Ten CI/CD workflow files that implement the delivery standard's §6 rails. On install
+The five CI/CD workflows that implement the delivery standard's §6 rails. On install
 they go to `.github/workflows/` in the client repo; their supporting rubrics,
 CODEOWNERS, ruleset, and scripts come from `../profile/`. For the operator's guide —
 go-live steps, the merge bar, and the **shakedown drill** that proves each rail fails
 safely — read [`RAILS.md`](./RAILS.md).
 
-## The workflow files (and the gates they carry)
+## The five workflows (and the gates they carry)
 
-The rails started as five files (`ci`, `grader`, `correctness`, `security`,
-`deploy-dev`) and grew by addition, never replacement, as the standard picked up new
-concerns: dependency scanning and deploy promotion in 1.1.0, the eval-regression trip-wire
-and periodic eval suite before that, fleet telemetry after. `ci.yml` alone carries three
-blocking jobs — `build-and-test`, `spec-gate`, `dependency-gate` — so ten workflow files
-yield the twelve gate rows below.
+`ci.yml` carries two blocking gates — `build-and-test` and `spec-gate` — so five
+workflow files yield six gate rows here.
 
-`deploy-promote.yml` is listed below but is **not a separate rail**: it is the second half of
+`deploy-promote.yml` is listed below but is **not a sixth rail**: it is the second half of
 the deploy rail. `deploy-dev` owns merge → dev (automatic, unattended); `deploy-promote`
 owns everything beyond it (manual, human-gated). Neither carries a merge gate — they run
 after the merge bar has already been cleared.
@@ -31,9 +27,6 @@ after the merge bar has already been cleared.
 | **Security Review** | `security.yml` | every PR (reviews on gated paths / `risk:high`) | **BLOCKS** on HIGH | generalized from source `security-review.yml` |
 | **Deploy Dev** | `deploy-dev.yml` | successful CI on `main` (merge) | ships; **rolls back** on failure | **BUILT FRESH** — starter, adapt per client |
 | **Deploy Promote** | `deploy-promote.yml` | **manual only** (`workflow_dispatch`) | ships to test/prod after a named approver signs; **rolls back** on failure | **BUILT FRESH** — starter, adapt per client |
-| **Eval Regression Gate** | `eval-regression.yml` | PRs touching the HIGH-risk agentic surface | **BLOCKS** on a metric regression past the trip-wire (§11) | built fresh for the kit |
-| **Eval Suite** | `eval-suite.yml` | manual + scheduled | **ADVISES** — periodic full benchmark, off by default | built fresh for the kit |
-| **Fleet Telemetry** | `rails-telemetry.yml` | weekly + manual | **REPORTS** — commits `.github/rails-telemetry.json` (what ran, every override, which checks branch protection actually requires); never blocks | built fresh for the kit |
 
 Why each block-vs-advise choice exists (the-rails.md §3): mechanical truth (CI)
 blocks; the grader **advises** because a confident AI verdict is exactly how an agent

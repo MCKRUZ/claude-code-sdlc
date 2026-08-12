@@ -16,6 +16,7 @@ List available profiles from the plugin's `profiles/` directory (exclude `_schem
 Present every profile found there to the user. The current built-ins:
 - **microsoft-enterprise** — C#/.NET 8 + Angular 17 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required
 - **ado-enterprise** — microsoft-enterprise's stack on Azure Repos + Azure Pipelines (`platform: azure-devops`); same SOC 2 gates, coverage, and TDD bar
+- **ado-enterprise-python** — ado-enterprise's Python sibling: FastAPI + SQLAlchemy + React/Redux Toolkit on Azure Repos + Azure Pipelines, Container Apps, SOC 2; prompts PostgreSQL vs Azure SQL at setup
 - **starter** — Minimal profile, no compliance gates, quick start for any stack
 - **creative-tooling** — Python/uv-scripts + pytest for creative pipelines (ComfyUI registry/inventory tooling); 80% coverage, TDD + code/security review required, schema- and cross-reference-integrity evaluation criteria, no compliance frameworks
 
@@ -26,6 +27,35 @@ If the directory listing shows profiles not in this list, present those too (des
 Ask the user for:
 - **Project name** (default: current directory name)
 - Confirm the selected profile settings are appropriate
+- **If the selected profile is `ado-enterprise-python`, also ask:** "Database: Azure Database for
+  PostgreSQL (default, idiomatic for Python) or Azure SQL (parity with the .NET enterprise
+  profiles)?" Record the answer — **do not edit anything yet** (`.sdlc/profile.yaml` does not
+  exist until Step 4 runs). The engine choice is advisory metadata: nothing mechanical branches
+  on it (pack selection reads `stack.backend.language` and `stack.ci_cd.platform` only), the
+  frozen profile carries no checksum guard, `stack.database.engine` is a free-form string in the
+  profile schema (so Step 9 re-validation passes either value), and Alembic is the migration
+  tool either way.
+
+  If the user chose **Azure SQL**, apply the choice at two points later in this setup:
+  1. **Immediately after Step 4 and before Step 5** (the installer re-validates the frozen
+     profile and should see the final values): edit `.sdlc/profile.yaml` — set
+     `stack.database.engine: azure-sql` and replace the `azure-postgresql` entry in
+     `stack.cloud.services` with `azure-sql`:
+     ```yaml
+     stack:
+       database:
+         engine: azure-sql        # was: azure-postgresql
+       cloud:
+         services:
+           - container-apps
+           - container-registry
+           - azure-sql            # was: azure-postgresql
+     ```
+  2. **After Step 6**: in the project's `CLAUDE.md`, rewrite the line
+     `- **Database:** Azure Database for PostgreSQL with SQLAlchemy 2.0 + Alembic migrations`
+     to `- **Database:** Azure SQL with SQLAlchemy 2.0 + Alembic migrations`.
+
+  If the user chose PostgreSQL (or gave no answer), both files are already correct — do nothing.
 
 ### Step 4: Initialize .sdlc/
 Run the init script:

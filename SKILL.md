@@ -68,6 +68,9 @@ Profiles configure the plugin for your company/team:
   harness install is platform-aware (no GitHub payload lands in the repo; rails
   governance content installs to `.azuredevops/rails/` instead), and `/sdlc-doctor` +
   the PR-flow rails check `az` instead of `gh`
+- `ado-enterprise-python` — ado-enterprise's Python sibling: FastAPI + SQLAlchemy +
+  React/Redux Toolkit on the same Azure Repos + Azure Pipelines rails, Azure Container
+  Apps; setup asks PostgreSQL vs Azure SQL (Alembic either way)
 - `starter` — Minimal profile, no compliance, quick start
 
 Profiles define: technology stack, quality thresholds (coverage, file size limits), compliance frameworks, coding conventions (commit format, naming, immutability).

@@ -50,6 +50,10 @@ profiles/
     profile.yaml                        # microsoft-enterprise's stack on Azure Repos + Azure Pipelines
     compliance/
       soc2-gates.yaml                   # SOC 2 gate definitions per phase
+  ado-enterprise-python/
+    profile.yaml                        # ado-enterprise's Python sibling (FastAPI + React, same rails)
+    compliance/
+      soc2-gates.yaml                   # SOC 2 gate definitions per phase
   creative-tooling/
     profile.yaml                        # Claude Code plugin development profile
 ```
