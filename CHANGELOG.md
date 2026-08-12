@@ -1,5 +1,41 @@
 # Changelog
 
+## 1.5.0 — 2026-08-11
+
+1.4.0 taught the install, the doctor, and the PR-flow rails to follow the platform the
+profile chose — but the only profile choosing Azure DevOps was still C#/.NET + Angular.
+`ado-enterprise-python` is that same enterprise seat with the stack swapped: Python 3.13 /
+FastAPI / SQLAlchemy 2.0 / pytest (uv-managed) + React / Redux Toolkit / Playwright, on
+Azure Container Apps. No installer or pack edit — the `python`, `react`, and
+`azure-devops` packs already existed and were already mapped; this is the first profile to
+compose all three, and the proof the seams hold: the realized Azure Pipelines carry the uv
+/ mypy / pytest / ruff commands and the 80% floor with zero axis warnings.
+
+### The Python/React sibling of ado-enterprise
+
+- `profiles/ado-enterprise-python/` mirrors `ado-enterprise` file-for-file: same SOC 2
+  gates verbatim (they were already stack-agnostic), same conventions, same rails. The
+  stack-shaped parts moved with the stack — 400-line file cap (the python pack's own
+  standard, not the .NET 800), session health via the pack's offline `compileall` command,
+  and the four .NET/Angular Build-loop evaluation criteria replaced by five Python/React
+  ones (Pydantic-at-the-boundary and immutable-RTK-state block at `fail`; typed
+  signatures, domain exceptions, and API contract docs advise at `warn`).
+- `references/azure-patterns.md` re-realized for Python: `azure-identity` +
+  `azure-keyvault-secrets`, App Insights via `azure-monitor-opentelemetry`, FastAPI health
+  endpoint + exception handlers, SQLAlchemy 2.0 + Alembic. The skills list names only
+  verified microsoft/skills `-py` entries — the two dotnet entries with no Python analogue
+  were dropped, not renamed on faith.
+
+### The database is a setup-time question, not a fork
+
+- One profile supports both engines. It ships `azure-postgresql`; `/sdlc-setup` Step 3 now
+  asks *PostgreSQL or Azure SQL?* for this profile and, on Azure SQL, edits the frozen
+  `.sdlc/profile.yaml` after init (before the installer re-validates it) and rewrites the
+  one `- **Database:**` line in the project's CLAUDE.md. Safe by construction: nothing
+  mechanical branches on the engine — pack selection reads `backend.language` and
+  `ci_cd.platform` only — and Alembic is the migration tool either way. This is the
+  setup wizard's first profile-conditional prompt.
+
 ## 1.4.0 — 2026-08-10
 
 `ado-enterprise` (1.3.0) declared the profile; nothing behind it actually ran differently

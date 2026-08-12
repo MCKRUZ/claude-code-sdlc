@@ -354,6 +354,8 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |   |   +-- switchboard-rules.json         Agent routing rules for this profile
 |   |-- ado-enterprise/
 |   |   +-- profile.yaml                   microsoft-enterprise's stack on Azure Repos + Azure Pipelines
+|   |-- ado-enterprise-python/
+|   |   +-- profile.yaml                   ado-enterprise's Python sibling (FastAPI + React, same rails)
 |   |-- starter/
 |   |   +-- profile.yaml                   Minimal profile, no compliance
 |   +-- creative-tooling/
