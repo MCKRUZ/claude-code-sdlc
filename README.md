@@ -39,6 +39,7 @@ No existing tool combines specification-driven development + quality enforcement
 - **Single-change guardrail** — Explicit constraint preventing simultaneous work on multiple specs in the Build loop unless explicitly parallelizable
 - **Phase-scoped evaluation criteria** — Quality rubrics that apply to non-code artifacts (requirements, design, foundation) in addition to code
 - **Empirical metrics logging** — JSONL instrumentation in gates, frozen layer validation, and section evaluation for evidence-based harness optimization
+- **Discipline seats** — Conditional, interview-driven drafting seats that stop at a human confirmation: `/sdlc-feature` (epic → channel-aware feature brief, one channel per spec), `/sdlc-rules` (business rules as a BR-NN decision table with a named approver, plus golden scenarios), `/sdlc-data` (PII-classified data contract that drives the risk tier, readiness, lineage), `/sdlc-experience` (journey, surface layout, per-channel interaction contract), `/sdlc-channel` (binds a spec to its channel and injects the acceptance dimensions). Sign-offs recorded at the phase advance.
 - **Document intake** — Opt-in Phase 0 corpus analysis for external reference materials (RFPs, API specs, vendor docs, compliance handbooks) with per-document summaries, DOC-NNN traceability IDs, token-budgeted session-start index (Tier 1.5), and Phase 1 requirement-to-source linking
 
 ## Installation

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.5.1 — 2026-08-28
+
+The discipline seats shipped in July as commands and agents (`/sdlc-feature`, `/sdlc-rules`,
+`/sdlc-data`, `/sdlc-experience`, `/sdlc-channel`) and `/sdlc-version` in 1.3.0 — but the phase
+guides a team plans a phase from never mentioned them, and the registry listed none of their
+artifacts, so the gate reports and `/sdlc-coach` could not see them either. Documentation only;
+no script changes.
+
+- **Phase guides.** `phases/01-requirements.md` gains Steps 3a (`/sdlc-feature`) and 3b
+  (`/sdlc-rules`); `phases/02-design.md` gains Steps 6a (`/sdlc-data`) and 7a
+  (`/sdlc-experience`); `phases/build-loop.md` describes channel binding at Intent. Each step
+  states its trigger, its HITL gate and that sign-offs are recorded at the advance.
+- **Registry.** The nine discipline artifacts are listed as **optional** (conditional, not
+  required — a feature with no customer surface has no journey to write), and each phase's exit
+  gate gains two human-judged `check:` lines that ask whether the trigger applied and, if so,
+  whether the artifact exists and its owner signed. No `exists_and_complete` gate is added, so no
+  existing engagement is blocked.
+- **Docs.** `docs/phase-lifecycle.md` carries the steps, artifacts and agents; the README lists
+  the seats as a feature. Mirrors the delivery standard's new §2 "The discipline seats".
+
 ## 1.5.0 — 2026-08-11
 
 1.4.0 taught the install, the doctor, and the PR-flow rails to follow the platform the

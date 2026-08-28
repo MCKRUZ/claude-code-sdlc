@@ -105,6 +105,9 @@ phases:
         # phase's artifact directory — so the gate cannot see it and the question is the only
         # mechanism available. Same pattern as the close phase's off-gate receipts.
         - check: "Every open product decision is recorded in .sdlc/decision-log.md as a DL-NN with a named owner and a due date — an entry with no owner is the failure this log exists to prevent"
+        # Discipline seats (conditional): the gate cannot know whether the trigger applied, so it asks.
+        - check: "If an epic spans surfaces or personas: feature-brief.md exists and every row (channel, persona, tier) was confirmed by a named human — one channel per spec"
+        - check: "If the feature encodes policy: every BR-NN in business-rules.md has a named approver and a signed outcome or a DL-NN; discipline sign-offs recorded at the advance"
     artifacts:
       required:
         - "requirements.md"
@@ -116,6 +119,10 @@ phases:
         - "01-requirements-report.html"
         - "scope-out-record.md"
         - "adversarial-review-record.md"
+        # Discipline seats — conditional, not optional: present when their trigger applies
+        - "feature-brief.md"
+        - "business-rules.md"
+        - "golden-scenarios.md"
 
   - id: 2
     slug: "02-design"
@@ -149,6 +156,9 @@ phases:
         - check: "Architecture diagrams rendered as HTML (not ASCII art), if the design warrants them"
         - check: "If /deep-plan was used: deep-plan-checkpoint.yaml is present for Phase 3 to resume from"
         - check: "Design-level threat review done and its guarded-path map accepted by a named human (threat-model.md) — Phase 3 wires its security gates from this"
+        # Discipline seats (conditional): the gate cannot know whether the trigger applied, so it asks.
+        - check: "If the feature touches personal data: data/data-contract.md carries a PII column confirmed by a named human, and every dependent spec's risk tier reflects it"
+        - check: "If the feature has a customer surface: experience/user-journey.md and experience/channel-interaction-spec.md are signed, Engineering co-signing the contract; discipline sign-offs recorded at the advance"
     artifacts:
       required:
         - "design-doc.md"
@@ -169,6 +179,13 @@ phases:
         - "external-reviews/"
         - "deep-plan-checkpoint.yaml"
         - "consistency-check-record.md"
+        # Discipline seats — conditional, not optional: present when their trigger applies
+        - "data/data-contract.md"
+        - "data/data-readiness.md"
+        - "data/lineage-audit.md"
+        - "experience/user-journey.md"
+        - "experience/surface-layout.md"
+        - "experience/channel-interaction-spec.md"
 
   - id: 3
     slug: "03-foundation"
