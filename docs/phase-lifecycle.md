@@ -224,6 +224,8 @@ Decompose the problem into functional and non-functional requirements with user 
 | 1 | Functional Requirements | Document functional requirements with user stories, acceptance criteria, and priority levels. |
 | 2 | Non-Functional Requirements | Define NFRs across performance, security, scalability, availability, observability, and maintainability dimensions. |
 | 3 | Epics | Group requirements into epics with clear boundaries and dependencies. |
+| 3a | Feature Decomposition (conditional) | `/sdlc-feature` -- when an epic spans surfaces or personas: the `feature-architect` drafts `feature-brief.md` (features and specs with channel + persona per row, one channel per spec); a named human confirms rows and tiers. |
+| 3b | Business Rules and Golden Scenarios (conditional) | `/sdlc-rules` -- when the feature encodes policy: the `bizreq-analyst` drafts `business-rules.md` (BR-NN: condition, outcome, source, approver) and `golden-scenarios.md` (SCEN-NN); each approver signs their rules; undecided outcomes become DL-NN items. |
 | 4 | Stakeholder Review | Present requirements to the human for validation and gap analysis. |
 | 5 | Phase Handoff | Package into `phase2-handoff.md`. |
 | 6 | Generate Visual Report | Generate `.sdlc/reports/01-requirements-visual.html`. |
@@ -246,6 +248,9 @@ Decompose the problem into functional and non-functional requirements with user 
 
 - `glossary.md` -- domain terminology definitions
 - `01-requirements-report.html` -- self-contained HTML phase report
+- `feature-brief.md` -- (conditional) epic decomposed into channel-aware features and specs, from `/sdlc-feature`
+- `business-rules.md` -- (conditional) the BR-NN decision table with a named approver per rule, from `/sdlc-rules`
+- `golden-scenarios.md` -- (conditional) SCEN-NN input → expected behaviour; seeds acceptance checks and the golden set, from `/sdlc-rules`
 
 ### Primary Skills
 
@@ -254,7 +259,7 @@ Decompose the problem into functional and non-functional requirements with user 
 
 ### Agents
 
-No custom agents beyond the orchestrator. Requirements are authored directly by Claude with human review at Step 4.
+Requirements are authored directly by Claude with human review at Step 4. Two discipline agents are spawned only when their trigger applies: `feature-architect` (Product, via `/sdlc-feature`) and `bizreq-analyst` (Business requirements, via `/sdlc-rules`). Both propose; a named human decides, and the sign-offs are recorded at the advance.
 
 ### Exit Gate
 
@@ -307,7 +312,9 @@ Create software architecture, API contracts, data models, and Architecture Decis
 | 4 | Architecture Decision Records | Write ADRs encoding the human's architectural decisions from Step 0. Each ADR documents context, decision, alternatives considered, and consequences. |
 | 5 | Complete Design Artifacts | Fill in any remaining design artifact sections not covered by /deep-plan output. |
 | 6 | Data Model | Define data models, schema, and entity relationships. |
+| 6a | Data Contract, Readiness, Lineage (conditional) | `/sdlc-data` -- when the feature touches customer or personal data: the `data-analyst` drafts `data/data-contract.md` (PII column), `data/data-readiness.md` (advisory) and `data/lineage-audit.md`; a named human confirms the PII classification, which drives the risk tier. |
 | 7 | Generate Architecture Diagrams | Produce `architecture-diagrams.html` with required diagram types using Mermaid.js. |
+| 7a | Experience (conditional) | `/sdlc-experience` -- when the feature has a customer surface: the `visual-designer` (screen) or `conversation-designer` (voice / chat) drafts `experience/user-journey.md`, `experience/surface-layout.md` and `experience/channel-interaction-spec.md`; a named human signs the journey and the contract. |
 | 8 | Phase Handoff | Package into `phase3-handoff.md`, including the walking-skeleton definition for Foundation. |
 | 9 | Generate Phase Report | Run `generate_phase_report.py`. |
 
@@ -339,6 +346,8 @@ Create software architecture, API contracts, data models, and Architecture Decis
 - `external-reviews/` -- multi-LLM review outputs
 - `deep-plan-checkpoint.yaml` -- session state for Foundation resumption
 - `architecture-diagrams.html` -- interactive Mermaid diagrams (recommended)
+- `data/data-contract.md`, `data/data-readiness.md`, `data/lineage-audit.md` -- (conditional) the Data seat, from `/sdlc-data`
+- `experience/user-journey.md`, `experience/surface-layout.md`, `experience/channel-interaction-spec.md` -- (conditional) the Design seat, from `/sdlc-experience`
 
 ### Primary Skills
 
@@ -347,7 +356,7 @@ Create software architecture, API contracts, data models, and Architecture Decis
 
 ### Agents
 
-No custom SDLC agents are spawned. The orchestrator drives the /deep-plan skill integration directly.
+The orchestrator drives the /deep-plan skill integration directly. Three discipline agents are spawned only when their trigger applies: `data-analyst` (via `/sdlc-data`), and `visual-designer` or `conversation-designer` (via `/sdlc-experience`, routed by channel). Each proposes; a named human decides, and the sign-offs are recorded at the advance.
 
 ### Exit Gate
 
@@ -498,6 +507,8 @@ The visible gap where Implementation / Quality / Testing used to sit is intentio
 ### The Three Beats
 
 **Beat 1 -- Intent: decide and write.** Nothing enters the loop as a conversation. A story becomes buildable only by clearing the **Definition of Ready** at weekly intent triage: every acceptance criterion passes the **vague-line test** ("Could two people build different things from this line?"), scope-in and scope-out are both stated, the silent product decisions are surfaced with a named owner, a risk tier is assigned by the Pod Lead, and the harness pattern to reuse is named. Then write the spec -- one file in the repo (`specs/NNNN-name.md`) durable across sessions, with Goal / Why / Scope in-out / Acceptance checks / Risk tier / Delegation plan / Checking plan. A stale spec is a lie; the spec changes in the same PR as the behavior.
+
+**Channel binding (conditional).** A spec with a customer surface is bound to exactly one channel before it is Ready: `/sdlc-channel` sets `channel:`, injects the channel's acceptance dimensions as concrete acceptance checks, seeds the harness context if empty, and applies a risk floor that may only raise the tier. An advisory check flags a bound spec that is missing a dimension. Checks that implement a signed `BR-NN` cite it; a spec touching PII-marked fields takes its tier from the data contract.
 
 **Beat 2 -- Delegate: bound and build.** Delegating is drawing the box and approving the plan before the build starts. **Plan mode first, always** -- the agent reads the repo and spec and proposes an approach before writing anything; the Orchestrator corrects or approves. **Three bounds, set per spec:** *Scope* (the file patterns it may touch), *Context* (the one canonical pattern to reuse, named), *Permissions* (what the agent may do without asking -- safe commands auto-allowed, the rest gated). Freedom scales by risk within one change. Fan out only to *explore*; single-thread to *build* shared code. **TDD when the profile or spec requires it** -- and always for a bug fix (write the failing regression test first). The **Stop hook** refuses to let the agent finish on a failing build or red tests.
 

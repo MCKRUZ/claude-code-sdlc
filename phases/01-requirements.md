@@ -52,6 +52,34 @@ For each P0 and P1 requirement:
 - Acceptance criteria in Given/When/Then (minimum: happy path + one error scenario)
 - Link each epic to its source requirement ID
 
+### Step 3a: Feature Decomposition (conditional — `/sdlc-feature`)
+
+**Trigger:** an epic spans more than one customer surface or persona, or needs carving into buildable
+specs before Build. When it applies, run `/sdlc-feature`: the `feature-architect` agent interviews,
+then drafts `feature-brief.md` — one epic decomposed into features and specs, each row carrying its
+**channel** and **persona**, with shared logic split out as channel-agnostic specs. **One channel per
+spec.**
+
+> **HITL GATE:** The agent proposes the decomposition and the risk tiers; a named human confirms or
+> edits every row. Any product choice the brief cannot settle becomes a `DL-NN` decision-log item.
+
+### Step 3b: Business Rules and Golden Scenarios (conditional — `/sdlc-rules`)
+
+**Trigger:** the feature encodes policy — eligibility, pricing, coverage, entitlement, anything with a
+rule book. When it applies, run `/sdlc-rules`: the `bizreq-analyst` agent interviews the domain
+experts, then drafts `business-rules.md` (a `BR-NN` decision table: condition → outcome → source →
+**approver**) and `golden-scenarios.md` (`SCEN-NN`: input → expected behaviour). Each `BR-NN`
+becomes an acceptance check on the spec that implements it; each `SCEN-NN` seeds the golden set at
+`/sdlc-evals`.
+
+> **HITL GATE:** Each rule's outcome is confirmed by its named approver. A rule whose outcome the
+> policy leaves silent or contradictory is a `DL-NN` decision-log item with an owner and a
+> two-business-day clock, and the rule carries a *pending* marker until it closes — the analyst
+> never guesses an outcome.
+
+Discipline sign-offs are recorded at the phase advance beside the phase's own signature
+(`/sdlc-next` captures them as `Discipline:Section:Name`).
+
 ### Step 4: Stakeholder Review
 Walk through with stakeholder before advancing:
 - Verify P0 completeness — nothing missing that blocks core value
@@ -204,6 +232,34 @@ review that found nothing is a finding too, and worth recording as one.
 > does not block on it — but the approver is asked about it at sign-off. Write it when the work
 > happens; a receipt written later from memory is worth less than no receipt at all.
 
+### `feature-brief.md` (OPTIONAL — conditional, `/sdlc-feature`)
+
+One epic decomposed into features and specs. Must contain: the channels × personas narrative; a
+decomposition table whose rows carry channel and persona (channel-agnostic rows marked `—`); the
+proposed risk tier per row; and the product choices left open as `DL-NN` references.
+
+> **Conditional by design.** Required when its trigger applies; absent otherwise, and the phase
+> report says so. The gate does not block on it — the approver is asked at sign-off whether the
+> trigger applied and, if it did, whether the artifact exists and its owner signed.
+
+### `business-rules.md` (OPTIONAL — conditional, `/sdlc-rules`)
+
+The `BR-NN` decision table. Must contain, per rule: condition, outcome, the source policy it cites,
+and a named approver. An undecided outcome is marked *pending* and references its `DL-NN`.
+
+> **Conditional by design.** Required when its trigger applies; absent otherwise, and the phase
+> report says so. The gate does not block on it — the approver is asked at sign-off whether the
+> trigger applied and, if it did, whether the artifact exists and its owner signed.
+
+### `golden-scenarios.md` (OPTIONAL — conditional, `/sdlc-rules`)
+
+The `SCEN-NN` table: input → expected behaviour, including the tricky and ambiguous cases. Seeds the
+golden set for any LLM-powered spec (`/sdlc-evals`) and the acceptance checks for the rest.
+
+> **Conditional by design.** Required when its trigger applies; absent otherwise, and the phase
+> report says so. The gate does not block on it — the approver is asked at sign-off whether the
+> trigger applied and, if it did, whether the artifact exists and its owner signed.
+
 ## Exit Criteria
 - [ ] All P0 requirements documented with source traceability
 - [ ] Every NFR quantified with a measurable metric
@@ -217,6 +273,11 @@ review that found nothing is a finding too, and worth recording as one.
       implication recorded above appears there as a numbered `AQ-NN` — Phase 2's opening gate
       reads this list and has no other input
 - [ ] If document intake was performed: every P0 requirement sourced from an external document has a DOC-NNN reference in the Source Document(s) column
+- [ ] *(conditional)* Where an epic spans surfaces or personas: `feature-brief.md` exists, every row
+      confirmed by a named human, one channel per spec
+- [ ] *(conditional)* Where the feature encodes policy: every `BR-NN` has a named approver and either
+      a signed outcome or a `DL-NN` with an owner and a clock; discipline sign-offs recorded at the
+      advance
 
 ## HTML Report
 The phase report is generated automatically when you run `/sdlc-gate` or `/sdlc-next`. It is written to `.sdlc/reports/01-requirements-report.html` and is fully self-contained — share it with stakeholders as the review artifact for the manual sign-off gate.
