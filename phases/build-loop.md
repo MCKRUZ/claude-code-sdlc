@@ -10,7 +10,7 @@ The visible gap where Implementation / Quality / Testing used to sit is intentio
 - Phase 3 (Foundation) exit gate passed and `build-handoff.md` reviewed
 - The rails proven (Stop hook blocks, gates fire, deploy-dev rolls back) and the walking skeleton deployed
 - The ordered spec backlog, risk-tier map, and cadence calendar in hand
-- The WIP cap and review-wait tripwire set
+- The WIP cap and review-wait tripwire set (one project-wide, or per team via `cadence-plan.md`'s optional `## WIP Limits` table)
 
 ## The Three Beats
 
@@ -132,7 +132,7 @@ Four short meetings replace the ceremony calendar. None asks "what did you do ye
 | **Retro+** (weekly) | 60 min | retro | Every escaped bug gets the same question — "which check should have caught it?" — and the answer becomes a harness improvement, not a resolution to try harder. |
 | **Setup review** (weekly) | 30-60 min | (new) | The week's harness changes merge: `CLAUDE.md` updates, skill and hook improvements, permission tuning — versioned, PR'd, reviewed by the Setup Owner's deputy. |
 
-**Two numbers run the week.** The **WIP cap** keeps the pod from opening more changes than its checking capacity can clear — agents can always write more code; the constraint is proving it. The **review-wait tripwire** is the alarm on the same constraint: when the median wait crosses the agreed threshold, the pod stops starting new work and clears the queue. The security queue is read separately at every flow check — it clears slower, and averaged in with the rest it hides until something HIGH has quietly waited a week.
+**Two numbers run the week.** The **WIP cap** keeps the pod from opening more changes than its checking capacity can clear — agents can always write more code; the constraint is proving it. The **review-wait tripwire** is the alarm on the same constraint: when the median wait crosses the agreed threshold, the pod stops starting new work and clears the queue. The security queue is read separately at every flow check — it clears slower, and averaged in with the rest it hides until something HIGH has quietly waited a week. When teams differ enough in checking capacity that one project-wide number hides a slow team's queue, `cadence-plan.md`'s optional `## WIP Limits` table sets both numbers per team instead — `scripts/track_specs.py` reports each team's in-flight count against its own limit, and `scripts/scorecard.py` shows the review-wait numbers against each team's own alarm threshold. A project without that table behaves exactly as before.
 
 ## Hardening Passes
 

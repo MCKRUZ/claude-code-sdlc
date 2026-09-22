@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cadence_plan as cp
 import risk_model as rm
 import validate_team as vt
 from check_spec import parse_frontmatter
@@ -99,6 +100,40 @@ def wip_warnings(summary: dict, wip_cap: int | None) -> list[str]:
     return warnings
 
 
+def team_in_flight_counts(in_flight: list[dict]) -> dict[str, int]:
+    """In-flight specs grouped by team — the per-team analog of len(summary['in_flight'])."""
+    counts: dict[str, int] = {}
+    for spec in in_flight:
+        counts[spec["team"]] = counts.get(spec["team"], 0) + 1
+    return counts
+
+
+def wip_warnings_per_team(in_flight_by_team: dict[str, int], limits: dict[str, dict]) -> list[str]:
+    """Flag teams whose in-flight count exceeds their cadence-plan.md limit. Only called when a
+    `## WIP Limits` block exists — a project without one uses wip_warnings() instead."""
+    warnings = []
+    for team, entry in limits.items():
+        n = in_flight_by_team.get(team, 0)
+        limit = entry["wip_limit"]
+        if n > limit:
+            warnings.append(
+                f"WIP cap breached for team '{team}': {n} specs in-flight, cap is {limit}. "
+                f"Finish in-flight work before starting new specs."
+            )
+    return warnings
+
+
+def format_team_wip(in_flight_by_team: dict[str, int], limits: dict[str, dict]) -> list[str]:
+    """Per-team lines: specs in-flight, the limit, and whether the team is at or over it."""
+    lines = ["", "WIP by team (from cadence-plan.md):"]
+    for team in sorted(limits):
+        n = in_flight_by_team.get(team, 0)
+        limit = limits[team]["wip_limit"]
+        marker = " OVER LIMIT" if n > limit else (" at limit" if n == limit else "")
+        lines.append(f"  {team:<16} {n} / {limit}{marker}")
+    return lines
+
+
 def resolve_specs_dir(args) -> Path:
     if args.state:
         state_path = Path(args.state)
@@ -118,7 +153,7 @@ def resolve_roster_team_names(specs_dir: Path) -> list[str]:
     return sorted(vt.team_names(vt.load_yaml(roster_path)))
 
 
-def format_report(summary: dict, warnings: list[str]) -> str:
+def format_report(summary: dict, warnings: list[str], team_wip_lines: list[str] | None = None) -> str:
     lines = ["Spec Backlog", "=" * 40, f"Total specs: {summary['total']}"]
     lines.append("")
     lines.append("By status:")
@@ -146,6 +181,8 @@ def format_report(summary: dict, warnings: list[str]) -> str:
         lines.append("In flight (one spec = one branch = one PR):")
         for spec in summary["in_flight"]:
             lines.append(f"  {spec['id']} {spec['name']} [{spec['risk']}]")
+    if team_wip_lines:
+        lines.extend(team_wip_lines)
     if warnings:
         lines.append("")
         for w in warnings:
@@ -163,14 +200,36 @@ def main():
     args = parser.parse_args()
 
     specs_dir = resolve_specs_dir(args)
+    repo_root = specs_dir.parent
     specs = scan_specs(specs_dir)
     summary = summarize(specs, resolve_roster_team_names(specs_dir))
-    warnings = wip_warnings(summary, args.wip_cap)
+
+    limits, cadence_errors = cp.load_limits(repo_root)
+    for e in cadence_errors:
+        print(f"ERROR (cadence-plan.md): {e}", file=sys.stderr)
+
+    team_wip_lines = None
+    extra_json = {}
+    if limits:
+        in_flight_by_team = team_in_flight_counts(summary["in_flight"])
+        warnings = wip_warnings_per_team(in_flight_by_team, limits)
+        team_wip_lines = format_team_wip(in_flight_by_team, limits)
+        extra_json["wip_by_team"] = {
+            team: {"in_flight": in_flight_by_team.get(team, 0), **entry}
+            for team, entry in limits.items()
+        }
+        if args.wip_cap is not None:
+            note = ("--wip-cap is ignored — per-team limits from cadence-plan.md's "
+                    "`## WIP Limits` block are in effect.")
+            print(f"NOTE: {note}")
+            extra_json["wip_cap_ignored"] = True
+    else:
+        warnings = wip_warnings(summary, args.wip_cap)
 
     if args.json:
-        print(json.dumps({**summary, "warnings": warnings}, indent=2))
+        print(json.dumps({**summary, **extra_json, "warnings": warnings}, indent=2))
     else:
-        print(format_report(summary, warnings))
+        print(format_report(summary, warnings, team_wip_lines))
 
     sys.exit(1 if warnings else 0)
 

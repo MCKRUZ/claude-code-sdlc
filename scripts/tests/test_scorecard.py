@@ -8,6 +8,7 @@ from scorecard import (
     FORBIDDEN_TYPES,
     compute_scorecard,
     format_report,
+    format_team_alarms,
     load_events,
     parse_field,
     record_event,
@@ -119,6 +120,57 @@ class TestFormatReport:
     def test_window_label(self):
         out = format_report(compute_scorecard([]), window_days=14)
         assert "last 14 days" in out
+
+    def test_no_limits_is_byte_identical_to_before_team_alarms_existed(self):
+        # limits omitted (defaults to None) and limits={} must render identically — a project
+        # with no cadence-plan.md `## WIP Limits` block sees unchanged output.
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 5}])
+        assert format_report(sc, window_days=14) == format_report(sc, window_days=14, limits={})
+        assert "Review-wait alarms by team" not in format_report(sc, window_days=14)
+
+
+class TestTeamAlarms:
+    LIMITS = {
+        "claims": {
+            "wip_limit": 3,
+            "review_alarm_hours": 12,
+            "review_alarm_hours_default": False,
+            "security_alarm_hours": 48,
+            "security_alarm_hours_default": True,
+        },
+    }
+
+    def test_over_alarm_flagged(self):
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 30}])
+        out = "\n".join(format_team_alarms(sc, self.LIMITS))
+        assert "claims" in out
+        assert "OVER ALARM" in out
+
+    def test_under_alarm_not_flagged(self):
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 2}])
+        out = "\n".join(format_team_alarms(sc, self.LIMITS))
+        assert "under alarm" in out
+        assert "OVER ALARM" not in out
+
+    def test_default_threshold_is_stated(self):
+        sc = compute_scorecard([])
+        out = "\n".join(format_team_alarms(sc, self.LIMITS))
+        # review_alarm_hours was explicit (12) — no "(default)" on that line.
+        assert "vs alarm 12h" in out and "vs alarm 12h (default)" not in out
+        # security_alarm_hours used the default (48) — "(default)" must appear.
+        assert "vs alarm 48h (default)" in out
+
+    def test_no_data_reads_no_data_not_a_crash(self):
+        sc = compute_scorecard([])  # no review_wait events at all
+        out = "\n".join(format_team_alarms(sc, self.LIMITS))
+        assert "no data" in out
+
+    def test_appears_in_full_report_only_when_limits_present(self):
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 30}])
+        with_limits = format_report(sc, window_days=None, limits=self.LIMITS)
+        without_limits = format_report(sc, window_days=None, limits=None)
+        assert "Review-wait alarms by team" in with_limits
+        assert "Review-wait alarms by team" not in without_limits
 
 
 class TestResolveMetricsDir:

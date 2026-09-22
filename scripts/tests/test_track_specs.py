@@ -6,11 +6,14 @@ import pytest
 
 from track_specs import (
     format_report,
+    format_team_wip,
     resolve_roster_team_names,
     resolve_specs_dir,
     scan_specs,
     summarize,
+    team_in_flight_counts,
     wip_warnings,
+    wip_warnings_per_team,
 )
 
 
@@ -38,6 +41,14 @@ def write_spec_with_people(specs_dir, spec_id, owner="", developer="", checker="
         f'---\nspec: "{spec_id}"\nname: "x"\nstatus: draft\nrisk: LOW\n'
         f'owner: "{owner}"\ndeveloper: "{developer}"\nchecker: "{checker}"\nteam: "{team}"\n'
         f'---\n# Spec\n',
+        encoding="utf-8",
+    )
+
+
+def write_spec_with_team(specs_dir, spec_id, status, team):
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / f"{spec_id}-x.md").write_text(
+        f'---\nspec: "{spec_id}"\nname: "x"\nstatus: {status}\nrisk: LOW\nteam: "{team}"\n---\n# Spec\n',
         encoding="utf-8",
     )
 
@@ -246,6 +257,54 @@ class TestDeferredStatus:
             "  0002 b [MEDIUM]"
         )
         assert report == expected
+
+
+class TestTeamWipLimits:
+    def test_team_in_flight_counts_groups_by_team(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec_with_team(specs, "0001", "in-flight", "claims")
+        write_spec_with_team(specs, "0002", "in-flight", "claims")
+        write_spec_with_team(specs, "0003", "in-flight", "platform")
+        write_spec_with_team(specs, "0004", "merged", "claims")  # not in-flight — excluded
+        summary = summarize(scan_specs(specs))
+        counts = team_in_flight_counts(summary["in_flight"])
+        assert counts == {"claims": 2, "platform": 1}
+
+    def test_over_limit_warns_naming_team_count_and_limit(self):
+        limits = {"claims": {"wip_limit": 1, "review_alarm_hours": 24,
+                              "review_alarm_hours_default": True,
+                              "security_alarm_hours": 48, "security_alarm_hours_default": True}}
+        warnings = wip_warnings_per_team({"claims": 2}, limits)
+        assert len(warnings) == 1
+        assert "claims" in warnings[0]
+        assert "2" in warnings[0]
+        assert "1" in warnings[0]
+
+    def test_at_or_under_limit_no_warning(self):
+        limits = {"claims": {"wip_limit": 3, "review_alarm_hours": 24,
+                              "review_alarm_hours_default": True,
+                              "security_alarm_hours": 48, "security_alarm_hours_default": True}}
+        assert wip_warnings_per_team({"claims": 3}, limits) == []
+        assert wip_warnings_per_team({"claims": 1}, limits) == []
+
+    def test_team_absent_from_in_flight_counts_is_zero_not_a_crash(self):
+        limits = {"claims": {"wip_limit": 1, "review_alarm_hours": 24,
+                              "review_alarm_hours_default": True,
+                              "security_alarm_hours": 48, "security_alarm_hours_default": True}}
+        assert wip_warnings_per_team({}, limits) == []
+
+    def test_format_team_wip_shows_status(self):
+        limits = {
+            "claims": {"wip_limit": 1, "review_alarm_hours": 24,
+                       "review_alarm_hours_default": True,
+                       "security_alarm_hours": 48, "security_alarm_hours_default": True},
+            "platform": {"wip_limit": 3, "review_alarm_hours": 24,
+                         "review_alarm_hours_default": True,
+                         "security_alarm_hours": 48, "security_alarm_hours_default": True},
+        }
+        lines = "\n".join(format_team_wip({"claims": 2, "platform": 1}, limits))
+        assert "claims" in lines and "2 / 1" in lines and "OVER LIMIT" in lines
+        assert "platform" in lines and "1 / 3" in lines
 
 
 class TestByChannel:

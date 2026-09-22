@@ -24,6 +24,22 @@
 - **Review-wait tripwire:** halt new streams when median review wait exceeds **[one working day]**.
 - Security-review wait is tracked **separately** (it clears slower and would hide in an average).
 
+These two numbers are the project-wide default. A project with teams of very different sizes can
+replace them with the per-team table below — the same limit for a 3-checker team and an
+8-checker team hides the slow team's queue until reviews are days old.
+
+## WIP Limits
+<!--
+  OPTIONAL — delete this section to keep the single project-wide numbers above. Read by
+  scripts/track_specs.py and scripts/scorecard.py. One row per team; a team name must match an
+  entry in .sdlc/team.yaml. review_alarm_hours / security_alarm_hours may be left blank — they
+  default to 24 and 48 respectively, and the tools say so when a default is used.
+-->
+
+| team | wip_limit | review_alarm_hours | security_alarm_hours |
+|------|-----------|---------------------|-----------------------|
+| [team-name] | [N] | [hours, optional] | [hours, optional] |
+
 ## Hardening passes (scheduled, not a gating phase)
 - Mid-Build: [date/trigger] — adds the test environment.
 - Before Phase 8: [date/trigger] — load, E2E journeys, pen-test.
