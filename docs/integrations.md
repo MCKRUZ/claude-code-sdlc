@@ -210,7 +210,7 @@ The `/deep-implement` skill reads section plans (specs) and builds code one chan
 
 **Progress tracking via the spec backlog:**
 
-Progress is derived from the spec files' own frontmatter `status`, not a separate tracker. The spec is the unit of work (one spec = one branch = one PR), so the backlog state always reflects reality. `scripts/track_specs.py` scans `<repo>/specs/*.md`, reads each spec's `status` (`draft` → `ready` → `in-flight` → `merged`) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports totals, a status breakdown, a risk breakdown, and the in-flight list. It can flag a WIP-cap breach with `--wip-cap N`, and runs standalone (`--repo`) or in-workflow (`--state`).
+Progress is derived from the spec files' own frontmatter `status`, not a separate tracker. The spec is the unit of work (one spec = one branch = one PR), so the backlog state always reflects reality. `scripts/track_specs.py` scans `<repo>/specs/*.md`, reads each spec's `status` (`draft` → `ready` → `in-flight` → `merged`, or `deferred`, a side branch that never continues to merged) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports totals, a status breakdown, a risk breakdown, and the in-flight list. It can flag a WIP-cap breach with `--wip-cap N`, and runs standalone (`--repo`) or in-workflow (`--state`).
 
 ```yaml
 # specs/0001-core-data-models.md (frontmatter)

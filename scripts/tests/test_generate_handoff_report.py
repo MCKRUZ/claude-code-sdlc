@@ -42,6 +42,14 @@ def write_spec(specs_dir, spec_id, status, risk):
     )
 
 
+def write_deferred_spec(specs_dir, spec_id, name, reason):
+    (specs_dir / f"{spec_id}-{name}.md").write_text(
+        f'---\nspec: "{spec_id}"\nname: "{name}"\nstatus: deferred\nrisk: LOW\n'
+        f'deferred_reason: "{reason}"\n---\n# Spec\n',
+        encoding="utf-8",
+    )
+
+
 # ── window / timestamps ──────────────────────────────────────────────────────────
 
 class TestWindow:
@@ -124,6 +132,43 @@ class TestSpecBacklog:
         assert "HIGH 1" in out
 
 
+# ── deferred items ───────────────────────────────────────────────────────────────
+
+class TestDeferredItems:
+    def test_empty_reads_none(self, tmp_path):
+        assert gh.deferred_items(tmp_path / "specs") == "none"
+
+    def test_no_specs_at_all_reads_none(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        write_spec(specs, "0001", "merged", "HIGH")
+        assert gh.deferred_items(specs) == "none"
+
+    def test_lists_number_name_and_reason(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        write_deferred_spec(specs, "0002", "old-idea", "superseded by 0009")
+        out = gh.deferred_items(specs)
+        assert "0002" in out
+        assert "old-idea" in out
+        assert "superseded by 0009" in out
+
+    def test_spec_number_order(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        write_deferred_spec(specs, "0009", "second", "not this quarter")
+        write_deferred_spec(specs, "0003", "first", "descoped")
+        out = gh.deferred_items(specs)
+        assert out.index("0003") < out.index("0009")
+
+    def test_merged_and_in_flight_specs_are_excluded(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        write_spec(specs, "0001", "merged", "HIGH")
+        write_spec(specs, "0002", "in-flight", "LOW")
+        assert gh.deferred_items(specs) == "none"
+
+
 # ── path resolution ──────────────────────────────────────────────────────────────
 
 class TestResolvePaths:
@@ -161,6 +206,18 @@ class TestMain:
         assert "Dana (client)" in out              # engagement record approver
         assert "[Fill:" in out                     # narrative slots preserved
         assert "1 of 1" in out                     # spec backlog
+        assert "## Deferred items\nnone" in out    # no deferred specs — reads "none"
+
+    def test_writes_report_with_deferred_spec(self, tmp_path, monkeypatch):
+        repo = make_repo(tmp_path)
+        write_spec(repo / "specs", "0001", "merged", "HIGH")
+        write_deferred_spec(repo / "specs", "0002", "skip-this", "not worth it this quarter")
+        rc = self._run(monkeypatch, ["--state", str(repo / ".sdlc" / "state.yaml")])
+        assert rc == 0
+        out = (repo / ".sdlc" / "artifacts" / "close" / "final-handoff-report.md").read_text(encoding="utf-8")
+        assert "## Deferred items" in out
+        assert "0002" in out
+        assert "not worth it this quarter" in out
 
     def test_refuses_to_clobber_without_force(self, tmp_path, monkeypatch):
         repo = make_repo(tmp_path)

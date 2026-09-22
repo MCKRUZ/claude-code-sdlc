@@ -501,7 +501,7 @@ Specs live in `<repo>/specs/NNNN-name.md` -- in version control, alongside the c
 ---
 spec: "0007"
 name: "Authentication Service"
-status: in-flight     # draft -> ready -> in-flight -> merged
+status: in-flight     # draft -> ready -> in-flight -> merged, or deferred (side branch)
 risk: HIGH            # HIGH / MEDIUM / LOW
 ---
 ```
@@ -514,13 +514,14 @@ risk: HIGH            # HIGH / MEDIUM / LOW
 | `ready` | Spec is approved and queued in the backlog |
 | `in-flight` | Spec is on a branch, being implemented or awaiting merge |
 | `merged` | Spec's PR has merged; the change is done |
+| `deferred` | The team deliberately chose not to build it; `deferred_reason` says why. Never continues to merged; keeps its number |
 
 ### Progress Tracking via track_specs.py
 
 `scripts/track_specs.py` derives the backlog state by scanning the spec files:
 
 1. Scans `<repo>/specs/*.md` and reads each spec's frontmatter `status` and `risk`.
-2. Reports totals, a status breakdown (merged / in-flight / ready / draft), a risk breakdown (HIGH / MEDIUM / LOW), and the in-flight list.
+2. Reports totals, a status breakdown (merged / in-flight / ready / draft, plus deferred on its own line once any spec uses it), a risk breakdown (HIGH / MEDIUM / LOW), and the in-flight list (deferred specs are never in it).
 3. Can flag a WIP-cap breach with `--wip-cap N` (exits non-zero) when more specs are in-flight than the cap allows.
 
 It runs standalone (`--repo <path>`) or in-workflow (`--state .sdlc/state.yaml`, where the repo root is the directory containing `.sdlc/`). In the Build loop, `check_gates.py` prints this summary as **INFO** -- it reads progress from reality and does not block.

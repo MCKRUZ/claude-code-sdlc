@@ -5,6 +5,7 @@ import argparse
 import pytest
 
 from track_specs import (
+    format_report,
     resolve_roster_team_names,
     resolve_specs_dir,
     scan_specs,
@@ -37,6 +38,15 @@ def write_spec_with_people(specs_dir, spec_id, owner="", developer="", checker="
         f'---\nspec: "{spec_id}"\nname: "x"\nstatus: draft\nrisk: LOW\n'
         f'owner: "{owner}"\ndeveloper: "{developer}"\nchecker: "{checker}"\nteam: "{team}"\n'
         f'---\n# Spec\n',
+        encoding="utf-8",
+    )
+
+
+def write_deferred_spec(specs_dir, spec_id, reason=""):
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / f"{spec_id}-x.md").write_text(
+        f'---\nspec: "{spec_id}"\nname: "x"\nstatus: deferred\nrisk: LOW\n'
+        f'deferred_reason: "{reason}"\n---\n# Spec\n',
         encoding="utf-8",
     )
 
@@ -160,6 +170,82 @@ class TestByTeam:
         specs = tmp_path / "specs"
         specs.mkdir()
         assert resolve_roster_team_names(specs) == []
+
+
+class TestDeferredStatus:
+    def test_scan_sets_deferred_reason(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_deferred_spec(specs, "0001", reason="superseded by 0009")
+        scanned = scan_specs(specs)
+        assert scanned[0]["status"] == "deferred"
+        assert scanned[0]["deferred_reason"] == "superseded by 0009"
+
+    def test_non_deferred_spec_has_empty_deferred_reason(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec(specs, "0001", "a", "draft", "LOW")
+        assert scan_specs(specs)[0]["deferred_reason"] == ""
+
+    def test_deferred_counted_but_never_in_flight(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_deferred_spec(specs, "0001")
+        summary = summarize(scan_specs(specs))
+        assert summary["by_status"]["deferred"] == 1
+        assert summary["in_flight"] == []
+
+    def test_deferred_never_triggers_wip_warning(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_deferred_spec(specs, "0001")
+        write_deferred_spec(specs, "0002")
+        write_deferred_spec(specs, "0003")
+        summary = summarize(scan_specs(specs))
+        assert wip_warnings(summary, wip_cap=0) == []
+
+    def test_report_shows_deferred_line_only_when_present(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_deferred_spec(specs, "0001")
+        summary = summarize(scan_specs(specs))
+        report = format_report(summary, [])
+        assert "deferred" in report
+        assert "  deferred   1" in report
+
+    def test_old_status_only_repo_report_is_byte_identical(self, tmp_path):
+        """The literal backward-compatibility acceptance check: a repository whose specs use
+        only the four old statuses produces the same track_specs.py report as before deferred
+        existed — no extra "deferred 0" line."""
+        specs = tmp_path / "specs"
+        write_spec(specs, "0001", "a", "merged", "HIGH")
+        write_spec(specs, "0002", "b", "in-flight", "MEDIUM")
+        write_spec(specs, "0003", "c", "ready", "LOW")
+        write_spec(specs, "0004", "d", "draft", "LOW")
+        summary = summarize(scan_specs(specs))
+        report = format_report(summary, [])
+        assert "deferred" not in report
+        expected = (
+            "Spec Backlog\n"
+            "========================================\n"
+            "Total specs: 4\n"
+            "\n"
+            "By status:\n"
+            "  draft      1\n"
+            "  ready      1\n"
+            "  in-flight  1\n"
+            "  merged     1\n"
+            "\n"
+            "By risk tier:\n"
+            "  HIGH     1\n"
+            "  MEDIUM   1\n"
+            "  LOW      2\n"
+            "\n"
+            "By channel:\n"
+            "  unassigned       4\n"
+            "\n"
+            "By team:\n"
+            "  unassigned       4\n"
+            "\n"
+            "In flight (one spec = one branch = one PR):\n"
+            "  0002 b [MEDIUM]"
+        )
+        assert report == expected
 
 
 class TestByChannel:

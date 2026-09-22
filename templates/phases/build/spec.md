@@ -1,7 +1,8 @@
 ---
 spec: "NNNN"
 name: "short-kebab-name"
-status: draft            # draft | ready | in-flight | merged
+status: draft            # draft | ready | in-flight | merged | deferred
+deferred_reason: ""      # required when status is deferred — why this spec was not built
 type: feature            # feature | bugfix — a bugfix PR carries the `type:bugfix` label and
                          # must pass repro-gate: its new test FAILS against the pre-fix code
 risk: MEDIUM             # HIGH | MEDIUM | LOW — first-class field; sets review depth

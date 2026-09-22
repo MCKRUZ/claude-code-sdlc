@@ -134,6 +134,15 @@ def check_spec_text(text: str, roster_path: Path | None = None) -> list[dict]:
         else:
             results.append(finding("owner", True, "MUST", f"owner: {owner}"))
 
+        status = (fm.get("status") or "").strip().lower()
+        if status == "deferred":
+            reason = (fm.get("deferred_reason") or "").strip()
+            if not reason:
+                results.append(finding("deferred-reason", False, "MUST",
+                                       "status is `deferred` but `deferred_reason` is empty — say why this spec was not built"))
+            else:
+                results.append(finding("deferred-reason", True, "MUST", "deferred reason given"))
+
         risk = (fm.get("risk") or "").upper()
         if risk not in VALID_RISK:
             results.append(finding("risk-tier", False, "MUST",

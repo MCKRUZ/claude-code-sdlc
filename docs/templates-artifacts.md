@@ -593,7 +593,7 @@ of work: one spec = one branch = one PR.
 ---
 spec: "0007"
 name: "Authentication Service"
-status: in-flight     # draft -> ready -> in-flight -> merged
+status: in-flight     # draft -> ready -> in-flight -> merged, or deferred (side branch)
 risk: HIGH            # HIGH / MEDIUM / LOW
 ---
 ```
@@ -603,7 +603,7 @@ risk: HIGH            # HIGH / MEDIUM / LOW
 | Output | Description |
 |--------|-------------|
 | Total specs | Count of `specs/*.md` with parseable frontmatter |
-| Status breakdown | Counts by `status` (`draft`, `ready`, `in-flight`, `merged`) |
+| Status breakdown | Counts by `status` (`draft`, `ready`, `in-flight`, `merged`; `deferred` gets its own line once any spec uses it — never pre-seeded at zero) |
 | Risk breakdown | Counts by `risk` tier (`HIGH`, `MEDIUM`, `LOW`) |
 | In-flight list | The specs currently on a branch awaiting merge |
 | WIP-cap breach | With `--wip-cap N`, flags (and exits non-zero) when in-flight specs exceed `N` |

@@ -196,6 +196,29 @@ people:
         assert any(r["check"] == "team-in-roster" for r in must_failures(results))
 
 
+class TestDeferred:
+    def test_non_deferred_needs_no_reason(self):
+        # READY_SPEC has no deferred_reason field at all — status is "ready", not "deferred".
+        results = check_spec_text(READY_SPEC)
+        assert not any(r["check"] == "deferred-reason" for r in results)
+
+    def test_deferred_without_reason_blocks(self):
+        spec = mutate(READY_SPEC, "status: ready", "status: deferred")
+        results = check_spec_text(spec)
+        assert any(r["check"] == "deferred-reason" for r in must_failures(results))
+
+    def test_deferred_with_reason_passes(self):
+        spec = mutate(READY_SPEC, "status: ready", 'status: deferred\ndeferred_reason: "superseded by 0009"')
+        results = check_spec_text(spec)
+        assert any(r["check"] == "deferred-reason" and r["passed"] for r in results)
+        assert not any(r["check"] == "deferred-reason" for r in must_failures(results))
+
+    def test_deferred_status_is_case_insensitive(self):
+        spec = mutate(READY_SPEC, "status: ready", "status: DEFERRED")
+        results = check_spec_text(spec)
+        assert any(r["check"] == "deferred-reason" for r in must_failures(results))
+
+
 class TestRiskTier:
     def test_invalid_risk_blocks(self):
         spec = mutate(READY_SPEC, "risk: HIGH", "risk: CRITICAL")

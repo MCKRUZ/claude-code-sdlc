@@ -5,7 +5,10 @@ one PR) and the durable source of truth. So backlog progress is derived from the
 frontmatter `status` — never from a separate hand-maintained tracker that can drift from reality.
 This replaces the section-plan progress model (`sections-progress.json`) in the Build loop.
 
-Statuses (spec template frontmatter): draft -> ready -> in-flight -> merged.
+Statuses (spec template frontmatter): draft -> ready -> in-flight -> merged, or deferred (a
+side branch, never continuing to merged). STATUS_ORDER deliberately stays the original four —
+`deferred` is counted the same way a `channel` value is: only when observed, never pre-seeded
+at zero — so a project that has never deferred a spec sees byte-identical output to before.
 
 Standalone or Workflow:
   - Standalone: --repo <path>
@@ -50,6 +53,7 @@ def scan_specs(specs_dir: Path) -> list[dict]:
             "developer": fm.get("developer") or "",
             "checker": fm.get("checker") or "",
             "team": team,
+            "deferred_reason": fm.get("deferred_reason") or "",
             "path": str(f),
         })
     return specs
@@ -120,6 +124,11 @@ def format_report(summary: dict, warnings: list[str]) -> str:
     lines.append("By status:")
     for s in STATUS_ORDER:
         lines.append(f"  {s:<10} {summary['by_status'].get(s, 0)}")
+    # deferred gets its own line only when at least one spec uses it — never pre-seeded, so
+    # a project that has never deferred a spec sees byte-identical output to before this status
+    # existed.
+    if summary["by_status"].get("deferred"):
+        lines.append(f"  {'deferred':<10} {summary['by_status']['deferred']}")
     lines.append("")
     lines.append("By risk tier:")
     for t in rm.RISK_TIERS:

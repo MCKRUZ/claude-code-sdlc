@@ -12,6 +12,7 @@ What it fills from records:
   - Engagement record   — per-phase gate status, completed date, approver    (state.yaml phases[])
   - Metrics history     — accepted-as-is, review wait, DORA four, escaped     (scorecard.py)
   - Spec backlog        — merged / total, by risk tier                        (track_specs.py)
+  - Deferred items      — number, name, reason per deferred spec, or "none"    (track_specs.py)
 
 What it leaves as slots (judgment, not data): outcomes vs the Phase 0 statement, the debt log
 narrative, the open-items table, the dashboard handover. Honest by design: missing data reads
@@ -132,6 +133,21 @@ def spec_backlog(specs_dir: Path) -> str:
             f"- **By risk tier:** {by_risk or '—'}")
 
 
+def deferred_items(specs_dir: Path) -> str:
+    """One line per deferred spec — number, name, reason — in spec-number order.
+
+    "none" when there are none: never an empty heading, never a fabricated zero. Reuses
+    track_specs.scan_specs rather than re-parsing spec frontmatter.
+    """
+    deferred = sorted(
+        (s for s in track_specs.scan_specs(specs_dir) if s["status"] == "deferred"),
+        key=lambda s: s["id"],
+    )
+    if not deferred:
+        return "none"
+    return "\n".join(f"- **{s['id']}** {s['name']} — {s['deferred_reason'] or '—'}" for s in deferred)
+
+
 # ── Report assembly ─────────────────────────────────────────────────────────────
 
 SLOT = "> _[Fill: {what}]_"
@@ -145,6 +161,7 @@ def build_report(
     record: str,
     metrics: str,
     backlog: str,
+    deferred: str,
     generated_at: str,
 ) -> str:
     start, end = window
@@ -185,6 +202,9 @@ Every phase gate and its named sign-off, in one place.
 
 ## Spec backlog
 {backlog}
+
+## Deferred items
+{deferred}
 
 ## Technical debt log
 {SLOT.format(what="the debt log handed to the client with owners and dates — see project-retrospective.md")}
@@ -249,6 +269,7 @@ def main() -> int:
         record=engagement_record(state),
         metrics=metrics_history(metrics_dir),
         backlog=spec_backlog(specs_dir),
+        deferred=deferred_items(specs_dir),
         generated_at=generated_at,
     )
 
