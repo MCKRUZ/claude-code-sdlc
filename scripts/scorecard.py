@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cadence_plan as cp
+import github_import as gi
 
 # Recognized outcome events and their meaningful fields (documentation + light validation).
 EVENT_TYPES = {
@@ -91,6 +92,29 @@ def load_events(events_path: Path) -> list[dict]:
             except json.JSONDecodeError:
                 continue
     return events
+
+
+def append_events(events_path: Path, events: list[dict]) -> None:
+    """Append already-built event dicts verbatim (import path) — unlike record_event,
+    the caller has already set `type`/`timestamp`/`gh_id`, not just the free-form fields."""
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(events_path, "a", encoding="utf-8") as f:
+        for event in events:
+            f.write(json.dumps(event) + "\n")
+
+
+def import_events(repo_root: Path, events_path: Path, since: str) -> dict[str, int]:
+    """Import GitHub history since `since`, skip anything already in the log by `gh_id`,
+    append the rest, and return counts by event type (empty dict = nothing new)."""
+    existing_ids = {e["gh_id"] for e in load_events(events_path) if "gh_id" in e}
+    collected = gi.collect_events(str(repo_root), since)
+    new_events = [e for e in collected if e["gh_id"] not in existing_ids]
+    if new_events:
+        append_events(events_path, new_events)
+    counts: dict[str, int] = {}
+    for e in new_events:
+        counts[e["type"]] = counts.get(e["type"], 0) + 1
+    return counts
 
 
 def _median(nums: list[float]):
@@ -247,9 +271,25 @@ def main():
     p_rep.add_argument("--window-days", type=int, default=None, help="Label only (filtering by date is the caller's job)")
     p_rep.add_argument("--json", action="store_true", help="Emit the scorecard as JSON")
 
+    p_imp = sub.add_parser("import", parents=[common], help="Import outcome events from GitHub's history")
+    p_imp.add_argument("--since", required=True, help="Only activity on/after this date (YYYY-MM-DD)")
+
     args = parser.parse_args()
     metrics_dir = resolve_metrics_dir(args)
     events_path = metrics_dir / "loop-events.jsonl"
+
+    if args.command == "import":
+        try:
+            counts = import_events(metrics_dir.parent.parent, events_path, args.since)
+        except gi.GitHubImportError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        if not counts:
+            print("Imported: no data")
+        else:
+            summary = ", ".join(f"{n} {t}" for t, n in sorted(counts.items()))
+            print(f"Imported {sum(counts.values())} event(s): {summary}")
+        return
 
     if args.command == "record":
         event_type = args.type.strip().lower()

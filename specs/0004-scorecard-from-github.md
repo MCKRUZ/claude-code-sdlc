@@ -87,3 +87,7 @@ sign-in.
 - **Does "accepted as-is" mean no commits after the first approval, or no review comments requesting
   changes?** Written here as the first, because it is mechanical. Owner: the Pod Lead, before this
   spec is ready.
+  **Resolved:** no commits pushed after the first approval — mechanical and reads directly off
+  GitHub's own timestamps. A merged PR with no review at all is treated as accepted_as_is=true by
+  the same definition (nothing was ever asked to be reworked); see `map_merge_event` in
+  `scripts/github_import.py` for the full reasoning.
