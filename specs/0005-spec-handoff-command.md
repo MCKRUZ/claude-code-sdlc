@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "docs/proposals/studio-plugin-work.md §14"
 channel: ""
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "scripts/new_spec.py — the existing spec-writing script and its frontmatter handling"
 created: "2026-09-19"
 ---

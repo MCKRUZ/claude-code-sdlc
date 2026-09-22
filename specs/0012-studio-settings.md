@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "SDLC Studio canvas — screens 11, 25, 27, 28"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "every setting is stored in a project document or the spec roster — Studio keeps no settings store of its own"
 created: "2026-09-19"
 ---

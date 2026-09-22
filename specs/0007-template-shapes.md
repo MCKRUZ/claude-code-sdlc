@@ -6,6 +6,10 @@ type: feature
 risk: HIGH
 source: "docs/proposals/studio-plugin-work.md §1"
 channel: ""
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "profiles/_schema.yaml and scripts/validate_profile.py — the existing schema-plus-validator pattern"
 created: "2026-09-19"
 ---

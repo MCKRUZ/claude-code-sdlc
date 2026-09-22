@@ -54,7 +54,8 @@ def resolve_repo_root(args) -> Path:
     return Path(args.repo).resolve()
 
 
-def render_spec(template: str, spec_id: str, name: str, risk: str, source: str) -> str:
+def render_spec(template: str, spec_id: str, name: str, risk: str, source: str,
+                 owner: str = "", team: str = "") -> str:
     """Fill the template's frontmatter placeholders. Body prompts are left for the author."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     out = template
@@ -62,6 +63,9 @@ def render_spec(template: str, spec_id: str, name: str, risk: str, source: str) 
     out = out.replace('name: "short-kebab-name"', f'name: "{name}"')
     out = re.sub(r"^risk: MEDIUM.*$", f"risk: {risk}", out, count=1, flags=re.MULTILINE)
     out = out.replace('source: "—"', f'source: "{source}"')
+    # developer/checker are filled at hand-off, not at scaffold time — left empty.
+    out = re.sub(r'^owner: ""(?:\s*#.*)?$', f'owner: "{owner}"', out, count=1, flags=re.MULTILINE)
+    out = re.sub(r'^team: ""(?:\s*#.*)?$', f'team: "{team}"', out, count=1, flags=re.MULTILINE)
     out = out.replace('created: "YYYY-MM-DD"', f'created: "{today}"')
     out = out.replace("# Spec NNNN — <title>", f"# Spec {spec_id} — {name}")
     # Keep the Risk Tier section and the Checking Plan depth in sync with the chosen frontmatter
@@ -71,7 +75,8 @@ def render_spec(template: str, spec_id: str, name: str, risk: str, source: str) 
     return out
 
 
-def create_spec(repo_root: Path, name: str, risk: str, source: str) -> Path:
+def create_spec(repo_root: Path, name: str, risk: str, source: str,
+                 owner: str = "", team: str = "") -> Path:
     if not TEMPLATE_PATH.exists():
         print(f"Error: Spec template not found: {TEMPLATE_PATH}")
         sys.exit(1)
@@ -91,7 +96,9 @@ def create_spec(repo_root: Path, name: str, risk: str, source: str) -> Path:
         sys.exit(1)
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
-    out_path.write_text(render_spec(template, spec_id, slug, risk, source), encoding="utf-8")
+    out_path.write_text(
+        render_spec(template, spec_id, slug, risk, source, owner, team), encoding="utf-8"
+    )
     return out_path
 
 
@@ -103,6 +110,8 @@ def main():
     parser.add_argument("--name", required=True, help="Short descriptive name (becomes the kebab-case slug)")
     parser.add_argument("--risk", default="MEDIUM", help="Risk tier: HIGH | MEDIUM | LOW (default: MEDIUM)")
     parser.add_argument("--source", default="—", help="Originating story / REQ-id (default: —)")
+    parser.add_argument("--owner", default="", help="Code-host handle of the accountable owner (e.g. @priya-n)")
+    parser.add_argument("--team", default="", help="Team this spec belongs to")
     args = parser.parse_args()
 
     risk = args.risk.strip().upper()
@@ -111,7 +120,7 @@ def main():
         sys.exit(1)
 
     repo_root = resolve_repo_root(args)
-    out_path = create_spec(repo_root, args.name, risk, args.source)
+    out_path = create_spec(repo_root, args.name, risk, args.source, args.owner, args.team)
 
     print(f"Spec created: {out_path}")
     print(f"  Risk tier: {risk}")

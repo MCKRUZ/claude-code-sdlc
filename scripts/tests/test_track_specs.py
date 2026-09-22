@@ -5,6 +5,7 @@ import argparse
 import pytest
 
 from track_specs import (
+    resolve_roster_team_names,
     resolve_specs_dir,
     scan_specs,
     summarize,
@@ -25,6 +26,17 @@ def write_spec_with_channel(specs_dir, spec_id, channel_line):
     specs_dir.mkdir(parents=True, exist_ok=True)
     (specs_dir / f"{spec_id}-x.md").write_text(
         f'---\nspec: "{spec_id}"\nname: "x"\nstatus: draft\nrisk: LOW\n{channel_line}\n---\n# Spec\n',
+        encoding="utf-8",
+    )
+
+
+def write_spec_with_people(specs_dir, spec_id, owner="", developer="", checker="", team=""):
+    """Write a spec whose frontmatter carries the four people fields."""
+    specs_dir.mkdir(parents=True, exist_ok=True)
+    (specs_dir / f"{spec_id}-x.md").write_text(
+        f'---\nspec: "{spec_id}"\nname: "x"\nstatus: draft\nrisk: LOW\n'
+        f'owner: "{owner}"\ndeveloper: "{developer}"\nchecker: "{checker}"\nteam: "{team}"\n'
+        f'---\n# Spec\n',
         encoding="utf-8",
     )
 
@@ -98,6 +110,56 @@ class TestResolveSpecsDir:
         args = argparse.Namespace(state=str(tmp_path / "nope.yaml"), repo=None)
         with pytest.raises(SystemExit):
             resolve_specs_dir(args)
+
+
+class TestByTeam:
+    def test_scan_sets_people_fields(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec_with_people(specs, "0001", owner="@priya-n", developer="@jordan-b",
+                                checker="@sam-oduya", team="claims")
+        scanned = scan_specs(specs)
+        assert scanned[0]["owner"] == "@priya-n"
+        assert scanned[0]["developer"] == "@jordan-b"
+        assert scanned[0]["checker"] == "@sam-oduya"
+        assert scanned[0]["team"] == "claims"
+
+    def test_summarize_buckets_team_and_unassigned(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec_with_people(specs, "0001", team="claims")
+        write_spec(specs, "0002", "b", "draft", "LOW")            # no team -> unassigned
+        write_spec_with_people(specs, "0003", team="—")           # em-dash -> unassigned
+        summary = summarize(scan_specs(specs))
+        assert summary["by_team"]["claims"] == 1
+        assert summary["by_team"]["unassigned"] == 2
+
+    def test_summarize_preseeds_from_roster_team_names(self, tmp_path):
+        specs = tmp_path / "specs"
+        write_spec_with_people(specs, "0001", team="claims")
+        # "platform" has zero specs but is still a real team — it must appear at 0.
+        summary = summarize(scan_specs(specs), team_names=["claims", "platform"])
+        assert summary["by_team"]["claims"] == 1
+        assert summary["by_team"]["platform"] == 0
+
+    def test_resolve_roster_team_names_reads_sdlc_team_yaml(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        sdlc = tmp_path / ".sdlc"
+        sdlc.mkdir()
+        (sdlc / "team.yaml").write_text(
+            "teams:\n  - name: claims\n    lead: \"@priya-n\"\n"
+            "  - name: platform\n    lead: \"@sam-oduya\"\n"
+            "people:\n  - handle: \"@priya-n\"\n    name: Priya\n    team: claims\n"
+            "    roles: [owner, lead]\n"
+            "  - handle: \"@sam-oduya\"\n    name: Sam\n    team: platform\n"
+            "    roles: [owner, lead]\n",
+            encoding="utf-8",
+        )
+        assert resolve_roster_team_names(specs) == ["claims", "platform"]
+
+    def test_resolve_roster_team_names_empty_when_no_roster(self, tmp_path):
+        specs = tmp_path / "specs"
+        specs.mkdir()
+        assert resolve_roster_team_names(specs) == []
 
 
 class TestByChannel:

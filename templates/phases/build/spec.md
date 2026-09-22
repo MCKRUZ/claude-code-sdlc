@@ -7,6 +7,10 @@ type: feature            # feature | bugfix — a bugfix PR carries the `type:bu
 risk: MEDIUM             # HIGH | MEDIUM | LOW — first-class field; sets review depth
 source: "—"              # the story / REQ-id this spec realizes, or — if standalone
 channel: ""              # optional — delivery surface (see channels/); blank = channel-agnostic
+owner: ""                # the named human accountable for intent and decisions (DoR requires this)
+developer: ""            # who drives the agent and approves the plan — filled at hand-off
+checker: ""              # non-author approval — filled at hand-off
+team: ""                 # the team this spec belongs to (see .sdlc/team.yaml, if present)
 harness_context: ""      # the ONE existing pattern this change reuses (DoR requires this named)
 created: "YYYY-MM-DD"
 ---

@@ -32,6 +32,10 @@ Then write the spec — one file in the repo, durable across sessions:
 - **Scope in / Scope out** — the file patterns it may touch, and what it must not
 - **Acceptance checks** — testable, each passing the vague-line test
 - **Risk tier** — HIGH / MEDIUM / LOW
+- **Owner / Developer / Checker / Team** — the named human accountable for intent and decisions;
+  who drives the agent and approves the plan; who gives the non-author approval — the author
+  never approves their own work; and the team this spec belongs to. Owner is required before a
+  spec is Ready; developer and checker are filled at hand-off (Beat 2)
 - **Delegation plan** — what the agent may touch, what is gated, the named pattern to reuse
 - **Checking plan** — how high this change climbs the checking ladder (Beat 3)
 
@@ -40,6 +44,8 @@ The spec outlives the chat that produced it: the agent reads it every session, t
 **Tooling for Intent.** `/sdlc-spec` wraps this beat: it scaffolds the spec from the template (`scripts/new_spec.py` allocates the next `NNNN` id), drives the Definition of Ready, proposes a risk tier for a human to confirm (the agent never assigns the tier), and enforces the DoR with `scripts/check_spec.py` — a mechanical floor (required sections, a valid risk tier, scope in *and* out, no unfilled placeholders) plus a **vague-line lint** that flags acceptance checks likely to fail the vague-line test. The lint advises; the real vague-line test is your judgment. A spec that `check_spec.py` reports NOT READY does not enter the loop — building from it is the "skipping Intent" failure this loop exists to kill. Both scripts run standalone (point `--spec`/`--repo` at any repo) or in the workflow (with `--state`, each check logs to `.sdlc/metrics/spec-log.jsonl`).
 
 **Channel binding (conditional).** A spec with a customer surface is bound to exactly one channel before it is Ready: `/sdlc-channel` sets the spec's `channel:` field, injects that channel's acceptance dimensions (from `channels/<id>.yaml` and the Phase 2 `channel-interaction-spec.md`) as concrete lines under `## Acceptance Checks`, seeds `harness_context` if it is empty, and applies the channel's risk floor — which may raise the tier, never lower it. `check_channel.py` then advises (never blocks) when a bound spec is missing a dimension; `check_spec.py` is untouched. Checks that trace to a signed `BR-NN` cite it; a spec touching fields the data contract marks PII takes its tier from that classification.
+
+**The team roster (conditional).** A project may keep `.sdlc/team.yaml` — every person who may hold a role on a spec, their code-host handle, their team, and which stages they sign off (`scripts/validate_team.py` guards its shape; a worked example lives at `templates/team/team.example.yaml`). When a roster is present, `check_spec.py` confirms a spec's `owner` and `team` name a real entry in it, blocking otherwise. With no roster, that cross-check is skipped and says so — a project without one still works, it just isn't confirming names against anything. The roster never decides who *may* approve a change; that stays with branch protection on the code host. See `references/team-model.md`.
 
 **The risk taxonomy** (it lives in the harness so agents see it too):
 

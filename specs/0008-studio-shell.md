@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "SDLC Studio canvas — screens 1, 14, 17"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "the plugin's own scripts as the only way Studio reads or changes project state — never a second implementation"
 created: "2026-09-19"
 ---

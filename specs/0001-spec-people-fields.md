@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "docs/proposals/studio-plugin-work.md §10"
 channel: ""
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "the existing spec frontmatter contract in templates/phases/build/spec.md, read by scripts/track_specs.py"
 created: "2026-09-19"
 ---

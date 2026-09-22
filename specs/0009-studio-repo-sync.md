@@ -6,6 +6,10 @@ type: feature
 risk: HIGH
 source: "SDLC Studio canvas — screens 25, 26"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "the person's existing git and code-host sign-in on their machine — Studio never holds its own credential"
 created: "2026-09-19"
 ---

@@ -67,6 +67,7 @@ When adding a new agent or command, document both modes in its file. `discovery-
 ## Testing
 ```bash
 uv run scripts/validate_profile.py profiles/microsoft-enterprise/profile.yaml
+uv run scripts/validate_team.py .sdlc/team.yaml
 uv run scripts/init_project.py --profile profiles/microsoft-enterprise/profile.yaml --target /tmp/test
 uv run scripts/check_gates.py --state /tmp/test/.sdlc/state.yaml --phase 0
 uv run scripts/validate_frozen_layer.py --state /tmp/test/.sdlc/state.yaml --phase 0

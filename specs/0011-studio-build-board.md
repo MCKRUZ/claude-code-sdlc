@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "SDLC Studio canvas — screens 21, 22, 23, 24"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "plugin specs 0001, 0003, 0005 and 0006 — Studio reads and writes specs only through those scripts"
 created: "2026-09-19"
 ---

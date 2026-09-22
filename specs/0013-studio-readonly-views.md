@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "SDLC Studio canvas — screens 20b, 24b, 24d"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "scripts/scorecard.py for the numbers and the harness's own pipeline files for the gate list — Studio restates, never recalculates"
 created: "2026-09-19"
 ---

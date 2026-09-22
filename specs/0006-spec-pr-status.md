@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "docs/proposals/studio-plugin-work.md §15"
 channel: ""
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "the machine-readable `## Gate Results` block that /sdlc-review writes and scripts/record_findings.py parses"
 created: "2026-09-19"
 ---

@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "docs/proposals/studio-plugin-work.md §11"
 channel: ""
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "wip_warnings() and the --wip-cap flag in scripts/track_specs.py"
 created: "2026-09-19"
 ---

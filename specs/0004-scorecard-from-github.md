@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "docs/proposals/studio-plugin-work.md §13"
 channel: ""
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "the event log and report logic in scripts/scorecard.py (.sdlc/metrics/loop-events.jsonl)"
 created: "2026-09-19"
 ---

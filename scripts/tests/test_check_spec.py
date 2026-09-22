@@ -16,6 +16,8 @@ name: "duplicate-claim-409"
 status: ready
 risk: HIGH
 source: "REQ-12"
+owner: "@priya-n"
+team: "claims"
 harness_context: "the existing ClaimsController validation filter"
 created: "2026-06-24"
 ---
@@ -113,6 +115,85 @@ class TestReadySpec:
         results = check_spec_text(READY_SPEC)
         vague = [r for r in results if r["check"] == "vague-line" and not r["passed"]]
         assert vague == []
+
+
+class TestOwner:
+    def test_missing_owner_blocks(self):
+        spec = mutate(READY_SPEC, 'owner: "@priya-n"\n', "")
+        results = check_spec_text(spec)
+        assert any(r["check"] == "owner" for r in must_failures(results))
+
+    def test_empty_owner_blocks(self):
+        spec = mutate(READY_SPEC, 'owner: "@priya-n"', 'owner: ""')
+        results = check_spec_text(spec)
+        assert any(r["check"] == "owner" for r in must_failures(results))
+
+    def test_em_dash_owner_blocks(self):
+        spec = mutate(READY_SPEC, 'owner: "@priya-n"', 'owner: "—"')
+        results = check_spec_text(spec)
+        assert any(r["check"] == "owner" for r in must_failures(results))
+
+    def test_owner_present_passes(self):
+        results = check_spec_text(READY_SPEC)
+        assert any(r["check"] == "owner" and r["passed"] for r in results)
+
+    def test_empty_developer_and_checker_are_ready(self):
+        # developer/checker are filled at hand-off — absent entirely is fine.
+        results = check_spec_text(READY_SPEC)
+        assert must_failures(results) == []
+
+    def test_pre_change_spec_reports_only_missing_owner(self):
+        """Backward compatibility: a spec written before this change carries no owner/team
+        lines at all (not even empty ones) — check_spec_text must report exactly the one new
+        MUST failure ('owner') and crash on nothing, add no other new failure."""
+        pre_change_spec = mutate(READY_SPEC, 'owner: "@priya-n"\nteam: "claims"\n', "")
+        before = must_failures(check_spec_text(READY_SPEC))
+        after = must_failures(check_spec_text(pre_change_spec))
+        assert {r["check"] for r in after} - {r["check"] for r in before} == {"owner"}
+
+
+class TestRoster:
+    """The owner/team-in-roster cross-check: blocking when a roster exists, skipped (not
+    failed) when it does not — a standalone repository still works."""
+
+    ROSTER = """\
+teams:
+  - name: claims
+    lead: "@priya-n"
+people:
+  - handle: "@priya-n"
+    name: "Priya Nair"
+    team: claims
+    roles: [owner, lead]
+"""
+
+    def write_roster(self, tmp_path, text=None):
+        p = tmp_path / "team.yaml"
+        p.write_text(text if text is not None else self.ROSTER, encoding="utf-8")
+        return p
+
+    def test_no_roster_present_is_skipped_not_failed(self, tmp_path):
+        results = check_spec_text(READY_SPEC, tmp_path / "no-such-team.yaml")
+        assert must_failures(results) == []
+        assert any(r["check"] == "roster" and r["passed"] for r in results)
+
+    def test_owner_in_roster_passes(self, tmp_path):
+        roster = self.write_roster(tmp_path)
+        results = check_spec_text(READY_SPEC, roster)
+        assert must_failures(results) == []
+        assert any(r["check"] == "owner-in-roster" and r["passed"] for r in results)
+        assert any(r["check"] == "team-in-roster" and r["passed"] for r in results)
+
+    def test_owner_absent_from_roster_blocks(self, tmp_path):
+        roster = self.write_roster(tmp_path, self.ROSTER.replace("@priya-n", "@someone-else"))
+        # someone-else is now the only handle listed; @priya-n (the spec's owner) is absent.
+        results = check_spec_text(READY_SPEC, roster)
+        assert any(r["check"] == "owner-in-roster" for r in must_failures(results))
+
+    def test_team_absent_from_roster_blocks(self, tmp_path):
+        roster = self.write_roster(tmp_path, self.ROSTER.replace("name: claims", "name: platform"))
+        results = check_spec_text(READY_SPEC, roster)
+        assert any(r["check"] == "team-in-roster" for r in must_failures(results))
 
 
 class TestRiskTier:

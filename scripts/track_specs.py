@@ -19,6 +19,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import risk_model as rm
+import validate_team as vt
 from check_spec import parse_frontmatter
 
 STATUS_ORDER = ["draft", "ready", "in-flight", "merged"]
@@ -36,28 +37,42 @@ def scan_specs(specs_dir: Path) -> list[dict]:
         channel = fm.get("channel") or "unassigned"
         if channel == "—":
             channel = "channel-agnostic"
+        team = fm.get("team") or "unassigned"
+        if team == "—":
+            team = "unassigned"
         specs.append({
             "id": fm.get("spec", "????"),
             "name": fm.get("name", f.stem),
             "status": (fm.get("status") or "draft").strip().lower(),
             "risk": rm.normalize_tier(fm.get("risk")) or "?",
             "channel": channel,
+            "owner": fm.get("owner") or "",
+            "developer": fm.get("developer") or "",
+            "checker": fm.get("checker") or "",
+            "team": team,
             "path": str(f),
         })
     return specs
 
 
-def summarize(specs: list[dict]) -> dict:
-    """Backlog summary: totals, status breakdown, risk breakdown, the in-flight list."""
+def summarize(specs: list[dict], team_names: list[str] | None = None) -> dict:
+    """Backlog summary: totals, status breakdown, risk breakdown, the in-flight list.
+
+    `team_names` pre-seeds `by_team` from the project's roster (so a team with zero specs
+    still appears), the same way `by_status` is pre-seeded from STATUS_ORDER. With no roster,
+    `by_team` is built purely from what the specs themselves declare — same as `by_channel`.
+    """
     by_status = {s: 0 for s in STATUS_ORDER}
     by_risk = {t: 0 for t in rm.RISK_TIERS}
     by_channel: dict[str, int] = {}
+    by_team: dict[str, int] = {t: 0 for t in (team_names or [])}
     in_flight = []
     for spec in specs:
         by_status[spec["status"]] = by_status.get(spec["status"], 0) + 1
         if spec["risk"] in by_risk:
             by_risk[spec["risk"]] += 1
         by_channel[spec["channel"]] = by_channel.get(spec["channel"], 0) + 1
+        by_team[spec["team"]] = by_team.get(spec["team"], 0) + 1
         if spec["status"] == "in-flight":
             in_flight.append(spec)
     return {
@@ -65,6 +80,7 @@ def summarize(specs: list[dict]) -> dict:
         "by_status": by_status,
         "by_risk": by_risk,
         "by_channel": by_channel,
+        "by_team": by_team,
         "in_flight": in_flight,
     }
 
@@ -89,6 +105,15 @@ def resolve_specs_dir(args) -> Path:
     return Path(args.repo).resolve() / "specs"
 
 
+def resolve_roster_team_names(specs_dir: Path) -> list[str]:
+    """Team names from the project's .sdlc/team.yaml, if it has one. Empty list otherwise —
+    by_team then falls back to whatever the specs themselves declare (Standalone or Workflow)."""
+    roster_path = specs_dir.parent / ".sdlc" / "team.yaml"
+    if not roster_path.exists():
+        return []
+    return sorted(vt.team_names(vt.load_yaml(roster_path)))
+
+
 def format_report(summary: dict, warnings: list[str]) -> str:
     lines = ["Spec Backlog", "=" * 40, f"Total specs: {summary['total']}"]
     lines.append("")
@@ -103,6 +128,10 @@ def format_report(summary: dict, warnings: list[str]) -> str:
     lines.append("By channel:")
     for c in sorted(summary["by_channel"]):
         lines.append(f"  {c:<16} {summary['by_channel'][c]}")
+    lines.append("")
+    lines.append("By team:")
+    for t in sorted(summary["by_team"]):
+        lines.append(f"  {t:<16} {summary['by_team'][t]}")
     if summary["in_flight"]:
         lines.append("")
         lines.append("In flight (one spec = one branch = one PR):")
@@ -126,7 +155,7 @@ def main():
 
     specs_dir = resolve_specs_dir(args)
     specs = scan_specs(specs_dir)
-    summary = summarize(specs)
+    summary = summarize(specs, resolve_roster_team_names(specs_dir))
     warnings = wip_warnings(summary, args.wip_cap)
 
     if args.json:

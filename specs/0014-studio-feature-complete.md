@@ -6,6 +6,10 @@ type: feature
 risk: MEDIUM
 source: "SDLC Studio canvas — screen 24c"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "plugin spec 0002 for the deferred status, and scripts/generate_handoff_report.py for the hand-over document"
 created: "2026-09-19"
 ---

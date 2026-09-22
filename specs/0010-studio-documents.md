@@ -6,6 +6,10 @@ type: feature
 risk: HIGH
 source: "SDLC Studio canvas — screens 1, 2, 2b, 3, 7, 8, 8b, 9, 10"
 channel: "ag-ui"
+owner: "@MCKRUZ"
+developer: ""
+checker: ""
+team: "core"
 harness_context: "the template-shape read/write library from plugin spec 0007 — the only way Studio touches a document"
 created: "2026-09-19"
 ---
