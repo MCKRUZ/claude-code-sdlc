@@ -78,6 +78,8 @@ Delegating is not "go build it." It is drawing the box the agent works inside an
 
 **The box is enforced, not requested.** The permission rules hold whether or not anyone is watching, and the **Stop hook** refuses to let the agent finish with failing tests or a broken build. This hook is the single highest-value automation in the standard: it turns "the tests must pass" from a request the agent might rationalize past into a fact about the world.
 
+**Tooling for hand-off.** `/sdlc-handoff` / `scripts/handoff.py --spec <path> --developer @handle` turns hand-off — branch, frontmatter, code-host assignment, starting the agent — into one step, so the moment the loop's roles change hands isn't four manual steps that each get skipped differently. It refuses, changing nothing, unless the spec passes the Definition of Ready, the developer is in the roster and isn't also the spec's own checker, and the team is under its WIP limit (`## WIP Limits` in `cadence-plan.md`) — `--over-limit "<reason>"` overrides the last one and the reason lands in the commit message. The branch, the `status: in-flight` / `developer` commit, and the push all happen over plain `git`, so the local half still works with no code-host access; only the draft PR (and the assignment + review request riding on it) needs `gh`, and its failure is reported, not fatal. `--open` starts Claude Code on the branch in plan mode; without it, the command prints the exact one to run.
+
 ### Beat 3 — Discern: prove, then merge
 
 Written is cheap now; checked is the bar. A change is done when it has been proven against its spec by something other than its author — not when the code exists. The proving climbs a **five-rung checking ladder**, each rung catching what the one below cannot:

@@ -36,6 +36,7 @@ This plugin makes structured SDLC methodology executable in Claude Code. It prov
 | `/sdlc-intake` | Catalog and summarize an external document corpus (Phase 0, opt-in) |
 | `/sdlc-brief` | Prep a stakeholder workshop brief from the document corpus |
 | `/sdlc-spec` | Author a ready Build-loop spec (`specs/NNNN-name.md`) and enforce the Definition of Ready |
+| `/sdlc-handoff` | Hand a ready spec to a developer — branch, frontmatter, code-host assignment, starting the agent |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory and gate results |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases — identify always-pass and high-fail gates |
