@@ -18,6 +18,7 @@ Standalone or Workflow:
 """
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -39,9 +40,15 @@ class HandoffError(Exception):
     itself failed outright — either way nothing was left half-done."""
 
 
-def _run_git(args: list[str], cwd) -> str:
+def run_git(args: list[str], cwd, env: dict | None = None, input_text: str | None = None) -> str:
+    """`env` (e.g. GIT_INDEX_FILE) extends the current environment rather than replacing
+    it, so PATH etc. still resolve. `input_text` feeds stdin, for `hash-object --stdin`."""
+    full_env = {**os.environ, **env} if env else None
     try:
-        result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(
+            ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=60,
+            env=full_env, input=input_text,
+        )
     except subprocess.TimeoutExpired as e:
         raise HandoffError(f"git {' '.join(args)} timed out") from e
     if result.returncode != 0:
@@ -52,7 +59,7 @@ def _run_git(args: list[str], cwd) -> str:
 def resolve_base_branch(repo_root) -> str:
     """origin's default branch, over plain git — no `gh`/API dependency, so this still
     works with no code-host access (only git+network to the remote is required)."""
-    out = _run_git(["ls-remote", "--symref", "origin", "HEAD"], cwd=repo_root)
+    out = run_git(["ls-remote", "--symref", "origin", "HEAD"], cwd=repo_root)
     m = re.search(r"^ref:\s+refs/heads/(\S+)\s+HEAD", out, re.MULTILINE)
     if not m:
         raise HandoffError("Could not determine origin's default branch (git ls-remote --symref origin HEAD)")
@@ -72,11 +79,11 @@ def find_existing_handoff(repo_root, branch_name: str, spec_rel_path: str) -> st
     checkout still sitting on main/master would see `status: ready` forever, long after a
     real hand-off happened. A branch existing on origin is the one fact everyone shares.
     """
-    heads = _run_git(["ls-remote", "--heads", "origin", branch_name], cwd=repo_root)
+    heads = run_git(["ls-remote", "--heads", "origin", branch_name], cwd=repo_root)
     if not heads.strip():
         return None
-    _run_git(["fetch", "origin", branch_name], cwd=repo_root)
-    content = _run_git(["show", f"FETCH_HEAD:{spec_rel_path}"], cwd=repo_root)
+    run_git(["fetch", "origin", branch_name], cwd=repo_root)
+    content = run_git(["show", f"FETCH_HEAD:{spec_rel_path}"], cwd=repo_root)
     fm, _ = cs.parse_frontmatter(content)
     return fm.get("developer") or "(unset)"
 
@@ -100,17 +107,17 @@ def push_handoff_commit(repo_root, branch_name: str, base_branch: str,
     """Create the branch, write the frontmatter change, commit and push — via a throwaway
     git worktree, so the caller's own checkout (dirty or not, on any branch) is never
     touched. Cleaned up whether the push succeeds or fails."""
-    _run_git(["fetch", "origin", base_branch], cwd=repo_root)
+    run_git(["fetch", "origin", base_branch], cwd=repo_root)
     with tempfile.TemporaryDirectory() as tmp:
         wt_path = Path(tmp) / "handoff-wt"
-        _run_git(["worktree", "add", "-b", branch_name, str(wt_path), f"origin/{base_branch}"], cwd=repo_root)
+        run_git(["worktree", "add", "-b", branch_name, str(wt_path), f"origin/{base_branch}"], cwd=repo_root)
         try:
             (wt_path / spec_rel_path).write_text(new_text, encoding="utf-8")
-            _run_git(["add", spec_rel_path], cwd=wt_path)
-            _run_git(["commit", "-m", commit_message], cwd=wt_path)
-            _run_git(["push", "origin", branch_name], cwd=wt_path)
+            run_git(["add", spec_rel_path], cwd=wt_path)
+            run_git(["commit", "-m", commit_message], cwd=wt_path)
+            run_git(["push", "origin", branch_name], cwd=wt_path)
         finally:
-            _run_git(["worktree", "remove", "--force", str(wt_path)], cwd=repo_root)
+            run_git(["worktree", "remove", "--force", str(wt_path)], cwd=repo_root)
 
 
 def assign_on_host(repo_root, branch_name: str, base_branch: str, spec_id: str, spec_name: str,
@@ -267,7 +274,7 @@ def main():
 
     cmd = open_command(repo_root, result["branch"], result["spec_rel_path"])
     if args.open:
-        _run_git(["checkout", result["branch"]], cwd=repo_root)
+        run_git(["checkout", result["branch"]], cwd=repo_root)
         subprocess.run(cmd, cwd=repo_root)
     else:
         print(f"  Next: cd {repo_root} && git checkout {result['branch']} && " + " ".join(

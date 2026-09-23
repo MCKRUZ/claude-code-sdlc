@@ -45,6 +45,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-brief` | Analyze intake corpus + draft workshop brief | No | Phase 0 Step 0d, before a stakeholder workshop; also runs standalone via `--docs` |
 | `/sdlc-spec` | Author a ready spec (scaffold → DoR → human risk tier) | Writes `specs/NNNN-name.md`; logs spec metrics | The Build-loop Intent beat, before building any change; also runs standalone via `--repo` |
 | `/sdlc-handoff` | Hand a ready spec to a developer in one step | Writes the branch + `status`/`developer` frontmatter commit; assigns on the code host | The Build-loop Delegate beat, right after `/sdlc-spec`; also runs standalone via `--repo` |
+| `/sdlc-spec-status` | Report a spec's status read from its pull request | Writes `status: merged` on the default branch, once, when the PR has actually merged | The Build-loop Discern beat, to see where a change is and who it's waiting on; also runs standalone via `--repo` |
 | `/sdlc-spike` | Open a bounded spike for a question nobody can answer yet | Writes `spikes/NNNN-name.md` | When a story fails the Definition of Ready because the ground truth is unknown, not because the spec is badly written |
 | `/sdlc-doctor` | Day-1 environment check — proves the installed harness can actually run here; pack-aware, checks `gh` on GitHub installs and `az` on Azure DevOps installs, never the other | No | After `/sdlc-setup`, when onboarding a second developer, and any time a gate behaves inexplicably |
 
@@ -721,12 +722,13 @@ The Build loop's Intent beat — before building any change. A spec that `check_
 
 ## Additional Commands (summaries)
 
-Sixteen commands have their full flow documented in their command files rather than here. One
-line each; see `commands/<name>.md` for the complete instructions.
+Seventeen commands have their full flow documented in their command files rather than here.
+One line each; see `commands/<name>.md` for the complete instructions.
 
 | Command | What it does |
 |---|---|
 | `/sdlc-handoff` | Hand a ready spec to a developer in one step — branch, `status`/`developer` frontmatter commit, code-host assignment (+ review request to the checker), optionally starting Claude Code on the branch in plan mode. Refuses (repository untouched) unless the spec is ready, the developer is in the roster and isn't the spec's own checker, and the team is under its WIP limit |
+| `/sdlc-spec-status` | Report a spec's status read from its pull request — checks, whether the grader ran and its verdict, whether a required security review passed, approvals, merge, and who the change is waiting on in one line. No PR yet or no code-host access are reported plainly, not as errors. Once the PR merges, sets `status: merged` on the default branch, once |
 | `/sdlc-spike` | Open a bounded spike (`spikes/NNNN-name.md`) for a question the pod cannot yet answer. The deliverable is the written finding, not the code — the code is thrown away, the finding outlives the branch. Backed by `scripts/new_spike.py` |
 | `/sdlc-doctor` | Verify the installed harness will actually run in this repo — interpreters present, rails scripts executable, required secrets set, branch protection active — and print the fix for anything that will not. **Pack-aware:** reads the installed CI/CD pack from the harness manifest and checks GitHub installs with `gh` (repo secrets, ruleset), Azure DevOps installs with `az` (variable groups read from the installed pipelines, branch policies) — never asks a repo to install the other platform's CLI. The harness fails quietly; this is what makes it fail loudly |
 | `/sdlc-harness` | Install or refresh the delivery harness independent of a full `/sdlc-setup` |

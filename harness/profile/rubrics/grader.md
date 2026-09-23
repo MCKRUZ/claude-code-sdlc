@@ -63,5 +63,31 @@ touch." Use it two ways:
 5. **Bottom line** — `LOOKS GOOD` / `LOOKS RISKY` / `INSUFFICIENT SPEC` (use the last
    when no committed spec file was in the diff), plus the single most important thing
    the human Checker should look at before merging.
+6. **`## Acceptance Check Verdicts`** — a machine-readable block, appended at the very end,
+   after everything above. `scripts/spec_status.py` parses it to answer "where is this
+   change" for a spec without anyone reading the prose — **if this block and your prose
+   above ever disagree, the block wins**; the prose is explanation, not the record.
+
+   ```markdown
+   ## Acceptance Check Verdicts
+
+   | check | covered | reason |
+   |-------|---------|--------|
+   | A duplicate submission returns 409 with body `{ "error": "duplicate claim" }` | covered | tests/claims_test.py:42 asserts the status and body |
+   | Two concurrent submissions of the same id persist exactly 1 row | not-covered | no test exercises the concurrent path |
+   ```
+
+   **Rules for this block** — it is parsed mechanically, so it must be exact:
+   - It MUST be a top-level `## Acceptance Check Verdicts` heading (not nested, not inside
+     a code fence). Omitting it — including on `INSUFFICIENT SPEC`, where every row reads
+     `not-covered` — is itself a gap `spec_status.py` will report as "no verdict block found".
+   - One row per acceptance-check line, copied **verbatim** from the spec's own
+     `## Acceptance Checks` section — this is the join key back to the spec, so do not
+     paraphrase or renumber it.
+   - `covered` is exactly `covered` or `not-covered` — never `partial` or `unclear`. Collapse
+     your four-way Verdict column into this binary: ✅ met → `covered`; anything short of
+     fully met (⚠️ partial, ❌ not met, ❓ can't tell) → `not-covered`. A machine reading this
+     needs a yes/no, not a hedge.
+   - `reason` is one line — the same evidence you cited above, or why you couldn't tell.
 
 Keep it tight and evidence-led. Cite `file:line`. No praise, no filler.
