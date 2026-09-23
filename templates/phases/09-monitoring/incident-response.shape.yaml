@@ -1,0 +1,27 @@
+template: incident-response
+version: "1.0"
+
+sections:
+  - heading: Response Procedures
+    fields:
+      - label: Response Procedures
+        anchor: section
+        type: longtext
+        required: true
+        guidance: A Detect/Acknowledge/Diagnose/Communicate/Resolve/Confirm/Close procedure for each CRITICAL alert
+
+  - heading: Escalation Matrix
+    fields:
+      - label: Escalation Matrix
+        anchor: section
+        type: table
+        required: true
+        guidance: Every severity level with named first responder, escalation target and time window, and after-hours policy
+
+  - heading: Communication Templates
+    fields:
+      - label: Communication Templates
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Initial notification, progress update, and resolution notice templates with channel, timing, and copy-paste-ready body

@@ -1,0 +1,22 @@
+template: success-criteria
+version: "1.0"
+
+sections:
+  - heading: Measurable Success Dimensions
+    repeats: true
+    numbering:
+      pattern: "Dimension %d"
+    fields:
+      - label: Dimension
+        anchor: section
+        type: longtext
+        required: true
+        guidance: What's being measured, Pass/Partial/Fail thresholds with specific numbers, and the data collection method
+
+  - heading: Non-Negotiable Requirements
+    fields:
+      - label: Non-Negotiable Requirements
+        anchor: section
+        type: checklist
+        required: true
+        guidance: At least 3 binary, specific pass/fail requirements that are absolute blockers for release

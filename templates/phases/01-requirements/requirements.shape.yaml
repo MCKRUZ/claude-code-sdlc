@@ -1,0 +1,64 @@
+template: requirements
+version: "1.0"
+
+sections:
+  - heading: Overview
+    fields:
+      - label: Project
+        anchor: inline
+        type: text
+        required: true
+        guidance: The project name
+      - label: Version
+        anchor: inline
+        type: text
+        required: true
+        guidance: The document version
+      - label: Date
+        anchor: inline
+        type: date
+        required: true
+        guidance: The date this version was written (YYYY-MM-DD)
+      - label: Status
+        anchor: inline
+        type: enum
+        required: true
+        guidance: Where this document is in review
+        enum_values: [Draft, Under Review, Approved]
+
+  - heading: Functional Requirements
+    repeats: true
+    numbering:
+      pattern: "FR-%03d"
+    fields:
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: true
+        guidance: How important this requirement is
+        enum_values: [P0, P1, P2]
+      - label: Source
+        anchor: inline
+        type: text
+        required: false
+        guidance: The stakeholder persona or user story this traces back to
+      - label: Rationale
+        anchor: inline
+        type: text
+        required: false
+        guidance: Why this is required — what happens if we don't have it
+      - label: Requirement
+        anchor: labeled_block
+        type: longtext
+        required: true
+        guidance: "The testable SHALL statement — \"The system SHALL [verb] [object] [condition].\""
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: true
+        guidance: At least one Given/When/Then statement a tester can execute
+      - label: Dependencies
+        anchor: inline
+        type: text
+        required: false
+        guidance: Other requirements this one depends on, if any

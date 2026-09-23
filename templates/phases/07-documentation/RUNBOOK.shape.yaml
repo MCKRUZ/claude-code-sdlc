@@ -1,0 +1,30 @@
+template: runbook
+version: "1.0"
+
+sections:
+  - heading: Deployment Procedure
+    fields:
+      - label: Deployment Procedure
+        anchor: section
+        type: longtext
+        required: true
+        guidance: All 7 deployment steps filled in with actual commands and expected outputs, not placeholder text
+
+  - heading: Configuration Reference
+    fields:
+      - label: Configuration Reference
+        anchor: section
+        type: table
+        required: true
+        guidance: Every environment variable and secret the system uses, with type, description, example, and whether required
+
+  - heading: Failure Scenarios
+    repeats: true
+    numbering:
+      pattern: "Scenario %d"
+    fields:
+      - label: Scenario
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Symptoms, numbered diagnosis steps with actual commands, and resolution branches for each likely root cause

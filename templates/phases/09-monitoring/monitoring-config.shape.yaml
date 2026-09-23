@@ -1,0 +1,27 @@
+template: monitoring-config
+version: "1.0"
+
+sections:
+  - heading: Dashboard Inventory
+    fields:
+      - label: Dashboard Inventory
+        anchor: section
+        type: table
+        required: true
+        guidance: Every dashboard with URL/location, what it shows, a named owner, and review cadence
+
+  - heading: Metrics Catalog
+    fields:
+      - label: Metrics Catalog
+        anchor: section
+        type: table
+        required: true
+        guidance: System, application RED, business, and dependency metrics with source, unit, and description
+
+  - heading: Baseline Measurements
+    fields:
+      - label: Baseline Measurements
+        anchor: section
+        type: table
+        required: true
+        guidance: All 6 metrics measured from real production traffic within 48 hours of launch, with measured and review dates

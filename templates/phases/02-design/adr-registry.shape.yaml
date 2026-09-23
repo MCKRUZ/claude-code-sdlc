@@ -1,0 +1,15 @@
+template: adr-registry
+version: "1.0"
+
+# The REQUIRED marker sits on the H1 title line, not a "## " heading — this shape format
+# only models "## " sections, so the marker is honored against "Active ADRs", the table the
+# marker is actually describing ("every ADR created... must be listed here").
+
+sections:
+  - heading: Active ADRs
+    fields:
+      - label: Active ADRs
+        anchor: section
+        type: table
+        required: true
+        guidance: Every ADR created in this phase, listed with its status

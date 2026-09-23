@@ -1,0 +1,37 @@
+template: epics
+version: "1.0"
+
+# EP-NNN numbering is actually shared across the P0/P1/P2 sections in the real template,
+# but only "P0 Epics — Must Ship" carries a REQUIRED marker, so only it is modeled as a
+# repeating section here — next_free_number() still scans the WHOLE document for EP-NNN
+# occurrences regardless, so allocating a new number stays correct across all three.
+# "As a / I want to / so that" use a bold-label-without-colon convention this shape format
+# doesn't recognize (only "**Label:**" is); they stay free text.
+
+sections:
+  - heading: P0 Epics — Must Ship
+    repeats: true
+    numbering:
+      pattern: "EP-%03d"
+    fields:
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: false
+        guidance: P0, P1, or P2
+        enum_values: [P0, P1, P2]
+      - label: Estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: Story points or T-shirt size
+      - label: Linked requirement
+        anchor: inline
+        type: text
+        required: false
+        guidance: The FR-NNN this epic traces back to
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: true
+        guidance: At least one complete Given/When/Then acceptance criterion

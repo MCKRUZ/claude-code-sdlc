@@ -1,0 +1,35 @@
+template: section-plan
+version: "1.0"
+
+sections:
+  - heading: Goal
+    fields:
+      - label: Goal
+        anchor: section
+        type: text
+        required: true
+        guidance: One sentence — what capability does the system have when this section is complete that it didn't have before?
+
+  - heading: Entry Criteria
+    fields:
+      - label: Entry Criteria
+        anchor: section
+        type: checklist
+        required: true
+        guidance: What must be true before work on this section can begin?
+
+  - heading: Exit Criteria
+    fields:
+      - label: Exit Criteria
+        anchor: section
+        type: checklist
+        required: true
+        guidance: Specific, verifiable conditions that mark this section complete — not "done when it works"
+
+  - heading: Implementation Guidance
+    fields:
+      - label: Implementation Guidance
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Key design decisions, patterns to follow, pitfalls to avoid — enough for the implementer to start without ambiguity

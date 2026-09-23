@@ -1,0 +1,27 @@
+template: smoke-test-results
+version: "1.0"
+
+sections:
+  - heading: Staging Environment
+    fields:
+      - label: Staging Environment
+        anchor: section
+        type: table
+        required: true
+        guidance: Deployment date/time, build version, and results for every smoke test with pass/fail status and notes on failures
+
+  - heading: Production Environment
+    fields:
+      - label: Production Environment
+        anchor: section
+        type: table
+        required: true
+        guidance: Deployment date/time, build version, and results for every smoke test — all production tests must be non-destructive
+
+  - heading: Deployment Decision
+    fields:
+      - label: Deployment Decision
+        anchor: section
+        type: longtext
+        required: true
+        guidance: "Explicit \"Deployment successful\" or \"Rolled back\", with decision-maker name, time, and 2-3 sentence rationale"

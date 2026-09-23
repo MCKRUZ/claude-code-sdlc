@@ -79,6 +79,53 @@ These root-level templates are shorter, less prescriptive versions of their phas
 counterparts. The phase-specific versions under `phases/` are the authoritative templates used
 by the full SDLC workflow.
 
+### Template Shapes (optional, machine-readable)
+
+A template written as prose has no reliable machine structure — a heading someone renamed, or a
+bold label swapped for a different word, and a tool trying to read it either guesses or breaks
+something. Spec 0007 adds an optional **shape** file beside a template: `<name>.shape.yaml`,
+documented in full at `templates/_shape-schema.yaml`. A shape declares a template's `## `
+sections in order and, within them, the fields worth exposing to a form — each field's label,
+its type (from a fixed list: `text`, `longtext`, `enum`, `boolean`, `number`, `date`, `checklist`,
+`table`), whether it's required, and how the library finds its value (`inline`: same line as the
+label; `labeled_block`: the label alone on its line, value below it; `section`: no label, the
+field is the whole section body — used for a table, or where a `<!-- REQUIRED: -->` marker covers
+an entire section rather than one bold-label line).
+
+Two scripts do the work, and neither touches a template's own wording — a shape only *describes*
+what's there:
+
+- **`scripts/validate_shape.py <shape.yaml>`** checks a shape file itself: an unknown field type,
+  a duplicate section heading, a repeating section with no numbering pattern — every error names
+  the line it came from.
+- **`scripts/document_shape.py`** is the read/write library. It never parses a document into a
+  model and regenerates it — every recognized field is a byte span into the *original* text, and
+  a write replaces only that span, so a document round-trips byte-for-byte when nothing changed,
+  and a real edit changes only the bytes it targets. A document whose headings no longer match
+  its shape (someone renamed a section by hand) reads as **all free text with a warning** — never
+  a partial, guessed match. A repeating section (like `requirements.md`'s `### FR-001`, `###
+  FR-002`, ...) allocates its next number by scanning the *whole* document, including free text,
+  so a number already in use — even one never captured by the shape — is never reused. Every
+  document created from a shaped template from now on carries a stamp
+  (`<!-- template: <id> v<version> -->` right after the title); a document from before the stamp
+  existed reads and writes as all free text, exactly like an unshaped one.
+
+**Coverage today:** the 28 templates that already carry a `<!-- REQUIRED: -->` marker (the
+existing completeness convention — see §1's Core Principles) are shaped; the other 36 are not,
+and read/write exactly as before (a shape is additive — nothing about an unshaped template
+changes). A repeating series identified by something other than a sequential number (API
+Contracts' per-endpoint sections, keyed by method + path) or a bold label written without a colon
+("**As a** ...") isn't modeled at field granularity — the enclosing section is still shaped as one
+field, so presence/absence and round-trip fidelity hold; only the finer-grained per-field read is
+out of scope for now.
+
+**The advisory completeness check**, `scripts/check_document_completeness.py`, uses shapes to
+report a required field that's absent or empty — including a required *section* deleted outright,
+the gap the string-only Gate 2 scan (§1) cannot see, since a deleted section leaves no marker
+behind to find. This is a **new, separate, additive check** — `check_gates.py` (the protected
+core) is unchanged, and this check exits 0 always; whether it ever blocks a gate is a later,
+deliberate decision.
+
 ---
 
 ## 2. Directory Structure

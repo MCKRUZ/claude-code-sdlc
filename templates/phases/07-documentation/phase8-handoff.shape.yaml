@@ -1,0 +1,19 @@
+template: phase8-handoff
+version: "1.0"
+
+sections:
+  - heading: Documentation Summary
+    fields:
+      - label: Documentation Summary
+        anchor: section
+        type: table
+        required: true
+        guidance: All 4 artifacts listed with status and whether each was created or updated, plus completion date and approver
+
+  - heading: Operations Readiness Assessment
+    fields:
+      - label: Operations Readiness Assessment
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Explicit Yes/No/Partially answer to the 3am question, list of runbook gaps, and README new-developer test result

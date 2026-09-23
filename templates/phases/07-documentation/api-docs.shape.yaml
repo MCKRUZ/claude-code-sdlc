@@ -1,0 +1,32 @@
+template: api-docs
+version: "1.0"
+
+# "Endpoints" is meant to repeat once per endpoint, but its "### [METHOD] /[path] —
+# [Summary]" heading has no numeric numbering (e.g. "GET /claims — List claims", not
+# "Endpoint 1") — this shape format's `repeats` only supports numeric patterns, so the
+# whole section is modeled as one flat required field rather than a true repeating block.
+
+sections:
+  - heading: Authentication
+    fields:
+      - label: Authentication
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Auth scheme, how to obtain a token, token lifetime, and refresh procedure (or explicit "N/A — no auth")
+
+  - heading: Endpoints
+    fields:
+      - label: Endpoints
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Each endpoint documented — auth requirement, user story link, request schema, 200 response example, and error table
+
+  - heading: Error Catalog
+    fields:
+      - label: Error Catalog
+        anchor: section
+        type: table
+        required: true
+        guidance: Every error code the API returns, with HTTP status, description, and resolution guidance

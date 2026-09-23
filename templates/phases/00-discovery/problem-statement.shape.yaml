@@ -1,0 +1,32 @@
+template: problem-statement
+version: "1.0"
+
+sections:
+  - heading: Executive Summary
+    fields:
+      - label: Executive Summary
+        anchor: section
+        type: longtext
+        required: true
+        guidance: 2-3 sentences for a non-technical executive - what problem exists, who it affects, what solving it means for the business
+
+  - heading: Stakeholder Personas
+    fields:
+      - label: Stakeholder Personas
+        anchor: section
+        type: table
+        required: true
+        guidance: At least 3 personas, including one technical and one business stakeholder, all four columns filled in
+
+  - heading: Root Cause Analysis — Five Whys
+    fields:
+      - label: Five Whys Analysis
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The complete symptom-to-root-cause chain, every level filled in
+      - label: Root Cause Statement
+        anchor: inline
+        type: text
+        required: true
+        guidance: One clear sentence summarizing the fundamental issue this project addresses

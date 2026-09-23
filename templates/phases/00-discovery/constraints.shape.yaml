@@ -1,0 +1,19 @@
+template: constraints
+version: "1.0"
+
+sections:
+  - heading: Constraint Register
+    fields:
+      - label: Constraint Register
+        anchor: section
+        type: table
+        required: true
+        guidance: At least 3 constraints (C-01+), each with type, rationale, impact on solution, and owner
+
+  - heading: Assumptions
+    fields:
+      - label: Assumptions
+        anchor: section
+        type: table
+        required: true
+        guidance: At least 2 assumptions (A-01+), each with the risk if wrong and a validation plan
