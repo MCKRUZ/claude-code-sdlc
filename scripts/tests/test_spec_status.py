@@ -403,3 +403,34 @@ class TestReportAll:
         (tmp_path / "specs" / "README.md").write_text("# specs\n", encoding="utf-8")
         monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
         assert len(ss.report_all(tmp_path)["specs"]) == 1
+
+
+class TestWaitingOnHandle:
+    """Structured, so a board never pattern-matches an English sentence to answer
+    'is this waiting on me' for hundreds of rows."""
+
+    def _pr(self, **over):
+        base = {"state": "OPEN", "isDraft": False, "reviewRequests": []}
+        return {**base, **over}
+
+    def test_names_a_requested_reviewer(self):
+        pr = self._pr(reviewRequests=[{"login": "priya-n"}])
+        assert ss.waiting_on_handle(pr) == "@priya-n"
+
+    def test_falls_back_to_a_team_name_when_there_is_no_login(self):
+        pr = self._pr(reviewRequests=[{"name": "platform-reviewers"}])
+        assert ss.waiting_on_handle(pr) == "@platform-reviewers"
+
+    def test_nobody_in_particular_is_None_not_a_guess(self):
+        # CI, the grader, an unclaimed review — real states, but none of them is a person.
+        assert ss.waiting_on_handle(self._pr()) is None
+
+    def test_a_draft_is_waiting_on_nobody(self):
+        assert ss.waiting_on_handle(self._pr(isDraft=True, reviewRequests=[{"login": "x"}])) is None
+
+    def test_a_closed_or_merged_pull_request_is_waiting_on_nobody(self):
+        for state in ("MERGED", "CLOSED"):
+            assert ss.waiting_on_handle(self._pr(state=state, reviewRequests=[{"login": "x"}])) is None
+
+    def test_an_unidentifiable_reviewer_is_None_rather_than_the_word_someone(self):
+        assert ss.waiting_on_handle(self._pr(reviewRequests=[{}])) is None

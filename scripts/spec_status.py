@@ -389,8 +389,26 @@ def _spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | Non
         "updated_at": pr.get("updatedAt"),
         # verdicts/verdict_error are None here on purpose — see this section's header.
         "waiting_on": compute_waiting_on(repo_root, pr, None, None),
+        "waiting_on_handle": waiting_on_handle(pr),
     }
     return row
+
+
+def waiting_on_handle(pr: dict) -> str | None:
+    """The one person this pull request is waiting on, as a handle, or None.
+
+    Separate from `waiting_on`, which is a sentence for a person to read. A board needs to
+    answer "is this waiting on ME" for hundreds of rows, and doing that by pattern-matching
+    an English sentence would break the first time the wording is improved. Only a requested
+    reviewer names an individual; everything else — CI, the grader, an unclaimed review — is
+    waiting on no one in particular, and says so by returning None rather than guessing."""
+    if pr["state"] != "OPEN" or pr.get("isDraft"):
+        return None
+    requests = pr.get("reviewRequests") or []
+    if not requests:
+        return None
+    handle = _reviewer_handle(requests[0])
+    return f"@{handle}" if handle != "someone" else None
 
 
 def _spec_title(text: str) -> str:
