@@ -233,3 +233,29 @@ class TestOpenCommand:
         cmd = h.open_command("repo", "spec/0007-x", "specs/0007-x.md")
         assert cmd[:3] == ["claude", "--permission-mode", "plan"]
         assert "specs/0007-x.md" in cmd[3]
+
+
+# ---------------------------------------------------------------------------
+# Refusals as data (spec 0011's hand-off screen)
+# ---------------------------------------------------------------------------
+
+class TestRefusalKind:
+    """A graphical caller must BEHAVE differently per refusal — offer a reason box for a WIP
+    breach, a person-picker when the developer is the checker. Doing that by pattern-matching
+    the refusal's English breaks the first time the wording is improved, so the kind is
+    carried as data. The message stays the human-facing truth."""
+
+    def test_defaults_to_other_so_every_existing_raise_still_works(self):
+        assert h.HandoffError("something went wrong").kind == "other"
+
+    def test_carries_the_kind_when_given_one(self):
+        assert h.HandoffError("at limit", "team_at_limit").kind == "team_at_limit"
+
+    def test_the_message_is_unchanged_by_having_a_kind(self):
+        # The kind is additive. Anything that printed this error before must print the same.
+        assert str(h.HandoffError("Team 'core' is at its WIP limit", "team_at_limit")) \
+            == "Team 'core' is at its WIP limit"
+
+    def test_it_is_still_an_ordinary_exception(self):
+        with pytest.raises(h.HandoffError):
+            raise h.HandoffError("x", "not_ready")

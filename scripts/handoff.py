@@ -37,7 +37,18 @@ BRANCH_PREFIX = "spec/"
 
 class HandoffError(Exception):
     """A refusal, or a local-git failure. Raised before any mutation, or the mutation
-    itself failed outright — either way nothing was left half-done."""
+    itself failed outright — either way nothing was left half-done.
+
+    `kind` is the same refusal as data, for a caller that must BEHAVE differently per
+    refusal rather than just print it — a graphical caller offers a reason box for
+    `team_at_limit` and a person-picker for `developer_is_checker`. Without it that
+    caller has to pattern-match this class's English, which breaks the first time the
+    wording is improved. The message stays the human-facing truth; the kind is a hint,
+    and `other` is always a valid answer."""
+
+    def __init__(self, message: str, kind: str = "other"):
+        super().__init__(message)
+        self.kind = kind
 
 
 def run_git(args: list[str], cwd, env: dict | None = None, input_text: str | None = None) -> str:
@@ -183,19 +194,20 @@ def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason:
     must_fail = [r for r in results if not r["passed"] and r["severity"] == "MUST"]
     if must_fail:
         detail = "; ".join(r["message"] for r in must_fail)
-        raise HandoffError(f"Spec is not ready ({len(must_fail)} blocking issue(s)): {detail}")
+        raise HandoffError(f"Spec is not ready ({len(must_fail)} blocking issue(s)): {detail}", "not_ready")
 
     # --- Developer / checker ---
     if roster_path.exists():
         roster = vt.load_yaml(roster_path)
         handles = vt.people_handles(roster)
         if developer not in handles:
-            raise HandoffError(f"Developer '{developer}' is not listed in the roster ({roster_path})")
+            raise HandoffError(f"Developer '{developer}' is not listed in the roster ({roster_path})", "unknown_developer")
 
     checker = (fm.get("checker") or "").strip()
     if checker and checker == developer:
         raise HandoffError(
-            f"'{developer}' is this spec's checker — a person cannot check their own build"
+            f"'{developer}' is this spec's checker — a person cannot check their own build",
+            "developer_is_checker",
         )
 
     # --- Team WIP limit (spec 0003) ---
@@ -210,7 +222,8 @@ def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason:
         if n + 1 > limit and not over_limit_reason:
             raise HandoffError(
                 f"Team '{team}' is at its WIP limit: {n} in-flight, limit {limit} — this hand-off "
-                f"would make {n + 1}. Use --over-limit \"<reason>\" to proceed anyway."
+                f"would make {n + 1}. Use --over-limit \"<reason>\" to proceed anyway.",
+                "team_at_limit",
             )
 
     # --- The mutation: branch, frontmatter, push ---
@@ -250,6 +263,8 @@ def main():
     parser.add_argument("--over-limit", default=None, metavar="REASON",
                          help="Proceed even if the team is at its WIP limit; written into the commit")
     parser.add_argument("--open", action="store_true", help="Also start Claude Code on the branch")
+    parser.add_argument("--json", action="store_true",
+                        help="Emit the outcome (including a refusal and its kind) as JSON")
     args = parser.parse_args()
 
     repo_root = resolve_repo_root(args)
@@ -258,8 +273,17 @@ def main():
     try:
         result = handoff(repo_root, spec_path, args.developer, args.over_limit)
     except HandoffError as e:
-        print(f"Refused: {e}")
+        if args.json:
+            import json
+            print(json.dumps({"ok": False, "refusal": {"kind": e.kind, "message": str(e)}}, indent=2))
+        else:
+            print(f"Refused: {e}")
         sys.exit(1)
+
+    if args.json:
+        import json
+        print(json.dumps({"ok": True, **result}, indent=2))
+        return
 
     if result["already_in_flight"]:
         print(f"Already in flight — developer: {result['developer']}. Nothing changed.")
