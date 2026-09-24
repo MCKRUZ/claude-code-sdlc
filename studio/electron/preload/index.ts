@@ -34,6 +34,27 @@ const studio: StudioApi = {
   combineWithClaude: (projectPath, localText, remoteText) =>
     ipcRenderer.invoke('studio:combineWithClaude', projectPath, localText, remoteText),
 
+  getStageReadiness: (projectPath, stageId) => ipcRenderer.invoke('studio:getStageReadiness', projectPath, stageId),
+  openDocument: (projectPath, relPath) => ipcRenderer.invoke('studio:openDocument', projectPath, relPath),
+  getDocumentChanges: (projectPath, relPath) => ipcRenderer.invoke('studio:getDocumentChanges', projectPath, relPath),
+  markDocumentSeen: (projectPath, relPath) => ipcRenderer.invoke('studio:markDocumentSeen', projectPath, relPath),
+  setField: (projectPath, relPath, sectionKey, label, value) =>
+    ipcRenderer.invoke('studio:setField', projectPath, relPath, sectionKey, label, value),
+  nextNumber: (projectPath, relPath) => ipcRenderer.invoke('studio:nextNumber', projectPath, relPath),
+  addInstance: (projectPath, relPath, title) => ipcRenderer.invoke('studio:addInstance', projectPath, relPath, title),
+
+  listVersions: (projectPath, relPath) => ipcRenderer.invoke('studio:listVersions', projectPath, relPath),
+  getVersionText: (projectPath, relPath, ref) => ipcRenderer.invoke('studio:getVersionText', projectPath, relPath, ref),
+  diffVersions: (projectPath, relPath, a, b) => ipcRenderer.invoke('studio:diffVersions', projectPath, relPath, a, b),
+  previewRestore: (projectPath, relPath, ref) => ipcRenderer.invoke('studio:previewRestore', projectPath, relPath, ref),
+  confirmRestore: (projectPath, relPath, ref, actor, diffHash, ackSignOff) =>
+    ipcRenderer.invoke('studio:confirmRestore', projectPath, relPath, ref, actor, diffHash, ackSignOff),
+
+  draftField: (projectPath, relPath, sectionKey, label, guidance) =>
+    ipcRenderer.invoke('studio:draftField', projectPath, relPath, sectionKey, label, guidance),
+  recordDraftOutcome: (projectPath, relPath, label, outcome, actor, charsOffered, charsKept, instance) =>
+    ipcRenderer.invoke('studio:recordDraftOutcome', projectPath, relPath, label, outcome, actor, charsOffered, charsKept, instance),
+
   getConsoleLog: () => ipcRenderer.invoke('studio:getConsoleLog'),
   onConsoleEntry: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, entry: ConsoleEntry) => callback(entry)

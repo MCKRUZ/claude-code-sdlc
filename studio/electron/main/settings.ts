@@ -66,6 +66,21 @@ export function saveProjectSyncState(projectPath: string, state: ProjectSyncStat
   })
 }
 
+/** What this person had already seen in `relPath` when they last looked, or null if never.
+ * Deliberately separate from the ancestor bookkeeping: the ancestor is about what the two
+ * SIDES agree on, this is about what one PERSON has read. */
+export function getLastSeenCommit(projectPath: string, relPath: string): string | null {
+  return getProjectSyncState(projectPath).lastSeenCommits?.[relPath] ?? null
+}
+
+export function setLastSeenCommit(projectPath: string, relPath: string, commit: string): void {
+  const state = getProjectSyncState(projectPath)
+  saveProjectSyncState(projectPath, {
+    ...state,
+    lastSeenCommits: { ...state.lastSeenCommits, [relPath]: commit },
+  })
+}
+
 // --- Ancestor content store (spec 0009) --------------------------------------------------
 // A 3-way merge needs the ANCESTOR'S ACTUAL BYTES, not just a hash — and git's own object
 // store isn't a reliable place to fetch them back from (unreachable objects are eventually

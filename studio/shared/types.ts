@@ -51,6 +51,9 @@ export interface FileSyncState {
 export interface ProjectSyncState {
   lastPulledAt: string | null
   files: Record<string, FileSyncState>
+  /** Per-document, the commit this person had already seen when they last looked — what makes
+   * "changes since you last opened it" answerable (spec 0010). Keyed by repo-relative path. */
+  lastSeenCommits?: Record<string, string>
 }
 
 export interface Settings {
@@ -173,6 +176,139 @@ export interface SaveResult {
   error?: string
 }
 
+// --- Documents (spec 0010) ---------------------------------------------------------------
+
+/** One field inside a section, as the shape library describes it. `value` is the current text;
+ * `start`/`end` are JS string indices into the document (sectionMerge converts the CLI's byte
+ * offsets at the boundary). A field the shape declares but the document does not contain is
+ * `null` in `DocumentSection.fields` — there is no span to point at. */
+export interface DocumentField {
+  label: string
+  value: string
+  start: number
+  end: number
+  /** Metadata for rendering, straight from the shape: text | longtext | enum | boolean |
+   * number | date | checklist | table. The library never interprets it. */
+  type: string
+  required: boolean
+  anchor: string
+  empty: boolean
+  guidance?: string
+  enumValues?: string[]
+}
+
+/** One addressable piece of a document. `kind: 'free_text'` is anything the shape did not
+ * recognise — shown in place, never hidden and never dropped, which is the whole promise of
+ * the shape library. */
+export interface DocumentSection {
+  kind: 'section' | 'repeating_instance' | 'free_text'
+  /** Stable address used for edits: the heading, `heading#<number>` for a repeating instance,
+   * or `free_text@<start>`. */
+  key: string
+  heading: string
+  start: number
+  end: number
+  text: string
+  /** null for a field the shape declares but this document does not carry. */
+  fields: Record<string, DocumentField | null>
+  /** Set on a repeating instance, e.g. 3 for FR-003. */
+  number?: number
+}
+
+export interface OpenDocumentResult {
+  ok: boolean
+  path: string
+  /** False when the document's headings no longer match its shape, or it has no shape at all —
+   * the whole document then arrives as a single free_text section, per spec 0007's own
+   * unconditional fallback. Reading still works; only field-level editing is unavailable. */
+  shaped: boolean
+  /** Why it is unshaped, when it is — the shape library's own warnings, verbatim. */
+  warnings: string[]
+  description?: string
+  sections: DocumentSection[]
+  error?: string
+}
+
+/** A change that arrived from someone else since this person last opened the document. */
+export interface DocumentChange {
+  author: string
+  when: string
+  /** The commit message — the "why". */
+  reason: string
+}
+
+export interface StageDocument {
+  name: string
+  path: string
+  exists: boolean
+  shaped: boolean
+  description?: string
+  findingCount: number
+  ready: boolean
+}
+
+export interface ReadinessFinding {
+  path: string
+  section: string
+  field: string | null
+  reason: string
+  /** Where to jump to in the document. Absent when the field is missing entirely — the caller
+   * falls back to the section. */
+  start?: number
+  end?: number
+}
+
+export interface StageReadiness {
+  ok: boolean
+  stageId: string
+  display: string
+  description?: string
+  isCurrent: boolean
+  documents: StageDocument[]
+  findings: ReadinessFinding[]
+  /** Exit-gate conditions no check can answer — questions for whoever signs off. */
+  judgementConditions: string[]
+  signOff: {
+    status: string
+    signedOffBy: string | null
+    completedAt: string | null
+  }
+  ready: boolean
+  error?: string
+}
+
+export interface DocumentVersion {
+  n: number
+  hash: string
+  event: string
+  when: string
+  actor: string
+  /** The commit-style reason, joined from the change ledger — `version list` alone drops it. */
+  reason: string
+  /** False when the version exists in metadata but its bytes are not on this machine (the
+   * object store is local and gitignored). Showing or restoring it is then unavailable. */
+  present: boolean
+  restoredFrom?: number
+}
+
+export interface RestorePreview {
+  ok: boolean
+  /** Echoed back to confirm — proves the person saw this exact diff before it is applied. */
+  diffHash: string
+  diff: string
+  /** True when the artifact is signed off, so confirming needs an explicit acknowledgement. */
+  needsSignOffAck: boolean
+  error?: string
+}
+
+export type DraftOutcome = 'accepted' | 'edited' | 'discarded'
+
+export interface DraftResult {
+  ok: boolean
+  text?: string
+  error?: string
+}
+
 /** Pushed to the renderer as sync activity happens, so the Header pill (spec 0009's "sync
  * indicator on every screen") updates live rather than only after a full pull/save
  * completes. */
@@ -214,6 +350,31 @@ export interface StudioApi {
   onSyncState(callback: (state: SyncState) => void): () => void
   getPendingClashes(projectPath: string): Promise<FileClash[]>
   combineWithClaude(projectPath: string, localText: string, remoteText: string): Promise<{ combined: string } | { error: string }>
+
+  // --- Documents (spec 0010) ---
+  getStageReadiness(projectPath: string, stageId?: string): Promise<StageReadiness>
+  openDocument(projectPath: string, relPath: string): Promise<OpenDocumentResult>
+  /** Changes by other people since this person last opened the document. Marking it seen is a
+   * separate, explicit call so merely listing changes never clears them. */
+  getDocumentChanges(projectPath: string, relPath: string): Promise<DocumentChange[]>
+  markDocumentSeen(projectPath: string, relPath: string): Promise<void>
+  /** Writes one field through the shape library. Saving to the repository is a separate step
+   * (spec 0009's save), so an edit is local until the person chooses to save it. */
+  setField(projectPath: string, relPath: string, sectionKey: string, label: string, value: string): Promise<OpenDocumentResult>
+  nextNumber(projectPath: string, relPath: string): Promise<{ ok: boolean; id?: string; number?: number; error?: string }>
+  addInstance(projectPath: string, relPath: string, title: string): Promise<OpenDocumentResult>
+
+  listVersions(projectPath: string, relPath: string): Promise<DocumentVersion[]>
+  getVersionText(projectPath: string, relPath: string, ref: string): Promise<{ ok: boolean; text?: string; error?: string }>
+  diffVersions(projectPath: string, relPath: string, a: string, b: string): Promise<{ ok: boolean; diff?: string; error?: string }>
+  previewRestore(projectPath: string, relPath: string, ref: string): Promise<RestorePreview>
+  confirmRestore(projectPath: string, relPath: string, ref: string, actor: string, diffHash: string, ackSignOff: boolean): Promise<{ ok: boolean; error?: string }>
+
+  draftField(projectPath: string, relPath: string, sectionKey: string, label: string, guidance: string): Promise<DraftResult>
+  recordDraftOutcome(
+    projectPath: string, relPath: string, label: string, outcome: DraftOutcome,
+    actor: string, charsOffered: number, charsKept: number, instance?: string,
+  ): Promise<void>
 
   getConsoleLog(): Promise<ConsoleEntry[]>
   onConsoleEntry(callback: (entry: ConsoleEntry) => void): () => void

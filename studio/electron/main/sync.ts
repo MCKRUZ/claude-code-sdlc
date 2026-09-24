@@ -10,6 +10,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { runGit, runGitTolerant, runGh, ghJson } from './git'
+import { recordVersion } from './history'
 import { runPluginScript } from './project'
 import {
   extractUnits, findShapeForPath, readShapeFromBytes, threeWayMerge, writeShapeUpdates,
@@ -546,10 +547,22 @@ async function approvalSettingsForFiles(
 
 // --- save --------------------------------------------------------------------------------
 
+export interface SaveOptions {
+  /** Save only this document, leaving other changed files for their own save. Spec 0010 saves
+   * one document at a time with its own reason; spec 0009's whole-project save is what you get
+   * when this is omitted. */
+  onlyPath?: string
+  /** Who is saving, and why — recorded as a version so the document's history can answer "who
+   * saved this and why" later. Without these the save still happens, but no version is
+   * recorded, because a version attributed to nobody is worse than no version. */
+  actor?: string
+}
+
 export async function save(
   projectPath: string,
   pluginScriptsDir: string,
   changeNote: string,
+  options: SaveOptions = {},
 ): Promise<SaveResult> {
   emitSyncState({ kind: 'saving' })
 
@@ -573,6 +586,7 @@ export async function save(
 
   const state = getProjectSyncState(projectPath)
   const changedFiles = listLocalAllowlistedFiles(projectPath).filter((relPath) => {
+    if (options.onlyPath && relPath !== options.onlyPath) return false
     const fullPath = join(projectPath, relPath)
     if (!existsSync(fullPath)) return false
     const hash = hashBytes(readFileSync(fullPath))
@@ -581,6 +595,16 @@ export async function save(
 
   if (changedFiles.length === 0) {
     return { ok: true, entries: [], error: 'Nothing to save — no changes since the last sync.' }
+  }
+
+  // Record each saved document as a version BEFORE pushing, so the history reflects what was
+  // saved even if the push is then rejected and turns into a pull request. Best-effort: a
+  // failure to record history must never block the save itself.
+  if (options.actor) {
+    for (const relPath of changedFiles) {
+      await recordVersion(projectPath, pluginScriptsDir, relPath, options.actor, changeNote)
+        .catch(() => undefined)
+    }
   }
 
   const tmpDir = mkdtempSync(join(tmpdir(), 'studio-index-'))

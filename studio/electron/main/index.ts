@@ -9,7 +9,13 @@ import { initSettingsPath, loadSettings, recordRecentProject, saveSettings, type
 import { hasSdlcProject, listAvailableProfiles, openProject, previewSetup, runSetup } from './project'
 import { combineWithClaude } from './claudeAssist'
 import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save } from './sync'
-import type { ClashChoice } from '../../shared/types'
+import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } from './documents'
+import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
+import { getStageReadiness } from './readiness'
+import { draftField, recordDraftOutcome } from './drafts'
+import { getLastSeenCommit, setLastSeenCommit } from './settings'
+import { runGitTolerant } from './git'
+import type { ClashChoice, DraftOutcome } from '../../shared/types'
 
 /** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
  * while open"). */
@@ -200,6 +206,126 @@ function registerIpcHandlers() {
     const settings = loadSettings()
     return combineWithClaude(settings.claudePathOverride ?? 'claude', projectPath, localText, remoteText)
   })
+
+  // --- Documents (spec 0010) ---
+
+  ipcMain.handle('studio:getStageReadiness', async (_event, projectPath: string, stageId?: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return {
+        ok: false, stageId: '', display: '', isCurrent: false, documents: [], findings: [],
+        judgementConditions: [], signOff: { status: 'unknown', signedOffBy: null, completedAt: null },
+        ready: false, error: 'claude-code-sdlc plugin scripts not found',
+      }
+    }
+    return getStageReadiness(projectPath, scriptsDir, stageId)
+  })
+
+  const noScripts = (relPath: string) => ({
+    ok: false, path: relPath, shaped: false, warnings: [], sections: [],
+    error: 'claude-code-sdlc plugin scripts not found',
+  })
+
+  ipcMain.handle('studio:openDocument', async (_event, projectPath: string, relPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    return scriptsDir ? openDocument(projectPath, scriptsDir, relPath) : noScripts(relPath)
+  })
+
+  ipcMain.handle('studio:getDocumentChanges', async (_event, projectPath: string, relPath: string) => {
+    const branchEntry = await runGitTolerant(['branch', '--show-current'], projectPath)
+    if (!branchEntry.ok) return []
+    return getDocumentChanges(projectPath, relPath, getLastSeenCommit(projectPath, relPath), branchEntry.stdout.trim())
+  })
+
+  ipcMain.handle('studio:markDocumentSeen', async (_event, projectPath: string, relPath: string) => {
+    const head = await runGitTolerant(['rev-parse', 'HEAD'], projectPath)
+    if (head.ok) setLastSeenCommit(projectPath, relPath, head.stdout.trim())
+  })
+
+  ipcMain.handle(
+    'studio:setField',
+    async (_event, projectPath: string, relPath: string, sectionKey: string, label: string, value: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      return scriptsDir ? setField(projectPath, scriptsDir, relPath, sectionKey, label, value) : noScripts(relPath)
+    },
+  )
+
+  ipcMain.handle('studio:nextNumber', async (_event, projectPath: string, relPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+    return nextNumber(projectPath, scriptsDir, relPath)
+  })
+
+  ipcMain.handle('studio:addInstance', async (_event, projectPath: string, relPath: string, title: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    return scriptsDir ? addInstance(projectPath, scriptsDir, relPath, title) : noScripts(relPath)
+  })
+
+  ipcMain.handle('studio:listVersions', async (_event, projectPath: string, relPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    return scriptsDir ? listVersions(projectPath, scriptsDir, relPath) : []
+  })
+
+  ipcMain.handle('studio:getVersionText', async (_event, projectPath: string, relPath: string, ref: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+    return getVersionText(projectPath, scriptsDir, relPath, ref)
+  })
+
+  ipcMain.handle('studio:diffVersions', async (_event, projectPath: string, relPath: string, a: string, b: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+    return diffVersions(projectPath, scriptsDir, relPath, a, b)
+  })
+
+  ipcMain.handle('studio:previewRestore', async (_event, projectPath: string, relPath: string, ref: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { ok: false, diffHash: '', diff: '', needsSignOffAck: false, error: 'claude-code-sdlc plugin scripts not found' }
+    }
+    return previewRestore(projectPath, scriptsDir, relPath, ref)
+  })
+
+  ipcMain.handle(
+    'studio:confirmRestore',
+    async (_event, projectPath: string, relPath: string, ref: string, actor: string, diffHash: string, ackSignOff: boolean) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+      return confirmRestore(projectPath, scriptsDir, relPath, ref, actor, diffHash, ackSignOff)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:draftField',
+    async (_event, projectPath: string, relPath: string, sectionKey: string, label: string, guidance: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+      const doc = await openDocument(projectPath, scriptsDir, relPath)
+      const section = doc.sections.find((s) => s.key === sectionKey)
+      const settings = loadSettings()
+      return draftField(
+        settings.claudePathOverride ?? 'claude',
+        projectPath,
+        relPath.split('/').pop() ?? relPath,
+        section?.heading ?? sectionKey,
+        label,
+        guidance,
+        section?.text ?? '',
+      )
+    },
+  )
+
+  ipcMain.handle(
+    'studio:recordDraftOutcome',
+    async (
+      _event, projectPath: string, relPath: string, label: string, outcome: DraftOutcome,
+      actor: string, charsOffered: number, charsKept: number, instance?: string,
+    ) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return
+      await recordDraftOutcome(projectPath, scriptsDir, relPath, label, outcome, actor, charsOffered, charsKept, instance)
+    },
+  )
 
   onSyncState((state) => {
     win?.webContents.send('studio:syncState', state)

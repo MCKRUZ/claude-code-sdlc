@@ -29,10 +29,18 @@ import type { ClashSection } from '../../shared/types'
 
 // --- document_shape_cli.py subprocess boundary -------------------------------------------
 
-interface ShapeField {
+/** One field as document_shape_cli.py's `read` emits it. `start`/`end` are JS string indices
+ * by the time a caller sees this — converted from the CLI's byte offsets in
+ * readShapeFromBytes. `type` is metadata for whatever renders a form; the shape library never
+ * interprets what is inside a field. */
+export interface ShapeField {
   value: string
   start: number
   end: number
+  type: string
+  required: boolean
+  anchor: string
+  empty: boolean
 }
 
 interface ShapeBlock {
