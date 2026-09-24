@@ -264,3 +264,142 @@ class TestFormatReport:
         assert "1/1 acceptance checks covered" in out
         assert "priya-n" in out
         assert "ready to merge" in out
+
+
+# ---------------------------------------------------------------------------
+# The board's bulk mode (spec 0011) — every spec in ONE code-host request
+# ---------------------------------------------------------------------------
+
+SPEC_TEXT = """\
+---
+spec: "0042"
+name: "duplicate-claim"
+status: in-flight
+type: feature
+risk: HIGH
+owner: "@MCKRUZ"
+developer: "@sam-k"
+checker: "@priya-n"
+team: "claims"
+channel: "ag-ui"
+created: "2026-09-24"
+---
+
+# Spec 0042 — Reject a duplicate claim
+
+## Goal
+Something.
+"""
+
+
+def _write_spec(repo, text=SPEC_TEXT, name="0042-duplicate-claim.md"):
+    specs = repo / "specs"
+    specs.mkdir(exist_ok=True)
+    (specs / name).write_text(text, encoding="utf-8")
+    return specs / name
+
+
+class TestSpecTitle:
+    def test_strips_the_spec_number_prefix(self):
+        assert ss._spec_title(SPEC_TEXT) == "Reject a duplicate claim"
+
+    def test_no_heading_is_empty_not_an_error(self):
+        assert ss._spec_title("no heading here") == ""
+
+
+class TestFetchAllPullRequests:
+    def test_keys_by_head_branch(self, monkeypatch):
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [
+            {"number": 1, "headRefName": "spec/0001-a"},
+            {"number": 2, "headRefName": "spec/0002-b"},
+        ])
+        by_branch = ss.fetch_all_pull_requests("/repo")
+        assert set(by_branch) == {"spec/0001-a", "spec/0002-b"}
+
+    def test_a_reused_branch_reports_its_CURRENT_pull_request(self, monkeypatch):
+        # gh lists newest first, so the first occurrence is the live one. Taking the last
+        # would report a closed predecessor as the branch's status.
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [
+            {"number": 9, "headRefName": "spec/0001-a", "state": "OPEN"},
+            {"number": 3, "headRefName": "spec/0001-a", "state": "CLOSED"},
+        ])
+        assert ss.fetch_all_pull_requests("/repo")["spec/0001-a"]["number"] == 9
+
+
+class TestReportAll:
+    def test_rows_come_from_the_spec_file_itself(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["spec"] == "0042"
+        assert row["title"] == "Reject a duplicate claim"
+        assert row["risk"] == "HIGH"
+        assert row["team"] == "claims"
+        assert row["owner"] == "@MCKRUZ"
+        assert row["developer"] == "@sam-k"
+        assert row["checker"] == "@priya-n"
+        assert row["branch"] == "spec/0042-duplicate-claim"
+        assert row["pull_request"] is None
+
+    def test_an_unreachable_code_host_still_returns_every_row(self, tmp_path, monkeypatch):
+        # An empty board would read as "there is no work", which is a different claim from
+        # "the live half is missing" — so the rows stay and the reason is stated.
+        _write_spec(tmp_path)
+        def boom(*a, **k):
+            raise GitHubImportError("gh: not authenticated")
+        monkeypatch.setattr(ss, "gh_json", boom)
+        result = ss.report_all(tmp_path)
+        assert result["code_host_available"] is False
+        assert "not authenticated" in result["error"]
+        assert len(result["specs"]) == 1
+        assert result["specs"][0]["pull_request"] is None
+
+    def test_matches_a_pull_request_by_the_shared_branch_rule(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [{
+            "number": 7, "url": "https://x/7", "state": "OPEN",
+            "headRefName": "spec/0042-duplicate-claim",
+            "mergedAt": None, "updatedAt": "2026-09-20T10:00:00Z", "isDraft": False,
+            "statusCheckRollup": CHECKS_ALL_GREEN, "reviews": [], "reviewRequests": [],
+        }])
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert pr["number"] == 7
+        assert pr["updated_at"] == "2026-09-20T10:00:00Z"
+        assert pr["waiting_on"] == "waiting for a non-author approval"
+
+    def test_bulk_mode_NEVER_writes(self, tmp_path, monkeypatch):
+        """A board refreshes on a timer. report_status() commits `status: merged` when it
+        sees a merged pull request; doing that from a board would mean the act of LOOKING
+        at the work changed the repository. Asserted, not assumed."""
+        spec = _write_spec(tmp_path)
+        before = spec.read_text(encoding="utf-8")
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [{
+            "number": 7, "url": "https://x/7", "state": "MERGED",
+            "headRefName": "spec/0042-duplicate-claim",
+            "mergedAt": "2026-09-20T10:00:00Z", "updatedAt": "2026-09-20T10:00:00Z",
+            "isDraft": False, "statusCheckRollup": CHECKS_ALL_GREEN,
+            "reviews": [], "reviewRequests": [],
+        }])
+        # Any git call at all would be a bug here, so make one fatal.
+        monkeypatch.setattr(ss, "run_git", lambda *a, **k: pytest.fail("bulk mode ran git"))
+
+        result = ss.report_all(tmp_path)
+        assert result["specs"][0]["pull_request"]["waiting_on"] == "merged"
+        assert spec.read_text(encoding="utf-8") == before
+
+    def test_a_spec_with_no_frontmatter_is_reported_not_skipped(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path, text="# Just a heading\n", name="0099-broken.md")
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        rows = ss.report_all(tmp_path)["specs"]
+        assert len(rows) == 1
+        assert "frontmatter" in rows[0]["error"]
+
+    def test_no_specs_directory_is_an_empty_board_not_a_crash(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        assert ss.report_all(tmp_path)["specs"] == []
+
+    def test_readme_is_not_a_spec(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        (tmp_path / "specs" / "README.md").write_text("# specs\n", encoding="utf-8")
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        assert len(ss.report_all(tmp_path)["specs"]) == 1

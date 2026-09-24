@@ -304,6 +304,145 @@ def report_status(repo_root: Path, spec_path: Path) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# Every spec at once, in ONE code-host request (spec 0011's board)
+# ---------------------------------------------------------------------------
+#
+# The board shows hundreds of specs and has two seconds to do it. report_status() above is
+# one code-host round trip per spec — measured at 1.05s each even on its fast path, so two
+# hundred specs is about three and a half minutes. This asks once instead: every pull
+# request in one request, matched to specs locally by the branch-naming rule they already
+# share.
+#
+# Two deliberate differences from report_status(), both of which the board can live with and
+# neither of which it should pretend away:
+#
+#   * It NEVER WRITES. report_status() commits `status: merged` when it sees a merged pull
+#     request; a board refreshing on a timer must not commit anything, and spec 0011 says
+#     the status view offers no control that changes anything. Merging still gets recorded —
+#     by the per-spec call, which is what runs when a person opens one.
+#   * The grader's verdicts and the exact age of a review request each need their own
+#     per-pull-request fetch, so they are not read here. `waiting_on` is computed from what
+#     the one request returns, and `updated_at` is offered as "when this last moved" rather
+#     than dressed up as "how long it has been waiting", which would be a different and
+#     unmeasured thing.
+
+PR_LIST_FIELDS = (
+    "number,url,state,mergedAt,updatedAt,isDraft,headRefName,"
+    "statusCheckRollup,reviews,reviewRequests"
+)
+
+
+def fetch_all_pull_requests(repo_root, limit: int = 1000) -> dict[str, dict]:
+    """Every pull request the code host knows about, keyed by its head branch."""
+    prs = gh_json(
+        ["pr", "list", "--state", "all", "--limit", str(limit), "--json", PR_LIST_FIELDS],
+        cwd=str(repo_root),
+    )
+    # Newest first is gh's own order; keeping the FIRST occurrence of a branch means a
+    # reopened-then-rebuilt branch reports its current pull request, not a stale one.
+    by_branch: dict[str, dict] = {}
+    for pr in prs:
+        by_branch.setdefault(pr.get("headRefName", ""), pr)
+    return by_branch
+
+
+def _spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None) -> dict:
+    """One board row. Everything except `pull_request` comes from the file itself, so a row
+    is complete and useful before the code host has answered — or when it never does."""
+    text = spec_path.read_text(encoding="utf-8")
+    fm, _ = cs.parse_frontmatter(text)
+    if not fm:
+        return {"path": spec_path.name, "error": "no parseable frontmatter"}
+
+    spec_id = str(fm.get("spec", "????"))
+    spec_name = str(fm.get("name", "unnamed"))
+    branch = branch_name_for(spec_id, spec_name)
+
+    row = {
+        "spec": spec_id,
+        "name": spec_name,
+        "path": str(spec_path.resolve().relative_to(repo_root)).replace("\\", "/"),
+        "title": _spec_title(text),
+        "status": (fm.get("status") or "").strip(),
+        "risk": (fm.get("risk") or "").strip(),
+        "team": (fm.get("team") or "").strip(),
+        "channel": (fm.get("channel") or "").strip(),
+        "owner": (fm.get("owner") or "").strip(),
+        "developer": (fm.get("developer") or "").strip(),
+        "checker": (fm.get("checker") or "").strip(),
+        "branch": branch,
+        "pull_request": None,
+    }
+    if by_branch is None:
+        return row
+
+    pr = by_branch.get(branch)
+    if pr is None:
+        return row
+
+    row["pull_request"] = {
+        "number": pr["number"],
+        "url": pr["url"],
+        "state": pr["state"],
+        "merged_at": pr.get("mergedAt"),
+        "updated_at": pr.get("updatedAt"),
+        # verdicts/verdict_error are None here on purpose — see this section's header.
+        "waiting_on": compute_waiting_on(repo_root, pr, None, None),
+    }
+    return row
+
+
+def _spec_title(text: str) -> str:
+    """The spec's own H1, minus the `Spec NNNN — ` prefix it always carries."""
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return re.sub(r"^Spec\s+\S+\s+[—-]\s*", "", line[2:].strip())
+    return ""
+
+
+def report_all(repo_root: Path) -> dict:
+    """Every spec in the repository, with live pull-request state where there is any.
+
+    Read-only, and honest when the code host is unreachable: the rows are still returned,
+    built from the spec files, with `code_host_available: false` saying why the live half is
+    missing. An empty board would read as "there is no work", which is a different claim."""
+    specs_dir = repo_root / "specs"
+    spec_paths = sorted(p for p in specs_dir.glob("*.md") if p.name != "README.md") \
+        if specs_dir.is_dir() else []
+
+    by_branch: dict[str, dict] | None = None
+    error = None
+    try:
+        by_branch = fetch_all_pull_requests(repo_root)
+    except GitHubImportError as e:
+        error = str(e)
+
+    return {
+        "code_host_available": by_branch is not None,
+        "error": error,
+        "specs": [_spec_row(p, repo_root, by_branch) for p in spec_paths],
+    }
+
+
+def format_all_report(result: dict) -> str:
+    rows = result["specs"]
+    lines = [f"{len(rows)} spec(s)"]
+    if not result["code_host_available"]:
+        lines.append(f"  Live status unavailable: {result.get('error')}")
+    for row in rows:
+        if "error" in row:
+            lines.append(f"  {row['path']}: {row['error']}")
+            continue
+        pr = row["pull_request"]
+        where = pr["waiting_on"] if pr else (row["status"] or "no status")
+        lines.append(
+            f"  {row['spec']}  {row['risk']:<6} {row['status']:<9} "
+            f"{row['owner'] or '-':<12} {row['developer'] or '-':<12} {where}"
+        )
+    return "\n".join(lines)
+
+
 def format_report(result: dict) -> str:
     lines = [f"Spec {result['spec']} — {result['branch']}"]
     if not result.get("code_host_available", True):
@@ -359,11 +498,27 @@ def main():
     src = parser.add_mutually_exclusive_group()
     src.add_argument("--state", help="Path to .sdlc/state.yaml (workflow mode)")
     src.add_argument("--repo", default=".", help="Target repo root (standalone mode; default: cwd)")
-    parser.add_argument("--spec", required=True, help="Path to specs/NNNN-name.md")
+    what = parser.add_mutually_exclusive_group(required=True)
+    what.add_argument("--spec", help="Path to specs/NNNN-name.md")
+    what.add_argument(
+        "--all", action="store_true",
+        help="Every spec, in ONE code-host request (for a board). Read-only: unlike --spec "
+             "this never commits `status: merged`.",
+    )
     parser.add_argument("--json", action="store_true", help="Emit the report as JSON")
     args = parser.parse_args()
 
     repo_root = resolve_repo_root(args)
+
+    if args.all:
+        result = report_all(repo_root)
+        if args.json:
+            import json
+            print(json.dumps(result, indent=2))
+        else:
+            print(format_all_report(result))
+        return
+
     spec_path = Path(args.spec)
 
     try:
