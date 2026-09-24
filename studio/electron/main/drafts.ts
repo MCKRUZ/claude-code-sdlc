@@ -13,15 +13,17 @@
 //    definition not in it.
 
 import { runCommand } from './commandRunner'
+import { CLAUDE_SAFE_ARGS, claudeWorkingDirectory } from './claudeAssist'
 import { runPluginScript } from './project'
 import type { DraftOutcome, DraftResult } from '../../shared/types'
 
-/** The same invocation claudeAssist.ts verified against the real CLI: one-shot, non-
- * interactive, and every permission prompt denied automatically — so drafting a paragraph can
- * never read, write or run anything as a side effect. */
+/** The same hardened invocation claudeAssist.ts defines, for the same reason: the field's
+ * surrounding text is pasted into the prompt verbatim, so it must be assumed hostile, and the
+ * call must not run anywhere the project could influence. See claudeAssist.ts's header for
+ * what was measured and why the old claim here was wrong. */
 export async function draftField(
   claudePath: string,
-  projectPath: string,
+  _projectPath: string,
   documentName: string,
   sectionHeading: string,
   label: string,
@@ -43,7 +45,9 @@ export async function draftField(
     'no markdown code fence, no label — just the field\'s own content.',
   ].filter(Boolean).join('\n')
 
-  const entry = await runCommand(claudePath, ['-p', prompt, '--permission-prompts', 'none'], projectPath)
+  const entry = await runCommand(
+    claudePath, ['-p', prompt, ...CLAUDE_SAFE_ARGS], claudeWorkingDirectory(),
+  )
   if (!entry.ok) {
     return { ok: false, error: entry.stderr || 'Claude could not draft this field.' }
   }
