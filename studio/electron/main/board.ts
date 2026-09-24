@@ -14,7 +14,7 @@
 
 import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
-import type { Board, BoardRow, SpecStatus } from '../../shared/types'
+import type { Board, BoardRow, SpecReadiness, SpecStatus } from '../../shared/types'
 
 interface RawPullRequest {
   number: number
@@ -144,5 +144,39 @@ export async function getSpecStatus(
     return { ok: true, status: JSON.parse(entry.stdout) as SpecStatus }
   } catch {
     return { ok: false, error: entry.stderr.trim() || 'Could not read this spec’s status.' }
+  }
+}
+
+
+/** What this spec still needs before it can be handed to anyone.
+ *
+ * Read-only, and it owns no judgement: spec_readiness.py wraps the plugin's protected
+ * readiness checker and every finding, severity and message is that checker's. Studio does
+ * not decide what "ready" means, and must not — the hand-off enforces the same rule from the
+ * same source, so a screen with its own opinion would eventually disagree with the command
+ * that actually refuses. */
+export async function getSpecReadiness(
+  projectPath: string,
+  pluginScriptsDir: string,
+  specPath: string,
+): Promise<SpecReadiness> {
+  const notReady = (error: string): SpecReadiness =>
+    ({ ok: false, error, ready: false, spec: '', risk: '', status: '', blocking: [], advisory: [], passed: [] })
+
+  let fullSpecPath: string
+  try {
+    fullSpecPath = resolveProjectDocument(projectPath, specPath)
+  } catch (err) {
+    return notReady((err as Error).message)
+  }
+
+  const entry = await runPluginScript(pluginScriptsDir, 'spec_readiness.py', [
+    '--spec', fullSpecPath, '--state', `${projectPath}/.sdlc/state.yaml`, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as SpecReadiness
+  } catch {
+    // Never "ready" on a failure to read. A spec whose readiness is unknown is not ready.
+    return notReady(entry.stderr.trim() || 'Could not read this spec’s readiness.')
   }
 }

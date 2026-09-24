@@ -396,6 +396,35 @@ export interface SpecStatus {
   } | null
 }
 
+
+/** One Definition-of-Ready finding about a SPEC, exactly as the plugin's protected checker
+ * produced it. Studio never writes one of these itself.
+ *
+ * Distinct from `ReadinessFinding`, which spec 0010 uses for a field a STAGE still needs.
+ * Two different questions; sharing a name would make them look like one. */
+export interface SpecReadinessFinding {
+  check: string
+  passed: boolean
+  severity: string
+  message: string
+}
+
+export interface SpecReadiness {
+  ok: boolean
+  error?: string
+  spec: string
+  risk: string
+  status: string
+  /** True only when nothing MUST-level is outstanding — the same rule the hand-off applies,
+   * read from the same source so the screen and the command cannot disagree. */
+  ready: boolean
+  blocking: SpecReadinessFinding[]
+  /** Shown, never blocking — including the vague-acceptance-check lint. That is the
+   * checker's own contract, not Studio's choice. */
+  advisory: SpecReadinessFinding[]
+  passed: SpecReadinessFinding[]
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -449,6 +478,7 @@ export interface StudioApi {
   /** One spec in full. NOTE: this is the plugin's per-spec call, which records
    * `status: merged` if the pull request has merged since anyone last looked — a read
    * that can commit, stated here rather than discovered. */
+  getSpecReadiness(projectPath: string, specPath: string): Promise<SpecReadiness>
   getSpecStatus(projectPath: string, specPath: string):
     Promise<{ ok: boolean; status?: SpecStatus; error?: string }>
   /** Hands a spec to a developer through the plugin's own command. Every rule about who may

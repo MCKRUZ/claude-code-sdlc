@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BoardRow, SpecStatus } from '../../shared/types'
+import { SpecReadinessPanel } from './SpecReadinessPanel'
 
 /** Where a change got to (spec 0011).
  *
@@ -48,17 +49,6 @@ export function SpecStatusView({
           </h2>
           <p className="mt-0.5 font-mono text-xs text-slate-400">{row.path}</p>
         </div>
-        {/* The one action, and it is not on this screen — it opens the hand-off, which is
-            its own decision with its own refusals. */}
-        {row.status !== 'in-flight' && row.status !== 'merged' && (
-          <button
-            type="button"
-            onClick={onHandOff}
-            className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
-          >
-            Hand off
-          </button>
-        )}
       </div>
 
       <dl className="grid grid-cols-4 gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm">
@@ -67,6 +57,13 @@ export function SpecStatusView({
         <Fact label="Checks it" value={row.checker} />
         <Fact label="Risk" value={row.risk} />
       </dl>
+
+      {/* Readiness sits here, above the pull request, because it is what a person is
+          deciding about BEFORE there is one — and the hand-off button lives inside it, so
+          it only ever appears when the spec would actually pass. */}
+      {row.status !== 'in-flight' && row.status !== 'merged' && (
+        <SpecReadinessPanel projectPath={projectPath} specPath={row.path} onHandOff={onHandOff} />
+      )}
 
       {loading && !status && <p className="text-sm text-slate-400">Reading the pull request…</p>}
 
