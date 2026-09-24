@@ -52,12 +52,12 @@ trustworthy — only Edit changes anything, and anything the app does not unders
       place as text, never hidden and never dropped.
 - [x] Reading a document changes nothing: no file is written when a person only reads, scrolls or
       expands a section.
-- [ ] Changes made since the person last opened it are marked, with who made each one and why.
+- [x] Changes made since the person last opened it are marked, with who made each one and why.
 - [x] Nothing can be changed except in edit mode — buttons that add or change content do not exist
       outside it, including the add button on a review panel.
 - [x] A new requirement is given the next free number across the whole document, and that number is
       shown before the person saves it.
-- [ ] Asking Claude to draft a field fills that field only, marks it as drafted, and the person can
+- [x] Asking Claude to draft a field fills that field only, marks it as drafted, and the person can
       accept or discard it before it is saved.
 - [x] Every Claude draft is recorded with its outcome — accepted, edited then accepted, or discarded —
       in an audit ledger separate from the document's version history, so a discarded draft is
@@ -100,9 +100,12 @@ mode (asserted as absence, not as disabled), entering edit mode reveals those co
 the next id before anything is created, leaving takes them away again, and the history panel is
 honest about a document nobody has saved yet rather than inventing an author or a date.
 
-**NOT proven: Claude drafting, and changes-since-last-look.** Drafting needs a live model call
-and the changes banner needs a repository with history; neither is driven in the window yet.
-Both are implemented and reviewed. Unticked.
+**Also proven.** The changes banner names a second author, their date and their reason, from a
+real commit pushed by a separate clone — and merely reading does not clear it, since "mark as
+seen" is a separate explicit act. Claude drafting is driven in the window with a real model
+call: the draft arrives as a proposal with both choices, the field does not change, discarding
+leaves it unchanged, and the discard still reaches the ledger. That test skips with a reason
+when no draft comes back rather than passing quietly on a signed-out machine.
 
 **Proven against a real git remote.** `test/approvalPath.test.ts` was written after noticing
 that "needs a real code host" was two thirds wrong: a pending draft is a branch, and what makes
