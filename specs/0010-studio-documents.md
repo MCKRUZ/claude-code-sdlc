@@ -50,20 +50,20 @@ trustworthy — only Edit changes anything, and anything the app does not unders
 
 - [ ] A document opens as its sections and fields, with anything the shape did not recognise shown in
       place as text, never hidden and never dropped.
-- [ ] Reading a document changes nothing: no file is written when a person only reads, scrolls or
+- [x] Reading a document changes nothing: no file is written when a person only reads, scrolls or
       expands a section.
 - [ ] Changes made since the person last opened it are marked, with who made each one and why.
 - [ ] Nothing can be changed except in edit mode — buttons that add or change content do not exist
       outside it, including the add button on a review panel.
-- [ ] A new requirement is given the next free number across the whole document, and that number is
+- [x] A new requirement is given the next free number across the whole document, and that number is
       shown before the person saves it.
 - [ ] Asking Claude to draft a field fills that field only, marks it as drafted, and the person can
       accept or discard it before it is saved.
-- [ ] Every Claude draft is recorded with its outcome — accepted, edited then accepted, or discarded —
+- [x] Every Claude draft is recorded with its outcome — accepted, edited then accepted, or discarded —
       in an audit ledger separate from the document's version history, so a discarded draft is
       answerable later without cluttering the history of what the document actually says.
 - [ ] Every field shows where the document lives on disk and what it is called, without leaving the page.
-- [ ] History lists versions with who saved each and why; comparing two shows what changed; restoring
+- [x] History lists versions with who saved each and why; comparing two shows what changed; restoring
       one creates a new version rather than removing any.
 - [ ] Editing a signed-off document with approval switched on saves a draft, leaves the signed-off
       version in place for everyone else, and marks it as waiting for the named approver.
@@ -78,7 +78,38 @@ trustworthy — only Edit changes anything, and anything the app does not unders
      nobody today. This spec is complete as amended, not as originally written. -->
 - [ ] The readiness check shows what is missing before the stage can be signed off, in plain language,
       each item linking to the field it refers to.
-- [ ] Round trip: opening a document and saving it with no edits produces a byte-identical file.
+- [x] Round trip: opening a document and saving it with no edits produces a byte-identical file.
+
+### What is proven, and what is not (2026-09-24)
+
+A ticked box above means a test asserts it, not that someone watched it work.
+
+**Proven by test.** `documentsEndToEnd.test.ts` builds a real initialized project and drives the
+real functions: reading writes nothing, numbering is allocated across the whole document before
+anything is created, a field edit moves only that field's bytes, versions carry the real person
+and reason, comparing and restoring work (including refusing a confirmation that does not carry
+the hash of the diff that was shown), and a discarded draft reaches its own ledger without
+touching the version history. `shapeRoundTrip.test.ts` round-trips all 28 shaped templates
+through Studio's own read/write path.
+
+**NOT proven: everything about how the window behaves.** The application has never been launched
+in this work. The checks about what is rendered — that mutating controls do not exist outside
+edit mode, that the next number is shown before saving, that changes since last look are marked,
+that a draft is offered for accept-or-discard, that every field shows where the document lives —
+are implemented and code-reviewed, and unverified. They stay unticked until driven through the
+real window.
+
+**NOT proven: the approval path.** Editing a signed-off document with approval on, the pending
+draft being editable only by its author, and the straight-through save with approval off all
+depend on a real code host. Unticked.
+
+**The round-trip against real client documents** that this spec's Checking Plan requires has not
+been run; the 28 templates are the plugin's own fixtures.
+
+**Security pass: done, and it blocked.** One critical and three high findings, all fixed and
+committed, plus four medium/low. The critical was real and reproduced: the Claude CLI ran inside
+the opened project, so a repository carrying its own settings got them loaded and its hooks run.
+See this spec's Decision List for the authentication decision that came out of it.
 
 ## Risk Tier
 
@@ -115,3 +146,15 @@ human sign-off. The round-trip check must be run against real client documents, 
   is approved or rejected. The approver signs off exactly what that one named person put in front of
   them; it cannot change underneath them between reading and signing. Someone else needing a change
   means the draft is rejected and re-raised, which is more friction but leaves an honest trail.
+- **How does Studio authenticate to Claude, given that the belt-and-braces hardening flag breaks
+  the person's existing sign-in?**
+  Raised by this spec's security pass, resolved 2026-09-24 by Matt: Studio keeps using the sign-in
+  the person already has. The CLI's `--bare` flag is the one that strips settings-defined hooks
+  outright, but it also stops the CLI reading the keychain — measured, it turns every draft and
+  combine call into "Not logged in" — so taking it would mean Studio managing an API key of its
+  own. The actual fix already landed without that cost: the CLI now runs in an empty directory
+  Studio owns, and a project's settings, hooks and CLAUDE.md are discovered from the working
+  directory, so there is nothing there to discover. Proven both ways — a marker hook planted in a
+  scratch repository ran under the old invocation and does not run under the new one.
+  **Revisit if** Studio ever gains a reason to run the CLI inside a project directory, because the
+  whole defence is that it does not.
