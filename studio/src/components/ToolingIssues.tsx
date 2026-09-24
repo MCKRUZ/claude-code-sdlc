@@ -5,12 +5,16 @@ const INSTALL_LINKS: Record<string, string> = {
   claude: 'https://docs.claude.com/en/docs/claude-code',
   uv: 'https://docs.astral.sh/uv/getting-started/installation/',
   pluginScripts: 'https://docs.claude.com/en/docs/claude-code/plugins',
+  git: 'https://git-scm.com/downloads',
+  gh: 'https://cli.github.com/',
 }
 
 const LABELS: Record<string, string> = {
   claude: 'Claude Code',
   uv: 'uv (the script runner)',
   pluginScripts: 'the claude-code-sdlc plugin',
+  git: 'git',
+  gh: 'the GitHub CLI (gh)',
 }
 
 function IssueRow({
@@ -18,7 +22,7 @@ function IssueRow({
   status,
   onOverride,
 }: {
-  toolKey: 'claude' | 'uv' | 'pluginScripts'
+  toolKey: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh'
   status: ToolStatus
   onOverride: (path: string) => void
 }) {
@@ -62,9 +66,9 @@ export function ToolingIssues({
   onOverride,
 }: {
   report: ToolingReport
-  onOverride: (kind: 'claude' | 'uv' | 'pluginScripts', path: string) => void
+  onOverride: (kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', path: string) => void
 }) {
-  const issues = (['claude', 'uv', 'pluginScripts'] as const).filter((k) => !report[k].found)
+  const issues = (['claude', 'uv', 'pluginScripts', 'git', 'gh'] as const).filter((k) => !report[k].found)
 
   return (
     <div className="flex h-screen items-center justify-center bg-slate-50 p-6">

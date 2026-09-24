@@ -74,9 +74,13 @@ test.describe('[sdlc-studio] e2e tests', () => {
     expect(title).toBe('SDLC Studio')
   })
 
-  test('should load the placeholder shell', async () => {
+  test('should finish loading into a real screen', async () => {
+    // Not asserting which screen — CI has no claude/uv/git/gh installed, so this lands on
+    // the tooling-issues screen; a developer machine with everything installed lands on
+    // welcome. Either way, the app must move past its initial loading state.
+    await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 10000 })
     const body = await page.$('body')
     const text = await body?.textContent()
-    expect(text).toContain('shell not built yet')
+    expect(text).toBeTruthy()
   })
 })

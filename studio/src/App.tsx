@@ -1,26 +1,29 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ConsoleEntry, ProjectStatus, RecentProject, Settings, ToolingReport } from '../shared/types'
+import type { ClashChoice, ConsoleEntry, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
 import { ToolingIssues } from './components/ToolingIssues'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
 import { Frame } from './components/Frame'
+import { ClashScreen } from './components/ClashScreen'
 
 type Screen =
   | { kind: 'loading' }
   | { kind: 'toolingIssues'; report: ToolingReport }
   | { kind: 'welcome' }
   | { kind: 'settingUp'; projectPath: string }
-  | { kind: 'project'; status: ProjectStatus }
+  | { kind: 'project'; status: ProjectStatus; projectPath: string }
 
 function App() {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' })
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
+  const [syncState, setSyncState] = useState<SyncState>({ kind: 'idle', lastPulledAt: null })
+  const [pendingClashes, setPendingClashes] = useState<FileClash[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const refreshTooling = useCallback(async () => {
     const report = await window.studio.detectTooling()
-    const allFound = report.claude.found && report.uv.found && report.pluginScripts.found
+    const allFound = report.claude.found && report.uv.found && report.pluginScripts.found && report.git.found && report.gh.found
     if (!allFound) {
       setScreen({ kind: 'toolingIssues', report })
       return false
@@ -38,6 +41,18 @@ function App() {
     return window.studio.onConsoleEntry((entry) => setConsoleEntries((prev) => [...prev, entry]))
   }, [])
 
+  useEffect(() => window.studio.onSyncState(setSyncState), [])
+
+  // Pulling (including on the background timer, whose result the renderer never otherwise
+  // sees) can surface clashes at any time — fetch the current list whenever the sync
+  // indicator reports some are pending, so the clash screen has real data to show.
+  const clashCount = syncState.kind === 'clashes' ? syncState.count : null
+  const openProjectPath = screen.kind === 'project' ? screen.projectPath : null
+  useEffect(() => {
+    if (openProjectPath === null || clashCount === null) return
+    window.studio.getPendingClashes(openProjectPath).then(setPendingClashes)
+  }, [clashCount, openProjectPath])
+
   useEffect(() => {
     refreshTooling().then((ok) => {
       if (ok) {
@@ -54,7 +69,7 @@ function App() {
       return
     }
     if (result.status) {
-      setScreen({ kind: 'project', status: result.status })
+      setScreen({ kind: 'project', status: result.status, projectPath })
       loadRecent()
     } else {
       setError(result.error ?? 'Could not read this project\'s status.')
@@ -67,7 +82,7 @@ function App() {
   }, [openPath])
 
   const handleOverride = useCallback(
-    async (kind: 'claude' | 'uv' | 'pluginScripts', path: string) => {
+    async (kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', path: string) => {
       await window.studio.setToolOverride(kind, path)
       await refreshTooling().then((ok) => {
         if (ok) loadRecent().then(() => setScreen({ kind: 'welcome' }))
@@ -102,8 +117,31 @@ function App() {
   }
 
   if (screen.kind === 'project') {
+    if (pendingClashes && pendingClashes.length > 0) {
+      const { projectPath } = screen
+      return (
+        <ClashScreen
+          clashes={pendingClashes}
+          onResolve={async (filePath, sectionKey, choice, combinedText) => {
+            const result = await window.studio.resolveClash(projectPath, filePath, sectionKey, choice, combinedText)
+            if (!result.ok) {
+              setError(result.error ?? 'Could not resolve this clash.')
+              return
+            }
+            const remaining = await window.studio.getPendingClashes(projectPath)
+            setPendingClashes(remaining)
+          }}
+          onCombine={async (localText, remoteText) => {
+            const result = await window.studio.combineWithClaude(projectPath, localText, remoteText)
+            if ('error' in result) throw new Error(result.error)
+            return result.combined
+          }}
+          onDone={() => setPendingClashes(null)}
+        />
+      )
+    }
     return (
-      <Frame status={screen.status} consoleEntries={consoleEntries}>
+      <Frame status={screen.status} consoleEntries={consoleEntries} syncState={syncState}>
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
             {error}

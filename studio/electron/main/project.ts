@@ -32,7 +32,7 @@ function venvPythonPath(pluginScriptsDir: string): string {
  * (see this repo's own session history). Only on true first-use, with no venv built yet,
  * does this fall back to `uv run`, which builds one — a real one-time network cost, not
  * a routine one. */
-async function runPluginScript(
+export async function runPluginScript(
   pluginScriptsDir: string,
   scriptName: string,
   args: string[],

@@ -1,6 +1,6 @@
-// Locates claude, uv, and the claude-code-sdlc plugin's scripts/ directory on the local
-// machine. Spec 0008's Decision List: "detect them, and if either is missing, say so with
-// a link rather than installing anything" — auto-detect, VERIFY with a real invocation
+// Locates claude, uv, git, gh, and the claude-code-sdlc plugin's scripts/ directory on the
+// local machine. Spec 0008's Decision List: "detect them, and if either is missing, say so
+// with a link rather than installing anything" — auto-detect, VERIFY with a real invocation
 // (never trust a found path without running it), and only ask the person to point at the
 // right thing when detection or verification fails. Settings then remembers whatever the
 // person confirmed, so this only runs again if that override stops working.
@@ -17,23 +17,102 @@ export type { ToolStatus, ToolingReport }
 
 const execFileAsync = promisify(execFile)
 
-async function verifyBinary(command: string, versionFlag = '--version'): Promise<ToolStatus> {
+/** How to actually invoke a resolved binary — usually just the binary itself, but on
+ * Windows a .cmd/.bat wrapper (common for the GitHub CLI, and some package-manager
+ * installs of git) can't be launched directly by a shell-less spawn, so it's invoked
+ * through cmd.exe /c instead. Both fields stay structured argv, never a shell string —
+ * commandRunner.runCommand never uses shell:true, and this keeps it that way. */
+export interface ResolvedBinary {
+  command: string
+  prefixArgs: string[]
+}
+
+async function verifyDirect(command: string, versionFlag = '--version'): Promise<string | null> {
   try {
     const { stdout } = await execFileAsync(command, [versionFlag], { timeout: 5000, windowsHide: true })
-    return { found: true, path: command, version: stdout.trim().split('\n')[0] }
-  } catch (err) {
-    return { found: false, error: err instanceof Error ? err.message : String(err) }
+    return stdout.trim().split('\n')[0]
+  } catch {
+    return null
   }
+}
+
+/** Resolves the real, fully-qualified path of `command` via `where` (Windows) or `which`
+ * (macOS/Linux) — both real executables, never a shell builtin, so this never needs
+ * shell:true either. Returns null if the command isn't on PATH at all. */
+async function resolveOnPath(command: string): Promise<string | null> {
+  const finder = process.platform === 'win32' ? 'where' : 'which'
+  try {
+    const { stdout } = await execFileAsync(finder, [command], { timeout: 5000, windowsHide: true })
+    const first = stdout.trim().split('\n')[0]?.trim()
+    return first || null
+  } catch {
+    return null
+  }
+}
+
+/** Verifies `command` by actually running it, trying a direct invocation first (the common
+ * case — a real .exe/binary on PATH) and falling back to resolving its real path and, on
+ * Windows, routing a .cmd/.bat wrapper through cmd.exe /c. Returns both the version string
+ * and the ResolvedBinary later calls must use — a direct-exec success and a shimmed success
+ * are invoked differently, and a caller needs to know which. */
+async function verifyBinary(
+  command: string,
+  versionFlag = '--version',
+): Promise<{ version: string; resolved: ResolvedBinary } | { error: string }> {
+  const direct = await verifyDirect(command, versionFlag)
+  if (direct !== null) {
+    return { version: direct, resolved: { command, prefixArgs: [] } }
+  }
+
+  const resolvedPath = await resolveOnPath(command)
+  if (resolvedPath === null) {
+    return { error: `'${command}' was not found on PATH` }
+  }
+
+  const isWindowsScript = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolvedPath)
+  const resolved: ResolvedBinary = isWindowsScript
+    ? { command: 'cmd.exe', prefixArgs: ['/c', resolvedPath] }
+    : { command: resolvedPath, prefixArgs: [] }
+
+  try {
+    const { stdout } = await execFileAsync(
+      resolved.command, [...resolved.prefixArgs, versionFlag], { timeout: 5000, windowsHide: true },
+    )
+    return { version: stdout.trim().split('\n')[0], resolved }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) }
+  }
+}
+
+async function detect(overridePath: string | undefined, command: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
+  const result = await verifyBinary(overridePath ?? command)
+  if ('error' in result) {
+    return { found: false, error: result.error }
+  }
+  return { found: true, path: overridePath ?? command, version: result.version, resolved: result.resolved }
 }
 
 /** claude and uv are both just PATH lookups — verified by actually running them, never
  * trusted from `which`/`where` alone (a stale PATH entry can point at nothing executable). */
 export async function detectClaude(overridePath?: string): Promise<ToolStatus> {
-  return verifyBinary(overridePath ?? 'claude')
+  const { resolved: _resolved, ...status } = await detect(overridePath, 'claude')
+  return status
 }
 
 export async function detectUv(overridePath?: string): Promise<ToolStatus> {
-  return verifyBinary(overridePath ?? 'uv')
+  const { resolved: _resolved, ...status } = await detect(overridePath, 'uv')
+  return status
+}
+
+/** git and gh additionally need the resolved invocation strategy (see ResolvedBinary) handed
+ * to git.ts, since a Windows .cmd shim changes how every LATER call must be spawned too, not
+ * just this detection probe. */
+export async function detectGit(overridePath?: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
+  return detect(overridePath, 'git')
+}
+
+export async function detectGh(overridePath?: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
+  return detect(overridePath, 'gh')
 }
 
 /** A directory name that looks like a semver version — used to pick the newest installed
@@ -94,15 +173,28 @@ export async function detectPluginScripts(overridePath?: string): Promise<ToolSt
   return { found: true, path: withScripts[0].scripts }
 }
 
+export interface DetectAllToolingResult extends ToolingReport {
+  /** Only set when found — the resolved invocation strategy git.ts needs to actually run
+   * git/gh commands, not just detect them. */
+  gitResolved?: ResolvedBinary
+  ghResolved?: ResolvedBinary
+}
+
 export async function detectAllTooling(overrides: {
   claudePath?: string
   uvPath?: string
   pluginScriptsPath?: string
-}): Promise<ToolingReport> {
-  const [claude, uv, pluginScripts] = await Promise.all([
+  gitPath?: string
+  ghPath?: string
+}): Promise<DetectAllToolingResult> {
+  const [claude, uv, pluginScripts, gitDetect, ghDetect] = await Promise.all([
     detectClaude(overrides.claudePath),
     detectUv(overrides.uvPath),
     detectPluginScripts(overrides.pluginScriptsPath),
+    detectGit(overrides.gitPath),
+    detectGh(overrides.ghPath),
   ])
-  return { claude, uv, pluginScripts }
+  const { resolved: gitResolved, ...git } = gitDetect
+  const { resolved: ghResolved, ...gh } = ghDetect
+  return { claude, uv, pluginScripts, git, gh, gitResolved, ghResolved }
 }

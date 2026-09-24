@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ConsoleEntry, StudioApi } from '../../shared/types'
+import type { ConsoleEntry, StudioApi, SyncState } from '../../shared/types'
 
 // The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
 // no arbitrary command execution — every call here maps to exactly one narrow main-process
@@ -19,6 +19,20 @@ const studio: StudioApi = {
   listProfiles: () => ipcRenderer.invoke('studio:listProfiles'),
   previewSetup: (projectPath, profileId) => ipcRenderer.invoke('studio:previewSetup', projectPath, profileId),
   runSetup: (projectPath, profileId) => ipcRenderer.invoke('studio:runSetup', projectPath, profileId),
+
+  getConnectionInfo: (projectPath) => ipcRenderer.invoke('studio:getConnectionInfo', projectPath),
+  pull: (projectPath) => ipcRenderer.invoke('studio:pull', projectPath),
+  resolveClash: (projectPath, filePath, sectionKey, choice, combinedText) =>
+    ipcRenderer.invoke('studio:resolveClash', projectPath, filePath, sectionKey, choice, combinedText),
+  save: (projectPath, changeNote) => ipcRenderer.invoke('studio:save', projectPath, changeNote),
+  onSyncState: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, state: SyncState) => callback(state)
+    ipcRenderer.on('studio:syncState', handler)
+    return () => ipcRenderer.off('studio:syncState', handler)
+  },
+  getPendingClashes: (projectPath) => ipcRenderer.invoke('studio:getPendingClashes', projectPath),
+  combineWithClaude: (projectPath, localText, remoteText) =>
+    ipcRenderer.invoke('studio:combineWithClaude', projectPath, localText, remoteText),
 
   getConsoleLog: () => ipcRenderer.invoke('studio:getConsoleLog'),
   onConsoleEntry: (callback) => {

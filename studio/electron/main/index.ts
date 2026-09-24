@@ -4,8 +4,16 @@ import path from 'node:path'
 import os from 'node:os'
 import { detectAllTooling } from './tooling'
 import { getConsoleLog, onConsoleEntry } from './commandRunner'
+import { setGhBinary, setGitBinary } from './git'
 import { initSettingsPath, loadSettings, recordRecentProject, saveSettings, type Settings } from './settings'
 import { hasSdlcProject, listAvailableProfiles, openProject, previewSetup, runSetup } from './project'
+import { combineWithClaude } from './claudeAssist'
+import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save } from './sync'
+import type { ClashChoice } from '../../shared/types'
+
+/** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
+ * while open"). */
+const PULL_INTERVAL_MS = 120_000
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -46,7 +54,9 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
 /** The plugin scripts directory currently in use — resolved once per session from
  * settings/detection, cached here so every IPC call doesn't re-detect. Cleared and
- * re-resolved if the person changes the override in settings. */
+ * re-resolved if the person changes the override in settings. Resolving tooling also
+ * primes git.ts with the real git/gh invocation strategy (see tooling.ts's Windows
+ * .cmd-shim handling), so every later git/gh call in this session uses it too. */
 let resolvedPluginScriptsDir: string | null = null
 
 async function resolvePluginScriptsDir(): Promise<string | null> {
@@ -56,31 +66,60 @@ async function resolvePluginScriptsDir(): Promise<string | null> {
     claudePath: settings.claudePathOverride,
     uvPath: settings.uvPathOverride,
     pluginScriptsPath: settings.pluginScriptsPathOverride,
+    gitPath: settings.gitPathOverride,
+    ghPath: settings.ghPathOverride,
   })
   if (report.pluginScripts.found && report.pluginScripts.path) {
     resolvedPluginScriptsDir = report.pluginScripts.path
   }
+  if (report.gitResolved) setGitBinary(report.gitResolved)
+  if (report.ghResolved) setGhBinary(report.ghResolved)
   return resolvedPluginScriptsDir
+}
+
+/** The project Studio currently has open — tracked here so the periodic pull timer (below)
+ * knows what to sync. Spec 0008 never needed this (App.tsx discards the path after opening
+ * on the renderer side); the main process tracks its own copy for the timer's sake. */
+let openProjectPath: string | null = null
+let pullTimer: NodeJS.Timeout | null = null
+
+function startPullTimer() {
+  if (pullTimer) return
+  pullTimer = setInterval(async () => {
+    if (!openProjectPath) return
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return
+    await pull(openProjectPath, scriptsDir)
+    await pollAndMergeOpenPullRequest(openProjectPath, scriptsDir)
+  }, PULL_INTERVAL_MS)
 }
 
 function registerIpcHandlers() {
   ipcMain.handle('studio:detectTooling', async () => {
     const settings = loadSettings()
-    return detectAllTooling({
+    const report = await detectAllTooling({
       claudePath: settings.claudePathOverride,
       uvPath: settings.uvPathOverride,
       pluginScriptsPath: settings.pluginScriptsPathOverride,
+      gitPath: settings.gitPathOverride,
+      ghPath: settings.ghPathOverride,
     })
+    if (report.gitResolved) setGitBinary(report.gitResolved)
+    if (report.ghResolved) setGhBinary(report.ghResolved)
+    return report
   })
 
   ipcMain.handle('studio:getSettings', () => loadSettings())
 
-  ipcMain.handle('studio:setToolOverride', (_event, kind: 'claude' | 'uv' | 'pluginScripts', overridePath: string) => {
+  ipcMain.handle('studio:setToolOverride', (_event, kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', overridePath: string) => {
     const settings = loadSettings()
-    const key = kind === 'claude' ? 'claudePathOverride' : kind === 'uv' ? 'uvPathOverride' : 'pluginScriptsPathOverride'
+    const key = {
+      claude: 'claudePathOverride', uv: 'uvPathOverride', pluginScripts: 'pluginScriptsPathOverride',
+      git: 'gitPathOverride', gh: 'ghPathOverride',
+    }[kind] as keyof Settings
     const updated: Settings = { ...settings, [key]: overridePath }
     saveSettings(updated)
-    resolvedPluginScriptsDir = null // force re-resolve if the plugin path changed
+    resolvedPluginScriptsDir = null // force re-resolve if any tool path changed
     return updated
   })
 
@@ -95,9 +134,15 @@ function registerIpcHandlers() {
   ipcMain.handle('studio:openProject', async (_event, projectPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) return { hasProject: false, error: 'claude-code-sdlc plugin scripts not found' }
+    // Spec 0009: pull immediately before a document opens — the closest existing entry
+    // point in spec 0008's shell is opening the project itself; best-effort, since a
+    // project with no remote configured yet (or offline) must still open.
+    await pull(projectPath, scriptsDir).catch(() => undefined)
     const result = await openProject(scriptsDir, projectPath)
     if (result.hasProject && result.status) {
       recordRecentProject(projectPath, result.status.project_name)
+      openProjectPath = projectPath
+      startPullTimer()
     }
     return result
   })
@@ -123,6 +168,43 @@ function registerIpcHandlers() {
     return result
   })
 
+  ipcMain.handle('studio:getConnectionInfo', (_event, projectPath: string) => getConnectionInfo(projectPath))
+
+  ipcMain.handle('studio:pull', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, mergedFiles: [], clashes: [], arrivedChanges: [], entries: [], error: 'claude-code-sdlc plugin scripts not found' }
+    return pull(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle(
+    'studio:resolveClash',
+    async (_event, projectPath: string, filePath: string, sectionKey: string, choice: ClashChoice, combinedText?: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return { ok: false, fileFullyResolved: false, error: 'claude-code-sdlc plugin scripts not found' }
+      return resolveClash(projectPath, scriptsDir, filePath, sectionKey, choice, combinedText)
+    },
+  )
+
+  ipcMain.handle('studio:save', async (_event, projectPath: string, changeNote: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, entries: [], error: 'claude-code-sdlc plugin scripts not found' }
+    return save(projectPath, scriptsDir, changeNote)
+  })
+
+  ipcMain.handle('studio:getPendingClashes', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    return scriptsDir ? getPendingClashes(projectPath, scriptsDir) : []
+  })
+
+  ipcMain.handle('studio:combineWithClaude', async (_event, projectPath: string, localText: string, remoteText: string) => {
+    const settings = loadSettings()
+    return combineWithClaude(settings.claudePathOverride ?? 'claude', projectPath, localText, remoteText)
+  })
+
+  onSyncState((state) => {
+    win?.webContents.send('studio:syncState', state)
+  })
+
   ipcMain.handle('studio:getConsoleLog', () => getConsoleLog())
 
   // Push new console entries to the renderer as they happen, so the console panel updates
@@ -137,7 +219,7 @@ async function createWindow() {
     title: 'SDLC Studio',
     width: 1280,
     height: 800,
-    icon: path.join(process.env.VITE_PUBLIC, 'favicon.ico'),
+    icon: path.join(process.env.VITE_PUBLIC!, 'favicon.ico'), // set unconditionally above, before createWindow() can run
     webPreferences: {
       preload,
       contextIsolation: true,
