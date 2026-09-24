@@ -19,7 +19,7 @@ created: "2026-09-19"
 ## Goal
 
 A person can read any stage document as a page rather than a file, see what changed since they last
-looked, edit it deliberately, see its history, and bring in source files — with every change going
+looked, edit it deliberately, and see its history — with every change going
 through the template-shape library so nothing is ever lost.
 
 ## Why
@@ -37,7 +37,7 @@ trustworthy — only Edit changes anything, and anything the app does not unders
   a field on request
 - History: versions, what changed between them, and restoring one
 - Changing a document after its stage was signed off, including the optional approval step
-- Bringing in source files, including PowerPoint and Excel
+- Citing a source document on a requirement (the source documents themselves come from spec 0015)
 - The readiness check before moving to the next stage
 
 ### Out of scope
@@ -59,15 +59,23 @@ trustworthy — only Edit changes anything, and anything the app does not unders
       shown before the person saves it.
 - [ ] Asking Claude to draft a field fills that field only, marks it as drafted, and the person can
       accept or discard it before it is saved.
+- [ ] Every Claude draft is recorded with its outcome — accepted, edited then accepted, or discarded —
+      in an audit ledger separate from the document's version history, so a discarded draft is
+      answerable later without cluttering the history of what the document actually says.
 - [ ] Every field shows where the document lives on disk and what it is called, without leaving the page.
 - [ ] History lists versions with who saved each and why; comparing two shows what changed; restoring
       one creates a new version rather than removing any.
 - [ ] Editing a signed-off document with approval switched on saves a draft, leaves the signed-off
       version in place for everyone else, and marks it as waiting for the named approver.
+- [ ] While a draft waits for approval, only the person who created it can change it — everyone else
+      sees the signed-off version and has no way to alter what the approver is being asked to sign.
 - [ ] With approval switched off, the same edit saves straight away and still records who changed it and why.
-- [ ] Bringing in a PowerPoint or Excel file summarises it as one source document, with a spreadsheet
-      summarised sheet by sheet rather than flattened, and every requirement drawn from it can name it
-      as its source.
+<!-- Bringing in PowerPoint/Excel source files moved to spec 0015 on 2026-09-24. It depends on
+     three pre-existing intake defects (source-document ids are reassigned whenever a file is
+     added; the requirement-to-document link is free text the shape library cannot see; the
+     intake script has no test coverage) and needs its own security pass for parsing untrusted
+     binary files. Bundling it here would hold the document editor behind repairs that block
+     nobody today. This spec is complete as amended, not as originally written. -->
 - [ ] The readiness check shows what is missing before the stage can be signed off, in plain language,
       each item linking to the field it refers to.
 - [ ] Round trip: opening a document and saving it with no edits produces a byte-identical file.
@@ -82,19 +90,28 @@ words is the worst outcome in the product, and it is discovered late.
 - **Scope (file patterns):** the Studio application repository only
 - **Context (pattern to reuse):** the shape library from plugin spec 0007 for every read and write, and
   spec 0009 for saving. No direct file writing in this spec's code
-- **Permissions:** build, test and read auto-allowed. New dependencies need confirmation, particularly
-  anything that parses PowerPoint or Excel
+- **Permissions:** build, test and read auto-allowed. New dependencies need confirmation. (Office
+  file parsing, and the dependencies it needs, moved to spec 0015.)
 - **Gated paths touched:** none
 
 ## Checking Plan
 
 **Ladder depth:** HIGH — the full ladder
-**Specifics:** every mechanical check, the grader, the correctness review, a security pass on the file
-parsing, and a named human sign-off. The round-trip check must be run against real client documents,
-not fixtures alone.
+**Specifics:** every mechanical check, the grader, the correctness review, a security pass on how
+documents are written (the shape library is the only write path; nothing may bypass it), and a named
+human sign-off. The round-trip check must be run against real client documents, not fixtures alone.
+(The security pass on parsing untrusted Office files belongs to spec 0015.)
 
 ## Decision List
-- **When Claude drafts into a field, is the draft saved as a version even if discarded?** Written here
-  as no — a discarded draft leaves no trace. Owner: Matt, before this spec is ready.
-- **Who may edit a document that is waiting for approval?** Written here as: only the person who
-  created the draft, until it is approved or rejected. Owner: Matt.
+- **When Claude drafts into a field, is the draft saved as a version even if discarded?**
+  Resolved 2026-09-24 by Matt — **reversing this spec's original draft answer**: a discarded draft IS
+  recorded. Every time Claude is asked to draft a field, the offer and its outcome (accepted, edited
+  then accepted, or discarded) are appended to an audit ledger, so "how much of this document was
+  AI-drafted, including what we turned down" is answerable later. The record goes to its OWN ledger
+  (`.sdlc/metrics/draft-log.jsonl`), never into the document's version history — the version history
+  stays a record of content that is actually in the document, which is what makes it readable.
+- **Who may edit a document that is waiting for approval?**
+  Resolved 2026-09-24 by Matt: confirmed as written — only the person who created the draft, until it
+  is approved or rejected. The approver signs off exactly what that one named person put in front of
+  them; it cannot change underneath them between reading and signing. Someone else needing a change
+  means the draft is rejected and re-raised, which is more friction but leaves an honest trail.
