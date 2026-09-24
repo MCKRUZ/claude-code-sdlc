@@ -1,8 +1,13 @@
 """Tests for approval_settings.py."""
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 
 from approval_settings import known_handles, load_approval_settings, parse_approval_settings
+
+CLI_PATH = Path(__file__).resolve().parent.parent / "approval_settings.py"
 
 
 class TestParseApprovalSettings:
@@ -120,3 +125,45 @@ class TestLoadApprovalSettings:
         settings, errors = load_approval_settings(tmp_path)
         assert errors == []
         assert settings == {"requirements": {"approval_required": False, "approver": None}}
+
+
+class TestCliJson:
+    """The structured surface Studio actually calls (sync.ts) — proven end to end via a
+    real subprocess, the same contract Studio depends on."""
+
+    def test_json_output_no_file(self, tmp_path: Path):
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), str(tmp_path), "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert proc.returncode == 0
+        parsed = json.loads(proc.stdout)
+        assert parsed == {"settings": {}, "errors": []}
+
+    def test_json_output_real_settings(self, tmp_path: Path):
+        sdlc = tmp_path / ".sdlc"
+        sdlc.mkdir()
+        (sdlc / "approval-settings.yaml").write_text(
+            'stages:\n  - stage: design\n    approval_required: true\n    approver: "@sam-k"\n'
+        )
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), str(tmp_path), "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert proc.returncode == 0
+        parsed = json.loads(proc.stdout)
+        assert parsed["settings"] == {"design": {"approval_required": True, "approver": "@sam-k"}}
+
+    def test_json_output_errors_exits_nonzero(self, tmp_path: Path):
+        sdlc = tmp_path / ".sdlc"
+        sdlc.mkdir()
+        (sdlc / "approval-settings.yaml").write_text(
+            "stages:\n  - stage: design\n    approval_required: true\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), str(tmp_path), "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        assert proc.returncode == 1
+        parsed = json.loads(proc.stdout)
+        assert len(parsed["errors"]) == 1

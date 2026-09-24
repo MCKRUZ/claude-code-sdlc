@@ -131,11 +131,18 @@ def load_approval_settings(repo_root: Path) -> tuple[dict, list[str]]:
 
 
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("Usage: approval_settings.py <repo-root>")
+    args = [a for a in sys.argv[1:] if a != "--json"]
+    as_json = "--json" in sys.argv[1:]
+    if len(args) != 1:
+        print("Usage: approval_settings.py <repo-root> [--json]")
         return 1
-    repo_root = Path(sys.argv[1]).resolve()
+    repo_root = Path(args[0]).resolve()
     settings, errors = load_approval_settings(repo_root)
+
+    if as_json:
+        import json
+        print(json.dumps({"settings": settings, "errors": errors}, indent=2))
+        return 1 if errors else 0
 
     if errors:
         print(f"FAIL — {len(errors)} error(s) in .sdlc/approval-settings.yaml:")
