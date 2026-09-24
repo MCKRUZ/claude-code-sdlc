@@ -143,6 +143,46 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('button', { name: /^Add FR-\d+$/ })).toHaveCount(0)
   })
 
+  // A REAL model call, through the real window. It is slower than everything else here and it
+  // needs the machine to be signed in, so it says so plainly when it cannot run rather than
+  // passing quietly. The acceptance check is about what happens around the draft — that it is
+  // offered rather than applied, that the person can throw it away, and that throwing it away
+  // is still recorded — so a live call is the only way to get a real draft to act on.
+  test('a Claude draft is offered for review, not applied, and a discard is still recorded', async () => {
+    test.setTimeout(180_000)
+    await page.getByRole('button', { name: /^Edit$/ }).click()
+
+    const firstValue = await page.locator('textarea, input[type="text"]').first().inputValue()
+
+    await page.getByRole('button', { name: /Ask Claude to draft/i }).first().click()
+    const proposal = page.getByText(/Claude's draft — review before accepting/i)
+    try {
+      await expect(proposal).toBeVisible({ timeout: 120_000 })
+    } catch {
+      const failure = await page.locator('text=/could not draft/i').first().textContent().catch(() => null)
+      test.skip(true, `no draft came back (signed out or offline?): ${failure ?? 'timed out'}`)
+      return
+    }
+
+    // Offered, not applied: both choices are present, and the field has not changed yet.
+    await expect(page.getByRole('button', { name: /^Use this$/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Discard$/ })).toBeVisible()
+    expect(await page.locator('textarea, input[type="text"]').first().inputValue()).toBe(firstValue)
+
+    await page.getByRole('button', { name: /^Discard$/ }).click()
+    await expect(proposal).toHaveCount(0)
+    expect(await page.locator('textarea, input[type="text"]').first().inputValue()).toBe(firstValue)
+
+    // Matt's resolved decision: a discarded draft still reaches the ledger, so "how much of
+    // this was AI-drafted, including what we turned down" stays answerable.
+    await expect
+      .poll(() => existsSync(join(project, '.sdlc', 'metrics', 'draft-log.jsonl')), { timeout: 10_000 })
+      .toBe(true)
+    expect(readFileSync(join(project, '.sdlc', 'metrics', 'draft-log.jsonl'), 'utf-8')).toContain('discarded')
+
+    await page.getByRole('button', { name: /Done editing/i }).click()
+  })
+
   test('history is honest about a document nobody has saved through Studio yet', async () => {
     await page.getByRole('button', { name: /^History$/ }).click()
     await expect(page.getByText(/History —/)).toBeVisible({ timeout: 30_000 })

@@ -26,9 +26,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { initSettingsPath } from '../electron/main/settings'
+import { getLastSeenCommit, initSettingsPath, setLastSeenCommit } from '../electron/main/settings'
 import { pull, save } from '../electron/main/sync'
-import { openDocument, setField } from '../electron/main/documents'
+import { getDocumentChanges, openDocument, setField } from '../electron/main/documents'
 import { listVersions } from '../electron/main/history'
 
 function findPluginRoot(): string | null {
@@ -172,4 +172,47 @@ describe.skipIf(!available)('saving a document through a real remote', () => {
       unprotect()
     }
   }, 120_000)
+
+  // "Changes made since the person last opened it are marked, with who made each one and
+  // why." This needed a repository with history and a second author — both of which the
+  // fixture above can provide, by pushing from a separate clone the way a colleague would.
+  describe('changes since the person last looked', () => {
+    let colleague = ''
+
+    beforeAll(() => {
+      colleague = join(workspace, 'colleague')
+      git(['clone', origin, colleague], workspace)
+      git(['config', 'user.email', 'priya@example.com'], colleague)
+      git(['config', 'user.name', 'Priya N'], colleague)
+
+      const theirCopy = join(colleague, REQUIREMENTS)
+      writeFileSync(theirCopy, `${readFileSync(theirCopy, 'utf-8')}\n<!-- a note from a colleague -->\n`)
+      git(['add', REQUIREMENTS], colleague)
+      git(['commit', '-m', 'clarified the dedup rule'], colleague)
+      git(['push', 'origin', 'main'], colleague)
+      git(['fetch', 'origin'], project)
+    })
+
+    it('names who changed it, when, and why', async () => {
+      const branchName = git(['branch', '--show-current'], project)
+      const changes = await getDocumentChanges(project, REQUIREMENTS, getLastSeenCommit(project, REQUIREMENTS), branchName)
+
+      const theirs = changes.find((c) => c.reason === 'clarified the dedup rule')
+      expect(theirs, `colleague's change not listed: ${JSON.stringify(changes)}`).toBeTruthy()
+      expect(theirs!.author).toBe('Priya N')
+      expect(theirs!.when).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    }, 60_000)
+
+    it('marking it seen clears it, and only then', async () => {
+      const branchName = git(['branch', '--show-current'], project)
+      // Reading must not have cleared anything on its own — that is the point of "mark as
+      // seen" being a separate, explicit act rather than a side effect of opening.
+      await getDocumentChanges(project, REQUIREMENTS, getLastSeenCommit(project, REQUIREMENTS), branchName)
+      expect(getLastSeenCommit(project, REQUIREMENTS)).toBeNull()
+
+      setLastSeenCommit(project, REQUIREMENTS, git(['rev-parse', `origin/${branchName}`], project))
+      const after = await getDocumentChanges(project, REQUIREMENTS, getLastSeenCommit(project, REQUIREMENTS), branchName)
+      expect(after).toHaveLength(0)
+    }, 60_000)
+  })
 })
