@@ -367,7 +367,28 @@ async function createWindow() {
     if (url.startsWith('https:')) shell.openExternal(url)
     return { action: 'deny' }
   })
+
+  // The window may only ever show Studio's own page. Without this, anything that could make
+  // the page navigate elsewhere would hand a remote site the whole `window.studio` API —
+  // every file read and write, and every call that starts a process. The window-open handler
+  // above already covers new windows; this covers the top-level frame itself, which it does
+  // not. (Spec 0010's security pass.)
+  const isOurOwnPage = (url: string) =>
+    (VITE_DEV_SERVER_URL !== undefined && url.startsWith(VITE_DEV_SERVER_URL)) || url.startsWith('file://')
+
+  win.webContents.on('will-navigate', (event, url) => {
+    if (!isOurOwnPage(url)) event.preventDefault()
+  })
+  win.webContents.on('will-redirect', (event, url) => {
+    if (!isOurOwnPage(url)) event.preventDefault()
+  })
 }
+
+// An embedded browser frame would be another way to reach a remote origin inside the app, and
+// Studio has no use for one. Refused for every web contents, not just the main window.
+app.on('web-contents-created', (_event, contents) => {
+  contents.on('will-attach-webview', (event) => event.preventDefault())
+})
 
 app.whenReady().then(() => {
   initSettingsPath(app.getPath('userData'))

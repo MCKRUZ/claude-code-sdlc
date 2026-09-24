@@ -10,8 +10,26 @@ import type { ConsoleEntry } from '../../shared/types'
 
 export type { ConsoleEntry }
 
+// The console log is kept in memory and shown in a panel. Studio pulls every two minutes and
+// runs several commands per document each time, so an app left open all day accumulates
+// thousands of entries holding every byte those commands printed. Two caps, both about
+// keeping a long session healthy rather than about any attack:
+//
+//   MAX_LOG_ENTRIES — oldest entries fall off. Nobody scrolls back past a few hundred, and
+//                     the alternative is a window that slowly eats the machine.
+//   MAX_CAPTURED    — one command's output. A project can legitimately contain a very large
+//                     file, and reading one whole into a string can take the app down.
+const MAX_LOG_ENTRIES = 500
+const MAX_CAPTURED = 1_000_000
+
 const log: ConsoleEntry[] = []
 const listeners = new Set<(entry: ConsoleEntry) => void>()
+
+/** Keeps the first MAX_CAPTURED characters and says plainly that it stopped there, rather
+ * than silently handing back a truncated value that reads like the whole thing. */
+function capture(text: string, dropped: number): string {
+  return dropped > 0 ? `${text}\n…[${dropped} more characters not captured]` : text
+}
 
 export function onConsoleEntry(listener: (entry: ConsoleEntry) => void): () => void {
   listeners.add(listener)
@@ -31,15 +49,32 @@ let nextId = 1
 // anything reaches the log. This is a defense-in-depth backstop: Studio's own git/gh calls
 // never pass a credential explicitly, but nothing upstream of this function is trusted to
 // guarantee that on its own.
-const CREDENTIALED_URL_RE = /(https?:\/\/)[^/@\s]+@/g
-const GITHUB_TOKEN_RE = /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g
-const GITHUB_PAT_RE = /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g
+//
+// The list below covers more than GitHub because Studio spawns more than git and gh. The
+// `claude` CLI runs through here too and prints its own credential errors; a repository's
+// git remote can point anywhere; and a person pasting a console excerpt into a bug report
+// has no idea which line carried a secret. Anything that gets this wrong is unrecoverable
+// by redacting later — a token that has already been shown must be rotated, not hidden.
+const REDACTIONS: Array<[RegExp, string]> = [
+  // A credential embedded in a remote URL — the original case, and still the likeliest.
+  [/(https?:\/\/)[^/@\s]+@/g, '$1***@'],
+  // GitHub's own token shapes.
+  [/\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}\b/g, '***'],
+  [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, '***'],
+  // Other hosts and vendors Studio or its child processes can encounter.
+  [/\bglpat-[A-Za-z0-9_-]{20,}\b/g, '***'],
+  [/\bsk-ant-[A-Za-z0-9_-]{20,}\b/g, '***'],
+  [/\b(AKIA|ASIA)[A-Z0-9]{16}\b/g, '***'],
+  // Bearer headers and JSON Web Tokens, which carry the credential in the clear.
+  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{20,}/gi, '$1 ***'],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '***'],
+  // A labelled secret in any shape — the catch-all, deliberately last so a more precise
+  // pattern above gets to describe what it matched first.
+  [/\b(pass(?:word)?|token|secret|api[_-]?key|auth)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi, '$1=***'],
+]
 
 export function redact(text: string): string {
-  return text
-    .replace(CREDENTIALED_URL_RE, '$1***@')
-    .replace(GITHUB_TOKEN_RE, '***')
-    .replace(GITHUB_PAT_RE, '***')
+  return REDACTIONS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text)
 }
 
 // Windows installs of git and gh from scoop, npm or Chocolatey are batch shims, and a batch
@@ -94,7 +129,9 @@ export function runCommand(
     let stderr = ''
 
     const finish = (exitCode: number | null, extraStderr?: string) => {
-      const entry: ConsoleEntry = {
+      const fullStdout = redact(stdout)
+      const fullStderr = redact(extraStderr ? `${stderr}\n${extraStderr}`.trim() : stderr)
+      const base = {
         id: String(nextId++),
         command: redact(command),
         args: args.map(redact),
@@ -102,12 +139,24 @@ export function runCommand(
         startedAt,
         durationMs: Math.round(performance.now() - start),
         exitCode,
-        stdout: redact(stdout),
-        stderr: redact(extraStderr ? `${stderr}\n${extraStderr}`.trim() : stderr),
         ok: exitCode === 0,
       }
-      log.push(entry)
-      for (const listener of listeners) listener(entry)
+
+      // The CALLER gets everything. Its stdout is parsed as JSON, and for `git show` it is
+      // the actual content of a document being merged — truncating that would silently
+      // corrupt someone's work, which is far worse than the memory it costs.
+      const entry: ConsoleEntry = { ...base, stdout: fullStdout, stderr: fullStderr }
+
+      // The LOG gets a bounded copy. It is for a person reading a panel, and it is the part
+      // that accumulates for as long as the app is open.
+      log.push({
+        ...base,
+        stdout: capture(fullStdout.slice(0, MAX_CAPTURED), fullStdout.length - MAX_CAPTURED),
+        stderr: capture(fullStderr.slice(0, MAX_CAPTURED), fullStderr.length - MAX_CAPTURED),
+      })
+      if (log.length > MAX_LOG_ENTRIES) log.splice(0, log.length - MAX_LOG_ENTRIES)
+
+      for (const listener of listeners) listener(log[log.length - 1])
       resolve(entry)
     }
 

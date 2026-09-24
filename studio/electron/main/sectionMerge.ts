@@ -21,7 +21,7 @@
 // than losing it, which is the direction spec 0009 asks for.
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runPluginScript } from './project'
@@ -191,8 +191,12 @@ export async function readShapeFromBytes(
   bytes: Buffer,
   shapePath: string,
 ): Promise<ShapeReadResult> {
+  // 0o600 because this file holds the person's document while the CLI reads it, and the
+  // system temp directory is shared with every other user on a multi-user machine. The name
+  // is random so there is no race to predict it; the mode is about who may open it once it
+  // exists.
   const tmpFile = join(tmpdir(), `studio-shape-${randomUUID()}.md`)
-  writeFileSync(tmpFile, bytes)
+  writeFileSync(tmpFile, bytes, { mode: 0o600 })
   try {
     const entry = await runPluginScript(pluginScriptsDir, 'document_shape_cli.py', [
       'read', '--doc', tmpFile, '--shape', shapePath,
@@ -203,7 +207,7 @@ export async function readShapeFromBytes(
     const text = bytes.toString('utf-8')
     return { ...result, blocks: convertBlocksToStringIndices(text, result.blocks) }
   } finally {
-    if (existsSync(tmpFile)) unlinkSync(tmpFile)
+    rmSync(tmpFile, { force: true })
   }
 }
 
@@ -226,14 +230,14 @@ export async function writeShapeUpdates(
   ])
 
   const tmpUpdates = join(tmpdir(), `studio-updates-${randomUUID()}.json`)
-  writeFileSync(tmpUpdates, JSON.stringify(byteUpdates))
+  writeFileSync(tmpUpdates, JSON.stringify(byteUpdates), { mode: 0o600 })
   try {
     const entry = await runPluginScript(pluginScriptsDir, 'document_shape_cli.py', [
       'write', '--doc', docPath, '--updates', tmpUpdates,
     ])
     if (!entry.ok) throw new Error(entry.stderr || 'document_shape_cli.py write failed')
   } finally {
-    if (existsSync(tmpUpdates)) unlinkSync(tmpUpdates)
+    rmSync(tmpUpdates, { force: true })
   }
 }
 
