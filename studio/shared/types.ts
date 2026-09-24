@@ -54,6 +54,10 @@ export interface ProjectSyncState {
   /** Per-document, the commit this person had already seen when they last looked — what makes
    * "changes since you last opened it" answerable (spec 0010). Keyed by repo-relative path. */
   lastSeenCommits?: Record<string, string>
+  /** The exact branch THIS Studio pushed when a save fell back to a pull request. The merge
+   * poller will only ever merge a pull request whose head branch equals this. Without it the
+   * poller was choosing by a name search, which anyone can match. */
+  pendingPrBranch?: string | null
 }
 
 export interface Settings {

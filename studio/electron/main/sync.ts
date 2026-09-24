@@ -527,27 +527,35 @@ function stageForPath(relPath: string): string | null {
   return m ? m[1] : null
 }
 
+/** `known: false` means the settings could not be read at all — which is NOT the same as
+ * "no approval required", though the two used to be conflated. Whether that distinction
+ * matters depends on the caller: opening a pull request without a reviewer is recoverable,
+ * because a person still merges it; merging automatically without one is not. So the answer
+ * carries the uncertainty and each caller decides, rather than one silent default deciding
+ * for both. */
 async function approvalSettingsForFiles(
   pluginScriptsDir: string,
   projectPath: string,
   changedFiles: string[],
-): Promise<{ required: boolean; approver: string | null }> {
+): Promise<{ required: boolean; approver: string | null; known: boolean }> {
   const entry = await runPluginScript(pluginScriptsDir, 'approval_settings.py', [projectPath, '--json'])
   let byStage: Record<string, ApprovalStageSetting> = {}
+  let known = true
   try {
     byStage = (JSON.parse(entry.stdout).settings ?? {}) as Record<string, ApprovalStageSetting>
   } catch {
-    byStage = {} // malformed settings degrade to "approval not required anywhere" — the documented safe default
+    byStage = {}
+    known = false
   }
 
   for (const relPath of changedFiles) {
     const stage = stageForPath(relPath)
     const setting = stage ? byStage[stage] : undefined
     if (setting?.approval_required) {
-      return { required: true, approver: setting.approver }
+      return { required: true, approver: setting.approver, known }
     }
   }
-  return { required: false, approver: null }
+  return { required: false, approver: null, known }
 }
 
 // --- save --------------------------------------------------------------------------------
@@ -678,6 +686,9 @@ export async function save(
       storeAncestorBlob(hash, bytes)
       state.files[relPath] = { ancestorHash: hash }
     }
+    // Remember exactly which branch this was, so the merge poller can recognise its OWN
+    // pull request rather than whichever one a name search happens to return first.
+    state.pendingPrBranch = branchName
     saveProjectSyncState(projectPath, state)
 
     emitSyncState(
@@ -694,11 +705,32 @@ export async function save(
 
 // --- pull-request polling (Studio-driven — never GitHub's native auto-merge; finding 8) ----
 
-interface PrListEntry {
+export interface PrListEntry {
   number: number
   headRefName: string
+  author?: { login?: string } | null
+  headRepositoryOwner?: { login?: string } | null
+  files?: Array<{ path: string }>
   statusCheckRollup?: Array<{ status: string; conclusion: string | null }>
   reviews?: Array<{ state: string }>
+}
+
+/** Is this pull request the one THIS Studio opened?
+ *
+ * It used to merge `prs[0]` from a `head:studio/` search. That is a search, not an exact
+ * filter, and it includes pull requests opened by anyone — on a public repository, anyone at
+ * all, from a fork. Studio then merged it into the protected default branch with the user's
+ * own credentials, which laundered a stranger's commit past the very branch protection and
+ * review requirement that sent the save down this path in the first place.
+ *
+ * Three things must all hold: the head branch is the exact one Studio pushed and remembered,
+ * the pull request was opened by the signed-in account, and the branch lives in this
+ * repository rather than a fork. */
+export function isOursToMerge(pr: PrListEntry, pushedBranch: string | null | undefined, account: string | null, repoOwner: string | null): boolean {
+  if (!pushedBranch || pr.headRefName !== pushedBranch) return false
+  if (!account || (pr.author?.login ?? '') !== account) return false
+  if (!repoOwner || (pr.headRepositoryOwner?.login ?? '') !== repoOwner) return false
+  return true
 }
 
 /** Called alongside the periodic pull tick. Merges an open Studio-opened PR itself, once
@@ -709,19 +741,33 @@ export async function pollAndMergeOpenPullRequest(
   projectPath: string,
   pluginScriptsDir: string,
 ): Promise<{ merged: boolean; prUrl?: string }> {
+  const syncState = getProjectSyncState(projectPath)
+  const pushedBranch = syncState.pendingPrBranch
+  if (!pushedBranch) return { merged: false } // this Studio has no pull request outstanding
+
+  let account: string | null = null
+  let repoOwner: string | null = null
+  try {
+    account = (await runGh(['api', 'user', '--jq', '.login'], projectPath)).trim() || null
+    repoOwner = (await runGh(['repo', 'view', '--json', 'owner', '--jq', '.owner.login'], projectPath)).trim() || null
+  } catch {
+    return { merged: false } // can't establish whose it is, so don't merge anything
+  }
+
   let prs: PrListEntry[]
   try {
     prs = await ghJson<PrListEntry[]>(
-      ['pr', 'list', '--search', 'head:studio/', '--state', 'open',
-        '--json', 'number,headRefName,statusCheckRollup,reviews'],
+      ['pr', 'list', '--head', pushedBranch, '--state', 'open',
+        '--json', 'number,headRefName,author,headRepositoryOwner,files,statusCheckRollup,reviews'],
       projectPath,
     )
   } catch {
     return { merged: false }
   }
-  if (prs.length === 0) return { merged: false }
 
-  const pr = prs[0]
+  const pr = prs.find((candidate) => isOursToMerge(candidate, pushedBranch, account, repoOwner))
+  if (!pr) return { merged: false }
+
   const checks = pr.statusCheckRollup ?? []
   const checksGreen = checks.length === 0
     || checks.every((c) => c.status === 'COMPLETED' && (c.conclusion === 'SUCCESS' || c.conclusion === 'NEUTRAL' || c.conclusion === 'SKIPPED'))
@@ -730,8 +776,16 @@ export async function pollAndMergeOpenPullRequest(
     return { merged: false }
   }
 
-  const changedFiles = listLocalAllowlistedFiles(projectPath)
-  const approval = await approvalSettingsForFiles(pluginScriptsDir, projectPath, changedFiles)
+  // Whether approval is required is a question about the files THIS pull request changes.
+  // It used to be asked about every changed file in the local working tree, which has no
+  // necessary relationship to the pull request being merged — someone could edit a
+  // stage needing no approval locally and unlock the merge of one that does.
+  const prFiles = (pr.files ?? []).map((f) => f.path)
+  if (prFiles.length === 0) return { merged: false } // can't tell what it changes, so don't merge it
+
+  const approval = await approvalSettingsForFiles(pluginScriptsDir, projectPath, prFiles)
+  if (!approval.known) return { merged: false } // can't tell whether approval is needed, so don't merge
+
   if (approval.required) {
     const approved = (pr.reviews ?? []).some((r) => r.state === 'APPROVED')
     if (!approved) {
@@ -742,7 +796,10 @@ export async function pollAndMergeOpenPullRequest(
 
   try {
     const out = await runGh(['pr', 'merge', String(pr.number), '--merge'], projectPath)
-    emitSyncState({ kind: 'idle', lastPulledAt: getProjectSyncState(projectPath).lastPulledAt })
+    const after = getProjectSyncState(projectPath)
+    after.pendingPrBranch = null // merged — this Studio has nothing outstanding again
+    saveProjectSyncState(projectPath, after)
+    emitSyncState({ kind: 'idle', lastPulledAt: after.lastPulledAt })
     return { merged: true, prUrl: out.trim() }
   } catch {
     return { merged: false }
