@@ -1,5 +1,13 @@
 /// <reference types="vite-plugin-electron/electron-env" />
 
+import type { StudioApi } from './shared/types'
+
+declare global {
+  interface Window {
+    studio: StudioApi
+  }
+}
+
 declare namespace NodeJS {
   interface ProcessEnv {
     VSCODE_DEBUG?: 'true'

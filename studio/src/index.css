@@ -1,7 +1,32 @@
 @import "tailwindcss";
 
+/* Studio's design tokens — the ONE theme every screen uses (spec 0008's scope). Adding a
+   new screen means using these tokens, never picking a new one-off color/spacing value. */
 @theme {
   --font-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Brand */
+  --color-brand-50: #eff6ff;
+  --color-brand-100: #dbeafe;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb;
+  --color-brand-700: #1d4ed8;
+
+  /* Stage state — the same three colors everywhere a stage's state is shown
+     (header, stage nav, setup preview): signed off / current / later. */
+  --color-stage-signed-off: #16a34a;
+  --color-stage-signed-off-bg: #f0fdf4;
+  --color-stage-current: #2563eb;
+  --color-stage-current-bg: #eff6ff;
+  --color-stage-later: #94a3b8;
+  --color-stage-later-bg: #f8fafc;
+
+  /* Command outcome — the console's own vocabulary, reused anywhere a command's result
+     is shown outside the console (e.g. an inline error on screen). */
+  --color-command-ok: #16a34a;
+  --color-command-error: #dc2626;
+  --color-command-running: #d97706;
 }
 
 @layer base {

@@ -1,27 +1,34 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import type { ConsoleEntry, StudioApi } from '../../shared/types'
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.invoke(channel, ...omit)
-  },
+// The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
+// no arbitrary command execution — every call here maps to exactly one narrow main-process
+// handler, and every one of those handlers goes through commandRunner's single choke point
+// when it needs to run anything, so every command Studio runs is recorded to the console.
+// Typed against the shared StudioApi interface, so a mismatch with what the renderer
+// expects is a compile error here, not a runtime surprise.
+const studio: StudioApi = {
+  detectTooling: () => ipcRenderer.invoke('studio:detectTooling'),
+  getSettings: () => ipcRenderer.invoke('studio:getSettings'),
+  setToolOverride: (kind, path) => ipcRenderer.invoke('studio:setToolOverride', kind, path),
 
-  // You can expose other APTs you need here.
-  // ...
-})
+  pickFolder: () => ipcRenderer.invoke('studio:pickFolder'),
+  hasSdlcProject: (projectPath) => ipcRenderer.invoke('studio:hasSdlcProject', projectPath),
+  openProject: (projectPath) => ipcRenderer.invoke('studio:openProject', projectPath),
+
+  listProfiles: () => ipcRenderer.invoke('studio:listProfiles'),
+  previewSetup: (projectPath, profileId) => ipcRenderer.invoke('studio:previewSetup', projectPath, profileId),
+  runSetup: (projectPath, profileId) => ipcRenderer.invoke('studio:runSetup', projectPath, profileId),
+
+  getConsoleLog: () => ipcRenderer.invoke('studio:getConsoleLog'),
+  onConsoleEntry: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, entry: ConsoleEntry) => callback(entry)
+    ipcRenderer.on('studio:consoleEntry', handler)
+    return () => ipcRenderer.off('studio:consoleEntry', handler)
+  },
+}
+
+contextBridge.exposeInMainWorld('studio', studio)
 
 // --------- Preload scripts loading ---------
 function domReady(condition: DocumentReadyState[] = ['complete', 'interactive']) {
@@ -53,9 +60,6 @@ const safeDOM = {
 
 /**
  * https://tobiasahlin.com/spinkit
- * https://connoratherton.com/loaders
- * https://projects.lukehaas.me/css-loaders
- * https://matejkustec.github.io/SpinThatShit
  */
 function useLoading() {
   const className = `loaders-css__square-spin`
