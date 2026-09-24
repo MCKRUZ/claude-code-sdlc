@@ -15,6 +15,7 @@
 //     before it was applied, so this file never short-circuits it.
 
 import { runPluginScript } from './project'
+import { UnsafePathError, resolveProjectDocument } from './projectPaths'
 import type { DocumentVersion, RestorePreview } from '../../shared/types'
 
 export interface RawVersion {
@@ -41,6 +42,30 @@ async function auditArtifacts(
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   const entry = await runPluginScript(pluginScriptsDir, 'audit_artifacts.py', [...args, '--repo', projectPath])
   return { ok: entry.ok, stdout: entry.stdout, stderr: entry.stderr }
+}
+
+/** The document path reaches the plugin as a POSITIONAL argument, so two things have to be
+ * true before it is passed along: it must be one of the project's own editable documents
+ * (the same check the document layer makes — history and editing must not disagree about
+ * what is in bounds), and it must not begin with a dash, which the plugin's own argument
+ * parser would read as a flag rather than a filename. */
+function checkedRelPath(projectPath: string, relPath: string): string {
+  if (relPath.startsWith('-')) {
+    throw new UnsafePathError(`${relPath} is not a document name Studio will pass on.`)
+  }
+  resolveProjectDocument(projectPath, relPath)
+  return relPath
+}
+
+/** The same check as a message instead of a throw, so a refusal reaches the person as an
+ * explanation in the window rather than an exception crossing the process boundary. */
+function refuseRelPath(projectPath: string, relPath: string): string | null {
+  try {
+    checkedRelPath(projectPath, relPath)
+    return null
+  } catch (err) {
+    return (err as Error).message
+  }
 }
 
 /** Join each version to its reason. Pure, and separated out because the offset rule is the
@@ -70,7 +95,8 @@ export async function listVersions(
   pluginScriptsDir: string,
   relPath: string,
 ): Promise<DocumentVersion[]> {
-  const listed = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'list', relPath, '--json'])
+  if (refuseRelPath(projectPath, relPath)) return []
+  const listed = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'list', checkedRelPath(projectPath, relPath), '--json'])
   let versions: RawVersion[] = []
   try {
     versions = (JSON.parse(listed.stdout).versions ?? []) as RawVersion[]
@@ -81,7 +107,7 @@ export async function listVersions(
 
   // The "why" for each version, joined by position (see this file's header).
   let changes: RawChange[] = []
-  const history = await auditArtifacts(pluginScriptsDir, projectPath, ['report', '--history', relPath, '--json'])
+  const history = await auditArtifacts(pluginScriptsDir, projectPath, ['report', '--history', checkedRelPath(projectPath, relPath), '--json'])
   try {
     changes = (JSON.parse(history.stdout).history ?? []) as RawChange[]
   } catch {
@@ -104,7 +130,9 @@ export async function getVersionText(
   relPath: string,
   ref: string,
 ): Promise<{ ok: boolean; text?: string; error?: string }> {
-  const shown = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'show', relPath, ref])
+  const refusedPath = refuseRelPath(projectPath, relPath)
+  if (refusedPath) return { ok: false, error: refusedPath }
+  const shown = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'show', checkedRelPath(projectPath, relPath), ref])
   const refused = refusal(shown.stdout, 'show')
   if (refused) return { ok: false, error: refused }
   return { ok: true, text: shown.stdout }
@@ -117,7 +145,9 @@ export async function diffVersions(
   a: string,
   b: string,
 ): Promise<{ ok: boolean; diff?: string; error?: string }> {
-  const out = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'diff', relPath, a, b])
+  const refusedPath = refuseRelPath(projectPath, relPath)
+  if (refusedPath) return { ok: false, error: refusedPath }
+  const out = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'diff', checkedRelPath(projectPath, relPath), a, b])
   const refused = refusal(out.stdout, 'diff')
   if (refused) return { ok: false, error: refused }
   return { ok: true, diff: out.stdout }
@@ -132,7 +162,9 @@ export async function previewRestore(
   relPath: string,
   ref: string,
 ): Promise<RestorePreview> {
-  const out = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'rollback', relPath, ref])
+  const refusedPath = refuseRelPath(projectPath, relPath)
+  if (refusedPath) return { ok: false, diffHash: '', diff: '', needsSignOffAck: false, error: refusedPath }
+  const out = await auditArtifacts(pluginScriptsDir, projectPath, ['version', 'rollback', checkedRelPath(projectPath, relPath), ref])
   const refused = refusal(out.stdout, 'rollback')
   if (refused) {
     return { ok: false, diffHash: '', diff: '', needsSignOffAck: false, error: refused }
@@ -166,7 +198,9 @@ export async function confirmRestore(
   if (!actor.trim()) {
     return { ok: false, error: 'Restoring needs a named person — the change is recorded against them.' }
   }
-  const args = ['version', 'rollback', relPath, ref, '--confirm', '--actor', actor, '--reviewed', diffHash]
+  const refusedPath = refuseRelPath(projectPath, relPath)
+  if (refusedPath) return { ok: false, error: refusedPath }
+  const args = ['version', 'rollback', checkedRelPath(projectPath, relPath), ref, '--confirm', '--actor', actor, '--reviewed', diffHash]
   if (ackSignOff) args.push('--ack-signoff')
 
   const out = await auditArtifacts(pluginScriptsDir, projectPath, args)
@@ -188,8 +222,10 @@ export async function recordVersion(
   actor: string,
   reason: string,
 ): Promise<{ ok: boolean; error?: string }> {
+  const refusedPath = refuseRelPath(projectPath, relPath)
+  if (refusedPath) return { ok: false, error: refusedPath }
   const out = await auditArtifacts(pluginScriptsDir, projectPath, [
-    'record', '--artifact', relPath, '--actor', actor, '--reason', reason, '--event', 'revised',
+    'record', '--artifact', checkedRelPath(projectPath, relPath), '--actor', actor, '--reason', reason, '--event', 'revised',
   ])
   if (!out.stdout.includes('Recorded')) {
     return { ok: false, error: out.stdout.trim() || out.stderr.trim() || 'The version was not recorded.' }

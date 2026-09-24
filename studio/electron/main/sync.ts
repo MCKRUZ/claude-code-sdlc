@@ -12,6 +12,7 @@ import { join, relative, sep } from 'node:path'
 import { runGit, runGitTolerant, runGh, ghJson } from './git'
 import { recordVersion } from './history'
 import { runPluginScript } from './project'
+import { isAllowlisted, isSafeInProject, resolveInProject } from './projectPaths'
 import {
   extractUnits, findShapeForPath, readShapeFromBytes, threeWayMerge, writeShapeUpdates,
 } from './sectionMerge'
@@ -24,23 +25,11 @@ import type {
 } from '../../shared/types'
 
 // --- Allowlist ------------------------------------------------------------------------
-// The ONLY thing pull()/save() ever look at, read, or write. Enforced once, here — nothing
-// else in this file touches a path that doesn't match one of these.
+// The list now lives in projectPaths.ts, because documents and history need the same one and
+// having it here meant only this file ever applied it. Re-exported so existing callers and
+// tests keep working.
 
-const ALLOWLIST_PATTERNS: RegExp[] = [
-  /^\.sdlc\/artifacts\//,
-  /^\.sdlc\/[^/]+\.md$/,
-  /^\.sdlc\/state\.yaml$/,
-  /^\.sdlc\/decision-log\.md$/,
-  /^\.sdlc\/metrics\/.+\.jsonl$/,
-  /^\.sdlc\/approval-settings\.yaml$/,
-  /^specs\//,
-]
-
-export function isAllowlisted(relPath: string): boolean {
-  const normalized = relPath.replace(/\\/g, '/')
-  return ALLOWLIST_PATTERNS.some((p) => p.test(normalized))
-}
+export { isAllowlisted } from './projectPaths'
 
 // --- sync-state broadcasting -------------------------------------------------------------
 
@@ -91,6 +80,10 @@ function walkFiles(dir: string, projectPath: string, out: string[]): void {
   }
   for (const e of entries) {
     const full = join(dir, e.name)
+    // A link is never a document Studio should sync — following one would read whatever it
+    // points at (a private key, say) and push it to the repository's owner. Dropped here,
+    // and again at the point of use, since this walk is not the only way a path arrives.
+    if (e.isSymbolicLink()) continue
     if (e.isDirectory()) walkFiles(full, projectPath, out)
     else if (e.isFile()) {
       const rel = relative(projectPath, full).split(sep).join('/')
@@ -109,7 +102,11 @@ function listLocalAllowlistedFiles(projectPath: string): string[] {
 async function listRemoteAllowlistedFiles(projectPath: string, branch: string): Promise<string[]> {
   const entry = await runGitTolerant(['ls-tree', '-r', '--name-only', `origin/${branch}`], projectPath)
   if (!entry.ok) return []
-  return entry.stdout.split('\n').map((l) => l.trim()).filter(Boolean).filter(isAllowlisted)
+  // The remote list is the repository's own view, so it is the untrusted one — it happily
+  // names a path that exists locally as a link to somewhere else entirely.
+  return entry.stdout.split('\n').map((l) => l.trim()).filter(Boolean)
+    .filter(isAllowlisted)
+    .filter((rel) => isSafeInProject(projectPath, rel))
 }
 
 async function currentBranch(projectPath: string): Promise<string> {
@@ -189,7 +186,15 @@ async function pullOneFile(
   relPath: string,
   syncState: ProjectSyncState,
 ): Promise<PullOneFileOutcome> {
-  const localFullPath = join(projectPath, relPath)
+  // The last line of defence before any read or write: refuses a path that climbs out of the
+  // project, is a link, or resolves outside it. A refusal skips the file rather than failing
+  // the pull — one hostile entry must not stop the other documents syncing.
+  let localFullPath: string
+  try {
+    localFullPath = resolveInProject(projectPath, relPath)
+  } catch {
+    return { merged: false }
+  }
   const localExists = existsSync(localFullPath)
   const localBytes = localExists ? readFileSync(localFullPath) : null
   const remoteBytes = await readRemoteBlob(projectPath, branch, relPath)
@@ -585,9 +590,17 @@ export async function save(
   const baseSha = (await runGit(['rev-parse', `origin/${branch}`], projectPath)).trim()
 
   const state = getProjectSyncState(projectPath)
+  // Everything committed and pushed below is read from this list, so this is the one place
+  // the containment check has to hold for the save path — a file that is really a link
+  // elsewhere on the machine must never become a blob in someone else's repository.
   const changedFiles = listLocalAllowlistedFiles(projectPath).filter((relPath) => {
     if (options.onlyPath && relPath !== options.onlyPath) return false
-    const fullPath = join(projectPath, relPath)
+    let fullPath: string
+    try {
+      fullPath = resolveInProject(projectPath, relPath)
+    } catch {
+      return false
+    }
     if (!existsSync(fullPath)) return false
     const hash = hashBytes(readFileSync(fullPath))
     return state.files[relPath]?.ancestorHash !== hash

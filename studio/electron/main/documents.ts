@@ -18,12 +18,21 @@ import {
   type ShapeField, type ShapeReadResult,
 } from './sectionMerge'
 import { runGitTolerant } from './git'
+import { resolveProjectDocument } from './projectPaths'
 import type {
   DocumentChange, DocumentField, DocumentSection, OpenDocumentResult,
 } from '../../shared/types'
 
+/** Every path this file reads or writes goes through here.
+ *
+ * It used to be a bare join, on the reasoning that the paths come from the plugin's own
+ * phase registry rather than from repository content — which is true today, and was exactly
+ * the wrong thing to rely on. This is a boundary between the window and the filesystem, and
+ * the check belongs at the boundary, not in an argument about who happens to call it. It
+ * refuses anything outside the project, anything that is a link elsewhere, and anything that
+ * is not one of the project's editable documents. */
 function docPath(projectPath: string, relPath: string): string {
-  return join(projectPath, relPath)
+  return resolveProjectDocument(projectPath, relPath)
 }
 
 function toRelPath(projectPath: string, fullPath: string): string {
@@ -165,7 +174,12 @@ export async function openDocument(
   pluginScriptsDir: string,
   relPath: string,
 ): Promise<OpenDocumentResult> {
-  const full = docPath(projectPath, relPath)
+  let full: string
+  try {
+    full = docPath(projectPath, relPath)
+  } catch (err) {
+    return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: (err as Error).message }
+  }
   if (!existsSync(full)) {
     return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: `${relPath} does not exist` }
   }
@@ -248,7 +262,12 @@ export async function nextNumber(
   pluginScriptsDir: string,
   relPath: string,
 ): Promise<{ ok: boolean; id?: string; number?: number; error?: string }> {
-  const full = docPath(projectPath, relPath)
+  let full: string
+  try {
+    full = docPath(projectPath, relPath)
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
   if (!existsSync(full)) return { ok: false, error: `${relPath} does not exist` }
   const shapePath = findShapeForPath(pluginScriptsDir, relPath, readFileSync(full, 'utf-8'))
   if (!shapePath) return { ok: false, error: 'This document has no shape, so it has no numbered sections.' }
@@ -271,7 +290,12 @@ export async function addInstance(
   relPath: string,
   title: string,
 ): Promise<OpenDocumentResult> {
-  const full = docPath(projectPath, relPath)
+  let full: string
+  try {
+    full = docPath(projectPath, relPath)
+  } catch (err) {
+    return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: (err as Error).message }
+  }
   if (!existsSync(full)) {
     return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: `${relPath} does not exist` }
   }
