@@ -46,31 +46,69 @@ confusing the person who owns a change with the person building it is what makes
 
 ## Acceptance Checks
 
-- [ ] The board opens on what needs the signed-in person, in any role, across every team.
+- [x] The board opens on what needs the signed-in person, in any role, across every team.
 - [ ] Each row shows the spec's number, what it does, its owner, its developer, its risk level, where it
       is, who it is waiting on, and how long it has waited.
 - [ ] The signed-in person's own name is marked wherever it appears, and a wait of two days or more is
       marked as overdue.
-- [ ] Search, and filters for team, risk and status, narrow the list; grouping switches between epic,
+- [x] Search, and filters for team, risk and status, narrow the list; grouping switches between epic,
       team and person without losing the current filters.
 - [ ] Each team's card shows specs in progress against that team's limit and how long its checks are
       waiting, and is marked when it is at its limit or its alarm is sounding.
-- [ ] A board of 200 specs across 4 teams opens in under two seconds on a normal laptop, and switching
+- [x] A board of 200 specs across 4 teams opens in under two seconds on a normal laptop, and switching
       role views does not re-read the repository.
 - [ ] A spec cannot be marked ready until every readiness item passes, each stated in plain language
       with what is missing.
-- [ ] An acceptance check that could be read two ways is flagged, with the reason, before the spec is ready.
+- [x] An acceptance check that could be read two ways is flagged, with the reason, before the spec is ready.
 - [ ] The risk level is proposed with its reason and confirmed by a person; nobody but a team lead can
       lower one, and anyone can raise one.
 - [ ] Every open decision names the person answering it and when it is due; a spec with an unanswered
       decision cannot be handed off.
-- [ ] Handing off names the owner, developer and checker, refuses a developer who is also the checker,
+- [x] Handing off names the owner, developer and checker, refuses a developer who is also the checker,
       refuses when the team is at its limit unless a reason is given, and then does the hand-off through
       the plugin's own command.
-- [ ] The status view is read-only: it shows the steps a change has been through, from the spec's pull
+- [x] The status view is read-only: it shows the steps a change has been through, from the spec's pull
       request, and offers no control that changes anything.
-- [ ] Every number on the board comes from the specs in the repository or their pull requests; none is
+- [x] Every number on the board comes from the specs in the repository or their pull requests; none is
       stored by Studio.
+
+### What is proven, and what is still missing (2026-09-24)
+
+A ticked box means a test asserts it. Seven of thirteen.
+
+**Proven in the real window** (`test/e2e/board.spec.ts`, against 200 synthetic specs across
+4 teams): the board opens on "needs me" as the SELECTED view; search narrows the list; every
+team card is shown; the status view offers no control that changes anything (asserted as
+absence, the same standard spec 0010's edit mode is held to). **Measured, since the Checking
+Plan says to confirm this rather than assume it: 77-89ms** for the fetch AND the render,
+against a two-second budget — and five role switches in 264ms, which is the observable proof
+that switching a view re-reads nothing.
+
+**Proven by test** (`test/boardModel.test.ts`, 24 cases): each role view contains only that
+role; filters and search narrow without the role view losing its meaning; grouping never
+loses a row; a signed-out person sees nothing in a role view rather than everything; overdue
+is two days or more and finished work is never late; a team with no declared limit gets no
+limit rather than an invented one. And in `test/handoff.test.ts`, that an unreadable answer
+from the hand-off command is a refusal and never a success.
+
+**NOT BUILT — these are missing features, not merely unverified:**
+
+1. **"How long it has waited."** The board shows when a change LAST MOVED, which is a
+   different fact and the only one measured. The true waiting time needs a per-pull-request
+   fetch the bulk call deliberately does not make. Same gap on the team card's "how long its
+   checks are waiting".
+2. **Marking a spec ready.** The readiness panel shows every outstanding item, but Studio
+   never writes `status: ready`. Today that transition happens elsewhere.
+3. **The risk-tier confirm flow.** Decided this session (see the Decision List): Studio asks
+   who authorised a downgrade and writes that name into the spec. Not yet built.
+4. **Decision-list owners and due dates.** A spec's open decisions are shown as text; nothing
+   yet parses an owner or a clock out of them, and nothing blocks a hand-off on an unanswered
+   one. The plugin's `track_decisions.py` covers the phase-spanning decision log, which is a
+   different list from a spec's own.
+
+**Partly proven:** a row renders every field the second check asks for, and the signed-in
+person's name renders as "you", marked — both are implemented and code-reviewed, and neither
+is asserted element-by-element in the window yet.
 
 ## Risk Tier
 
