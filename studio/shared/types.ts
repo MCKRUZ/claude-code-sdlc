@@ -383,3 +383,68 @@ export interface StudioApi {
   getConsoleLog(): Promise<ConsoleEntry[]>
   onConsoleEntry(callback: (entry: ConsoleEntry) => void): () => void
 }
+
+// --- The Build board (spec 0011) ------------------------------------------------------
+
+/** Which view of the board is showing. `needs-me` is the one it opens on, because the
+ * spec's constraint is not writing code but knowing what is waiting to be checked and on
+ * whom. */
+export type BoardRole = 'needs-me' | 'owner' | 'developer' | 'checker' | 'everything'
+
+export type BoardGrouping = 'none' | 'epic' | 'team' | 'person'
+
+export interface BoardFilters {
+  role: BoardRole
+  search?: string
+  team?: string
+  risk?: string
+  status?: string
+}
+
+/** One spec's live pull request, as the plugin's bulk status call reports it.
+ *
+ * `waitingOn` is a sentence for a person to read. `waitingOnHandle` is the same fact as
+ * data, and is what the board compares against — pattern-matching the sentence would break
+ * the first time its wording improved. It is null whenever nobody in particular is blocking
+ * (CI, the grader, an unclaimed review), which is a real answer, not a missing one. */
+export interface BoardPullRequest {
+  number: number
+  url: string
+  state: string
+  mergedAt: string | null
+  updatedAt: string | null
+  waitingOn: string
+  waitingOnHandle: string | null
+}
+
+/** One row. Everything but `pullRequest` comes from the spec file itself, so a row is
+ * complete and useful before the code host answers — or when it never does. */
+export interface BoardRow {
+  spec: string
+  name: string
+  path: string
+  title: string
+  status: string
+  risk: string
+  team: string
+  channel: string
+  owner: string
+  developer: string
+  checker: string
+  branch: string
+  epic?: string
+  pullRequest: BoardPullRequest | null
+  /** Set only when the spec file itself could not be read — the row is still shown, saying
+   * so, rather than silently dropped. */
+  error?: string
+}
+
+export interface Board {
+  rows: BoardRow[]
+  /** False when the live half is missing. The rows are still here: an empty board would
+   * read as "there is no work", which is a different claim. */
+  codeHostAvailable: boolean
+  error: string | null
+  /** Per-team work-in-progress limits, or null for a project that has not adopted them. */
+  teamLimits: Record<string, { in_flight: number; wip_limit: number }> | null
+}
