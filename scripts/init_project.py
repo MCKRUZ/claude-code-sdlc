@@ -1,6 +1,12 @@
-"""Initialize .sdlc/ structure in a target project directory."""
+"""Initialize .sdlc/ structure in a target project directory.
+
+`--dry-run` (spec 0008) prints exactly what would be created without writing anything —
+Studio's setup flow shows this before the person confirms. It changes nothing about the
+default (write) behavior.
+"""
 
 import argparse
+import json
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -30,6 +36,25 @@ def init_state(profile: dict, project_name: str) -> str:
     state = state.replace("${PROJECT_NAME}", project_name)
     state = state.replace("${CREATED_AT}", now)
     return state
+
+
+def plan_sdlc_dir(target: Path, profile: dict) -> dict:
+    """Exactly what create_sdlc_dir() below would create, without writing anything —
+    directory and file paths relative to `target`. Kept in sync with create_sdlc_dir() by
+    hand; if that function's shape changes, this one must change with it."""
+    sdlc_dir = target / ".sdlc"
+    if sdlc_dir.exists():
+        return {"already_exists": True, "directories": [], "files": []}
+
+    directories = [".sdlc", ".sdlc/artifacts"]
+    directories += [f".sdlc/artifacts/{d}" for d in PHASE_DIRS]
+    directories += [".sdlc/context", ".sdlc/context/layers", ".sdlc/context/intake"]
+
+    files = [".sdlc/state.yaml", ".sdlc/profile.yaml"]
+    if (TEMPLATES_DIR / "constitution.md").exists():
+        files.append(".sdlc/constitution.md")
+
+    return {"already_exists": False, "directories": directories, "files": files}
 
 
 def create_sdlc_dir(target: Path, profile: dict, project_name: str) -> None:
@@ -78,6 +103,8 @@ def main():
     parser.add_argument("--profile", required=True, help="Path to profile.yaml")
     parser.add_argument("--target", required=True, help="Target project directory")
     parser.add_argument("--name", default=None, help="Project name (defaults to directory name)")
+    parser.add_argument("--dry-run", action="store_true", help="Print what would be created; write nothing")
+    parser.add_argument("--json", action="store_true", help="With --dry-run, emit the plan as JSON")
     args = parser.parse_args()
 
     profile_path = Path(args.profile)
@@ -96,6 +123,20 @@ def main():
         for e in errors:
             print(f"  - {e}")
         sys.exit(2)
+
+    if args.dry_run:
+        plan = plan_sdlc_dir(target_path, profile)
+        if args.json:
+            print(json.dumps(plan, indent=2))
+        elif plan["already_exists"]:
+            print(f".sdlc/ already exists in {target_path} — nothing would be created.")
+        else:
+            print(f"Would create in {target_path}:")
+            for d in plan["directories"]:
+                print(f"  dir  {d}/")
+            for f in plan["files"]:
+                print(f"  file {f}")
+        return
 
     if not target_path.exists():
         print(f"Creating target directory: {target_path}")

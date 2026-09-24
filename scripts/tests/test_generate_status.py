@@ -6,7 +6,7 @@ import pytest
 import yaml
 
 import phase_model as pm
-from generate_status import count_artifacts, generate_dashboard, STATUS_ICONS
+from generate_status import count_artifacts, generate_dashboard, status_json, STATUS_ICONS
 
 
 class TestPhaseConstants:
@@ -128,3 +128,60 @@ class TestGenerateDashboard:
         }
         output = generate_dashboard(state, sdlc_dir)
         assert "minimal" in output
+
+
+class TestStatusJson:
+    """status_json() — spec 0008: the ONLY way Studio reads a project's stage state."""
+
+    def test_top_level_fields(self, sdlc_dir, state_yaml):
+        state = yaml.safe_load(state_yaml.read_text())
+        result = status_json(state, sdlc_dir)
+        assert result["project_name"] == "test-project"
+        assert result["profile_id"] == "test-profile"
+        assert result["current_phase"] == {"id": "0", "display": "Phase 0: Discovery"}
+
+    def test_every_registry_phase_present_in_order(self, sdlc_dir, state_yaml):
+        state = yaml.safe_load(state_yaml.read_text())
+        result = status_json(state, sdlc_dir)
+        assert [s["id"] for s in result["stages"]] == pm.all_phase_ids()
+
+    def test_current_phase_state(self, sdlc_dir, state_yaml):
+        state = yaml.safe_load(state_yaml.read_text())
+        result = status_json(state, sdlc_dir)
+        stage_0 = next(s for s in result["stages"] if s["id"] == "0")
+        assert stage_0["stage_state"] == "current"
+
+    def test_completed_phase_is_signed_off(self, sdlc_dir, state_yaml):
+        state = yaml.safe_load(state_yaml.read_text())
+        state["phases"]["0"]["status"] = "completed"
+        state["current_phase"] = "1"
+        result = status_json(state, sdlc_dir)
+        stage_0 = next(s for s in result["stages"] if s["id"] == "0")
+        assert stage_0["stage_state"] == "signed_off"
+
+    def test_pending_phase_is_later(self, sdlc_dir, state_yaml):
+        state = yaml.safe_load(state_yaml.read_text())
+        result = status_json(state, sdlc_dir)
+        stage_1 = next(s for s in result["stages"] if s["id"] == "1")
+        assert stage_1["stage_state"] == "later"
+
+    def test_unreached_phase_not_in_state_dict_is_later(self, sdlc_dir, state_yaml):
+        """state.yaml's fixture only carries entries for phases 0 and 1 — every other
+        registry phase must still appear, defaulted to 'later', not crash or be omitted."""
+        state = yaml.safe_load(state_yaml.read_text())
+        result = status_json(state, sdlc_dir)
+        stage_build = next(s for s in result["stages"] if s["id"] == "build")
+        assert stage_build["stage_state"] == "later"
+        assert stage_build["status"] == "pending"
+
+    def test_artifact_count_included(self, sdlc_dir, state_yaml):
+        (sdlc_dir / "artifacts" / "00-discovery" / "problem-statement.md").write_text("x")
+        state = yaml.safe_load(state_yaml.read_text())
+        result = status_json(state, sdlc_dir)
+        stage_0 = next(s for s in result["stages"] if s["id"] == "0")
+        assert stage_0["artifact_count"] == 1
+
+    def test_json_serializable(self, sdlc_dir, state_yaml):
+        import json
+        state = yaml.safe_load(state_yaml.read_text())
+        json.dumps(status_json(state, sdlc_dir))  # raises if anything isn't serializable

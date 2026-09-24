@@ -7,7 +7,7 @@ import pytest
 import yaml
 
 import init_project
-from init_project import create_sdlc_dir, init_state, load_profile, PHASE_DIRS
+from init_project import create_sdlc_dir, init_state, load_profile, plan_sdlc_dir, PHASE_DIRS
 
 
 class TestLoadProfile:
@@ -101,6 +101,83 @@ class TestCreateSdlcDir:
         state_path = target / ".sdlc" / "state.yaml"
         state = yaml.safe_load(state_path.read_text())
         assert state["project_name"] == "my-cool-project"
+
+
+class TestPlanSdlcDir:
+    """plan_sdlc_dir() — spec 0008: Studio's setup preview shows this before confirming,
+    never a second (drifting) idea of what init actually creates."""
+
+    def test_writes_nothing(self, tmp_path, valid_profile):
+        target = tmp_path / "project"
+        target.mkdir()
+        plan_sdlc_dir(target, valid_profile)
+        assert not (target / ".sdlc").exists()
+
+    def test_matches_what_create_sdlc_dir_actually_creates(self, tmp_path, valid_profile):
+        """The exact cross-check: run the plan, then run the real thing, and confirm the
+        plan named every directory and file that actually appeared — no more, no less."""
+        target = tmp_path / "project"
+        target.mkdir()
+        plan = plan_sdlc_dir(target, valid_profile)
+
+        create_sdlc_dir(target, valid_profile, "test")
+
+        actual_dirs = {
+            str(p.relative_to(target)).replace("\\", "/")
+            for p in target.rglob("*") if p.is_dir()
+        }
+        actual_files = {
+            str(p.relative_to(target)).replace("\\", "/")
+            for p in target.rglob("*") if p.is_file()
+        }
+        assert set(plan["directories"]) == actual_dirs
+        assert set(plan["files"]) == actual_files
+
+    def test_already_exists_reports_nothing_to_create(self, tmp_path, valid_profile):
+        target = tmp_path / "project"
+        target.mkdir()
+        (target / ".sdlc").mkdir()
+        plan = plan_sdlc_dir(target, valid_profile)
+        assert plan == {"already_exists": True, "directories": [], "files": []}
+
+    def test_plan_includes_all_phase_directories(self, tmp_path, valid_profile):
+        target = tmp_path / "project"
+        target.mkdir()
+        plan = plan_sdlc_dir(target, valid_profile)
+        for phase_dir in PHASE_DIRS:
+            assert f".sdlc/artifacts/{phase_dir}" in plan["directories"]
+
+
+class TestMainDryRun:
+    def test_dry_run_creates_nothing(self, tmp_path, valid_profile, capsys, monkeypatch):
+        profile_path = tmp_path / "profile.yaml"
+        with open(profile_path, "w") as f:
+            yaml.dump(valid_profile, f)
+        target = tmp_path / "project"
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["init_project.py", "--profile", str(profile_path), "--target", str(target), "--dry-run"],
+        )
+        init_project.main()
+        assert not target.exists()
+
+    def test_dry_run_json_is_parseable_and_matches_plan(self, tmp_path, valid_profile, capsys, monkeypatch):
+        import json
+        profile_path = tmp_path / "profile.yaml"
+        with open(profile_path, "w") as f:
+            yaml.dump(valid_profile, f)
+        target = tmp_path / "project"
+        target.mkdir()
+
+        monkeypatch.setattr(
+            sys, "argv",
+            ["init_project.py", "--profile", str(profile_path), "--target", str(target), "--dry-run", "--json"],
+        )
+        init_project.main()
+        captured = capsys.readouterr()
+        plan = json.loads(captured.out)
+        assert plan == plan_sdlc_dir(target, valid_profile)
 
 
 class TestMainValidatesProfile:
