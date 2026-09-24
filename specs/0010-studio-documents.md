@@ -65,11 +65,11 @@ trustworthy — only Edit changes anything, and anything the app does not unders
 - [x] Every field shows where the document lives on disk and what it is called, without leaving the page.
 - [x] History lists versions with who saved each and why; comparing two shows what changed; restoring
       one creates a new version rather than removing any.
-- [ ] Editing a signed-off document with approval switched on saves a draft, leaves the signed-off
+- [x] Editing a signed-off document with approval switched on saves a draft, leaves the signed-off
       version in place for everyone else, and marks it as waiting for the named approver.
 - [ ] While a draft waits for approval, only the person who created it can change it — everyone else
       sees the signed-off version and has no way to alter what the approver is being asked to sign.
-- [ ] With approval switched off, the same edit saves straight away and still records who changed it and why.
+- [x] With approval switched off, the same edit saves straight away and still records who changed it and why.
 <!-- Bringing in PowerPoint/Excel source files moved to spec 0015 on 2026-09-24. It depends on
      three pre-existing intake defects (source-document ids are reassigned whenever a file is
      added; the requirement-to-document link is free text the shape library cannot see; the
@@ -104,9 +104,18 @@ honest about a document nobody has saved yet rather than inventing an author or 
 and the changes banner needs a repository with history; neither is driven in the window yet.
 Both are implemented and reviewed. Unticked.
 
-**NOT proven: the approval path.** Editing a signed-off document with approval on, the pending
-draft being editable only by its author, and the straight-through save with approval off all
-depend on a real code host. Unticked.
+**Proven against a real git remote.** `test/approvalPath.test.ts` was written after noticing
+that "needs a real code host" was two thirds wrong: a pending draft is a branch, and what makes
+it pending is that the push to the shared branch was refused — which a local bare repository
+refuses just as well as GitHub does (a server-side hook is indistinguishable from branch
+protection on the client side, and "did the direct push get rejected" is this app's own stated
+gate). With no approval step the change lands on the shared branch with who and why recorded;
+with the push refused the shared branch does not move at all and the work is parked on its own
+branch. Only opening the pull request itself still needs GitHub.
+
+**NOT proven: that only the draft's author may change it while it waits.** That is a property
+of a second person on a second machine, and no local fixture can stand in for one. Unticked,
+and it should stay unticked until two real accounts have been through it.
 
 **The round-trip against real client documents** that this spec's Checking Plan requires has not
 been run; the 28 templates are the plugin's own fixtures.
