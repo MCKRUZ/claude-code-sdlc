@@ -42,6 +42,29 @@ export function redact(text: string): string {
     .replace(GITHUB_PAT_RE, '***')
 }
 
+// Windows installs of git and gh from scoop, npm or Chocolatey are batch shims, and a batch
+// file can only be started through the command interpreter — so tooling.ts resolves those to
+// `cmd.exe /c <shim>`. That hands the interpreter the arguments, and it re-reads them:
+// Node quotes an argument only when it contains a space or a quote, so a value with none,
+// like a branch name, arrives unquoted and its `&` starts a second command.
+//
+// Measured on this machine, with a control. Through `cmd.exe /c <shim>`, an argument of
+// `main&echo>FILE` reached the shim as just `main` and the injected command RAN. Spawned
+// directly against an executable, the identical value arrived intact as one argument and
+// nothing ran. So this is the shim routing, not the payload — and git happily permits these
+// characters in a branch name, which a cloned repository chooses.
+//
+// Refused here rather than in git.ts because this is the only function that can start a
+// process, so this is the only place the guarantee can actually hold. Nothing Studio does
+// needs a branch name or document path containing these characters.
+const CMD_METACHARACTERS = /[&|<>^%\r\n"]/
+
+export class UnsafeArgumentError extends Error {}
+
+function isCommandInterpreter(command: string): boolean {
+  return /(^|[\\/])cmd(\.exe)?$/i.test(command.trim())
+}
+
 export interface RunCommandOptions {
   /** Merged ONTO process.env (never replaces it) — for e.g. GIT_INDEX_FILE, matching the
    * plugin's own run_git() contract exactly. */
@@ -67,14 +90,8 @@ export function runCommand(
   const start = performance.now()
 
   return new Promise((resolve) => {
-    const env = opts?.env ? { ...process.env, ...opts.env } : undefined
-    const child = spawn(command, args, { cwd, windowsHide: true, env })
     let stdout = ''
     let stderr = ''
-
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
-    child.stdin.end(opts?.input)
 
     const finish = (exitCode: number | null, extraStderr?: string) => {
       const entry: ConsoleEntry = {
@@ -93,6 +110,25 @@ export function runCommand(
       for (const listener of listeners) listener(entry)
       resolve(entry)
     }
+
+    if (isCommandInterpreter(command)) {
+      // args[0] is '/c' and args[1] is the shim's own path, both Studio's; everything after
+      // is caller data, which is what must not be re-read as commands. A refusal is recorded
+      // like any other outcome — a command Studio declined to run still belongs in the
+      // console, and silently doing nothing would be the worse failure.
+      const unsafe = args.slice(2).find((a) => CMD_METACHARACTERS.test(a))
+      if (unsafe !== undefined) {
+        finish(null, `Refused to run: ${JSON.stringify(unsafe)} contains characters the Windows command interpreter would read as commands.`)
+        return
+      }
+    }
+
+    const env = opts?.env ? { ...process.env, ...opts.env } : undefined
+    const child = spawn(command, args, { cwd, windowsHide: true, env })
+
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+    child.stdin.end(opts?.input)
 
     child.on('error', (err) => finish(null, err.message))
     child.on('close', (code) => finish(code))
