@@ -175,9 +175,12 @@ def _extract_fields_flat(text: str, body_start: int, body_end: int, field_shapes
       - labeled_block: '**Label:**' on its own line, value is everything after it up to
         whichever recognized field's label line comes next (or the section's end) — used
         for a label followed by a blockquote, a checklist, or a multi-line paragraph.
-      - section: no label line at all; the value is the WHOLE body (minus leading blank
-        lines / the REQUIRED-comment scaffold) — used when a shape declares only one field
-        for an entire section (a table, a checklist, free prose with no bold-label header).
+      - section: no label line at all; the value is the body (minus leading blank lines /
+        the REQUIRED-comment scaffold) up to the first labelled sibling that was found, or
+        the section's end when there is none — used for a table, a checklist, or free prose
+        with no bold-label header. Usually a section declares only this one field, but it
+        may be followed by labelled fields (problem-statement's Five Whys chain is followed
+        by **Root Cause Statement:**), and the bound is what keeps their spans disjoint.
     """
     labeled = []  # (field_shape, match_or_None) for anchor in (inline, labeled_block)
     section_field = None
@@ -208,7 +211,14 @@ def _extract_fields_flat(text: str, body_start: int, body_end: int, field_shapes
 
     if section_field is not None:
         v_start = _skip_leading_blanks_and_comments(text, body_start, body_end)
-        fields[section_field["label"]] = _field_result(text, v_start, body_end, section_field, "section")
+        # Stop where the first labelled sibling that was actually FOUND begins — the same
+        # rule labeled_block already follows. Without this bound the section field swallows
+        # its sibling's bytes, and two fields an editor shows separately would then share
+        # bytes, so saving one silently reverts the other. When nothing labelled was found
+        # (the ordinary one-field-per-section case, and every shape but problem-statement)
+        # `found` is empty and the span is the whole body, exactly as before.
+        v_end = found[0][1].start() if found else body_end
+        fields[section_field["label"]] = _field_result(text, v_start, max(v_start, v_end), section_field, "section")
 
     return fields
 

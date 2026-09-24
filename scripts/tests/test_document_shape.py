@@ -197,6 +197,79 @@ class TestReadDocumentLabeledBlockAndSectionAnchors:
         assert decision["fields"]["Decision"]["empty"] is True
 
 
+class TestSectionAnchorAlongsideALabelledSibling:
+    """A section-anchored field must not swallow a labelled sibling's bytes.
+
+    `problem-statement.shape.yaml` really does this: the Five Whys chain is unlabelled prose
+    (so, a section anchor) and `**Root Cause Statement:**` is an inline field at the end of
+    the SAME section. Before this was bounded, the two spans nested — the inline field's
+    bytes sat inside the section field's — which an editor cannot render honestly: it would
+    show the same sentence as two separately-editable fields, where saving one silently
+    reverts the other.
+
+    The rule is the one `labeled_block` already follows: a field's value stops where the next
+    recognized field's label line begins.
+    """
+
+    DOC = (
+        "# Title\r\n\r\n"
+        "## Root Cause\r\n"
+        "<!-- REQUIRED: the chain -->\r\n"
+        "\r\n"
+        "1. **Why?** Because of the thing.\r\n"
+        "\r\n"
+        "**Root Cause Statement:** No automated check rejects it.\r\n"
+    )
+    SHAPE = {"sections": [
+        {"heading": "Root Cause", "fields": [
+            {"label": "Chain", "anchor": "section", "type": "longtext", "required": True},
+            {"label": "Root Cause Statement", "anchor": "inline", "type": "text", "required": True},
+        ]},
+    ]}
+
+    def _fields(self):
+        result = ds.read_document(self.DOC, self.SHAPE)
+        return next(b for b in result["blocks"] if b.get("heading") == "Root Cause")["fields"]
+
+    def test_tiles(self):
+        _assert_tiles(self.DOC, ds.read_document(self.DOC, self.SHAPE))
+
+    def test_section_field_stops_before_the_labelled_sibling(self):
+        fields = self._fields()
+        assert fields["Chain"]["value"] == "1. **Why?** Because of the thing.\r\n\r\n"
+
+    def test_spans_do_not_overlap(self):
+        fields = self._fields()
+        chain, statement = fields["Chain"], fields["Root Cause Statement"]
+        assert chain["end"] <= statement["start"], (
+            f"section span {chain['start']}..{chain['end']} overlaps inline span "
+            f"{statement['start']}..{statement['end']}"
+        )
+
+    def test_the_labelled_sibling_is_still_read(self):
+        assert self._fields()["Root Cause Statement"]["value"] == "No automated check rejects it."
+
+    def test_a_lone_section_field_still_takes_the_whole_body(self):
+        """The bound only applies when a labelled sibling was actually FOUND — the ordinary
+        one-field-per-section case is unchanged."""
+        shape = {"sections": [{"heading": "Root Cause", "fields": [
+            {"label": "Chain", "anchor": "section", "type": "longtext", "required": True},
+        ]}]}
+        result = ds.read_document(self.DOC, shape)
+        chain = next(b for b in result["blocks"] if b.get("heading") == "Root Cause")["fields"]["Chain"]
+        assert "Root Cause Statement" in chain["value"]
+
+    def test_an_absent_labelled_sibling_does_not_truncate(self):
+        shape = {"sections": [{"heading": "Root Cause", "fields": [
+            {"label": "Chain", "anchor": "section", "type": "longtext", "required": True},
+            {"label": "Nowhere", "anchor": "inline", "type": "text", "required": False},
+        ]}]}
+        result = ds.read_document(self.DOC, shape)
+        fields = next(b for b in result["blocks"] if b.get("heading") == "Root Cause")["fields"]
+        assert fields["Nowhere"] is None
+        assert "Root Cause Statement" in fields["Chain"]["value"]
+
+
 class TestReadDocumentRepeatingSections:
     DOC = (
         "# Reqs\r\n\r\n"
