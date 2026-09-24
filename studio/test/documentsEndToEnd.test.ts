@@ -207,3 +207,54 @@ describe.skipIf(!available)('spec 0010 against a real initialized project', () =
     }
   })
 })
+
+/** A spec is now a shaped document too (spec 0011). Proven against a REAL spec produced by
+ * the plugin's own scaffolder, not a fixture written to match — a shape that only fits
+ * hand-made examples is a shape that will break on the first real file. */
+describe.skipIf(!available)('specs open as documents', () => {
+  let repo = ''
+
+  beforeAll(async () => {
+    repo = mkdtempSync(join(tmpdir(), 'studio-spec-doc-'))
+    const init = await runCommand(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'init_project.py'),
+      '--profile', join(PLUGIN_ROOT!, 'profiles', 'microsoft-enterprise', 'profile.yaml'),
+      '--target', repo,
+    ], SCRIPTS_DIR)
+    expect(init.ok, init.stderr).toBe(true)
+
+    const made = await runCommand(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'new_spec.py'), '--repo', repo, '--name', 'duplicate claim 409', '--risk', 'HIGH',
+    ], SCRIPTS_DIR)
+    expect(made.ok, made.stderr).toBe(true)
+  }, 120_000)
+
+  afterAll(() => { if (repo) rmSync(repo, { recursive: true, force: true }) })
+
+  it('reads a scaffolded spec as sections and fields', async () => {
+    const doc = await openDocument(repo, SCRIPTS_DIR, 'specs/0001-duplicate-claim-409.md')
+    expect(doc.ok, doc.error).toBe(true)
+    expect(doc.shaped, `fell back to free text: ${doc.warnings.join('; ')}`).toBe(true)
+
+    const headings = doc.sections.map((s) => s.heading)
+    for (const expected of ['Goal', 'Scope', 'Acceptance Checks', 'Risk Tier', 'Decision List']) {
+      expect(headings, `no ${expected} section`).toContain(expected)
+    }
+  })
+
+  it('edits one field of a spec, moving only its bytes', async () => {
+    const relPath = 'specs/0001-duplicate-claim-409.md'
+    const before = await openDocument(repo, SCRIPTS_DIR, relPath)
+    const goal = before.sections.find((s) => s.heading === 'Goal')!
+    const field = goal.fields['Goal']!
+    const text = readFileSync(join(repo, relPath), 'utf-8')
+    const written = 'A duplicate claim is rejected before any money moves.\n\n'
+
+    const after = await setField(repo, SCRIPTS_DIR, relPath, goal.key, 'Goal', written)
+    expect(after.ok, after.error).toBe(true)
+
+    const updated = readFileSync(join(repo, relPath), 'utf-8')
+    expect(updated.slice(0, field.start)).toBe(text.slice(0, field.start))
+    expect(updated.slice(field.start + written.length)).toBe(text.slice(field.end))
+  })
+})

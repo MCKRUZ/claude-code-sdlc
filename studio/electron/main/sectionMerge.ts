@@ -116,6 +116,13 @@ export function findShapeForPath(pluginScriptsDir: string, relPath: string, text
     const candidate = join(templatesRoot, 'phases', phaseDir, `${basename}.shape.yaml`)
     if (existsSync(candidate)) return candidate
   }
+  // Specs are the exception to the mirror convention above: they live in specs/, are named
+  // by their own number, and every one of them comes from the SAME template. So the mapping
+  // is by directory rather than by filename — specs/0042-anything.md is always a spec.
+  if (/^specs\/[^/]+\.md$/.test(normalized) && !normalized.endsWith('/README.md')) {
+    const specShape = join(templatesRoot, 'phases', 'build', 'spec.shape.yaml')
+    if (existsSync(specShape)) return specShape
+  }
   return findShapeForContent(pluginScriptsDir, text)
 }
 
