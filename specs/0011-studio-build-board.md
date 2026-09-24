@@ -91,7 +91,8 @@ is two days or more and finished work is never late; a team with no declared lim
 limit rather than an invented one. And in `test/handoff.test.ts`, that an unreadable answer
 from the hand-off command is a refusal and never a success.
 
-**NOT BUILT — these are missing features, not merely unverified:**
+**Since first written, two of these were built and two remain — the last one for a
+reason worth reading, not for want of effort:**
 
 1. **"How long it has waited."** The board shows when a change LAST MOVED, which is a
    different fact and the only one measured. The true waiting time needs a per-pull-request
@@ -99,12 +100,40 @@ from the hand-off command is a refusal and never a success.
    checks are waiting".
 2. **Marking a spec ready.** The readiness panel shows every outstanding item, but Studio
    never writes `status: ready`. Today that transition happens elsewhere.
-3. **The risk-tier confirm flow.** Decided this session (see the Decision List): Studio asks
-   who authorised a downgrade and writes that name into the spec. Not yet built.
-4. **Decision-list owners and due dates.** A spec's open decisions are shown as text; nothing
-   yet parses an owner or a clock out of them, and nothing blocks a hand-off on an unanswered
-   one. The plugin's `track_decisions.py` covers the phase-spanning decision log, which is a
-   different list from a spec's own.
+3. ~~The risk-tier confirm flow.~~ **BUILT** — `spec_transition.py risk` refuses to lower a
+   tier without a named person and writes that name into the spec beside the reasoning.
+   Raising stays free. (A bug found while building it is worth remembering: the tiers are
+   declared most-risky-FIRST, and reading position as severity made a HIGH-to-LOW downgrade
+   compute as a RAISE — the exact inversion the rule exists to prevent, in the code meant to
+   prevent it. Found by running it, not by reading it.)
+4. ~~Marking a spec ready.~~ **BUILT** — `spec_transition.py ready` refuses unless the
+   Definition of Ready passes, using the same check the hand-off uses, so the screen and the
+   command cannot disagree.
+5. **Decision-list owners and due dates — BLOCKED ON A CONVENTION, not on effort.**
+
+   This acceptance check describes a rule that does not exist: `check_spec.py` does not look
+   at the Decision List at all (verified), and nothing anywhere refuses a hand-off because a
+   decision is unanswered. The same shape of finding as the risk-tier one.
+
+   It cannot honestly be built as things stand. A spec's decisions are free prose — "Resolved
+   2026-09-24 by Matt: ...", "Owner: Matt, before this spec is ready", "- none" — and a parser
+   guessing at which of those means "answered" would be the third place in this product where
+   a rule depends on matching English, which is the pattern deliberately avoided for the
+   waiting-on handle and the hand-off refusals.
+
+   **Making it real needs a convention, which is a decision for Matt.** The proposal: each
+   entry carries a machine-readable head, e.g.
+
+       - **Question?** `owner: @handle` `due: 2026-10-01` — then the prose.
+       - **Question?** `resolved: 2026-09-24 by @handle` — then the answer.
+
+   Then `handoff.py` can refuse on an unresolved entry past its date, which is where the rule
+   belongs since the check is about hand-off. **The cost is the reason this is a decision and
+   not a task:** every existing spec's Decision List becomes non-conforming and needs
+   migrating, and every author learns a new format. My recommendation is to do it — an
+   unanswered decision reaching a developer is exactly what this list exists to prevent, and a
+   rule nothing enforces is decoration — but it is not mine to impose on every spec written
+   from here on.
 
 **Partly proven:** a row renders every field the second check asks for, and the signed-in
 person's name renders as "you", marked — both are implemented and code-reviewed, and neither
