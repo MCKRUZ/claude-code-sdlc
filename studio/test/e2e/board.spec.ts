@@ -100,9 +100,17 @@ test.describe('[spec 0011] the Build board in the real window', () => {
   })
 
   test.afterAll(async () => {
-    if (page) await page.screenshot({ path: 'test/screenshots/spec-0011-board.png' }).catch(() => {})
-    if (app) await app.close()
-    if (workspace) rmSync(workspace, { recursive: true, force: true })
+    // Closing Electron and deleting a 200-spec workspace together exceed the default 30s
+    // hook budget on a cold filesystem — which failed the whole suite while every assertion
+    // in it had passed. Each step is also guarded, so one slow step cannot strand the rest.
+    test.setTimeout(120_000)
+    await page?.screenshot({ path: 'test/screenshots/spec-0011-board.png' }).catch(() => {})
+    await app?.close().catch(() => {})
+    try {
+      if (workspace) rmSync(workspace, { recursive: true, force: true })
+    } catch {
+      // A leftover temp directory is untidy, not a failure worth reddening a green run.
+    }
   })
 
   test('opens on what needs the signed-in person', async () => {

@@ -23,6 +23,12 @@ export function SpecReadinessPanel({
 }) {
   const [readiness, setReadiness] = useState<SpecReadiness | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  /** Only ever shown after a refusal has said a downgrade needs a name. Never pre-filled,
+   * never remembered — the point of the rule is that each downgrade is a deliberate act
+   * with somebody's name on it, and a remembered name would make the second one free. */
+  const [authorisedBy, setAuthorisedBy] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -31,6 +37,21 @@ export function SpecReadinessPanel({
   }, [projectPath, specPath])
 
   useEffect(() => { load() }, [load])
+
+  const act = async (run: () => Promise<{ ok: boolean; refusal?: { kind: string; message: string } }>) => {
+    setBusy(true)
+    setRefusal(null)
+    const result = await run()
+    setBusy(false)
+    if (!result.ok) {
+      setRefusal(result.refusal?.message ?? 'That change was refused.')
+      // The window does not decide this; it reacts to what the plugin said.
+      if (result.refusal?.kind === 'lowering_needs_authorisation') setAuthorisedBy('')
+      return
+    }
+    setAuthorisedBy(null)
+    await load()
+  }
 
   if (loading && !readiness) return <p className="text-sm text-slate-400">Checking this spec…</p>
   if (!readiness) return null
@@ -58,19 +79,81 @@ export function SpecReadinessPanel({
               ? 'Ready to hand off.'
               : `${readiness.blocking.length} thing${readiness.blocking.length === 1 ? '' : 's'} still needed before this can be handed off.`}
           </p>
-          {/* The button appears ONLY when the spec is actually ready. Offering a hand-off
-              that is going to be refused teaches people to ignore the panel. */}
-          {readiness.ready && onHandOff && (
-            <button
-              type="button"
-              onClick={onHandOff}
-              className="shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
-            >
-              Hand off
-            </button>
-          )}
+          {/* Two buttons, two different rules, deliberately.
+              HAND OFF appears only when the spec is actually ready — offering an action
+              that is going to be refused teaches people to ignore the panel above it.
+              MARK READY appears even when it is not, because its refusal comes back from
+              the plugin WITH its reasons; hiding that button would make the rule invisible
+              instead of enforced, and the person would never learn what is missing. */}
+          <div className="flex shrink-0 gap-2">
+            {readiness.status === 'draft' && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => act(() => window.studio.markSpecReady(projectPath, specPath))}
+                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
+              >
+                Mark ready
+              </button>
+            )}
+            {readiness.ready && onHandOff && (
+              <button
+                type="button"
+                onClick={onHandOff}
+                className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
+              >
+                Hand off
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Risk tier</h3>
+        <div className="flex flex-wrap items-center gap-2">
+          {['LOW', 'MEDIUM', 'HIGH'].map((tier) => (
+            <button
+              key={tier}
+              type="button"
+              disabled={busy || tier === readiness.risk}
+              onClick={() => act(() => window.studio.setSpecRisk(
+                projectPath, specPath, tier, authorisedBy?.trim() || undefined,
+              ))}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                tier === readiness.risk
+                  ? 'bg-slate-900 text-white'
+                  : 'border border-slate-200 text-slate-600 hover:border-slate-300'
+              }`}
+            >
+              {tier}
+            </button>
+          ))}
+          <span className="text-xs text-slate-400">
+            Raising a tier is free. Lowering one is recorded against whoever decided it.
+          </span>
+        </div>
+
+        {authorisedBy !== null && (
+          <label className="mt-3 block">
+            <span className="text-xs font-medium text-amber-900">
+              Who authorised lowering this tier? Written into the spec.
+            </span>
+            <input
+              value={authorisedBy}
+              onChange={(e) => setAuthorisedBy(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm"
+            />
+          </label>
+        )}
+      </div>
+
+      {refusal && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {/* The plugin's own words — it knows why it refused. */}
+          <p className="whitespace-pre-wrap">{refusal}</p>
+        </div>
+      )}
 
       {readiness.blocking.length > 0 && (
         <Group title="Still needed" tone="blocking" findings={readiness.blocking} />

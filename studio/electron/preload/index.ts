@@ -53,6 +53,10 @@ const studio: StudioApi = {
   getBoard: (projectPath) => ipcRenderer.invoke('studio:getBoard', projectPath),
   getSpecReadiness: (projectPath, specPath) =>
     ipcRenderer.invoke('studio:getSpecReadiness', projectPath, specPath),
+  markSpecReady: (projectPath, specPath) =>
+    ipcRenderer.invoke('studio:markSpecReady', projectPath, specPath),
+  setSpecRisk: (projectPath, specPath, tier, authorisedBy) =>
+    ipcRenderer.invoke('studio:setSpecRisk', projectPath, specPath, tier, authorisedBy),
   getSpecStatus: (projectPath, specPath) =>
     ipcRenderer.invoke('studio:getSpecStatus', projectPath, specPath),
   handOff: (projectPath, specPath, developer, overLimitReason) =>

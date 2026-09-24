@@ -425,6 +425,16 @@ export interface SpecReadiness {
   passed: SpecReadinessFinding[]
 }
 
+
+/** The outcome of marking a spec ready or changing its risk tier. A refusal carries the
+ * plugin's own message — Studio has no rule of its own here to explain. */
+export interface SpecTransitionResult {
+  ok: boolean
+  changed?: boolean
+  message?: string
+  refusal?: { kind: string; message: string }
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -479,6 +489,12 @@ export interface StudioApi {
    * `status: merged` if the pull request has merged since anyone last looked — a read
    * that can commit, stated here rather than discovered. */
   getSpecReadiness(projectPath: string, specPath: string): Promise<SpecReadiness>
+  /** Mark a spec ready. Refused by the PLUGIN unless it actually is. */
+  markSpecReady(projectPath: string, specPath: string): Promise<SpecTransitionResult>
+  /** Change a spec's risk tier. Raising is free; lowering is refused without a named
+   * person, and that name is written into the spec. */
+  setSpecRisk(projectPath: string, specPath: string, tier: string, authorisedBy?: string):
+    Promise<SpecTransitionResult>
   getSpecStatus(projectPath: string, specPath: string):
     Promise<{ ok: boolean; status?: SpecStatus; error?: string }>
   /** Hands a spec to a developer through the plugin's own command. Every rule about who may

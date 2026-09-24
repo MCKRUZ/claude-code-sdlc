@@ -14,7 +14,7 @@
 
 import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
-import type { Board, BoardRow, SpecReadiness, SpecStatus } from '../../shared/types'
+import type { Board, BoardRow, SpecReadiness, SpecStatus, SpecTransitionResult } from '../../shared/types'
 
 interface RawPullRequest {
   number: number
@@ -178,5 +178,55 @@ export async function getSpecReadiness(
   } catch {
     // Never "ready" on a failure to read. A spec whose readiness is unknown is not ready.
     return notReady(entry.stderr.trim() || 'Could not read this spec’s readiness.')
+  }
+}
+
+
+/** Mark a spec ready, or change its risk tier. Both refuse in the plugin, never here.
+ *
+ * Studio offers these as actions and reports what comes back. The rules — a spec cannot be
+ * marked ready until it is, and lowering a risk tier needs a named person — live in the
+ * plugin's own command, because a rule enforced only in this window is one that anyone
+ * editing the spec file directly steps around.
+ *
+ * Writes the file and nothing else. Committing it is spec 0009's save, which is a separate,
+ * deliberate act by the person. */
+export async function transitionSpec(
+  projectPath: string,
+  pluginScriptsDir: string,
+  specPath: string,
+  action: { kind: 'ready' } | { kind: 'risk'; tier: string; authorisedBy?: string },
+): Promise<SpecTransitionResult> {
+  let fullSpecPath: string
+  try {
+    fullSpecPath = resolveProjectDocument(projectPath, specPath)
+  } catch (err) {
+    return { ok: false, refusal: { kind: 'other', message: (err as Error).message } }
+  }
+
+  const args = ['--spec', fullSpecPath, '--state', `${projectPath}/.sdlc/state.yaml`, '--json']
+  if (action.kind === 'ready') {
+    args.push('ready')
+  } else {
+    args.push('risk', action.tier)
+    if (action.authorisedBy?.trim()) args.push('--authorised-by', action.authorisedBy.trim())
+  }
+
+  const entry = await runPluginScript(pluginScriptsDir, 'spec_transition.py', args)
+  try {
+    const parsed = JSON.parse(entry.stdout)
+    if (parsed.ok !== true) {
+      return { ok: false, refusal: {
+        kind: String(parsed.refusal?.kind ?? 'other'),
+        message: String(parsed.refusal?.message ?? 'The change was refused.'),
+      } }
+    }
+    return { ok: true, changed: parsed.changed === true, message: String(parsed.message ?? '') }
+  } catch {
+    // The command refuses before it writes, so an unreadable answer means nothing happened.
+    return { ok: false, refusal: {
+      kind: 'other',
+      message: entry.stderr.trim() || 'The change command gave no readable answer.',
+    } }
   }
 }

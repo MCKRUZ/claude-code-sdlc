@@ -15,7 +15,7 @@ import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import { getLastSeenCommit, setLastSeenCommit } from './settings'
 import { runGitTolerant } from './git'
-import { getBoard, getSpecReadiness, getSpecStatus } from './board'
+import { getBoard, getSpecReadiness, getSpecStatus, transitionSpec } from './board'
 import { handOff } from './handoff'
 import type { ClashChoice, DraftOutcome } from '../../shared/types'
 
@@ -245,6 +245,23 @@ function registerIpcHandlers() {
     }
     return getSpecReadiness(projectPath, scriptsDir, specPath)
   })
+
+  const noPlugin = { ok: false, refusal: { kind: 'other', message: 'claude-code-sdlc plugin scripts not found' } }
+
+  ipcMain.handle('studio:markSpecReady', async (_event, projectPath: string, specPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return noPlugin
+    return transitionSpec(projectPath, scriptsDir, specPath, { kind: 'ready' })
+  })
+
+  ipcMain.handle(
+    'studio:setSpecRisk',
+    async (_event, projectPath: string, specPath: string, tier: string, authorisedBy?: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPlugin
+      return transitionSpec(projectPath, scriptsDir, specPath, { kind: 'risk', tier, authorisedBy })
+    },
+  )
 
   ipcMain.handle('studio:getSpecStatus', async (_event, projectPath: string, specPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
