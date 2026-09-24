@@ -53,9 +53,13 @@ they find out much later. Every rule here exists to make loss impossible rather 
 - [ ] Studio pulls every 2 minutes while open, and immediately before a document is opened.
 - [ ] Saving a change produces exactly one commit containing only the files that changed, with the
       person's change note as the message.
-- [ ] When the default branch is protected, saving pushes a branch and opens a pull request; the pull
-      request merges itself once its checks pass, and the sync indicator shows it is waiting until then.
-- [ ] When approval is switched on for that stage, the pull request waits for the named approver instead.
+- [ ] When the default branch is protected and approval is OFF for that stage, saving pushes a branch
+      and opens a pull request; the pull request merges itself once its checks pass, and the sync
+      indicator shows it is waiting until then.
+- [ ] When approval is switched ON for that stage, the pull request waits for the named approver first;
+      once approved, it still requires an explicit merge — approval covers the content, not the push to
+      the default branch — and the sync indicator distinguishes "waiting for approval" from "approved,
+      ready to merge."
 - [ ] When the default branch is not protected, saving commits and pushes directly, and the connection
       screen says which of the two is happening.
 - [ ] Changes that arrived from elsewhere are listed with the person who made them, when, and where they
@@ -96,7 +100,10 @@ real repository with two people editing.
 
 ## Decision List
 - **Should document pull requests merge themselves when checks pass, or always wait for a person?**
-  Written here as merging themselves, because a document change already had its approval step in Studio.
-  Owner: Matt, before this spec is ready.
+  Resolved 2026-09-24 by Matt: depends on the stage's approval setting. When approval is OFF for
+  that stage, the PR merges itself once checks pass. When approval is ON, the PR waits for the
+  named approver first, and still needs an explicit merge afterward — the approval step is for the
+  content, not a standing authorization to also push to the default branch unsupervised.
 - **What happens when someone edits the same document in Claude Code while Studio has unsaved edits?**
-  Written here as: the same clash screen on the next pull. Owner: Matt.
+  Resolved 2026-09-24 by Matt: confirmed as written — the same clash screen, surfaced on Studio's
+  next pull (no separate filesystem-watch detection path; one clash mechanism, not two).
