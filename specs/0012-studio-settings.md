@@ -85,5 +85,9 @@ and enforced elsewhere — branch protection, not Studio, is what actually stops
 anywhere but a project file, and that Studio cannot change anyone's repository permissions.
 
 ## Decision List
-- **Can a project turn off a rule its playbook set, such as needing a security review?** Written here as
-  no: playbook rules are shown but not editable in the project. Owner: Matt, before this spec is ready.
+- **Can a project turn off a rule its playbook set, such as needing a security review?**
+  Confirmed as written: no. Playbook rules are shown in the project and are not editable there.
+  Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  A rule a project can switch off is not a rule, and the playbook is the thing being sold. The
+  cost is accepted: a client wanting an exception has to change the playbook, which is the right
+  place for that argument to happen rather than a settings screen nobody reviews.

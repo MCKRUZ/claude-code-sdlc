@@ -89,6 +89,11 @@ checks exist. A wrong claim here is believed.
 plugin output side by side, and confirm the gate list is read from the project rather than hard-coded.
 
 ## Decision List
-- **Where does "has this gate ever been tested by breaking it" come from?** Written here as the
-  Foundation proof document, which means a gate proven later by hand needs that document updated.
-  Owner: Matt, before this spec is ready.
+- **Where does "has this gate ever been tested by breaking it" come from?**
+  Confirmed as written: the Foundation proof document, which means a gate proven later by hand
+  needs that document updated. Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  **Flagged as the weakest of these decisions.** It depends on somebody remembering to update a
+  document after doing something else — the failure mode this whole product exists to remove.
+  Taken anyway because the alternative is inventing a second record of the same fact, and two
+  records of one thing is the drift problem in miniature. **Revisit** after the first engagement
+  that proves a gate by hand: if the document went stale, this answer was wrong.

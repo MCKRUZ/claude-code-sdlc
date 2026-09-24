@@ -119,3 +119,14 @@ was actually measured, not assumed, and that no rule about who may approve is en
   board has no live "waiting on whom". That degrades to a file-only board with the reason
   stated, never an empty screen. **Revisit only** if a real engagement needs it, and then by
   adding Azure DevOps as a second code host — not by adding a tracker connector.
+- **Where does "nobody but a team lead may lower a risk tier" actually live?**
+  Raised while building: this acceptance check describes a rule that exists NOWHERE in the
+  plugin — not in the risk model, the readiness check, or the roster. Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  **Studio asks; it does not enforce.** Lowering a tier requires typing who authorised it, and
+  that name is written into the spec. No new rule is invented in the window, because a rule
+  enforced only in the app is one that anyone editing the file directly walks straight around —
+  which is exactly what this spec's own Checking Plan tells its reviewer to look for.
+  The rule's real purpose is making a downgrade deliberate and attributable, and a required
+  name in the record does that honestly. **Revisit** by putting it in the plugin's readiness
+  check if a downgrade ever turns out to have been slipped through; that needs a decision about
+  where tier history lives, which is a bigger conversation than one screen.

@@ -85,7 +85,12 @@ above address.
 the project exactly as it was, including the specs already deferred in that sitting.
 
 ## Decision List
-- **Who may declare Build feature-complete?** Written here as the project owner, with each team lead
-  confirming their own list. Owner: Matt, before this spec is ready.
-- **Can a spec be deferred after the declaration?** Written here as no — late work is a new spec.
-  Owner: Matt.
+- **Who may declare Build feature-complete?**
+  Confirmed as written: the project owner declares it, and each team lead confirms their own
+  list first. Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  One name accountable for the declaration, several names accountable for its contents — which
+  is the same shape as every other sign-off in this system.
+- **Can a spec be deferred after the declaration?**
+  Confirmed as written: no. Late work is a new spec. Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  "Feature-complete, except…" is how a declaration stops meaning anything. A new spec costs a
+  few minutes and keeps the statement true.

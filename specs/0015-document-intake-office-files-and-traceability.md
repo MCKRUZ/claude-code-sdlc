@@ -111,11 +111,15 @@ The id-stability checks must be run against a real folder of documents, adding a
 between runs — not fixtures alone.
 
 ## Decision List
-- **How are ids kept stable — persist the assignment in the catalog, or derive the id from the
-  file's content checksum?** Persisting keeps ids readable and sequential but means the catalog
-  becomes authoritative state that must never be lost; deriving from content is stateless but
-  changes the id when the document is edited, which is its own kind of instability.
-  Owner: Matt, before this spec is ready.
-- **Do the two Office parsers become real runtime dependencies, or optional imports with a
-  documented fallback?** The optional pattern matches existing precedent but is the reason PDF
-  extraction is quietly broken today. Owner: Matt, before this spec is ready.
+- **How are ids kept stable — persist the assignment, or derive it from the file's contents?**
+  Decided: persist. Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  Deriving is stateless and elegant, and wrong here: the id changes the moment somebody edits
+  the document, which breaks every requirement pointing at it — and the whole purpose of the id
+  is to be pointed at. Persisting means the catalog becomes real state that must not be lost,
+  which is a cost worth carrying because it is a cost that can be backed up.
+- **Do the two Office parsers become real dependencies, or optional imports with a fallback?**
+  Decided: real dependencies. Delegated by Matt on 2026-09-24 ("do what you think is best") and decided by Claude — recorded as a delegated decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  The optional pattern matches existing precedent, and that precedent is precisely why PDF
+  extraction is quietly broken today — an optional import that nobody installed fails silently
+  and looks like an empty document. A feature that only works when an invisible condition holds
+  is worse than one that refuses to start.
