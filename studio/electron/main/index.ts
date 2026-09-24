@@ -15,6 +15,8 @@ import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import { getLastSeenCommit, setLastSeenCommit } from './settings'
 import { runGitTolerant } from './git'
+import { getBoard } from './board'
+import { handOff } from './handoff'
 import type { ClashChoice, DraftOutcome } from '../../shared/types'
 
 /** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
@@ -225,6 +227,27 @@ function registerIpcHandlers() {
     ok: false, path: relPath, shaped: false, warnings: [], sections: [],
     error: 'claude-code-sdlc plugin scripts not found',
   })
+
+  ipcMain.handle('studio:getBoard', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { rows: [], codeHostAvailable: false, teamLimits: null,
+               error: 'claude-code-sdlc plugin scripts not found' }
+    }
+    return getBoard(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle(
+    'studio:handOff',
+    async (_event, projectPath: string, specPath: string, developer: string, overLimitReason?: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) {
+        return { ok: false, refusal: { kind: 'other' as const,
+                 message: 'claude-code-sdlc plugin scripts not found' } }
+      }
+      return handOff(projectPath, scriptsDir, specPath, developer, overLimitReason)
+    },
+  )
 
   ipcMain.handle('studio:openDocument', async (_event, projectPath: string, relPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()

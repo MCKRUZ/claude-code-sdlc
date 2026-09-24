@@ -12,32 +12,9 @@
 
 import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
+import type { HandoffRefusal, HandoffResult, RefusalKind } from '../../shared/types'
 
-export type RefusalKind =
-  | 'not_ready'
-  | 'unknown_developer'
-  | 'developer_is_checker'
-  | 'team_at_limit'
-  | 'other'
-
-export interface HandoffRefusal {
-  kind: RefusalKind
-  message: string
-}
-
-export interface HandoffResult {
-  ok: boolean
-  refusal?: HandoffRefusal
-  branch?: string
-  developer?: string
-  checker?: string | null
-  prUrl?: string | null
-  /** The local hand-off succeeded but the code host could not be told. Reported, never
-   * fatal — the branch and the commit are real either way, and hiding this would leave
-   * someone waiting for a review request that was never sent. */
-  assignmentError?: string | null
-  alreadyInFlight?: boolean
-}
+export type { HandoffRefusal, HandoffResult, RefusalKind }
 
 const KINDS: RefusalKind[] = [
   'not_ready', 'unknown_developer', 'developer_is_checker', 'team_at_limit', 'other',

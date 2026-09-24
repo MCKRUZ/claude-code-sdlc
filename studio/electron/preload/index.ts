@@ -50,6 +50,10 @@ const studio: StudioApi = {
   confirmRestore: (projectPath, relPath, ref, actor, diffHash, ackSignOff) =>
     ipcRenderer.invoke('studio:confirmRestore', projectPath, relPath, ref, actor, diffHash, ackSignOff),
 
+  getBoard: (projectPath) => ipcRenderer.invoke('studio:getBoard', projectPath),
+  handOff: (projectPath, specPath, developer, overLimitReason) =>
+    ipcRenderer.invoke('studio:handOff', projectPath, specPath, developer, overLimitReason),
+
   draftField: (projectPath, relPath, sectionKey, label, guidance) =>
     ipcRenderer.invoke('studio:draftField', projectPath, relPath, sectionKey, label, guidance),
   recordDraftOutcome: (projectPath, relPath, label, outcome, actor, charsOffered, charsKept, instance) =>

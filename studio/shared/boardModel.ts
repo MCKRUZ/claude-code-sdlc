@@ -1,3 +1,9 @@
+// Lives in shared/ rather than beside the main process because BOTH sides use it: the
+// window filters and groups with it, and it is tested directly. (Its sibling types.ts must
+// stay types-only for its own reason — it is included in two separate TypeScript projects
+// that have no built output to reference each other through. That rule is about that file,
+// not about this directory.)
+//
 // The Build board's logic (spec 0011) — pure, so it can be proven directly.
 //
 // Nothing here reads a file or spawns a process. That is deliberate and it is the spec's own
@@ -12,7 +18,7 @@
 // The one thing computed here is "is this waiting on me", which is a comparison, not a
 // judgement — and it compares handles the plugin supplies, never prose it wrote.
 
-import type { BoardRow, BoardRole, BoardGrouping, BoardFilters } from '../../shared/types'
+import type { BoardRow, BoardRole, BoardGrouping, BoardFilters } from './types'
 
 /** Two days is the spec's own threshold for "overdue". Business days are deliberately not
  * modelled: the plugin's decision log uses plain elapsed days too, and inventing a second,

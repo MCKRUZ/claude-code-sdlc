@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest'
 import type { BoardRow } from '../shared/types'
 import {
   daysWaiting, filterBoard, groupBoard, isOverdue, needsMe, rolesFor, samePerson, teamLoad,
-} from '../electron/main/boardModel'
+} from '../shared/boardModel'
 
 const NOW = new Date('2026-09-24T12:00:00Z')
 

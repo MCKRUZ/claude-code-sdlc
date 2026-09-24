@@ -328,6 +328,36 @@ export type SyncState =
 /** The ONLY surface the renderer gets — see electron/preload/index.ts. Both the preload
  * script's implementation and the renderer's `window.studio` typing point at this one
  * interface, so they can never silently drift apart. */
+
+// --- Handing a spec to a developer (spec 0011) -----------------------------------------
+
+export type RefusalKind =
+  | 'not_ready'
+  | 'unknown_developer'
+  | 'developer_is_checker'
+  | 'team_at_limit'
+  | 'other'
+
+export interface HandoffRefusal {
+  kind: RefusalKind
+  message: string
+}
+
+export interface HandoffResult {
+  ok: boolean
+  refusal?: HandoffRefusal
+  branch?: string
+  developer?: string
+  checker?: string | null
+  prUrl?: string | null
+  /** The local hand-off succeeded but the code host could not be told. Reported, never
+   * fatal — the branch and the commit are real either way, and hiding this would leave
+   * someone waiting for a review request that was never sent. */
+  assignmentError?: string | null
+  alreadyInFlight?: boolean
+}
+
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -373,6 +403,16 @@ export interface StudioApi {
   diffVersions(projectPath: string, relPath: string, a: string, b: string): Promise<{ ok: boolean; diff?: string; error?: string }>
   previewRestore(projectPath: string, relPath: string, ref: string): Promise<RestorePreview>
   confirmRestore(projectPath: string, relPath: string, ref: string, actor: string, diffHash: string, ackSignOff: boolean): Promise<{ ok: boolean; error?: string }>
+
+  /** Every spec, with live pull-request state, in ONE code-host request. Fetched once; the
+   * board filters and groups what it already has, because switching a role view must not
+   * re-read the repository (spec 0011). */
+  getBoard(projectPath: string): Promise<Board>
+  /** Hands a spec to a developer through the plugin's own command. Every rule about who may
+   * be handed what lives there; a refusal comes back with a `kind` so the window knows what
+   * to offer next, without reading the refusal's English. */
+  handOff(projectPath: string, specPath: string, developer: string, overLimitReason?: string):
+    Promise<HandoffResult>
 
   draftField(projectPath: string, relPath: string, sectionKey: string, label: string, guidance: string): Promise<DraftResult>
   recordDraftOutcome(
