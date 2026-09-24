@@ -5,6 +5,9 @@ import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
 import { Frame } from './components/Frame'
 import { ClashScreen } from './components/ClashScreen'
+import { StageHome } from './components/StageHome'
+import { DocumentView } from './components/DocumentView'
+import { HistoryPanel } from './components/HistoryPanel'
 
 type Screen =
   | { kind: 'loading' }
@@ -20,6 +23,13 @@ function App() {
   const [syncState, setSyncState] = useState<SyncState>({ kind: 'idle', lastPulledAt: null })
   const [pendingClashes, setPendingClashes] = useState<FileClash[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** Which document is open within the project screen, or null for the stage home. */
+  const [openDoc, setOpenDoc] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  /** Who is using Studio, for attributing saves, restores and drafts. Taken from the
+   * signed-in code-host account, which is the same identity the team roster and approvals
+   * already use — rather than inventing a separate Studio-only name to keep in step. */
+  const [actor, setActor] = useState('')
 
   const refreshTooling = useCallback(async () => {
     const report = await window.studio.detectTooling()
@@ -70,6 +80,8 @@ function App() {
     }
     if (result.status) {
       setScreen({ kind: 'project', status: result.status, projectPath })
+      setOpenDoc(null)
+      window.studio.getConnectionInfo(projectPath).then((info) => setActor(info.account ?? ''))
       loadRecent()
     } else {
       setError(result.error ?? 'Could not read this project\'s status.')
@@ -140,16 +152,43 @@ function App() {
         />
       )
     }
+    const { projectPath, status } = screen
     return (
-      <Frame status={screen.status} consoleEntries={consoleEntries} syncState={syncState}>
+      <Frame status={status} consoleEntries={consoleEntries} syncState={syncState}>
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
             {error}
           </div>
         )}
-        <p className="text-sm text-slate-400">
-          Documents, specs, settings and the board aren't built yet — later specs.
-        </p>
+        {openDoc && showHistory ? (
+          <HistoryPanel
+            projectPath={projectPath}
+            relPath={openDoc}
+            actor={actor}
+            onClose={() => setShowHistory(false)}
+            // A restore rewrites the file, so the open document is stale — close back to the
+            // document, which re-reads it, rather than showing content that no longer matches.
+            onRestored={() => setShowHistory(false)}
+          />
+        ) : openDoc ? (
+          <DocumentView
+            key={openDoc}
+            projectPath={projectPath}
+            relPath={openDoc}
+            actor={actor}
+            onBack={() => setOpenDoc(null)}
+            onShowHistory={() => setShowHistory(true)}
+          />
+        ) : (
+          <StageHome
+            projectPath={projectPath}
+            stageId={status.current_phase.id}
+            onOpenDocument={(relPath) => {
+              setShowHistory(false)
+              setOpenDoc(relPath)
+            }}
+          />
+        )}
       </Frame>
     )
   }
