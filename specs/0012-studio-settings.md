@@ -54,8 +54,15 @@ every change to them shows up in history like any other change.
       stages they sign off, and is saved to the project's roster file from plugin spec 0001.
 - [ ] Adding a person offers only people who already have access to the repository; Studio never invites
       anyone or changes anyone's repository permissions.
-- [ ] The rules that cannot be changed in Studio are stated as such: nobody checks their own work, only
-      a team lead lowers a risk level, high-risk changes need a security review and a named sign-off.
+- [ ] The rules that cannot be changed in Studio are stated as such: nobody checks their own work,
+      lowering a risk level is recorded against whoever decided it, high-risk changes need a security
+      review and a named sign-off.
+<!-- Amended 2026-09-24. This check previously read "only a team lead lowers a risk level", which
+     describes a rule that exists NOWHERE in the plugin — verified while building spec 0011, whose
+     Decision List resolves it: a downgrade is ATTRIBUTABLE, not restricted to certain people,
+     because the latter is a rule this system has no honest way to enforce. A settings screen
+     stating an unenforced rule as a fact is worse than not listing it: it tells someone they are
+     protected by something that is not there. -->
 - [ ] Build rules show each team's limit with its number of specs in progress, and saving a limit writes
       it to the project's cadence plan, where it shows in that document's history.
 - [ ] A team whose alarm is sounding is named on this screen, with its current waiting time.
