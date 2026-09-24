@@ -95,4 +95,17 @@ was actually measured, not assumed, and that no rule about who may approve is en
 ## Decision List
 - **What happens when someone is the owner, developer and checker of the same spec on a small team?**
   Written here as: allowed for owner and developer, refused for checker, with the refusal explaining
-  that someone else must check. Owner: Matt, before this spec is ready.
+  that someone else must check.
+  Resolved 2026-09-24 by Matt: confirmed as written — one person may own a change and build it, but
+  somebody else must check it. This is the rule that stops review becoming theatre, and it is already
+  what the plugin's own hand-off command enforces, so Studio surfaces that refusal rather than
+  inventing a second one. A genuinely solo team must borrow a checker; that friction is the point.
+- **How does a 200-spec board get "where is it and who is it waiting on" inside two seconds?**
+  Raised while planning, resolved 2026-09-24 by Matt: ask the code host ONCE, in bulk. Measured
+  first — the existing per-spec call takes 1.05s even on its fast path with no pull request found,
+  so 200 of them is ~3.5 minutes against a two-second budget. `spec_status.py` gains a bulk mode
+  that fetches every open pull request in one request and matches them to specs locally, keeping
+  the judgement about what "waiting on" means in the plugin where it already lives. The board
+  renders from spec files immediately and fills in live status as that one call returns, so it is
+  useful before the network answers and correct after. **Depends on** the spec-to-branch naming
+  convention staying reliable; if that ever breaks, the matching breaks with it.
