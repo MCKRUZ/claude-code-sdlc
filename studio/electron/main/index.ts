@@ -15,7 +15,7 @@ import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import { getLastSeenCommit, setLastSeenCommit } from './settings'
 import { runGitTolerant } from './git'
-import { getBoard } from './board'
+import { getBoard, getSpecStatus } from './board'
 import { handOff } from './handoff'
 import type { ClashChoice, DraftOutcome } from '../../shared/types'
 
@@ -235,6 +235,12 @@ function registerIpcHandlers() {
                error: 'claude-code-sdlc plugin scripts not found' }
     }
     return getBoard(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle('studio:getSpecStatus', async (_event, projectPath: string, specPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+    return getSpecStatus(projectPath, scriptsDir, specPath)
   })
 
   ipcMain.handle(

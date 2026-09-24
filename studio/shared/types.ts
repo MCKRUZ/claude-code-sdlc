@@ -358,6 +358,44 @@ export interface HandoffResult {
 }
 
 
+
+/** One spec's full status, as the plugin reads it from the pull request. Every field comes
+ * from the code host; Studio computes none of it. */
+export interface SpecStatusCheck {
+  name: string
+  status: string | null
+  conclusion: string | null
+}
+
+export interface SpecStatusVerdict {
+  check: string
+  covered: string
+  reason: string
+}
+
+export interface SpecStatus {
+  spec: string
+  branch: string
+  code_host_available: boolean
+  /** Present only when the code host could not be reached — then `local_status` is what the
+   * spec file itself says, which is the honest fallback, never "not started". */
+  error?: string
+  local_status?: string
+  pull_request: {
+    number: number
+    url: string
+    state: string
+    merged_at: string | null
+    checks: SpecStatusCheck[]
+    grader_ran: boolean
+    verdicts: SpecStatusVerdict[] | null
+    verdict_error: string | null
+    security_review: { conclusion: string | null } | null
+    approvals: Array<{ by: string | null; at: string | null }>
+    waiting_on: string
+  } | null
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -408,6 +446,11 @@ export interface StudioApi {
    * board filters and groups what it already has, because switching a role view must not
    * re-read the repository (spec 0011). */
   getBoard(projectPath: string): Promise<Board>
+  /** One spec in full. NOTE: this is the plugin's per-spec call, which records
+   * `status: merged` if the pull request has merged since anyone last looked — a read
+   * that can commit, stated here rather than discovered. */
+  getSpecStatus(projectPath: string, specPath: string):
+    Promise<{ ok: boolean; status?: SpecStatus; error?: string }>
   /** Hands a spec to a developer through the plugin's own command. Every rule about who may
    * be handed what lives there; a refusal comes back with a `kind` so the window knows what
    * to offer next, without reading the refusal's English. */

@@ -13,7 +13,8 @@
 //                          cadence plan and are the plugin's to interpret, not Studio's.
 
 import { runPluginScript } from './project'
-import type { Board, BoardRow } from '../../shared/types'
+import { resolveProjectDocument } from './projectPaths'
+import type { Board, BoardRow, SpecStatus } from '../../shared/types'
 
 interface RawPullRequest {
   number: number
@@ -107,5 +108,41 @@ export async function getBoard(projectPath: string, pluginScriptsDir: string): P
     codeHostAvailable: parsed.code_host_available === true,
     error: parsed.error ?? null,
     teamLimits: await fetchTeamLimits(projectPath, pluginScriptsDir),
+  }
+}
+
+
+/** ONE spec, in full: every check, the grader's verdict, approvals, and who it is waiting on.
+ *
+ * Deliberately the per-spec call, not a slice of the board's bulk data — the detail this view
+ * exists to show (the grader's verdict, the age of a review request) each needs its own
+ * request, and the bulk call does not fetch them.
+ *
+ * Worth knowing, and surfaced rather than hidden: this call is the one place the plugin
+ * writes. If the pull request has merged since anyone last looked, it records `status: merged`
+ * on the spec. That is the plugin keeping its own record honest, not this view acting — the
+ * view still offers no control that changes anything, which is what the spec asks for — but a
+ * read that can commit deserves to be stated out loud rather than discovered. The board's
+ * refresh deliberately does NOT do this, since it runs on a timer.
+ */
+export async function getSpecStatus(
+  projectPath: string,
+  pluginScriptsDir: string,
+  specPath: string,
+): Promise<{ ok: boolean; status?: SpecStatus; error?: string }> {
+  let fullSpecPath: string
+  try {
+    fullSpecPath = resolveProjectDocument(projectPath, specPath)
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+
+  const entry = await runPluginScript(pluginScriptsDir, 'spec_status.py', [
+    '--repo', projectPath, '--spec', fullSpecPath, '--json',
+  ])
+  try {
+    return { ok: true, status: JSON.parse(entry.stdout) as SpecStatus }
+  } catch {
+    return { ok: false, error: entry.stderr.trim() || 'Could not read this spec’s status.' }
   }
 }

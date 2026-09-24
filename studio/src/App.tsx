@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ClashChoice, ConsoleEntry, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
+import type { BoardRow, ClashChoice, ConsoleEntry, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
 import { ToolingIssues } from './components/ToolingIssues'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
@@ -8,6 +8,9 @@ import { ClashScreen } from './components/ClashScreen'
 import { StageHome } from './components/StageHome'
 import { DocumentView } from './components/DocumentView'
 import { HistoryPanel } from './components/HistoryPanel'
+import { BuildBoard } from './components/BuildBoard'
+import { SpecStatusView } from './components/SpecStatusView'
+import { HandoffDialog } from './components/HandoffDialog'
 
 type Screen =
   | { kind: 'loading' }
@@ -30,6 +33,13 @@ function App() {
    * signed-in code-host account, which is the same identity the team roster and approvals
    * already use — rather than inventing a separate Studio-only name to keep in step. */
   const [actor, setActor] = useState('')
+  /** Which area of the project is showing. Documents is where spec 0010 lives; Build is
+   * spec 0011's board. Kept here rather than in a router, because there are two areas. */
+  const [area, setArea] = useState<'documents' | 'build'>('documents')
+  /** The spec whose status is open, and separately whether its hand-off is showing — a
+   * hand-off is a decision taken FROM a spec, not a different place in the app. */
+  const [openSpec, setOpenSpec] = useState<BoardRow | null>(null)
+  const [handingOff, setHandingOff] = useState(false)
 
   const refreshTooling = useCallback(async () => {
     const report = await window.studio.detectTooling()
@@ -81,6 +91,9 @@ function App() {
     if (result.status) {
       setScreen({ kind: 'project', status: result.status, projectPath })
       setOpenDoc(null)
+      setOpenSpec(null)
+      setHandingOff(false)
+      setArea('documents')
       window.studio.getConnectionInfo(projectPath).then((info) => setActor(info.account ?? ''))
       loadRecent()
     } else {
@@ -160,7 +173,53 @@ function App() {
             {error}
           </div>
         )}
-        {openDoc && showHistory ? (
+        <div className="mb-4 flex gap-1">
+          {([['documents', 'Documents'], ['build', 'Build']] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setArea(value)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
+                area === value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {area === 'build' ? (
+          handingOff && openSpec ? (
+            <HandoffDialog
+              projectPath={projectPath}
+              row={openSpec}
+              onClose={() => setHandingOff(false)}
+              onHandedOff={() => {
+                // Back to the board, and forget the spec — its row is now stale, and the
+                // board re-reads on mount rather than showing what used to be true.
+                setHandingOff(false)
+                setOpenSpec(null)
+              }}
+            />
+          ) : openSpec ? (
+            <SpecStatusView
+              key={openSpec.spec}
+              projectPath={projectPath}
+              row={openSpec}
+              onBack={() => setOpenSpec(null)}
+              onHandOff={() => setHandingOff(true)}
+            />
+          ) : (
+            <BuildBoard
+              projectPath={projectPath}
+              account={actor || null}
+              onOpenSpec={(row) => {
+                setHandingOff(false)
+                setOpenSpec(row)
+              }}
+            />
+          )
+        ) : openDoc && showHistory ? (
           <HistoryPanel
             projectPath={projectPath}
             relPath={openDoc}

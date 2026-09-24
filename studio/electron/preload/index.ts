@@ -51,6 +51,8 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:confirmRestore', projectPath, relPath, ref, actor, diffHash, ackSignOff),
 
   getBoard: (projectPath) => ipcRenderer.invoke('studio:getBoard', projectPath),
+  getSpecStatus: (projectPath, specPath) =>
+    ipcRenderer.invoke('studio:getSpecStatus', projectPath, specPath),
   handOff: (projectPath, specPath, developer, overLimitReason) =>
     ipcRenderer.invoke('studio:handOff', projectPath, specPath, developer, overLimitReason),
 
