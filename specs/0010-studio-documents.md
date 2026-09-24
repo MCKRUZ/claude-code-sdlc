@@ -48,12 +48,12 @@ trustworthy — only Edit changes anything, and anything the app does not unders
 
 ## Acceptance Checks
 
-- [ ] A document opens as its sections and fields, with anything the shape did not recognise shown in
+- [x] A document opens as its sections and fields, with anything the shape did not recognise shown in
       place as text, never hidden and never dropped.
 - [x] Reading a document changes nothing: no file is written when a person only reads, scrolls or
       expands a section.
 - [ ] Changes made since the person last opened it are marked, with who made each one and why.
-- [ ] Nothing can be changed except in edit mode — buttons that add or change content do not exist
+- [x] Nothing can be changed except in edit mode — buttons that add or change content do not exist
       outside it, including the add button on a review panel.
 - [x] A new requirement is given the next free number across the whole document, and that number is
       shown before the person saves it.
@@ -62,7 +62,7 @@ trustworthy — only Edit changes anything, and anything the app does not unders
 - [x] Every Claude draft is recorded with its outcome — accepted, edited then accepted, or discarded —
       in an audit ledger separate from the document's version history, so a discarded draft is
       answerable later without cluttering the history of what the document actually says.
-- [ ] Every field shows where the document lives on disk and what it is called, without leaving the page.
+- [x] Every field shows where the document lives on disk and what it is called, without leaving the page.
 - [x] History lists versions with who saved each and why; comparing two shows what changed; restoring
       one creates a new version rather than removing any.
 - [ ] Editing a signed-off document with approval switched on saves a draft, leaves the signed-off
@@ -92,12 +92,17 @@ the hash of the diff that was shown), and a discarded draft reaches its own ledg
 touching the version history. `shapeRoundTrip.test.ts` round-trips all 28 shaped templates
 through Studio's own read/write path.
 
-**NOT proven: everything about how the window behaves.** The application has never been launched
-in this work. The checks about what is rendered — that mutating controls do not exist outside
-edit mode, that the next number is shown before saving, that changes since last look are marked,
-that a draft is offered for accept-or-discard, that every field shows where the document lives —
-are implemented and code-reviewed, and unverified. They stay unticked until driven through the
-real window.
+**Proven in the real window.** `test/e2e/documents.spec.ts` launches the packaged application
+against a real initialized project and clicks through it: the stage home lists each document
+with what it is for and does not offer one that has not been started, a document opens as its
+sections and fields showing where it lives, NOTHING that changes content exists outside edit
+mode (asserted as absence, not as disabled), entering edit mode reveals those controls and names
+the next id before anything is created, leaving takes them away again, and the history panel is
+honest about a document nobody has saved yet rather than inventing an author or a date.
+
+**NOT proven: Claude drafting, and changes-since-last-look.** Drafting needs a live model call
+and the changes banner needs a repository with history; neither is driven in the window yet.
+Both are implemented and reviewed. Unticked.
 
 **NOT proven: the approval path.** Editing a signed-off document with approval on, the pending
 draft being editable only by its author, and the straight-through save with approval off all
