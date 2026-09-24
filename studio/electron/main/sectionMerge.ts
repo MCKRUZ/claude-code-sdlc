@@ -43,7 +43,7 @@ export interface ShapeField {
   empty: boolean
 }
 
-interface ShapeBlock {
+export interface ShapeBlock {
   kind: 'free_text' | 'section' | 'repeating_section'
   start: number
   end: number
