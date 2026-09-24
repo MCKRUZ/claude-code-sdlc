@@ -109,3 +109,13 @@ was actually measured, not assumed, and that no rule about who may approve is en
   renders from spec files immediately and fills in live status as that one call returns, so it is
   useful before the network answers and correct after. **Depends on** the spec-to-branch naming
   convention staying reliable; if that ever breaks, the matching breaks with it.
+- **Does the board connect to a real work tracker — Azure Boards, Jira?**
+  Raised 2026-09-24 while planning, resolved the same day by Matt: no, and not later either.
+  The spec file IS the work item, and its live status is the pull request its branch opened, so
+  the two cannot disagree. Every external tracker reintroduces exactly the drift that model
+  exists to prevent. In Matt's words: we do not have to be everything to everyone.
+  Recorded permanently in `docs/architecture.md` §7, including the one honest gap it leaves —
+  Azure DevOps is supported for pipelines but NOT for work status, so on an ADO project the
+  board has no live "waiting on whom". That degrades to a file-only board with the reason
+  stated, never an empty screen. **Revisit only** if a real engagement needs it, and then by
+  adding Azure DevOps as a second code host — not by adding a tracker connector.
