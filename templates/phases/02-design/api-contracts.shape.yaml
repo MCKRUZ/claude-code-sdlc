@@ -1,5 +1,6 @@
 template: api-contracts
 version: "1.0"
+description: "The interfaces between components, precise enough that two teams can build against them independently."
 
 # "Endpoints" repeats per-endpoint in the real template ("### [METHOD] /[path]"), but each
 # instance is identified by method+path, not a sequential number — this shape format's

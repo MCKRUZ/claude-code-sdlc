@@ -8,8 +8,18 @@ document_shape.py's own module docstring for the block model and match semantics
 is a thin skin over.
 
 Usage:
-  document_shape_cli.py read  --doc <path.md> --shape <path.shape.yaml>
-  document_shape_cli.py write --doc <path.md> --updates <path.json>
+  document_shape_cli.py read         --doc <path.md> --shape <path.shape.yaml>
+  document_shape_cli.py write        --doc <path.md> --updates <path.json>
+  document_shape_cli.py next-number  --doc <path.md> --shape <path.shape.yaml> [--section H]
+  document_shape_cli.py add-instance --doc <path.md> --shape <path.shape.yaml> [--section H]
+                                     [--number N] [--title TEXT]
+
+`next-number` and `add-instance` exist for the repeating blocks a document grows over time
+(`### FR-001`, `### FR-002`, ...). Numbers come from the library's own next_free_number(), which
+scans the WHOLE document including free text, so an id mentioned only in prose is never reused.
+`add-instance` composes the new block from the shape's own field list and inserts it through
+write_document(), leaving every other byte untouched — composing that markdown is document-shape
+logic, which is why it lives here rather than in whatever calls this.
 
 `write`'s --updates file is a JSON array of [start, end, new_text] triples, with start/end as
 UTF-8 BYTE offsets — always the ones `read` emitted for that same document's current content,
@@ -153,6 +163,112 @@ def cmd_write(args) -> dict:
     return {"written": True, "path": str(doc_path)}
 
 
+def _repeating_section(shape: dict, wanted: str | None) -> dict:
+    """The one repeating section this call is about. With several in a shape the caller must
+    say which; with exactly one, naming it is optional."""
+    repeating = [s for s in (shape.get("sections") or []) if s.get("repeats")]
+    if not repeating:
+        raise CliError("this shape declares no repeating section")
+    if wanted:
+        for sec in repeating:
+            if sec.get("heading") == wanted:
+                return sec
+        names = ", ".join(repr(s.get("heading")) for s in repeating)
+        raise CliError(f"no repeating section named {wanted!r} in this shape (have: {names})")
+    if len(repeating) > 1:
+        names = ", ".join(repr(s.get("heading")) for s in repeating)
+        raise CliError(f"this shape has several repeating sections — pass --section (have: {names})")
+    return repeating[0]
+
+
+def _numbering_pattern(section: dict) -> str:
+    pattern = (section.get("numbering") or {}).get("pattern")
+    if not pattern:
+        raise CliError(f"repeating section {section.get('heading')!r} declares no numbering pattern")
+    return pattern
+
+
+def cmd_next_number(args) -> dict:
+    """The next free id for a repeating section. Delegates to the library's own
+    next_free_number(), which scans the WHOLE document — including free text — so a number
+    that appears only in prose is never handed out twice."""
+    text = read_doc_text(Path(args.doc))
+    shape = load_shape(Path(args.shape))
+    section = _repeating_section(shape, getattr(args, "section", None))
+    pattern = _numbering_pattern(section)
+    n = ds.next_free_number(text, pattern)
+    return {"heading": section.get("heading"), "pattern": pattern, "number": n, "id": pattern % n}
+
+
+def _detect_eol(text: str) -> str:
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _compose_instance(section: dict, instance_id: str, title: str, eol: str) -> str:
+    """A new, EMPTY repeating block laid out the way this section's own fields declare it —
+    inline fields as `**Label:**` lines, labeled_block fields as a label line followed by an
+    empty line for the body. Deliberately empty rather than pre-filled with guidance text: the
+    guidance belongs in whatever UI renders the form, and placeholder prose in a real document
+    is exactly what the gate's placeholder scan exists to catch."""
+    lines = [f"### {instance_id}: {title}", ""]
+    for f in section.get("fields") or []:
+        anchor = f.get("anchor", "inline")
+        if anchor == "labeled_block":
+            # A labeled block owns the lines after its label, so it needs air before it and an
+            # empty body line after it.
+            if lines and lines[-1] != "":
+                lines.append("")
+            lines.append(f"**{f['label']}:**")
+            lines.append("")
+        else:
+            lines.append(f"**{f['label']}:**")
+    if lines and lines[-1] != "":
+        lines.append("")
+    lines.append("")
+    return eol.join(lines)
+
+
+def cmd_add_instance(args) -> dict:
+    """Append an empty numbered block to a repeating section, through write_document() so the
+    rest of the file is untouched byte for byte."""
+    doc_path = Path(args.doc)
+    text = read_doc_text(doc_path)
+    shape = load_shape(Path(args.shape))
+    section = _repeating_section(shape, getattr(args, "section", None))
+    pattern = _numbering_pattern(section)
+
+    number = args.number if getattr(args, "number", None) is not None else ds.next_free_number(text, pattern)
+    instance_id = pattern % number
+
+    result = ds.read_document(text, shape)
+    if not result["matched"]:
+        raise CliError(
+            "document does not match its shape, so there is no section to add to: "
+            + "; ".join(result["warnings"])
+        )
+
+    block = next(
+        (b for b in result["blocks"]
+         if b["kind"] == "repeating_section" and b["heading"] == section.get("heading")),
+        None,
+    )
+    if block is None:
+        raise CliError(f"section {section.get('heading')!r} not found in this document")
+
+    # After the last existing instance, so a new block lands with its siblings rather than
+    # after whatever trailing prose closes the section.
+    instances = sorted(block.get("instances") or [], key=lambda i: i["start"])
+    insert_at = instances[-1]["end"] if instances else block["start"]
+
+    eol = _detect_eol(text)
+    new_block = _compose_instance(section, instance_id, args.title, eol)
+    new_full_text = ds.write_document(text, [(insert_at, insert_at, new_block)])
+
+    with open(doc_path, "w", encoding="utf-8", newline="") as f:
+        f.write(new_full_text)
+    return {"written": True, "path": str(doc_path), "id": instance_id, "number": number}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read/write a document against its shape (JSON over stdio)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -168,10 +284,29 @@ def main() -> int:
         help="Path to a JSON file of [start, end, new_text] triples (UTF-8 byte offsets)",
     )
 
+    p_next = sub.add_parser("next-number", help="The next free id for a repeating section")
+    p_next.add_argument("--doc", required=True)
+    p_next.add_argument("--shape", required=True)
+    p_next.add_argument("--section", help="Heading of the repeating section (only needed if the shape has several)")
+
+    p_add = sub.add_parser("add-instance", help="Append an empty numbered block to a repeating section")
+    p_add.add_argument("--doc", required=True)
+    p_add.add_argument("--shape", required=True)
+    p_add.add_argument("--section", help="Heading of the repeating section (only needed if the shape has several)")
+    p_add.add_argument("--number", type=int, help="Use this number instead of the next free one")
+    p_add.add_argument("--title", default="", help="Title text after the id in the heading")
+
     args = parser.parse_args()
 
+    handlers = {
+        "read": cmd_read,
+        "write": cmd_write,
+        "next-number": cmd_next_number,
+        "add-instance": cmd_add_instance,
+    }
+
     try:
-        result = cmd_read(args) if args.command == "read" else cmd_write(args)
+        result = handlers[args.command](args)
     except CliError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1

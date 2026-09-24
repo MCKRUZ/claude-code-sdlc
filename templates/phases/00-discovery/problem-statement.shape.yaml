@@ -1,5 +1,6 @@
 template: problem-statement
 version: "1.0"
+description: "What is actually wrong today, who it hurts, and what it costs — before anyone proposes a fix."
 
 sections:
   - heading: Executive Summary

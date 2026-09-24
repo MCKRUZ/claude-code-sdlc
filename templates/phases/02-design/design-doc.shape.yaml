@@ -1,5 +1,6 @@
 template: design-doc
 version: "1.0"
+description: "How the system will be built — the architecture, the components, and why this shape over the alternatives."
 
 # "Architecture Overview" and "Data Model" each carry REQUIRED markers on "### " children
 # (System Context + Architecture Diagram; Core Entities) rather than on the "## " heading

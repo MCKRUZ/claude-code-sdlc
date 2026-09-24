@@ -1,5 +1,6 @@
 template: epics
 version: "1.0"
+description: "The large chunks of work the requirements group into, used to plan and sequence delivery."
 
 # EP-NNN numbering is actually shared across the P0/P1/P2 sections in the real template,
 # but only "P0 Epics — Must Ship" carries a REQUIRED marker, so only it is modeled as a

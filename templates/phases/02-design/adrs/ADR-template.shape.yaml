@@ -1,5 +1,6 @@
 template: adr
 version: "1.0"
+description: "One architectural decision: what was decided, what else was considered, and what it commits us to."
 
 # Status/Date/Deciders/Supersedes live in the preamble before the first "## " heading —
 # this shape format only models fields within a "## " section, so they stay free text.

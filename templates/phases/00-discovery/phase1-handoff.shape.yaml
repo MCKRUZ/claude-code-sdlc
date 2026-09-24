@@ -1,5 +1,6 @@
 template: phase1-handoff
 version: "1.0"
+description: "What Requirements needs to know from Discovery, so the next stage starts informed rather than guessing."
 
 sections:
   - heading: Discovery Summary

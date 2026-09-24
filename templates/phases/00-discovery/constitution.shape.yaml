@@ -1,5 +1,6 @@
 template: constitution
 version: "1.0"
+description: "The project's non-negotiables — the principles every later decision is checked against."
 
 # Project Identity's own sub-fields (Name/Profile/Created) are written as bullet-list items
 # ("- **Name:** ..."), not standalone "**Label:**" lines, so this shape format can't address

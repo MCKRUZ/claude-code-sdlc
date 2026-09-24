@@ -17,6 +17,10 @@ import pytest
 from document_shape_cli import (
     CliError,
     _build_offset_maps,
+    _compose_instance,
+    _repeating_section,
+    cmd_add_instance,
+    cmd_next_number,
     cmd_read,
     cmd_write,
 )
@@ -185,3 +189,124 @@ class TestCliProcess:
         assert proc.returncode == 1
         assert "Error:" in proc.stderr
         assert proc.stdout == ""
+
+
+class TestNextNumber:
+    def test_next_number_after_the_fixture_two_requirements(self, tmp_path: Path):
+        doc_path = tmp_path / "requirements.md"
+        doc_path.write_bytes(REQUIREMENTS_FIXTURE.read_bytes())
+        result = cmd_next_number(Args(doc=str(doc_path), shape=str(REQUIREMENTS_SHAPE), section=None))
+        assert result["number"] == 3
+        assert result["id"] == "FR-003"
+        assert result["heading"] == "Functional Requirements"
+
+    def test_a_number_present_only_in_free_text_is_never_reused(self, tmp_path: Path):
+        """The library scans the whole document, not just recognized instances — the fixture's
+        traceability table and prose count too. Proven here because this is the specific
+        promise the auto-numbering acceptance check rests on."""
+        text = REQUIREMENTS_FIXTURE.read_text(encoding="utf-8")
+        text += "\n\nSee also FR-042, which we discussed but never wrote up.\n"
+        doc_path = tmp_path / "requirements.md"
+        doc_path.write_text(text, encoding="utf-8")
+        result = cmd_next_number(Args(doc=str(doc_path), shape=str(REQUIREMENTS_SHAPE), section=None))
+        assert result["number"] == 43
+
+    def test_shape_with_no_repeating_section_is_a_clean_error(self, tmp_path: Path):
+        shape = tmp_path / "flat.shape.yaml"
+        shape.write_text(
+            "template: flat\nversion: '1.0'\nsections:\n  - heading: Overview\n    fields: []\n",
+            encoding="utf-8",
+        )
+        doc_path = tmp_path / "doc.md"
+        doc_path.write_text("# T\n\n## Overview\n\nbody\n", encoding="utf-8")
+        with pytest.raises(CliError, match="no repeating section"):
+            cmd_next_number(Args(doc=str(doc_path), shape=str(shape), section=None))
+
+
+class TestRepeatingSectionResolution:
+    SHAPE_TWO = {
+        "sections": [
+            {"heading": "A", "repeats": True, "numbering": {"pattern": "A-%03d"}},
+            {"heading": "B", "repeats": True, "numbering": {"pattern": "B-%03d"}},
+        ]
+    }
+
+    def test_several_repeating_sections_require_naming_one(self):
+        with pytest.raises(CliError, match="several repeating sections"):
+            _repeating_section(self.SHAPE_TWO, None)
+
+    def test_naming_one_selects_it(self):
+        assert _repeating_section(self.SHAPE_TWO, "B")["heading"] == "B"
+
+    def test_naming_an_unknown_one_is_a_clean_error(self):
+        with pytest.raises(CliError, match="no repeating section named"):
+            _repeating_section(self.SHAPE_TWO, "C")
+
+
+class TestComposeInstance:
+    SECTION = {
+        "heading": "Functional Requirements",
+        "fields": [
+            {"label": "Priority", "anchor": "inline"},
+            {"label": "Requirement", "anchor": "labeled_block"},
+            {"label": "Dependencies", "anchor": "inline"},
+        ],
+    }
+
+    def test_fields_keep_the_shape_s_declared_order(self):
+        out = _compose_instance(self.SECTION, "FR-007", "A title", "\n")
+        assert out.index("**Priority:**") < out.index("**Requirement:**") < out.index("**Dependencies:**")
+
+    def test_uses_the_documents_own_line_endings(self):
+        assert "\r\n" in _compose_instance(self.SECTION, "FR-007", "t", "\r\n")
+        assert "\r" not in _compose_instance(self.SECTION, "FR-007", "t", "\n")
+
+    def test_carries_no_placeholder_prose(self):
+        """Guidance belongs in the UI rendering the form. Placeholder text in a real document
+        is exactly what the gate's placeholder scan exists to catch."""
+        out = _compose_instance(self.SECTION, "FR-007", "A title", "\n")
+        for marker in ("TBD", "TODO", "[", "REQUIRED"):
+            assert marker not in out
+
+
+class TestAddInstance:
+    def _add(self, tmp_path: Path, **overrides):
+        doc_path = tmp_path / "requirements.md"
+        doc_path.write_bytes(REQUIREMENTS_FIXTURE.read_bytes())
+        args = dict(doc=str(doc_path), shape=str(REQUIREMENTS_SHAPE), section=None, number=None, title="")
+        args.update(overrides)
+        return doc_path, cmd_add_instance(Args(**args))
+
+    def test_appends_the_next_free_id(self, tmp_path: Path):
+        doc_path, result = self._add(tmp_path, title="Something new")
+        assert result["id"] == "FR-003"
+        assert "### FR-003: Something new" in doc_path.read_text(encoding="utf-8")
+
+    def test_the_new_block_reads_back_as_a_real_instance(self, tmp_path: Path):
+        doc_path, _ = self._add(tmp_path, title="Something new")
+        read = cmd_read(Args(doc=str(doc_path), shape=str(REQUIREMENTS_SHAPE)))
+        assert read["matched"] is True
+        block = next(b for b in read["blocks"] if b["kind"] == "repeating_section")
+        new = next(i for i in block["instances"] if i["number"] == 3)
+        # Every field the shape declares must be found, or the form would render incomplete.
+        assert all(v is not None for v in new["fields"].values())
+
+    def test_everything_before_the_insertion_point_is_untouched(self, tmp_path: Path):
+        doc_path, _ = self._add(tmp_path, title="x")
+        before = REQUIREMENTS_FIXTURE.read_text(encoding="utf-8", errors="replace")
+        after = doc_path.read_text(encoding="utf-8", errors="replace")
+        shared = before.index("### FR-002")
+        assert after[:shared] == before[:shared]
+
+    def test_an_explicit_number_is_honoured(self, tmp_path: Path):
+        _, result = self._add(tmp_path, number=99)
+        assert result["id"] == "FR-099"
+
+    def test_a_document_that_does_not_match_its_shape_is_refused(self, tmp_path: Path):
+        doc_path = tmp_path / "doc.md"
+        doc_path.write_text("# Title\n\nnothing shaped here\n", encoding="utf-8")
+        with pytest.raises(CliError, match="does not match its shape"):
+            cmd_add_instance(Args(
+                doc=str(doc_path), shape=str(REQUIREMENTS_SHAPE),
+                section=None, number=None, title="",
+            ))

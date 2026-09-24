@@ -1,5 +1,6 @@
 template: constraints
 version: "1.0"
+description: "The fixed limits the solution must live inside — budget, deadlines, technology, policy."
 
 sections:
   - heading: Constraint Register

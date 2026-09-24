@@ -1,5 +1,6 @@
 template: adr-registry
 version: "1.0"
+description: "The index of every architectural decision taken, so a newcomer can find why things are as they are."
 
 # The REQUIRED marker sits on the H1 title line, not a "## " heading — this shape format
 # only models "## " sections, so the marker is honored against "Active ADRs", the table the

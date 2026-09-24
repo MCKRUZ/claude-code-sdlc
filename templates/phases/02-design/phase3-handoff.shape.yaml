@@ -1,5 +1,6 @@
 template: phase3-handoff
 version: "1.0"
+description: "What Foundation needs to know from Design before any code is written."
 
 # "Implementation Breakdown for Planning" > "### Natural Section Boundaries" carries its
 # REQUIRED marker on a ### subheading, not the ## heading itself — this shape format only

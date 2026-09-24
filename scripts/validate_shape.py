@@ -57,6 +57,11 @@ def validate_shape_text(text: str) -> list[str]:
         if key not in shape:
             errors.append(f"line {root_line}: missing required top-level field '{key}'")
 
+    # Optional, but if present it must actually say something — an empty description in a UI
+    # is worse than none, because the UI renders a blank where a purpose should be.
+    if "description" in shape and not str(shape["description"]).strip():
+        errors.append(f"line {root_line}: 'description' is present but empty")
+
     if "template" in shape and not re.match(r"^[a-z0-9][a-z0-9-]*$", str(shape["template"])):
         errors.append(f"line {root_line}: 'template' must be kebab-case (a-z, 0-9, hyphens)")
     if "version" in shape and not re.match(r"^\d+\.\d+$", str(shape["version"])):

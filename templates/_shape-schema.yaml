@@ -15,6 +15,13 @@
 template: <kebab-case-id>          # stamped into documents created from this template
 version: "<MAJOR>.<MINOR>"         # a document's stamp records which version it came from
 
+# description: <one line>          # OPTIONAL — what this document is FOR, in a sentence a
+                                    # stakeholder would understand, for a UI listing a stage's
+                                    # documents (spec 0010). Purpose lives here rather than in
+                                    # phase-registry.yaml because the registry describes a
+                                    # STAGE, has no per-artifact description, and is protected.
+                                    # Omitting it is fine — a caller falls back to the filename.
+
 sections:
   - heading: <exact "## Heading" text, without the leading "## ">
     # heading_pattern: <regex>     # ALTERNATIVE to `heading`, exactly one of the two —

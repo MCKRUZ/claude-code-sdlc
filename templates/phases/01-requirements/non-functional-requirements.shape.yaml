@@ -1,5 +1,6 @@
 template: non-functional-requirements
 version: "1.0"
+description: "How well the system must behave — speed, availability, security — with numbers a tester can check."
 
 # Every REQUIRED marker here covers a whole table, not a bold-label line, so each is
 # modeled as one anchor: section field for its enclosing "## " heading.

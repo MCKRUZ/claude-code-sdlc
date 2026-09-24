@@ -1,5 +1,6 @@
 template: requirements
 version: "1.0"
+description: "What the system must do, as testable statements each tracing back to a real stakeholder need."
 
 sections:
   - heading: Overview
