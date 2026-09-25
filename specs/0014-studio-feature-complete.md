@@ -61,11 +61,11 @@ unexplained case impossible.
 - [x] Declaring moves the project to the next stage in its own state file, through the plugin's command,
       and nothing else changes.
 - [x] A spec that is deferred no longer counts towards any team's work in progress.
-- [ ] After the declaration the screen becomes read-only and states when it was declared and by whom.
+- [x] After the declaration the screen becomes read-only and states when it was declared and by whom.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Eight of eleven ticked. The DECIDING half of this flow was always built and tested; the
+Nine of eleven ticked. The DECIDING half of this flow was always built and tested; the
 RECORDING half now is too, which was the whole of what this note used to be about.
 
 **Updated 2026-09-25, later:** all four gaps below are now closed or nearly so, and every
@@ -130,13 +130,16 @@ explains itself when pressed, and a suggested deferral reason is offered but nev
    alternative was Studio parsing `state.yaml` itself — a second reader of that file is a
    second thing to keep in step with the first.)
 
-**Still open — three checks, and each is a real gap rather than an unverified one:**
+**The recorded time is now stated too.** Read back out of the project's record once the stage
+moves, never printed from the current clock — until then the screen says plainly that nothing
+is recorded yet and the declaration is "true on this screen and nowhere else". The NAME is read
+back the same way rather than echoed from what was typed, so a person sees what was written
+down rather than their own request reflected back. Both are keyed on the stage that JUST
+completed rather than on Build by name: it is Build here, so naming it would have been right by
+coincidence and wrong anywhere else — a test advancing a different stage is what surfaced that.
 
-- **The screen does not state the TIME in the session that declares it.** Reopened later it
-  does, from the project's record. Straight after declaring there is no recorded time to show
-  until the stage moves, and putting the current clock there would be inventing the one fact
-  this screen exists to protect. Closing it honestly means refreshing from the record once the
-  advance has happened.
+**Still open — two checks, each needing a decision rather than more building:**
+
 - The declaring person's name reaches the COMMIT but not the hand-over document itself —
   `generate_handoff_report.py` has no flag for it, and inventing one in Studio would put the
   name somewhere the plugin does not know about.
