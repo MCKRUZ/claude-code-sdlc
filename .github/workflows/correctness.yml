@@ -46,11 +46,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  # Required because no github_token is passed: the action exchanges a GitHub identity
-  # token for a Claude GitHub App token, and without this the exchange cannot even start
-  # ("Unable to get ACTIONS_ID_TOKEN_REQUEST_URL"). Removing the built-in token without
-  # adding this is half a fix — the gate then fails closed on every pull request.
-  id-token: write
 
 concurrency:
   group: correctness-review-${{ github.event.pull_request.number }}
@@ -113,24 +108,21 @@ jobs:
         continue-on-error: true     # the ENFORCE step below decides pass/fail, fail-closed
         uses: anthropics/claude-code-action@v1
         with:
-          # Either credential signs the gate in. The subscription token is listed first
-          # because it is the one that costs nothing per pull request; a repo that has
-          # set only the API key is unaffected, since an unset secret is empty and the
-          # action ignores it. Set one with: uv run scripts/gate_auth.py set <mode>
+          # The subscription token: no per-pull-request charge. Set it with
+          # `uv run scripts/gate_auth.py set subscription`, or `set api-key` for a
+          # metered key — gate_auth.py writes whichever secret the mode names.
+          #
+          # An empty `anthropic_api_key` is deliberately NOT passed beside this. It was,
+          # briefly, on the reasoning that an unset secret is ignored; the configuration
+          # that demonstrably works does not pass one, and matching it exactly is worth
+          # more than the reasoning that said it would be harmless.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # No github_token on purpose. Anthropic's own documentation says to REMOVE it
-          # when it is the built-in workflow token, so the step authenticates as the
-          # Claude GitHub App instead. GitHub does not trigger workflows on commits made
-          # with the default token, so a gate that pushed with it would go unnoticed by
-          # every gate after it. Pass a CUSTOM app's token here if a policy requires one.
-          # The leading @claude is a WORKAROUND, not decoration. The action's v1 input
-          # parsing does not read `prompt`, so it falls back to its conversational mode
-          # and waits to be mentioned — with no mention it exits 0 in under two seconds
-          # having done nothing, and only this gate's own verdict check notices. Remove
-          # the mention only once the action reads `prompt` in automation mode.
+          # Matches the known-working configuration in microsoft-agentic-harness, which
+          # runs this same action successfully. Anthropic's docs say to remove this
+          # token; a repo that actually works says otherwise, and a working control
+          # beats a document. Do not remove it without a control that says you can.
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
-            @claude
             You are running as the correctness-reviewer for PR #${{ github.event.pull_request.number }}.
             Read the rubric at .github/profile/rubrics/correctness.md and follow it exactly.
             The changed-line anchor set is at ${{ steps.detect.outputs.anchors_file }} —

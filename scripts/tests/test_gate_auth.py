@@ -253,51 +253,59 @@ class TestTheSecretNamesMatchTheShippedPipelines:
                 assert "claude_code_oauth_token:" in text, (
                     f"{path.name} accepts only the metered credential")
 
-    def test_the_pipelines_read_the_names_this_script_writes(self):
-        joined = "\n".join(p.read_text(encoding="utf-8") for p in self._pipelines())
-        for spec in ga.MODES.values():
-            assert f"secrets.{spec['secret']}" in joined, spec["secret"]
+    def test_the_subscription_secret_IS_read_by_every_gate_that_calls_the_action(self):
+        """The credential a gate signs in with must be one this script can write.
 
-    def test_no_gate_passes_the_BUILT_IN_workflow_token_to_the_action(self):
-        """Anthropic's own documentation says to remove it.
-
-        The action authenticates as the Claude GitHub App when no token is given. Passing the
-        built-in workflow token overrides that with an identity the App's permissions do not
-        cover — and GitHub does not trigger workflows on commits made with it, so a gate that
-        pushed with it would be invisible to every gate after it.
-
-        A custom app's token is still allowed here; the built-in one specifically is not.
+        Asserted for the subscription secret only, and the reason is recorded rather than
+        assumed: the configuration this was matched against (microsoft-agentic-harness, which
+        runs these gates successfully today) passes the subscription token and the built-in
+        workflow token, and NO api_key input at all.
         """
-        offenders = []
-        for path in self._pipelines():
-            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                stripped = line.strip()
-                if stripped.startswith("#"):
-                    continue        # the comment explaining why it is absent
-                if stripped == "github_token: ${{ secrets.GITHUB_TOKEN }}":
-                    offenders.append(f"{path.name}:{i}")
-        assert not offenders, (
-            "these steps pass the built-in workflow token, which the action's own docs say to "
-            f"remove: {offenders}")
-
-    def test_a_gate_with_no_github_token_declares_the_identity_permission(self):
-        """The other half of removing the built-in token.
-
-        With no `github_token`, the action exchanges a GitHub identity token for a Claude
-        GitHub App token. That exchange needs `id-token: write`, and without it the gate cannot
-        even begin — it fails closed on every pull request with an error about a missing
-        environment variable that names nothing recognisable.
-
-        Removing the token without adding the permission is half a fix, and the half that is
-        missing is invisible until a real pull request runs. This pins the pair together.
-        """
-        missing = []
         for path in self._pipelines():
             text = path.read_text(encoding="utf-8")
             if "anthropics/claude-code-action" not in text:
                 continue
-            if "id-token: write" not in text:
-                missing.append(path.name)
-        assert not missing, (
-            f"these gates call the action without declaring id-token: write, so the app-token "
-            f"exchange cannot start: {missing}")
+            assert f"secrets.{ga.SUBSCRIPTION_SECRET}" in text, path.name
+
+    def test_the_API_KEY_MODE_CURRENTLY_HAS_NO_CONSUMER_and_that_is_recorded(self):
+        """A known gap, pinned so it cannot be forgotten rather than silently tolerated.
+
+        `gate_auth.py set api-key` writes a secret that no shipped pipeline reads, because the
+        working configuration does not pass an api_key input and matching it exactly was worth
+        more than the reasoning that said an extra empty input would be harmless. Until a
+        pipeline reads it, choosing that mode sets a credential nothing signs in with — which
+        is precisely the silent no-op this whole harness exists to make impossible.
+
+        When the api_key input is added back and PROVEN on a real pull request, delete this
+        test and assert the consumer instead. Do not delete it to make the suite quiet.
+        """
+        joined = "\n".join(p.read_text(encoding="utf-8") for p in self._pipelines())
+        assert f"secrets.{ga.API_KEY_SECRET}" not in joined, (
+            "a pipeline now reads the API key — replace this test with one asserting that, "
+            "and remove the warning from gate_auth.py")
+
+
+class TestACredentialNothingReads:
+    """Setting a credential no gate consults is a silent no-op, so it is said out loud.
+
+    The shipped gates pass only the subscription token, matching the configuration that
+    demonstrably works. Choosing api-key today therefore sets a secret nothing signs in with —
+    which would look exactly like success until a pull request proved otherwise.
+    """
+
+    def test_the_api_key_mode_warns_that_no_gate_reads_it(self, tmp_path, gh):
+        result = ga.set_credential(tmp_path, "api-key", GOOD_KEY)
+        assert result["ok"] is True          # it WAS set; the warning is about consumers
+        assert "warning" in result
+        assert ga.API_KEY_SECRET in result["warning"]
+
+    def test_the_subscription_mode_does_not_warn(self, tmp_path, gh):
+        # The control: a warning on the working path would be noise, and noise is how a real
+        # warning stops being read.
+        assert "warning" not in ga.set_credential(tmp_path, "subscription", GOOD_TOKEN)
+
+    def test_an_unreadable_payload_never_invents_a_warning(self, monkeypatch):
+        # Fail-safe in the quiet direction: this claims "nothing reads it" only when it could
+        # actually look. Saying so without evidence would be the same sin in reverse.
+        monkeypatch.setattr(ga.Path, "is_dir", lambda self: False)
+        assert ga._any_pipeline_reads("ANYTHING") is True

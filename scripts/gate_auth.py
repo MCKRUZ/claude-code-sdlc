@@ -203,9 +203,35 @@ def set_credential(repo_root: Path, mode: str, credential: str) -> dict:
             f"Check that this account has admin rights before relying on the gates.",
             "not_confirmed")
 
-    return {"ok": True, "repo": slug, "mode": mode, "secret": secret,
-            "cost": MODES[mode]["cost"],
-            "message": f"The review gates will sign in with {MODES[mode]['label']}."}
+    result = {"ok": True, "repo": slug, "mode": mode, "secret": secret,
+              "cost": MODES[mode]["cost"],
+              "message": f"The review gates will sign in with {MODES[mode]['label']}."}
+
+    # A credential nothing reads is the silent no-op this whole harness exists to prevent, so
+    # it is said out loud at the moment of setting rather than discovered on a pull request.
+    # The shipped gates currently pass only the subscription token, matching the configuration
+    # that demonstrably works; until one reads the API key, choosing that mode sets a secret no
+    # gate consults. Remove this when a pipeline reads it AND that has been proven on a real
+    # pull request — not when it merely looks like it should.
+    if mode == "api-key" and not _any_pipeline_reads(secret):
+        result["warning"] = (
+            f"No shipped gate currently reads {secret}, so this on its own will not let them "
+            f"sign in. Use `set subscription` unless you have added the api_key input yourself.")
+        result["message"] = f"{secret} is set — but see the warning."
+    return result
+
+
+def _any_pipeline_reads(secret: str) -> bool:
+    """Does any shipped pipeline actually consult this secret? Best-effort and fail-safe: an
+    unreadable payload reports True, so this never invents a warning it cannot substantiate."""
+    workflows = Path(__file__).resolve().parent.parent / "harness" / "workflows"
+    if not workflows.is_dir():
+        return True
+    try:
+        return any(f"secrets.{secret}" in p.read_text(encoding="utf-8", errors="replace")
+                   for p in workflows.glob("*.yml"))
+    except OSError:
+        return True
 
 
 def clear_credential(repo_root: Path, mode: str) -> dict:
@@ -300,8 +326,11 @@ def main() -> int:
         return 1
 
     print(json.dumps(result, indent=2) if args.json else result["message"])
-    if not args.json and result.get("cost"):
-        print(f"  Cost: {result['cost']}")
+    if not args.json:
+        if result.get("cost"):
+            print(f"  Cost: {result['cost']}")
+        if result.get("warning"):
+            print(f"  WARNING: {result['warning']}", file=sys.stderr)
     return 0
 
 
