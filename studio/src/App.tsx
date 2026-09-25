@@ -193,7 +193,11 @@ function App() {
         </div>
 
         {area === 'closing' ? (
-          <FeatureCompleteScreen projectPath={projectPath} actor={actor} />
+          <FeatureCompleteScreen
+            projectPath={projectPath}
+            actor={actor}
+            buildStage={status.stages.find((s) => s.id === 'build') ?? null}
+          />
         ) : area === 'explain' ? (
           <ExplainViews projectPath={projectPath} />
         ) : area === 'settings' ? (

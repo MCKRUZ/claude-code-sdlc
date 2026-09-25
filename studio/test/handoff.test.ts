@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { handOff, readHandoffOutput } from '../electron/main/handoff'
+import { requirePlugin } from './pluginRoot'
 
 describe('readHandoffOutput', () => {
   it('carries a refusal through with its kind intact', () => {
@@ -80,18 +81,15 @@ describe('readHandoffOutput', () => {
 
 // --- the real thing -------------------------------------------------------------------
 
-function findPluginRoot(): string | null {
-  const candidates = [
-    process.env.SDLC_PLUGIN_ROOT,
-    resolve(__dirname, '..', '..', 'claude-code-sdlc'),
-  ].filter((c): c is string => Boolean(c))
-  return candidates.find((c) => existsSync(join(c, 'scripts', 'handoff.py'))) ?? null
-}
+// Located once, in one place, and LOUD when it cannot be found — a run that skipped the
+// integration tests used to report success, which is how a run that proved nothing came
+// to look like a run that proved everything. See test/pluginRoot.ts.
+const PLUGIN = requirePlugin(__dirname)
 
-const PLUGIN_ROOT = findPluginRoot()
-const SCRIPTS_DIR = PLUGIN_ROOT ? join(PLUGIN_ROOT, 'scripts') : ''
-const VENV_PYTHON = PLUGIN_ROOT ? join(SCRIPTS_DIR, '.venv', 'Scripts', 'python.exe') : ''
-const available = Boolean(PLUGIN_ROOT) && existsSync(VENV_PYTHON)
+const PLUGIN_ROOT = PLUGIN.root
+const SCRIPTS_DIR = PLUGIN.scriptsDir
+const VENV_PYTHON = PLUGIN.python
+const available = PLUGIN.available
 
 let workspace = ''
 afterAll(() => { if (workspace) rmSync(workspace, { recursive: true, force: true }) })

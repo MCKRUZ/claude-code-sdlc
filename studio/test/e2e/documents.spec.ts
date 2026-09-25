@@ -20,20 +20,18 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test'
+import { requirePlugin } from '../pluginRoot'
 
 const root = resolve(import.meta.dirname, '..', '..')
 
-function findPluginRoot(): string | null {
-  const candidates = [
-    process.env.SDLC_PLUGIN_ROOT,
-    resolve(root, '..', 'claude-code-sdlc'),
-  ].filter((c): c is string => Boolean(c))
-  return candidates.find((c) => existsSync(join(c, 'scripts', 'document_shape_cli.py'))) ?? null
-}
+// Located once, in one place, and LOUD when it cannot be found. A window run where 31 of 33
+// tests skipped used to print "2 passed" and exit 0 — indistinguishable from a run that
+// proved everything. See test/pluginRoot.ts.
+const PLUGIN = requirePlugin(join(root, 'test'))
 
-const PLUGIN_ROOT = findPluginRoot()
-const SCRIPTS_DIR = PLUGIN_ROOT ? join(PLUGIN_ROOT, 'scripts') : ''
-const VENV_PYTHON = PLUGIN_ROOT ? join(SCRIPTS_DIR, '.venv', 'Scripts', 'python.exe') : ''
+const PLUGIN_ROOT = PLUGIN.root
+const SCRIPTS_DIR = PLUGIN.scriptsDir
+const VENV_PYTHON = PLUGIN.python
 const REQUIREMENTS = '.sdlc/artifacts/01-requirements/requirements.md'
 
 let app: ElectronApplication

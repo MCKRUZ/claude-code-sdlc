@@ -80,6 +80,10 @@ export interface ProjectStage {
   artifact_count: number
   entered_at: string | null
   completed_at: string | null
+  /** Who signed this stage off, as the plugin recorded it. Null means NOT RECORDED — a stage
+   * advanced before sign-offs existed, or advanced without a name — which is a different and
+   * equally real thing from a stage nobody signed. Never render a null as a blank signature. */
+  signed_off_by: string | null
 }
 
 export interface ProjectStatus {

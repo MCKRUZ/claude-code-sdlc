@@ -24,24 +24,22 @@ import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { readShapeFromBytes, writeShapeUpdates, type ShapeBlock } from '../electron/main/sectionMerge'
+import { requirePlugin } from './pluginRoot'
 
 /** The plugin checkout to test against. `SDLC_PLUGIN_ROOT` wins, so this can be pointed at a
  * worktree — which is where plugin work in progress actually lives, and therefore the only
  * place the scripts this test drives exist before they reach the default branch. */
-function findPluginRoot(): string | null {
-  const candidates = [
-    process.env.SDLC_PLUGIN_ROOT,
-    resolve(__dirname, '..', '..', 'claude-code-sdlc'),
-  ].filter((c): c is string => Boolean(c))
-  return candidates.find((c) => existsSync(join(c, 'scripts', 'document_shape_cli.py'))) ?? null
-}
+// Located once, in one place, and LOUD when it cannot be found — a run that skipped the
+// integration tests used to report success, which is how a run that proved nothing came
+// to look like a run that proved everything. See test/pluginRoot.ts.
+const PLUGIN = requirePlugin(__dirname)
 
-const PLUGIN_ROOT = findPluginRoot()
-const SCRIPTS_DIR = PLUGIN_ROOT ? join(PLUGIN_ROOT, 'scripts') : ''
+const PLUGIN_ROOT = PLUGIN.root
+const SCRIPTS_DIR = PLUGIN.scriptsDir
 const FIXTURES_DIR = PLUGIN_ROOT ? join(SCRIPTS_DIR, 'tests', 'fixtures', 'documents') : ''
 const TEMPLATES_DIR = PLUGIN_ROOT ? join(PLUGIN_ROOT, 'templates') : ''
 
-const available = Boolean(PLUGIN_ROOT) && existsSync(FIXTURES_DIR) && existsSync(TEMPLATES_DIR)
+const available = PLUGIN.available && existsSync(FIXTURES_DIR) && existsSync(TEMPLATES_DIR)
 
 /** Every `<id>.shape.yaml` under templates/, keyed by the template id its fixture is named
  * for — the same pairing the plugin's own round-trip test makes. */

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AdvanceResult, DeclarationStatus, HandoffReportResult } from '../../shared/types'
+import type {
+  AdvanceResult, DeclarationStatus, HandoffReportResult, ProjectStage,
+} from '../../shared/types'
 
 /** Declaring Build finished (spec 0014).
  *
@@ -23,9 +25,15 @@ import type { AdvanceResult, DeclarationStatus, HandoffReportResult } from '../.
 export function FeatureCompleteScreen({
   projectPath,
   actor,
+  buildStage,
 }: {
   projectPath: string
   actor: string
+  /** Build's own stage record, from the project rather than from this session. It is what makes
+   * "already declared" survive the window closing: before it, the screen knew only what had
+   * happened while somebody was watching, so reopening a declared project offered to declare
+   * it again. */
+  buildStage: ProjectStage | null
 }) {
   const [status, setStatus] = useState<DeclarationStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -83,6 +91,14 @@ export function FeatureCompleteScreen({
     setAdvanceBusy(true)
     setAdvance(await window.studio.advanceAfterDeclaration(projectPath, actor))
     setAdvanceBusy(false)
+  }
+
+  // Already declared, according to the PROJECT rather than this session. Checked before
+  // anything else and before the backlog is even read: reopening Studio on a project whose
+  // Build was declared months ago used to show the whole declare-it flow again, because the
+  // screen only ever knew what had happened while somebody was watching it.
+  if (buildStage && buildStage.stage_state === 'signed_off') {
+    return <AlreadyDeclared stage={buildStage} />
   }
 
   if (loading && !status) return <p className="text-sm text-slate-400">Reading the backlog…</p>
@@ -210,6 +226,44 @@ export function FeatureCompleteScreen({
               A declaration needs a name — an unnamed one is an announcement nobody made.
             </span>}
       </div>
+    </div>
+  )
+}
+
+/** Build was declared finished, and the project says so — not this session.
+ *
+ * Two things are said carefully rather than conveniently:
+ *
+ *   A date that was never recorded reads as "not recorded", never as today. Showing the
+ *   current date beside "declared" would invent a fact, and this screen exists to stop exactly
+ *   that kind of invention.
+ *
+ *   A missing NAME says so too. A stage advanced before sign-offs were recorded, or advanced
+ *   without a name, is a real and different thing from one nobody signed — and rendering an
+ *   empty name would put a blank signature line in front of somebody, which reads as signed.
+ */
+function AlreadyDeclared({ stage }: { stage: ProjectStage }) {
+  const when = stage.completed_at
+    ? new Date(stage.completed_at).toLocaleString()
+    : null
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h2 className="text-base font-semibold text-slate-900">Build is declared complete</h2>
+        <p className="mt-1 text-sm text-slate-700">
+          {stage.signed_off_by
+            ? <>Signed off by {stage.signed_off_by}</>
+            : <>No name was recorded against this declaration</>}
+          {when ? <> on {when}.</> : <>. The time was not recorded.</>}
+        </p>
+        <p className="mt-2 text-xs text-slate-500">
+          Read from the project's own record, so it says the same thing on everybody's machine.
+        </p>
+      </div>
+      <p className="text-xs text-slate-400">
+        Late work rides the loop one spec at a time, as usual. Build does not reopen.
+      </p>
     </div>
   )
 }

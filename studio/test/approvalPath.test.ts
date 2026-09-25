@@ -30,21 +30,19 @@ import { getLastSeenCommit, initSettingsPath, setLastSeenCommit } from '../elect
 import { pull, save } from '../electron/main/sync'
 import { getDocumentChanges, openDocument, setField } from '../electron/main/documents'
 import { listVersions } from '../electron/main/history'
+import { requirePlugin } from './pluginRoot'
 
-function findPluginRoot(): string | null {
-  const candidates = [
-    process.env.SDLC_PLUGIN_ROOT,
-    resolve(__dirname, '..', '..', 'claude-code-sdlc'),
-  ].filter((c): c is string => Boolean(c))
-  return candidates.find((c) => existsSync(join(c, 'scripts', 'document_shape_cli.py'))) ?? null
-}
+// Located once, in one place, and LOUD when it cannot be found — a run that skipped the
+// integration tests used to report success, which is how a run that proved nothing came
+// to look like a run that proved everything. See test/pluginRoot.ts.
+const PLUGIN = requirePlugin(__dirname)
 
-const PLUGIN_ROOT = findPluginRoot()
-const SCRIPTS_DIR = PLUGIN_ROOT ? join(PLUGIN_ROOT, 'scripts') : ''
-const VENV_PYTHON = PLUGIN_ROOT ? join(SCRIPTS_DIR, '.venv', 'Scripts', 'python.exe') : ''
+const PLUGIN_ROOT = PLUGIN.root
+const SCRIPTS_DIR = PLUGIN.scriptsDir
+const VENV_PYTHON = PLUGIN.python
 const REQUIREMENTS = '.sdlc/artifacts/01-requirements/requirements.md'
 
-const available = Boolean(PLUGIN_ROOT) && existsSync(VENV_PYTHON)
+const available = PLUGIN.available
 
 let workspace = ''
 let origin = ''
