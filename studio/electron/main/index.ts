@@ -14,7 +14,7 @@ import { confirmRestore, diffVersions, getVersionText, listVersions, previewRest
 import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
-  getLastSeenCommit, getProjectSettings, setLastSeenCommit,
+  getConnectionReport, getLastSeenCommit, getProjectSettings, setLastSeenCommit,
   setRosterPerson, setStageApproval, setTeamLimit,
 } from './settings'
 import { runGitTolerant } from './git'
@@ -235,6 +235,23 @@ function registerIpcHandlers() {
   const noScripts = (relPath: string) => ({
     ok: false, path: relPath, shaped: false, warnings: [], sections: [],
     error: 'claude-code-sdlc plugin scripts not found',
+  })
+
+  ipcMain.handle('studio:getConnectionReport', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return {
+        ok: false,
+        not_universally_expected: {},
+        checks: [{
+          check: 'report',
+          question: 'Is this project wired up?',
+          state: 'unknown' as const,
+          detail: 'claude-code-sdlc plugin scripts not found',
+        }],
+      }
+    }
+    return getConnectionReport(projectPath, scriptsDir)
   })
 
   ipcMain.handle('studio:getProjectSettings', async (_event, projectPath: string) => {

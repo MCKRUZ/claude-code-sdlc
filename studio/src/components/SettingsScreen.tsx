@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ApprovalStage, ConnectionInfo, ProjectSettings, SettingsSection } from '../../shared/types'
+import type {
+  ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, SettingsSection,
+} from '../../shared/types'
 
 /** The project's settings (spec 0012) — read-only in this first cut, and honest about it.
  *
@@ -20,6 +22,7 @@ import type { ApprovalStage, ConnectionInfo, ProjectSettings, SettingsSection } 
 export function SettingsScreen({ projectPath, actor }: { projectPath: string; actor: string }) {
   const [settings, setSettings] = useState<ProjectSettings | null>(null)
   const [connection, setConnection] = useState<ConnectionInfo | null>(null)
+  const [report, setReport] = useState<ConnectionReport | null>(null)
   const [loading, setLoading] = useState(true)
   /** Nothing on this screen changes anything until edit mode is on, and the controls are
    * ABSENT rather than disabled outside it — the same rule spec 0010's document editor
@@ -35,12 +38,14 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, c] = await Promise.all([
+    const [s, c, r] = await Promise.all([
       window.studio.getProjectSettings(projectPath),
       window.studio.getConnectionInfo(projectPath),
+      window.studio.getConnectionReport(projectPath),
     ])
     setSettings(s)
     setConnection(c)
+    setReport(r)
     setLoading(false)
   }, [projectPath])
 
@@ -171,6 +176,46 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
           actually decides is whether a direct push is refused.
         </p>
       </Section>
+
+      {report && (
+        <Section title="Connection checks" file="" fileLabel="">
+          <ul className="space-y-2">
+            {report.checks.map((c) => (
+              <li key={c.check} className="flex items-baseline gap-3 text-sm">
+                {/* Three states, never two. "Could not tell" is its own answer and reads
+                    differently from "no", because they send a person to different places. */}
+                <span
+                  className={`w-20 shrink-0 text-xs font-medium ${
+                    c.state === 'yes' ? 'text-[var(--color-command-ok)]'
+                      : c.state === 'no' ? 'text-amber-700'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {c.state === 'yes' ? 'yes' : c.state === 'no' ? 'no' : 'could not tell'}
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-slate-900">{c.question}</span>
+                  <span className="block text-xs text-slate-500">{c.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {Object.keys(report.not_universally_expected).length > 0 && (
+            <details className="mt-3">
+              <summary className="cursor-pointer text-xs text-slate-400">
+                Pipelines not expected of every project
+              </summary>
+              <ul className="mt-1 space-y-0.5">
+                {Object.entries(report.not_universally_expected).map(([name, why]) => (
+                  <li key={name} className="text-xs text-slate-500">
+                    <span className="font-mono">{name}</span> — {why}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </Section>
+      )}
 
       <Section title="People and teams" file={settings.roster.file} section={settings.roster}>
         {settings.roster.present && settings.roster.people.length > 0 ? (

@@ -207,6 +207,21 @@ test.describe('[spec 0011] the Build board in the real window', () => {
       await expect(page.getByText(/could not be read cleanly/)).toHaveCount(0)
     })
 
+    test('the connection checks distinguish no from could-not-tell', async () => {
+      // Three states, never two. The fixture has no git remote, so the host-dependent checks
+      // genuinely cannot look — and reporting those as "no" would send a person to fix a
+      // project that is not broken.
+      await expect(page.getByText(/Signed in to the code host\?/)).toBeVisible()
+      await expect(page.getByText(/Any check the playbook expects but is missing\?/)).toBeVisible()
+      await expect(page.getByText(/could not tell/).first()).toBeVisible()
+    })
+
+    test('a pipeline that is not expected of every project says why', async () => {
+      // An absence with a reason is information; an absence without one reads as a gap.
+      await page.getByText(/Pipelines not expected of every project/).click()
+      await expect(page.getByText(/only a project that deploys needs this/).first()).toBeVisible()
+    })
+
     test('each fixed rule says where it is actually enforced', async () => {
       // A rule listed without that is a claim nobody can check — and spec 0012's own
       // acceptance check was amended because one of them was not enforced anywhere.

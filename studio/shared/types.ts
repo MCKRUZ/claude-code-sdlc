@@ -503,6 +503,26 @@ export interface SettingChangeResult {
   refusal?: { kind: string; message: string }
 }
 
+/** One answered question about whether this project is wired up.
+ *
+ * `state` is three-valued on purpose. "unknown" means the check could not look — which is a
+ * real answer, and a different one from "no". Reporting "no" for something unmeasured sends a
+ * person to fix what was never broken. */
+export interface ConnectionCheck {
+  check: string
+  question: string
+  state: 'yes' | 'no' | 'unknown'
+  detail: string
+}
+
+export interface ConnectionReport {
+  ok: boolean
+  checks: ConnectionCheck[]
+  /** Pipelines deliberately not expected of every project, each with its reason — so the
+   * screen can explain an absence rather than implying it is a gap. */
+  not_universally_expected: Record<string, string>
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -565,6 +585,9 @@ export interface StudioApi {
   getBoard(projectPath: string): Promise<Board>
   /** Every project setting and the file that owns it. Read-only. */
   getProjectSettings(projectPath: string): Promise<ProjectSettings>
+  /** Whether this project is actually wired up — signed in, readable, able to open pull
+   * requests, and holding every check its playbook expects. Read-only. */
+  getConnectionReport(projectPath: string): Promise<ConnectionReport>
   /** Add or update someone in the roster. The PLUGIN validates the whole roster first and
    * refuses a change that would break it. Writes the file only; committing is a separate,
    * deliberate save. */

@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
 import type {
-  FileSyncState, ProjectSettings, ProjectSyncState, RecentProject,
+  ConnectionReport, FileSyncState, ProjectSettings, ProjectSyncState, RecentProject,
   SettingChangeResult, Settings,
 } from '../../shared/types'
 
@@ -225,4 +225,34 @@ export function setStageApproval(
   const args = ['approval', stage, required ? '--on' : '--off']
   if (approver?.trim()) args.push('--approver', approver.trim())
   return runSetSetting(projectPath, pluginScriptsDir, args)
+}
+
+/** Whether this project is wired up, as the plugin reports it.
+ *
+ * Studio judges none of it. In particular it does not decide which checks a project ought to
+ * have — that list comes from the playbook's own pipeline definitions, so the screen and the
+ * pipelines cannot disagree about what is expected. */
+export async function getConnectionReport(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<ConnectionReport> {
+  const entry = await runPluginScript(pluginScriptsDir, 'connection_report.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as ConnectionReport
+  } catch {
+    // An unreadable answer is reported as one unknown check rather than an empty list: an
+    // empty list would read as "nothing to check here", which is a different claim.
+    return {
+      ok: false,
+      checks: [{
+        check: 'report',
+        question: 'Is this project wired up?',
+        state: 'unknown',
+        detail: entry.stderr.trim() || 'The connection report could not be read.',
+      }],
+      not_universally_expected: {},
+    }
+  }
 }
