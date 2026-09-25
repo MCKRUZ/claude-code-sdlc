@@ -578,6 +578,10 @@ export interface GateEntry {
    * alone, so calling it missing would be a false alarm. */
   state: 'installed' | 'missing' | 'not_a_pipeline'
   detail: string
+  /** Where this project's description of the gate disagrees with the playbook's, in both
+   * their words. Reported, never resolved — a project may legitimately have adapted a gate,
+   * and which copy is right is not the tool's call. Absent when they agree. */
+  differs?: string
 }
 
 export interface GateInventory {
@@ -586,6 +590,13 @@ export interface GateInventory {
   guide_source: string | null
   gates: GateEntry[]
   unexpected: Array<{ file: string; detail: string }>
+  /** Gates the playbook expects that this project's own guide never lists — so nothing in
+   * `gates` checked for them. The case reading only the project's copy cannot surface: a gate
+   * dropped from the project's description simply stops being asked about. */
+  not_in_project_guide?: Array<{ gate: string; file: string; blocks: string; detail: string }>
+  /** Whether a comparison happened at all. Without it, "no disagreements" and "nothing was
+   * compared" look identical. */
+  compared_with_playbook?: boolean
   bypass_ledgers: Array<{ file: string; gate: string; present: boolean }>
   error: string | null
 }
@@ -632,8 +643,15 @@ export interface DeclarationBlocker {
     developer?: string | null
     risk?: string
     reason?: string
+    /** What this spec's own state already says about whether somebody has decided to finish
+     * it: being_finished (in progress), needs_a_call (ready but nobody has started it), or
+     * not_committed (still a draft). Derived by the plugin from what is recorded — Studio does
+     * not work it out, so a screen and the command that refuses cannot disagree. */
+    intent?: 'being_finished' | 'needs_a_call' | 'not_committed' | string
   }>
   teams?: string[]
+  /** How many unfinished specs fall in each of those groups. */
+  by_intent?: Record<string, number>
 }
 
 export interface DeclarationStatus {

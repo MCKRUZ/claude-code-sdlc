@@ -192,6 +192,15 @@ export function FeatureCompleteScreen({
                           <li key={spec.spec} className="text-sm">
                             <span className="font-mono text-xs text-amber-800">{spec.spec}</span>{' '}
                             <span className="text-amber-900">{spec.name}</span>
+                            {/* The plugin's reading of what this spec's own state says about
+                                whether anybody has decided to finish it. Shown against the spec
+                                rather than only as a count, because the one that needs a person
+                                is the one they have to be able to pick out. */}
+                            {spec.intent === 'needs_a_call' && (
+                              <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
+                                needs a decision
+                              </span>
+                            )}
                             <span className="ml-2 text-xs text-amber-800">
                               {spec.status}
                               {/* Risk is shown because spec 0014 asks for it, and because it is

@@ -319,7 +319,36 @@ function GatesView({ projectPath }: { projectPath: string }) {
           <span className="font-mono text-xs">{inventory.guide_source}</span> — Studio does not
           describe the gates itself, so this screen and the pipelines cannot disagree.
         </p>
+        {/* Said out loud rather than implied. This project supplies BOTH its gate list and the
+            files that list names, so on its own the screen can only report what the project
+            claims. Whether it was checked against the standard is the thing that makes the
+            difference, and "nothing was compared" must not read like "nothing disagreed". */}
+        <p className="mt-1 text-xs text-slate-400">
+          {inventory.compared_with_playbook
+            ? 'Checked against the playbook\'s own copy, and any disagreement is shown below.'
+            : 'This is what the project says about itself; it has not been checked against the playbook.'}
+        </p>
       </div>
+
+      {(inventory.not_in_project_guide?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="text-sm font-medium text-amber-900">
+            The playbook expects these, and this project's guide does not list them
+          </h3>
+          <p className="mt-1 text-xs text-amber-800">
+            Nothing above checked for them — a gate dropped from a project's own description
+            stops being asked about, so its absence looks like agreement.
+          </p>
+          <ul className="mt-2 space-y-1">
+            {inventory.not_in_project_guide!.map((d) => (
+              <li key={d.gate} className="text-sm text-amber-900">
+                <span className="font-medium">{d.gate}</span>
+                <span className="ml-2 text-xs text-amber-800">{d.blocks}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <GateList title="On every change here" gates={installed} tone="installed" />
 
@@ -399,6 +428,14 @@ function GateList({
             <span className="mt-0.5 block text-xs text-slate-600">
               Runs on {g.fires_on || 'unstated'} · {g.blocks || 'unstated'}
             </span>
+            {/* Shown in both their words, and not resolved: a project may legitimately have
+                adapted a gate, and which copy is right is not this screen's to decide. What
+                it owes the reader is that the two documents do not say the same thing. */}
+            {g.differs && (
+              <span className="mt-1 block rounded bg-amber-100 px-2 py-1 text-xs text-amber-900">
+                Differs from the playbook — {g.differs}
+              </span>
+            )}
           </li>
         ))}
       </ul>
