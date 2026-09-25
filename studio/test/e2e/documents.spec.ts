@@ -91,9 +91,19 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   })
 
   test.afterAll(async () => {
-    if (page) await page.screenshot({ path: 'test/screenshots/spec-0010-documents.png' }).catch(() => {})
-    if (app) await app.close()
-    if (workspace) rmSync(workspace, { recursive: true, force: true })
+    // The same teardown race board.spec.ts already fixed, which this file never got. Studio
+    // runs a repeating background pull that spawns git, so at shutdown the application can be
+    // mid-subprocess while this tries to delete the folder underneath it — and on Windows a
+    // directory with live handles does not go quietly. Closing and deleting together then
+    // exceed the default 30s hook budget, which failed the whole file while every assertion
+    // in it had passed. Each step is guarded so one slow step cannot strand the others, and a
+    // temp directory that survives is the operating system's problem, never a test result.
+    test.setTimeout(120_000)
+    await page?.screenshot({ path: 'test/screenshots/spec-0010-documents.png' }).catch(() => {})
+    await app?.close().catch(() => {})
+    try {
+      if (workspace) rmSync(workspace, { recursive: true, force: true })
+    } catch { /* a leftover temp directory is not a failed test */ }
   })
 
   test('opens the project from the welcome screen', async () => {
