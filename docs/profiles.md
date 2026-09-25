@@ -170,7 +170,7 @@ Note: The `microsoft-enterprise` profile also uses non-schema fields `auth_patte
 
 ### `microsoft-enterprise`
 
-A full-featured enterprise profile for C#/.NET 8 + Angular 17 projects deployed to Azure with SOC 2 compliance.
+A full-featured enterprise profile for C#/.NET 10 + Angular 22 projects deployed to Azure with SOC 2 compliance.
 
 **Location:** `profiles/microsoft-enterprise/profile.yaml`
 
@@ -184,12 +184,12 @@ company:
 stack:
   backend:
     language: csharp
-    framework: dotnet-8
+    framework: dotnet-10
     orm: ef-core
     testing: xunit
   frontend:
     language: typescript
-    framework: angular-17
+    framework: angular-22
     state: ngrx
     e2e: playwright
   database:
@@ -246,7 +246,7 @@ conventions:
 
 **Key characteristics:**
 
-- **Stack** -- Full Microsoft stack with C#/.NET 8 backend (Entity Framework Core, xUnit), Angular 17 frontend (NgRx state management, Playwright E2E), SQL Server database, and Azure cloud services including Entra ID for authentication, Key Vault for secrets, and Application Insights for monitoring.
+- **Stack** -- Full Microsoft stack with C#/.NET 10 backend (Entity Framework Core, xUnit), Angular 22 frontend (NgRx state management, Playwright E2E), SQL Server database, and Azure cloud services including Entra ID for authentication, Key Vault for secrets, and Application Insights for monitoring.
 - **Quality** -- 80% minimum coverage across the codebase, 100% coverage on critical paths (auth, payments). TDD is mandatory. Both code review and security review are required. Four evaluation criteria enforce Result pattern usage (warn), immutable NgRx state (fail), API documentation (warn), and FluentValidation on all DTOs (fail).
 - **Compliance** -- SOC 2 framework enabled, which loads `compliance/soc2-gates.yaml` containing 10 phase-specific gate checks (CC6.1 access controls, CC6.6 system boundaries, CC7.1 change management, CC7.2 vulnerability management, CC8.1 code review, CC2.1 documentation, CC7.4 deployment). Audit trail is required. Change approval is set to `peer-review`.
 - **Conventions** -- Conventional commits (`type: description`), feature branches (`type/ticket-description`), immutability enforcement, and no `console.log` in production code.

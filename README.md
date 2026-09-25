@@ -146,7 +146,7 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 
 ### microsoft-enterprise
 Full enterprise stack with compliance:
-- **Stack:** C#/.NET 8, Angular 17, SQL Server, Azure
+- **Stack:** C#/.NET 10, Angular 22, SQL Server, Azure
 - **Quality:** 80% coverage minimum, 100% critical paths, TDD required
 - **Compliance:** SOC 2 gates at every phase transition
 - **Conventions:** Conventional commits, immutable patterns, no console.log
@@ -156,7 +156,7 @@ Full enterprise stack with compliance:
 
 ### ado-enterprise
 microsoft-enterprise's stack, hosted on Azure DevOps:
-- **Stack:** C#/.NET 8, Angular 17, SQL Server, Azure (identical to microsoft-enterprise)
+- **Stack:** C#/.NET 10, Angular 22, SQL Server, Azure (identical to microsoft-enterprise)
 - **Repos & CI/CD:** Azure Repos + Azure Pipelines (`.azuredevops/pipelines/`, branch policies via `az repos policy`)
 - **Quality / Compliance / Conventions:** same as microsoft-enterprise (80% coverage, TDD, SOC 2 gates)
 - **Install is platform-aware:** the harness installer ships no GitHub payload to an ADO
