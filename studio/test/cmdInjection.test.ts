@@ -44,9 +44,17 @@ describe('runCommand refuses interpreter metacharacters on the shim path', () =>
   )
 
   it('leaves ordinary values alone — the guard must not break normal use', async () => {
-    // Runs for real; `cmd.exe /c echo` is harmless and proves the guard let it through.
+    // The refusal happens BEFORE anything is spawned, so this half is meaningful on every
+    // platform: a value with no metacharacters must get past the guard.
     const entry = await runCommand('cmd.exe', ['/c', 'echo', 'studio/1758700000000'], dir)
     expect(entry.stderr).not.toContain('Refused to run')
+  })
+
+  it.skipIf(!onWindows)('and an allowed value reaches the interpreter intact', async () => {
+    // Separate, and Windows-only, because it actually runs cmd.exe. Asserting on its output
+    // anywhere else asserts on the absence of an interpreter, which is not this guard's
+    // doing — it failed in CI on Linux for exactly that reason.
+    const entry = await runCommand('cmd.exe', ['/c', 'echo', 'studio/1758700000000'], dir)
     expect(entry.stdout).toContain('studio/1758700000000')
   })
 
