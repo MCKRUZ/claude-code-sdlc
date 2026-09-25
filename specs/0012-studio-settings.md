@@ -47,7 +47,7 @@ every change to them shows up in history like any other change.
 
 - [ ] The repository section shows the repository, branch, local folder and signed-in account, and lists
       what Studio may read and what it may write, marking the code as read-only.
-- [ ] Connection checks report, each with a plain-language result: signed in, can read, can open pull
+- [x] Connection checks report, each with a plain-language result: signed in, can read, can open pull
       requests, whether the default branch is protected, which checks exist, and any check the playbook
       expects that is missing.
 - [x] Each person in the roster shows their code-host handle, team, the roles they may hold and the
@@ -90,11 +90,15 @@ validation and destroyed all nine comments its author had written.
 
 **NOT BUILT — missing features, not merely unverified:**
 
-1. **Connection checks.** The screen shows the repository, branch, folder, account and a
-   best-guess at branch protection. It does NOT run the checks this spec asks for: can read,
-   can open pull requests, which checks exist, and which check the playbook expects but is
-   missing. That last one is the valuable half and needs the profile's expected-checks list
-   compared against the code host's actual ones.
+1. ~~Connection checks.~~ **BUILT** — six questions, each with a plain-language result and
+   each able to answer "could not tell", which is a third answer and not a failure. The
+   valuable one compares the playbook's own pipeline definitions against what the project has
+   installed, so the screen and the pipelines cannot disagree about what is expected.
+   **It found a real gap on its first run, in this very repository:** of the five pipelines
+   the playbook expects of every project, only CI is installed here. The correctness review,
+   dependency scan, grader and security review ship to clients and do not run on the plugin
+   itself. Reported to Matt rather than fixed — installing them changes what every pull
+   request must pass.
 2. **Choosing a person from those who already have repository access.** Adding someone is a
    typed handle today. The second half of that check IS satisfied and by construction —
    nothing in Studio invites anyone or changes any permission — but offering only people who
