@@ -1,0 +1,353 @@
+"""Change a project setting — validated first, written second (spec 0012).
+
+Three settings, three files, three rules. Each verb writes only after the result would pass
+the same validation the read side applies, so a settings screen cannot leave a project in a
+state its own tooling rejects. The failure that prevents is specific: a roster saved with a
+typo makes every later spec fail its owner check, and whoever broke it is three screens away
+by the time anyone notices.
+
+  person    Add or update someone in the roster.
+  limit     Set a team's work-in-progress limit.
+  approval  Turn change-approval on or off for a stage.
+
+NOTHING IS REGENERATED. Every write is a targeted edit that leaves the rest of the file
+byte-for-byte alone, which matters more than it sounds: the first version of the roster write
+parsed the file, changed the object and dumped it back. That was correct, passed validation,
+and silently destroyed all nine comments its author had written. Losing what a person wrote is
+the exact failure this whole product exists to prevent, so a settings screen must not be the
+one place it happens. The same rule the document shape library follows for markdown applies
+here.
+
+Writes the file and nothing else: no commit, no branch, no push. Reaching the repository is
+spec 0009's save, which is what makes a settings change an ordinary commit with a person and a
+reason on it rather than a silent mutation.
+
+Refusals happen BEFORE the file is touched, so a refused change leaves it exactly as it was.
+"""
+
+import argparse
+import json
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import approval_settings as aps
+import cadence_plan as cp
+import validate_team as vt
+
+HANDLE_RE = re.compile(r"^@[A-Za-z0-9][A-Za-z0-9-]*$")
+FIELD_ORDER = ("name", "team", "roles", "signs_off")
+
+
+class SettingError(Exception):
+    def __init__(self, message: str, kind: str = "other"):
+        super().__init__(message)
+        self.kind = kind
+
+
+def _roster_path(repo_root: Path) -> Path:
+    return repo_root / ".sdlc" / "team.yaml"
+
+
+def _load_roster(repo_root: Path) -> dict:
+    path = _roster_path(repo_root)
+    if not path.exists():
+        raise SettingError(
+            f"This project has no roster yet ({path.name}). Create one before adding people — "
+            f"see templates/team/team.example.yaml.", "no_roster")
+    try:
+        return vt.load_yaml(path)
+    except Exception as e:  # noqa: BLE001
+        raise SettingError(f"The roster could not be read: {e}", "malformed") from e
+
+
+def _check_roster_text(text: str) -> None:
+    """Parse the PROPOSED text and validate the whole roster before it is written.
+
+    The whole file, not just the changed row: a valid row can still break the roster — a team
+    that no longer exists, a lead who was removed."""
+    try:
+        roster = vt.yaml.safe_load(text) if hasattr(vt, "yaml") else None
+    except Exception as e:  # noqa: BLE001
+        raise SettingError(f"That change would leave the roster unreadable: {e}", "would_be_invalid") from e
+    if roster is None:
+        import yaml as _yaml
+        try:
+            roster = _yaml.safe_load(text)
+        except Exception as e:  # noqa: BLE001
+            raise SettingError(f"That change would leave the roster unreadable: {e}",
+                               "would_be_invalid") from e
+
+    errors = vt.validate_team(roster, vt.load_yaml(vt.SCHEMA_PATH))
+    if errors:
+        raise SettingError(
+            "That change would leave the roster invalid: " + "; ".join(errors), "would_be_invalid")
+
+
+def _render_field(indent: str, key: str, value, eol: str) -> str:
+    if isinstance(value, list):
+        return f"{indent}{key}: [{', '.join(str(v) for v in value)}]{eol}"
+    return f'{indent}{key}: "{value}"{eol}'
+
+
+def _person_span(lines: list[str], handle: str) -> tuple[int, int, str] | None:
+    """(start, end, indent) of one person's entry, or None if they are not listed."""
+    pattern = re.compile(r"^(\s*)-\s+handle:\s*[\"']?" + re.escape(handle) + r"[\"']?\s*$")
+    for i, line in enumerate(lines):
+        m = pattern.match(line.rstrip("\r\n"))
+        if not m:
+            continue
+        indent = m.group(1)
+        for j in range(i + 1, len(lines)):
+            stripped = lines[j].rstrip("\r\n")
+            if not stripped.strip():
+                continue
+            # The entry ends at the next sibling list item, or the next top-level key.
+            if re.match(r"^" + re.escape(indent) + r"-\s", stripped):
+                return (i, j, indent)
+            if not stripped.startswith(indent + " "):
+                return (i, j, indent)
+        return (i, len(lines), indent)
+    return None
+
+
+def apply_person_edit(text: str, handle: str, fields: dict) -> str:
+    """Add or update one person, editing the text and leaving everything else untouched."""
+    lines = text.splitlines(keepends=True)
+    eol = "\r\n" if text.find("\r\n") != -1 else "\n"
+    span = _person_span(lines, handle)
+    given = {k: v for k, v in fields.items() if v is not None}
+
+    if span is not None:
+        start, end, indent = span
+        body_indent = indent + "  "
+        rebuilt = [lines[start]]
+        seen: set[str] = set()
+        for line in lines[start + 1:end]:
+            key_match = re.match(r"^\s*([A-Za-z_]+):", line.rstrip("\r\n"))
+            key = key_match.group(1) if key_match else None
+            if key in given:
+                # Replaced in place, so the entry's own ordering and any comment lines around
+                # it survive exactly as the author left them.
+                rebuilt.append(_render_field(body_indent, key, given[key], eol))
+                seen.add(key)
+            else:
+                rebuilt.append(line)
+        # Fields this person did not have yet go after the ones they did.
+        for key in FIELD_ORDER:
+            if key in given and key not in seen:
+                rebuilt.append(_render_field(body_indent, key, given[key], eol))
+        return "".join(lines[:start] + rebuilt + lines[end:])
+
+    # A new person: appended to the end of the people list, in the file's own indentation.
+    people_at = next(
+        (i for i, l in enumerate(lines) if re.match(r"^people:\s*$", l.rstrip("\r\n"))), None)
+    if people_at is None:
+        raise SettingError("The roster has no `people:` list to add to.", "malformed")
+
+    item_indent = next(
+        (re.match(r"^(\s*)-\s", l).group(1) for l in lines[people_at + 1:]
+         if re.match(r"^\s*-\s", l)), "  ")
+    insert_at = len(lines)
+    for j in range(people_at + 1, len(lines)):
+        stripped = lines[j].rstrip("\r\n")
+        if stripped.strip() and not stripped.startswith((" ", "-")):
+            insert_at = j
+            break
+
+    entry = [f'{item_indent}- handle: "{handle}"{eol}']
+    for key in FIELD_ORDER:
+        if key in given:
+            entry.append(_render_field(item_indent + "  ", key, given[key], eol))
+    # A blank line between entries, matching how the example roster separates people.
+    if insert_at > 0 and lines[insert_at - 1].strip():
+        entry.insert(0, eol)
+    return "".join(lines[:insert_at] + entry + lines[insert_at:])
+
+
+def set_person(repo_root: Path, handle: str, name: str | None, team: str | None,
+               roles: list[str] | None, signs_off: list[str] | None) -> dict:
+    if not HANDLE_RE.match(handle or ""):
+        raise SettingError(
+            f"'{handle}' is not a code-host handle — expected something like @sam-k.", "bad_handle")
+
+    roster = _load_roster(repo_root)
+    known_teams = {t.get("name") for t in roster.get("teams") or []}
+    if team and team not in known_teams:
+        raise SettingError(
+            f"'{team}' is not a team in this roster. Known teams: "
+            f"{', '.join(sorted(n for n in known_teams if n)) or 'none'}.", "unknown_team")
+    for role in roles or []:
+        if role not in vt.ROLES:
+            raise SettingError(
+                f"'{role}' is not a role — expected one of {', '.join(vt.ROLES)}.", "unknown_role")
+
+    path = _roster_path(repo_root)
+    original = path.read_text(encoding="utf-8")
+    updating = any(p.get("handle") == handle for p in roster.get("people") or [])
+    proposed = apply_person_edit(
+        original, handle,
+        {"name": name, "team": team, "roles": roles, "signs_off": signs_off})
+
+    _check_roster_text(proposed)
+    path.write_text(proposed, encoding="utf-8")
+    return {"ok": True, "changed": True, "file": ".sdlc/team.yaml",
+            "message": f"{'Updated' if updating else 'Added'} {handle}.",
+            "note": "This records that they may hold a role. It grants nobody access to the "
+                    "repository — that stays with the code host."}
+
+
+def replace_limit_row(text: str, team: str, limit: int) -> tuple[str, bool]:
+    """Rewrite one row of the `## WIP Limits` table, leaving every other byte alone.
+
+    A targeted row edit rather than regenerating the table: the cadence plan is a hand-written
+    document with prose around that table, and regenerating it would reformat somebody's
+    writing in order to change one number."""
+    out, found = [], False
+    for line in text.splitlines(keepends=True):
+        stripped = line.strip()
+        if not found and stripped.startswith("|"):
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if cells and cells[0] == team and len(cells) >= 2:
+                eol = line[len(line.rstrip("\r\n")):]
+                cells[1] = str(limit)
+                out.append("| " + " | ".join(cells) + " |" + eol)
+                found = True
+                continue
+        out.append(line)
+    return "".join(out), found
+
+
+def set_limit(repo_root: Path, team: str, limit: int) -> dict:
+    if limit < 1:
+        raise SettingError(f"A work-in-progress limit must be at least 1, not {limit}.", "bad_limit")
+
+    roster_path = _roster_path(repo_root)
+    if roster_path.exists():
+        known = {t.get("name") for t in (vt.load_yaml(roster_path).get("teams") or [])}
+        if team not in known:
+            raise SettingError(
+                f"'{team}' is not a team in this project's roster. Known teams: "
+                f"{', '.join(sorted(n for n in known if n)) or 'none'}.", "unknown_team")
+
+    path = cp.resolve_cadence_plan_path(repo_root)
+    if not path.exists():
+        raise SettingError(
+            f"This project has no cadence plan yet ({path.name}), which is where per-team "
+            f"limits live. It is created in Foundation.", "no_cadence_plan")
+
+    text = path.read_text(encoding="utf-8")
+    proposed, found = replace_limit_row(text, team, limit)
+    if not found:
+        raise SettingError(
+            f"The cadence plan has no `## WIP Limits` row for '{team}'. Add the row first — "
+            f"this changes an existing limit, it does not invent the table.", "no_row")
+
+    _, errors = cp.parse_limits_block(proposed)
+    if errors:
+        raise SettingError(
+            "That change would leave the WIP Limits table unreadable: " + "; ".join(errors),
+            "would_be_invalid")
+
+    path.write_text(proposed, encoding="utf-8")
+    return {"ok": True, "changed": True, "file": path.name,
+            "message": f"{team}'s limit is now {limit}.",
+            "note": "The cadence plan is a document, so this change appears in its history "
+                    "like any other edit."}
+
+
+def set_approval(repo_root: Path, stage: str, required: bool, approver: str | None) -> dict:
+    if required and not (approver or "").strip():
+        raise SettingError(
+            "Turning approval on needs a named approver — 'somebody must approve this' with "
+            "nobody named is not a rule anyone can act on.", "approver_required")
+
+    roster_path = _roster_path(repo_root)
+    known = set(vt.people_handles(vt.load_yaml(roster_path))) if roster_path.exists() else None
+    if required and known is not None and approver not in known:
+        raise SettingError(
+            f"'{approver}' is not in this project's roster, so nothing could route an approval "
+            f"to them. Add them to the roster first.", "unknown_approver")
+
+    path = repo_root / ".sdlc" / "approval-settings.yaml"
+    existing = {}
+    if path.exists():
+        existing, errors = aps.parse_approval_settings(path.read_text(encoding="utf-8"), known)
+        if errors:
+            raise SettingError(
+                "The existing approval settings could not be read, so this change is refused "
+                "rather than written over them: " + "; ".join(errors), "malformed")
+
+    import yaml
+    existing[stage] = {"approval_required": required,
+                       "approver": approver.strip() if required and approver else None}
+    doc = {"stages": [{"stage": s, **v} for s, v in sorted(existing.items())]}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    return {"ok": True, "changed": True, "file": ".sdlc/approval-settings.yaml",
+            "message": f"Approval for '{stage}' is {'on' if required else 'off'}"
+                       + (f", approved by {approver}." if required else "."),
+            "note": "While a draft waits, everyone else keeps seeing the signed-off version."}
+
+
+def resolve_repo_root(args) -> Path:
+    if args.state:
+        state = Path(args.state)
+        if not state.exists():
+            print(f"Error: State file not found: {state}", file=sys.stderr)
+            sys.exit(1)
+        return state.resolve().parent.parent
+    return Path(args.repo).resolve()
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Change a project setting — validated, then written")
+    src = parser.add_mutually_exclusive_group()
+    src.add_argument("--state", help="Path to .sdlc/state.yaml (workflow mode)")
+    src.add_argument("--repo", default=".", help="Target repo root (standalone mode; default: cwd)")
+    parser.add_argument("--json", action="store_true", help="Emit the outcome as JSON")
+    sub = parser.add_subparsers(dest="action", required=True)
+
+    person = sub.add_parser("person", help="Add or update someone in the roster")
+    person.add_argument("handle", help="Code-host handle, e.g. @sam-k")
+    person.add_argument("--name")
+    person.add_argument("--team")
+    person.add_argument("--roles", nargs="*", help=f"Any of {', '.join(vt.ROLES)}")
+    person.add_argument("--signs-off", nargs="*", metavar="STAGE")
+
+    limit = sub.add_parser("limit", help="Set a team's work-in-progress limit")
+    limit.add_argument("team")
+    limit.add_argument("limit", type=int)
+
+    approval = sub.add_parser("approval", help="Turn change-approval on or off for a stage")
+    approval.add_argument("stage")
+    approval.add_argument("--on", dest="required", action="store_true")
+    approval.add_argument("--off", dest="required", action="store_false")
+    approval.add_argument("--approver", default=None)
+    approval.set_defaults(required=True)
+
+    args = parser.parse_args()
+    repo_root = resolve_repo_root(args)
+
+    try:
+        if args.action == "person":
+            result = set_person(repo_root, args.handle, args.name, args.team,
+                               args.roles, args.signs_off)
+        elif args.action == "limit":
+            result = set_limit(repo_root, args.team, args.limit)
+        else:
+            result = set_approval(repo_root, args.stage, args.required, args.approver)
+    except SettingError as e:
+        if args.json:
+            print(json.dumps({"ok": False, "refusal": {"kind": e.kind, "message": str(e)}}, indent=2))
+        else:
+            print(f"Refused: {e}")
+        sys.exit(1)
+
+    print(json.dumps(result, indent=2) if args.json else f"{result['message']}\n  {result['note']}")
+
+
+if __name__ == "__main__":
+    main()
