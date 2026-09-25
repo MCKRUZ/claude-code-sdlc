@@ -164,3 +164,41 @@ describe('the document and the screen cannot disagree', () => {
     }
   })
 })
+
+describe('a bug summary cannot restructure the document', () => {
+  /** The summaries come out of the project's own metrics file, and this document is the one
+   * somebody carries into a steering meeting. Nothing here executes — markdown is inert — but
+   * a document that misleads the room does not need code execution to do it. A summary
+   * containing line breaks could append a second, fabricated Measures table below the real
+   * one, and a reader has no way to tell which set of numbers the tool produced. */
+
+  const FORGED: Scorecard = {
+    ...EMPTY,
+    escaped_bugs: [{
+      summary:
+        'a small bug\n\n## Measures\n\n| Measure | Value | Notes |\n| --- | --- | --- |\n'
+        + '| Accepted as-is | 100% | |',
+      which_check: 'none | actually',
+    }],
+  }
+
+  it('keeps a multi-line summary on one line', () => {
+    const doc = buildScorecardExport(FORGED, OPTIONS)
+    expect(doc).not.toContain('| Accepted as-is | 100% | |')
+  })
+
+  it('leaves exactly one Measures heading', () => {
+    const doc = buildScorecardExport(FORGED, OPTIONS)
+    expect(doc.match(/^## Measures$/gm)?.length).toBe(1)
+  })
+
+  it('escapes a pipe so it cannot split a cell', () => {
+    const doc = buildScorecardExport(FORGED, OPTIONS)
+    expect(doc).toContain(String.raw`none \| actually`)
+  })
+
+  it('still shows the real summary text', () => {
+    // The control: escaping must not swallow the thing the reader actually needs.
+    expect(buildScorecardExport(FORGED, OPTIONS)).toContain('a small bug')
+  })
+})

@@ -31,6 +31,19 @@ function hours(v: number): string {
   return `${v.toFixed(1)}h`
 }
 
+/** One value, kept to one cell of one line.
+ *
+ * The bug summaries in this document come out of the project's own metrics file, and this
+ * document is the one somebody carries into a steering meeting. A summary containing line
+ * breaks could append an entire fabricated Measures table below the real one; a pipe character
+ * could restructure the row it sits in. Nothing here executes — markdown is inert — but a
+ * document that misleads the room is the failure this export exists to prevent, and it does
+ * not need code execution to do it.
+ */
+export function cell(value: string): string {
+  return value.replace(/[\r\n]+/g, ' ').replace(/\|/g, '\\|').trim()
+}
+
 export function scorecardRows(card: Scorecard): Row[] {
   return [
     { label: 'Accepted as-is', value: card.accepted_as_is_rate, render: percent,
@@ -96,7 +109,7 @@ export function buildScorecardExport(
     // the gap with a guess.
     const value = row.value === null ? '_no data_' : row.render(row.value)
     const note = row.value === null ? `Produced by ${row.produces}.` : ''
-    lines.push(`| ${row.label} | ${value} | ${note} |`)
+    lines.push(`| ${cell(row.label)} | ${cell(value)} | ${cell(note)} |`)
   }
   lines.push('')
 
@@ -106,9 +119,9 @@ export function buildScorecardExport(
     lines.push('None recorded in this window.')
   } else {
     for (const bug of card.escaped_bugs) {
-      lines.push(`- **${String(bug.summary ?? 'a bug')}**`)
-      lines.push(`  - Should have been caught by: ${String(bug.which_check ?? 'not recorded')}`)
-      if (bug.proposed_fix) lines.push(`  - Proposed: ${String(bug.proposed_fix)}`)
+      lines.push(`- **${cell(String(bug.summary ?? 'a bug'))}**`)
+      lines.push(`  - Should have been caught by: ${cell(String(bug.which_check ?? 'not recorded'))}`)
+      if (bug.proposed_fix) lines.push(`  - Proposed: ${cell(String(bug.proposed_fix))}`)
     }
   }
   lines.push('')
