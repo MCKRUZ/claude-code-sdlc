@@ -1,0 +1,33 @@
+template: phase1-handoff
+version: "1.0"
+description: "What Requirements needs to know from Discovery, so the next stage starts informed rather than guessing."
+
+sections:
+  - heading: Discovery Summary
+    fields:
+      - label: Discovery Summary
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One-sentence problem statement, primary stakeholders, profile, and completion date
+
+  - heading: Decisions Made in Discovery
+    fields:
+      - label: Decisions Made in Discovery
+        anchor: section
+        type: table
+        required: true
+        guidance: At least one locked decision (D-01+) with what was decided, rationale, and who approved it
+
+  # The REQUIRED marker sits on "### Open Questions Requiring Resolution", a subsection of
+  # "## What Phase 1 Must Capture" that isn't part of a repeating series — this shape format
+  # only addresses "## " sections directly, so the field spans the whole parent section
+  # rather than isolating the subsection. A conservative simplification: if the parent
+  # section is empty, the required subsection certainly is too.
+  - heading: What Phase 1 Must Capture
+    fields:
+      - label: Open Questions Requiring Resolution
+        anchor: section
+        type: checklist
+        required: true
+        guidance: At least 2 open questions (Q-01+) Phase 1 must resolve, each naming who needs the answer

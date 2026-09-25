@@ -1,0 +1,47 @@
+template: phase2-handoff
+version: "1.0"
+description: "What Design needs to know from Requirements, including the architectural questions Design must answer."
+
+# "Architectural Questions Raised by Requirements" is a REQUIRED marker on a "### "
+# subsection, not a "## " one — this shape format only models "## " sections directly, so
+# the enclosing "## What Design Must Address" is shaped as one whole-body field instead.
+
+sections:
+  - heading: Requirements Summary
+    fields:
+      - label: Total requirements
+        anchor: inline
+        type: text
+        required: true
+        guidance: Functional and non-functional requirement counts
+      - label: P0 epics
+        anchor: inline
+        type: number
+        required: true
+        guidance: Count of P0 epics
+      - label: Date completed
+        anchor: inline
+        type: date
+        required: true
+        guidance: When Requirements was completed
+      - label: Approved by
+        anchor: inline
+        type: text
+        required: true
+        guidance: Who approved Requirements
+
+  - heading: Decisions Made in Requirements
+    fields:
+      - label: Decisions Made in Requirements
+        anchor: section
+        type: table
+        required: true
+        guidance: At least one locked decision (D-01+) — what was decided, the rationale, who approved it
+
+  - heading: What Design Must Address
+    fields:
+      - label: What Design Must Address
+        anchor: section
+        type: longtext
+        required: true
+        guidance: At least 2 architectural questions (AQ-01, AQ-02+), each traced to the FR/NFR that raises it

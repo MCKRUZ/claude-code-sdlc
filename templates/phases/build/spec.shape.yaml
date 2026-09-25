@@ -1,0 +1,115 @@
+template: spec
+version: "1.0"
+description: "One change, small enough for one person to hold in their head — what it does, what it must not touch, and how it will be checked."
+
+# A spec is the Build loop's unit of work, and until now it was the ONE artifact a person
+# could only edit as raw text. Its headings have been stable since the template was written,
+# which is exactly what a shape describes — so declaring it here lets a spec be read and
+# written field by field with the same byte-exact guarantee every other document already has,
+# rather than inventing a second, weaker editor for the most important file in the loop.
+#
+# Two sections are deliberately NOT declared as fields:
+#
+#   Scope        — it carries no prose of its own; everything under it lives in the two
+#                  subsections, which are declared as subheading-scoped fields instead.
+#   Frontmatter  — id, name, status, risk, owner, developer, checker and team are YAML above
+#                  the first heading. check_spec.py owns them and they are not body content.
+
+sections:
+  - heading: Goal
+    fields:
+      - label: Goal
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One sentence - what capability exists when this is done
+
+  - heading: Why
+    fields:
+      - label: Why
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The reason this change matters - the outcome, not the mechanics
+
+  # In scope and Out of scope are ### subsections of ## Scope, so they are declared as fields
+  # SCOPED to their subheading rather than as sections of their own — the same pattern
+  # release-notes.shape.yaml already uses, and the only one that keeps their spans disjoint.
+  - heading: Scope
+    fields:
+      - label: In scope
+        subheading: In scope
+        anchor: section
+        type: checklist
+        required: true
+        guidance: The file patterns or areas this change may touch
+      - label: Out of scope
+        subheading: Out of scope
+        anchor: section
+        type: checklist
+        required: true
+        guidance: What this change must NOT touch - as load-bearing as what it must do
+
+  - heading: Acceptance Checks
+    fields:
+      - label: Acceptance Checks
+        anchor: section
+        type: checklist
+        required: true
+        guidance: >-
+          Each check testable and specific enough that two people could not build different
+          things from it - a number, a status code, a quoted value, a path
+
+  - heading: Risk Tier
+    fields:
+      - label: Tier
+        anchor: inline
+        type: enum
+        required: true
+        values: [LOW, MEDIUM, HIGH]
+        guidance: Must match the risk field in the frontmatter
+      - label: Why this tier
+        anchor: labeled_block
+        type: longtext
+        required: true
+        guidance: What about this change earns that tier
+
+  # ONE field, not four. The template writes this section's four items as LIST entries
+  # (`- **Permissions:** ...`), and the library's inline anchor requires a label to start its
+  # own line — a real limitation, found by the round-trip test rather than assumed. Widening
+  # that pattern to tolerate a list marker would change how labels are matched in all 28
+  # existing shapes, which is a large blast radius to buy four boxes instead of one. So this
+  # is declared as what it is: a short list, edited as a block.
+  - heading: Delegation Plan
+    fields:
+      - label: Delegation Plan
+        anchor: section
+        type: checklist
+        required: true
+        guidance: >-
+          The box the agent works inside - what it may touch, the one pattern to reuse, what
+          is auto-allowed versus confirm-required, and which gated paths are involved
+
+  - heading: Checking Plan
+    fields:
+      - label: Ladder depth
+        anchor: inline
+        type: enum
+        required: true
+        values: [LOW, MEDIUM, HIGH]
+        guidance: How high this change climbs the checking ladder, set by its risk tier
+      - label: Specifics
+        anchor: labeled_block
+        type: longtext
+        required: true
+        guidance: Which checks specifically, and who signs off
+
+  - heading: Decision List
+    fields:
+      - label: Decision List
+        anchor: section
+        type: checklist
+        required: true
+        guidance: >-
+          Silent product decisions this change leaves unwritten, each with a named human to
+          answer it - or "none" only once you have genuinely checked

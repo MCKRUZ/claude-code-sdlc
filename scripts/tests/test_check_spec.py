@@ -2,6 +2,8 @@
 
 import pytest
 
+import check_spec as cs
+
 from check_spec import (
     check_spec_text,
     extract_section,
@@ -16,6 +18,8 @@ name: "duplicate-claim-409"
 status: ready
 risk: HIGH
 source: "REQ-12"
+owner: "@priya-n"
+team: "claims"
 harness_context: "the existing ClaimsController validation filter"
 created: "2026-06-24"
 ---
@@ -113,6 +117,108 @@ class TestReadySpec:
         results = check_spec_text(READY_SPEC)
         vague = [r for r in results if r["check"] == "vague-line" and not r["passed"]]
         assert vague == []
+
+
+class TestOwner:
+    def test_missing_owner_blocks(self):
+        spec = mutate(READY_SPEC, 'owner: "@priya-n"\n', "")
+        results = check_spec_text(spec)
+        assert any(r["check"] == "owner" for r in must_failures(results))
+
+    def test_empty_owner_blocks(self):
+        spec = mutate(READY_SPEC, 'owner: "@priya-n"', 'owner: ""')
+        results = check_spec_text(spec)
+        assert any(r["check"] == "owner" for r in must_failures(results))
+
+    def test_em_dash_owner_blocks(self):
+        spec = mutate(READY_SPEC, 'owner: "@priya-n"', 'owner: "—"')
+        results = check_spec_text(spec)
+        assert any(r["check"] == "owner" for r in must_failures(results))
+
+    def test_owner_present_passes(self):
+        results = check_spec_text(READY_SPEC)
+        assert any(r["check"] == "owner" and r["passed"] for r in results)
+
+    def test_empty_developer_and_checker_are_ready(self):
+        # developer/checker are filled at hand-off — absent entirely is fine.
+        results = check_spec_text(READY_SPEC)
+        assert must_failures(results) == []
+
+    def test_pre_change_spec_reports_only_missing_owner(self):
+        """Backward compatibility: a spec written before this change carries no owner/team
+        lines at all (not even empty ones) — check_spec_text must report exactly the one new
+        MUST failure ('owner') and crash on nothing, add no other new failure."""
+        pre_change_spec = mutate(READY_SPEC, 'owner: "@priya-n"\nteam: "claims"\n', "")
+        before = must_failures(check_spec_text(READY_SPEC))
+        after = must_failures(check_spec_text(pre_change_spec))
+        assert {r["check"] for r in after} - {r["check"] for r in before} == {"owner"}
+
+
+class TestRoster:
+    """The owner/team-in-roster cross-check: blocking when a roster exists, skipped (not
+    failed) when it does not — a standalone repository still works."""
+
+    ROSTER = """\
+teams:
+  - name: claims
+    lead: "@priya-n"
+people:
+  - handle: "@priya-n"
+    name: "Priya Nair"
+    team: claims
+    roles: [owner, lead]
+"""
+
+    def write_roster(self, tmp_path, text=None):
+        p = tmp_path / "team.yaml"
+        p.write_text(text if text is not None else self.ROSTER, encoding="utf-8")
+        return p
+
+    def test_no_roster_present_is_skipped_not_failed(self, tmp_path):
+        results = check_spec_text(READY_SPEC, tmp_path / "no-such-team.yaml")
+        assert must_failures(results) == []
+        assert any(r["check"] == "roster" and r["passed"] for r in results)
+
+    def test_owner_in_roster_passes(self, tmp_path):
+        roster = self.write_roster(tmp_path)
+        results = check_spec_text(READY_SPEC, roster)
+        assert must_failures(results) == []
+        assert any(r["check"] == "owner-in-roster" and r["passed"] for r in results)
+        assert any(r["check"] == "team-in-roster" and r["passed"] for r in results)
+
+    def test_owner_absent_from_roster_blocks(self, tmp_path):
+        roster = self.write_roster(tmp_path, self.ROSTER.replace("@priya-n", "@someone-else"))
+        # someone-else is now the only handle listed; @priya-n (the spec's owner) is absent.
+        results = check_spec_text(READY_SPEC, roster)
+        assert any(r["check"] == "owner-in-roster" for r in must_failures(results))
+
+    def test_team_absent_from_roster_blocks(self, tmp_path):
+        roster = self.write_roster(tmp_path, self.ROSTER.replace("name: claims", "name: platform"))
+        results = check_spec_text(READY_SPEC, roster)
+        assert any(r["check"] == "team-in-roster" for r in must_failures(results))
+
+
+class TestDeferred:
+    def test_non_deferred_needs_no_reason(self):
+        # READY_SPEC has no deferred_reason field at all — status is "ready", not "deferred".
+        results = check_spec_text(READY_SPEC)
+        assert not any(r["check"] == "deferred-reason" for r in results)
+
+    def test_deferred_without_reason_blocks(self):
+        spec = mutate(READY_SPEC, "status: ready", "status: deferred")
+        results = check_spec_text(spec)
+        assert any(r["check"] == "deferred-reason" for r in must_failures(results))
+
+    def test_deferred_with_reason_passes(self):
+        spec = mutate(READY_SPEC, "status: ready", 'status: deferred\ndeferred_reason: "superseded by 0009"')
+        results = check_spec_text(spec)
+        assert any(r["check"] == "deferred-reason" and r["passed"] for r in results)
+        assert not any(r["check"] == "deferred-reason" for r in must_failures(results))
+
+    def test_deferred_status_is_case_insensitive(self):
+        spec = mutate(READY_SPEC, "status: ready", "status: DEFERRED")
+        results = check_spec_text(spec)
+        assert any(r["check"] == "deferred-reason" for r in must_failures(results))
 
 
 class TestRiskTier:
@@ -235,3 +341,52 @@ class TestMetricsLogging:
         entry = json.loads(log.read_text().strip())
         assert entry["spec"] == "0001-x.md"
         assert entry["ready"] is True
+
+
+class TestCommentStripping:
+    """A `#` in a value is not a comment (protected-core fix).
+
+    Every line used to be cut at its first `#`. The templates rely on comments being stripped,
+    so the behaviour is needed — but applied that bluntly it silently ate part of any value
+    containing a hash. A deferral reason mentioning a ticket lost everything from the hash
+    onward, in the one place this system promises to keep what somebody wrote, and lost it
+    without saying so.
+    """
+
+    def _fm(self, line: str) -> dict:
+        fm, _ = cs.parse_frontmatter(f'---\n{line}\n---\n\n# body\n')
+        return fm
+
+    def test_a_real_trailing_comment_is_still_stripped(self):
+        # The behaviour the shipped templates depend on — every one of them annotates its
+        # frontmatter this way.
+        assert self._fm('status: draft      # draft | ready | in-flight | merged') == {
+            "status": "draft"}
+
+    def test_a_hash_inside_a_quoted_value_SURVIVES(self):
+        assert self._fm('deferred_reason: "blocked on #4521 — the vendor never shipped it"')[
+            "deferred_reason"] == "blocked on #4521 — the vendor never shipped it"
+
+    def test_a_hash_with_no_space_before_it_is_not_a_comment(self):
+        # YAML's own rule: a comment needs whitespace in front of the hash.
+        assert self._fm("branch: feature#4521")["branch"] == "feature#4521"
+
+    def test_a_quoted_value_keeps_its_comment_stripped_after_it(self):
+        assert self._fm('name: "a #tagged thing"   # and a real comment')["name"] == (
+            "a #tagged thing")
+
+    def test_single_quotes_protect_a_hash_too(self):
+        assert self._fm("name: 'issue #7'")["name"] == "issue #7"
+
+    def test_a_whole_line_comment_yields_nothing(self):
+        assert self._fm("# just a comment") == {}
+
+    def test_an_unterminated_quote_keeps_the_text_rather_than_discarding_it(self):
+        # A malformed line is a thing to read oddly, not a reason to throw text away.
+        assert "#4521" in self._fm('reason: "blocked on #4521')["reason"]
+
+    def test_a_line_with_no_hash_is_untouched(self):
+        assert self._fm("owner: \"@MCKRUZ\"")["owner"] == "@MCKRUZ"
+
+    def test_the_helper_leaves_an_ordinary_line_alone(self):
+        assert cs._strip_comment("status: draft") == "status: draft"

@@ -1,0 +1,50 @@
+template: phase3-handoff
+version: "1.0"
+description: "What Foundation needs to know from Design before any code is written."
+
+# "Implementation Breakdown for Planning" > "### Natural Section Boundaries" carries its
+# REQUIRED marker on a ### subheading, not the ## heading itself — this shape format only
+# recognizes fields within a "## " section span, so the whole "## Implementation Breakdown
+# for Planning" section (covering all its ### subheadings) is modeled as one field.
+
+sections:
+  - heading: Design Summary
+    fields:
+      - label: Architecture pattern
+        anchor: inline
+        type: text
+        required: true
+        guidance: "Monolith / Microservices / Serverless / Plugin / Library / etc."
+      - label: Primary technology decisions
+        anchor: inline
+        type: text
+        required: true
+        guidance: Language, framework, key dependencies
+      - label: Total components
+        anchor: inline
+        type: number
+        required: true
+        guidance: Total component count
+      - label: Total API endpoints
+        anchor: inline
+        type: number
+        required: true
+        guidance: Total API endpoint count
+      - label: Date completed
+        anchor: inline
+        type: date
+        required: true
+        guidance: YYYY-MM-DD
+      - label: Approved by
+        anchor: inline
+        type: text
+        required: true
+        guidance: Approver name
+
+  - heading: Implementation Breakdown for Planning
+    fields:
+      - label: Implementation Breakdown for Planning
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Every section listed with its components, dependencies, and complexity estimate so Planning can assign sprints

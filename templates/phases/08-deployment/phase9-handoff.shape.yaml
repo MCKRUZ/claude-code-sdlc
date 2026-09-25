@@ -1,0 +1,45 @@
+template: phase9-handoff
+version: "1.0"
+
+sections:
+  - heading: Deployment Summary
+    fields:
+      - label: Version deployed
+        anchor: inline
+        type: text
+        required: true
+        guidance: The version/tag deployed, e.g. X.Y.Z
+      - label: Deployed to production
+        anchor: inline
+        type: date
+        required: true
+        guidance: Date and time (UTC) of the production deployment
+      - label: Deployed by
+        anchor: inline
+        type: text
+        required: true
+        guidance: Who ran the deployment
+      - label: Deployment method
+        anchor: inline
+        type: text
+        required: true
+        guidance: CD pipeline, manual, or script
+
+  - heading: Monitoring Requirements
+    fields:
+      # The REQUIRED marker sits on the first subsection but its own text covers all three
+      # (dashboards, alerts, metrics baseline) — modeled as one whole-section field since
+      # this shape format addresses "## " sections, not "### " subsections, as the unit.
+      - label: Monitoring Requirements
+        anchor: section
+        type: table
+        required: true
+        guidance: Dashboards table, alerts table, and metrics-baseline table, each populated with at least 2 entries specific to what was deployed
+
+  - heading: Escalation Contacts
+    fields:
+      - label: Escalation Contacts
+        anchor: section
+        type: table
+        required: true
+        guidance: All 4 roles (deployment lead, database owner, infrastructure, business stakeholder) with real contact info and availability hours

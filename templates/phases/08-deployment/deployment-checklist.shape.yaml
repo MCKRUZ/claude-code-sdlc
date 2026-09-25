@@ -1,0 +1,27 @@
+template: deployment-checklist
+version: "1.0"
+
+sections:
+  - heading: Pre-Deployment
+    fields:
+      - label: Pre-Deployment
+        anchor: section
+        type: longtext
+        required: true
+        guidance: All environment checks, configuration verification, stakeholder notification, and database backup steps completed and signed off
+
+  - heading: Deployment Steps
+    fields:
+      - label: Deployment Steps
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Staging and production steps each with actual commands, expected outcomes, and verification commands; the staging go/no-go decision must be explicit
+
+  - heading: Rollback Procedure
+    fields:
+      - label: Rollback Procedure
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Explicit rollback triggers, named decision authority, all rollback steps with commands, and the date the rollback was tested

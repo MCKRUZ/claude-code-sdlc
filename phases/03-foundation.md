@@ -120,6 +120,8 @@ Produce `cadence-plan.md`: schedule the Build cadences that begin in this phase 
 - **WIP cap** — the limit on how many changes may be in flight at once (default: no more than two concurrent agent streams per Orchestrator). It keeps the pod from opening more changes than its checking capacity can clear.
 - **Review-wait tripwire** — the wait-time threshold that, once crossed, stops new work starting until the review queue clears (default: median one working day). Review is the loop's real bottleneck; this number is how the pod refuses to bury it.
 
+One number for the whole project only works when every team has the same checking capacity. A project with teams of very different sizes can replace it with `cadence-plan.md`'s optional `## WIP Limits` table instead — one row per team (matching `.sdlc/team.yaml`), each with its own WIP limit and its own review/security-review alarm hours (defaults: 24h / 48h when left blank). `scripts/track_specs.py` and `scripts/scorecard.py` both read it and behave exactly as before when it's absent.
+
 ### Step 8: Phase Handoff
 
 Draft `build-handoff.md` (and `foundation-report.md`): the ordered spec backlog ready for triage, the risk-tier map (including the Phase 2 security gates), the cadence calendar with the WIP cap and review-wait tripwire, and the open questions under their original IDs. The exit demo runs in the client's own dev environment, through the real pipeline, with the outcome metric ticking — never on a laptop.

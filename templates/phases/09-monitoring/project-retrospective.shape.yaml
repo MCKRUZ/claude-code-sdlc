@@ -1,0 +1,35 @@
+template: project-retrospective
+version: "1.0"
+
+sections:
+  - heading: What Went Well
+    fields:
+      - label: What Went Well
+        anchor: section
+        type: longtext
+        required: true
+        guidance: At least one specific observation each under Process, Technical, and Team/Collaboration — no platitudes
+
+  - heading: What Didn't Work
+    fields:
+      - label: What Didn't Work
+        anchor: section
+        type: longtext
+        required: true
+        guidance: At least one specific observation each under Process, Technical, and Team/Collaboration — critique the system, not people
+
+  - heading: Process Improvements
+    fields:
+      - label: Process Improvements
+        anchor: section
+        type: table
+        required: true
+        guidance: At least one concrete, actionable improvement with current state, proposed change, phase affected, and owner
+
+  - heading: Technical Debt Log
+    fields:
+      - label: Technical Debt Log
+        anchor: section
+        type: table
+        required: true
+        guidance: Every known debt item with location, reason incurred, priority, and suggested fix timing

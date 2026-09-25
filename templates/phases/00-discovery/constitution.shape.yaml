@@ -1,0 +1,42 @@
+template: constitution
+version: "1.0"
+description: "The project's non-negotiables — the principles every later decision is checked against."
+
+# Project Identity's own sub-fields (Name/Profile/Created) are written as bullet-list items
+# ("- **Name:** ..."), not standalone "**Label:**" lines, so this shape format can't address
+# them individually (its inline-field pattern matches only a bold label starting the line).
+# The REQUIRED marker itself covers the trio together, so one whole-section field is the
+# most faithful modeling here, not a limitation of what's being checked.
+
+sections:
+  - heading: Project Identity
+    fields:
+      - label: Project Identity
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Name, profile id, and creation date
+
+  - heading: Mission Statement
+    fields:
+      - label: Mission Statement
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One paragraph, written for a non-technical audience, on what this project achieves and why
+
+  - heading: Governing Principles
+    fields:
+      - label: Governing Principles
+        anchor: section
+        type: longtext
+        required: true
+        guidance: At least 3 project-specific principles, not generic platitudes
+
+  - heading: Decision Authority
+    fields:
+      - label: Decision Authority
+        anchor: section
+        type: table
+        required: true
+        guidance: Who owns phase transitions, architecture decisions, scope changes, compliance overrides

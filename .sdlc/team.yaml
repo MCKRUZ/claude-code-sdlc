@@ -1,0 +1,16 @@
+# This repo's team roster — validated against templates/team/_schema.yaml.
+# One team, one person: this plugin's build is a solo project today. Per-team work-in-progress
+# limits (spec 0003) exist and are tested but are inert here with a single team. A worked
+# multi-person, multi-team example for adopters lives at templates/team/team.example.yaml.
+version: "1.0"
+
+teams:
+  - name: core
+    lead: "@MCKRUZ"
+
+people:
+  - handle: "@MCKRUZ"
+    name: "Matt Kruczek"
+    team: core
+    roles: [owner, developer, checker, lead]
+    signs_off: ["0", "1", "2", "3", "build", "7", "8", "9", "close"]

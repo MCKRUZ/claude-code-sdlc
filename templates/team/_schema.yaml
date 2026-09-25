@@ -1,0 +1,62 @@
+# Team roster schema — validates .sdlc/team.yaml
+# Mirrors the style of profiles/_schema.yaml and channels/_schema.yaml. A roster maps the
+# people who may hold a role on a spec (owner, developer, checker, lead, security) to their
+# code-host handles and teams, so check_spec.py can confirm a named owner is a real, known
+# person. It never decides WHO may approve a change — that stays with branch protection on
+# the code host. Read by validate_team.py, check_spec.py (advisory-when-absent, blocking
+# when present), track_specs.py, and Studio's people screen (spec 0012).
+version: "1.0"
+type: object
+required:
+  - teams
+  - people
+properties:
+  version:
+    type: string
+    description: Schema version this roster was authored against.
+  teams:
+    type: array
+    description: Every team a spec may be assigned to. Each team needs a lead.
+    items:
+      type: object
+      required: [name, lead]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z0-9][a-z0-9-]*$"
+          description: Kebab-case team identifier; matches spec frontmatter `team:`.
+        lead:
+          type: string
+          description: >-
+            The code-host handle of this team's lead. Must reference a person in `people`
+            who belongs to this team and holds the `lead` role.
+  people:
+    type: array
+    description: Every person who may hold a role on a spec.
+    items:
+      type: object
+      required: [handle, name, team, roles]
+      properties:
+        handle:
+          type: string
+          pattern: "^@[A-Za-z0-9-]+$"
+          description: Code-host handle. Unique across the roster.
+        name:
+          type: string
+          description: Display name.
+        team:
+          type: string
+          description: The team this person belongs to (matches a `teams[].name`).
+        roles:
+          type: array
+          description: The roles this person may hold on a spec.
+          items:
+            type: string
+            enum: [owner, developer, checker, lead, security]
+        signs_off:
+          type: array
+          description: >-
+            Stage ids this person may sign off (free text — phase identity is owned by
+            phase_model.py; the roster does not depend on it).
+          items:
+            type: string

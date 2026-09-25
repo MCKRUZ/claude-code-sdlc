@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import risk_model as rm
+import validate_team as vt
 
 VALID_RISK = rm.RISK_TIERS
 
@@ -54,6 +55,31 @@ VAGUE_RE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in VAGUE_WORD
 CONCRETE_RE = re.compile(r"(\d|`[^`]+`|\"[^\"]+\"|'[^']+'|\{|=>|==|<=|>=|->|/\w)")
 
 
+def _strip_comment(line: str) -> str:
+    """Drop a trailing `# comment`, and ONLY a real one.
+
+    This used to cut every line at its first `#` regardless. The templates rely on comments
+    being stripped, so the behaviour is needed — but applied that bluntly it silently ate part
+    of any value containing a hash. A deferral reason mentioning a ticket ("blocked on #4521 —
+    the vendor never shipped it") lost everything from the hash onward, in the one place this
+    system promises to keep what somebody wrote, and lost it without saying so.
+
+    A `#` opens a comment only when it is outside quotes AND preceded by whitespace or starts
+    the line, which is what YAML itself specifies. An unterminated quote keeps the rest of the
+    line as value: a malformed line is a thing to read oddly, not a reason to discard text.
+    """
+    quote = ""
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
 def parse_frontmatter(text: str) -> tuple[dict, str]:
     """Return (frontmatter_dict, body). Empty dict if no parseable frontmatter block."""
     if not text.startswith("---"):
@@ -65,7 +91,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
     body = text[end + 4:]
     fm: dict[str, str] = {}
     for line in block.splitlines():
-        line = line.split("#", 1)[0].rstrip() if "#" in line else line
+        line = _strip_comment(line).rstrip() if "#" in line else line
         if ":" in line:
             key, _, val = line.partition(":")
             fm[key.strip()] = val.strip().strip('"').strip("'").strip()
@@ -106,8 +132,13 @@ def finding(check: str, passed: bool, severity: str, message: str) -> dict:
     return {"check": check, "passed": passed, "severity": severity, "message": message}
 
 
-def check_spec_text(text: str) -> list[dict]:
-    """Run all Definition-of-Ready checks against spec file text. Returns findings."""
+def check_spec_text(text: str, roster_path: Path | None = None) -> list[dict]:
+    """Run all Definition-of-Ready checks against spec file text. Returns findings.
+
+    `roster_path` points at a project's .sdlc/team.yaml. When it is None or does not exist,
+    the owner/team-in-roster cross-check is skipped and says so — a standalone repository
+    still works (Standalone or Workflow, CLAUDE.md).
+    """
     results: list[dict] = []
     fm, body = parse_frontmatter(text)
 
@@ -120,6 +151,22 @@ def check_spec_text(text: str) -> list[dict]:
             results.append(finding("name", False, "MUST", "Frontmatter `name` is missing or still the template default"))
         else:
             results.append(finding("name", True, "MUST", f"name: {fm['name']}"))
+
+        owner = (fm.get("owner") or "").strip()
+        if not owner or owner == "—":
+            results.append(finding("owner", False, "MUST",
+                                   "Frontmatter `owner` is missing — DoR requires a named accountable owner"))
+        else:
+            results.append(finding("owner", True, "MUST", f"owner: {owner}"))
+
+        status = (fm.get("status") or "").strip().lower()
+        if status == "deferred":
+            reason = (fm.get("deferred_reason") or "").strip()
+            if not reason:
+                results.append(finding("deferred-reason", False, "MUST",
+                                       "status is `deferred` but `deferred_reason` is empty — say why this spec was not built"))
+            else:
+                results.append(finding("deferred-reason", True, "MUST", "deferred reason given"))
 
         risk = (fm.get("risk") or "").upper()
         if risk not in VALID_RISK:
@@ -134,6 +181,30 @@ def check_spec_text(text: str) -> list[dict]:
                                    "DoR: name the ONE existing pattern this change reuses (frontmatter `harness_context`)"))
         else:
             results.append(finding("harness-context", True, "SHOULD", "harness context named"))
+
+        # --- Owner/team named in the project's roster, only when one exists ---
+        if roster_path is not None and roster_path.exists():
+            roster = vt.load_yaml(roster_path)
+            handles = vt.people_handles(roster)
+            teams = vt.team_names(roster)
+
+            if owner and owner != "—":
+                if owner not in handles:
+                    results.append(finding("owner-in-roster", False, "MUST",
+                                           f"Frontmatter `owner` ('{owner}') is not listed in the roster ({roster_path})"))
+                else:
+                    results.append(finding("owner-in-roster", True, "MUST", f"owner '{owner}' found in roster"))
+
+            team = (fm.get("team") or "").strip()
+            if team and team != "—":
+                if team not in teams:
+                    results.append(finding("team-in-roster", False, "MUST",
+                                           f"Frontmatter `team` ('{team}') is not listed in the roster ({roster_path})"))
+                else:
+                    results.append(finding("team-in-roster", True, "MUST", f"team '{team}' found in roster"))
+        else:
+            results.append(finding("roster", True, "SHOULD",
+                                   "no team roster present (.sdlc/team.yaml) — owner/team not cross-checked"))
 
     # --- Required sections present ---
     sections = {h: extract_section(body, h) for h in REQUIRED_SECTIONS}
@@ -294,7 +365,20 @@ def main():
         sys.exit(1)
 
     text = spec_path.read_text(encoding="utf-8")
-    results = check_spec_text(text)
+
+    # The project's team roster, if it has one — .sdlc/team.yaml, found via --state (its
+    # .sdlc parent) or by assuming the spec lives at <repo>/specs/NNNN-name.md, the same
+    # convention new_spec.py and track_specs.py use. Its absence is not an error.
+    repo_root = None
+    if args.state:
+        state_path = Path(args.state)
+        if state_path.exists():
+            repo_root = state_path.resolve().parent.parent
+    if repo_root is None and spec_path.resolve().parent.name == "specs":
+        repo_root = spec_path.resolve().parent.parent
+    roster_path = (repo_root / ".sdlc" / "team.yaml") if repo_root else None
+
+    results = check_spec_text(text, roster_path)
     print(format_results(results, spec_path))
 
     if args.state:

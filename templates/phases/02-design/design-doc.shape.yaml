@@ -1,0 +1,62 @@
+template: design-doc
+version: "1.0"
+description: "How the system will be built — the architecture, the components, and why this shape over the alternatives."
+
+# "Architecture Overview" and "Data Model" each carry REQUIRED markers on "### " children
+# (System Context + Architecture Diagram; Core Entities) rather than on the "## " heading
+# itself — this shape format only models "## " sections, so each enclosing "## " is shaped
+# as one whole-body field instead (coarser, still correct presence/absence + round-trip).
+
+sections:
+  - heading: Overview
+    fields:
+      - label: Project
+        anchor: inline
+        type: text
+        required: false
+        guidance: The project name
+      - label: Version
+        anchor: inline
+        type: text
+        required: false
+        guidance: The document version
+      - label: Date
+        anchor: inline
+        type: date
+        required: false
+        guidance: The date this version was written
+      - label: Status
+        anchor: inline
+        type: enum
+        required: false
+        guidance: Where this document is in review
+        enum_values: [Draft, Under Review, Approved]
+      - label: Authors
+        anchor: inline
+        type: text
+        required: false
+        guidance: Who wrote this document
+
+  - heading: Architecture Overview
+    fields:
+      - label: Architecture Overview
+        anchor: section
+        type: longtext
+        required: true
+        guidance: System context (one paragraph) plus an architecture diagram showing components, data flows, integrations and entry points
+
+  - heading: Data Model
+    fields:
+      - label: Data Model
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Core entity definitions with all fields, types, descriptions, and the relationships between entities
+
+  - heading: Sequence Diagrams — P0 Flows
+    fields:
+      - label: Sequence Diagrams — P0 Flows
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One sequence diagram per P0 user story, showing the full actor-to-storage flow

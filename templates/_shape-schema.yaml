@@ -1,0 +1,70 @@
+# Template Shape Schema
+# A shape file describes ONE template's structure — its sections and, within them, the
+# fields worth exposing to a form (spec 0007). It never changes what the template says;
+# `scripts/validate_shape.py` enforces this shape, `scripts/document_shape.py` reads and
+# writes real documents against it.
+#
+# Unlike profiles/_schema.yaml, this is NOT run through the `jsonschema` library — every
+# error a shape author sees must name the LINE it came from (spec 0007's acceptance check),
+# and jsonschema's error paths are JSON-pointer-shaped, not line numbers. So this file is
+# documentation of the shape, and `validate_shape.py` enforces it directly against a
+# line-tracking YAML parse, the same choice cadence_plan.py made for the same reason
+# (spec 0003: "I'm writing my own small parser... because that one doesn't track line
+# numbers"). Keep this file and validate_shape.py's checks in sync by hand.
+
+template: <kebab-case-id>          # stamped into documents created from this template
+version: "<MAJOR>.<MINOR>"         # a document's stamp records which version it came from
+
+# description: <one line>          # OPTIONAL — what this document is FOR, in a sentence a
+                                    # stakeholder would understand, for a UI listing a stage's
+                                    # documents (spec 0010). Purpose lives here rather than in
+                                    # phase-registry.yaml because the registry describes a
+                                    # STAGE, has no per-artifact description, and is protected.
+                                    # Omitting it is fine — a caller falls back to the filename.
+
+sections:
+  - heading: <exact "## Heading" text, without the leading "## ">
+    # heading_pattern: <regex>     # ALTERNATIVE to `heading`, exactly one of the two —
+                                    # for a "## " heading whose text IS data, not fixed
+                                    # (e.g. release-notes.md's "## [Version X.Y.Z] — [YYYY-MM-DD]",
+                                    # where a real document's heading is "## v1.4.0 — 2026-09-23"
+                                    # and can never equal that literal placeholder text).
+                                    # Matched with .search against each document heading's text.
+    repeats: false                 # true when this is actually a series of numbered
+                                    # "### <prefix>-NNN: ..." subsections, one per instance
+                                    # (e.g. requirements.md's "### FR-001: ...", "### FR-002: ...")
+    numbering:                     # REQUIRED when repeats is true; omit otherwise
+      pattern: "FR-%03d"           # printf-style prefix pattern for the subsection heading
+
+    fields:
+      - label: <exact bold-label text, e.g. "Priority" for a "**Priority:**" line>
+        subheading: <exact "### Subheading" text>  # OPTIONAL — for a field that lives
+                                    #   inside a FIXED, non-repeating "### " subsection of
+                                    #   this section (release-notes.md's "### Summary" /
+                                    #   "### Breaking Changes" are each always present once,
+                                    #   not a numbered series — that's what `repeats` is for).
+                                    #   When given, `anchor` below is resolved against that
+                                    #   subsection's own body, not the whole "## " section.
+        anchor: inline             # inline: a "**Label:** value" line — the value is the
+                                    #   rest of that same line
+                                    # labeled_block: "**Label:**" alone on its line; the
+                                    #   value is everything after it up to whichever
+                                    #   recognized field's label comes next (or the
+                                    #   section's end) — a label followed by a blockquote,
+                                    #   a checklist, or a multi-line paragraph
+                                    # section: no label line at all — the field IS the whole
+                                    #   section/subsection body (a table, or free prose with
+                                    #   no bold-label header) — used when a REQUIRED marker
+                                    #   covers an entire section rather than one field
+        type: text                 # text | longtext | enum | boolean | number | date |
+                                    # checklist | table — the FIXED list; unknown = validator error
+        required: true             # drives the advisory completeness check
+        guidance: <one-line description of what belongs here, shown by a future UI>
+        enum_values: [A, B, C]     # only meaningful when type is enum
+
+# Every read/write value is always a raw string — "type" is metadata for a future UI to
+# render with, never something the library parses or coerces. A "section"-anchored field's
+# value is the field's ENTIRE captured span (its whole body); the library never understands
+# what's inside a table or a checklist, only where it begins and ends — which is exactly
+# what makes byte-for-byte round-tripping possible without the library needing to be a full
+# Markdown formatter.

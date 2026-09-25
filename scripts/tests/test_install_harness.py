@@ -113,6 +113,9 @@ CI_PROFILE = {
     "coverage": {"floor_percent": 80, "tool": "coverlet"},
     "eval_gate": {"enabled": False,
                   "command": 'dotnet test <<EVAL_TEST_PROJECT>> --filter "Category=OwaspAgentic"'},
+    "dependency_scan": {"enabled": True,
+                        "command": "dotnet list {{SOLUTION_OR_PROJECT}} package --vulnerable",
+                        "block_severities": "High,Critical"},
 }
 
 # The CI/CD pack's platform half of the seam: toolchain.id -> this platform's setup action + input.

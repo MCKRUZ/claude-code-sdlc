@@ -1,0 +1,22 @@
+template: alert-definitions
+version: "1.0"
+
+sections:
+  - heading: Alert Table
+    fields:
+      - label: Alert Table
+        anchor: section
+        type: table
+        required: true
+        guidance: Every alert with condition, severity, recipient, SLA response time, and runbook link
+
+  - heading: Critical Alert Details
+    repeats: true
+    numbering:
+      pattern: "CRIT-%03d"
+    fields:
+      - label: Detail
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Trigger condition with exact query, threshold rationale, response procedure, resolution, and false-positive conditions

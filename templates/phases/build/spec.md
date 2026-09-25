@@ -1,12 +1,17 @@
 ---
 spec: "NNNN"
 name: "short-kebab-name"
-status: draft            # draft | ready | in-flight | merged
+status: draft            # draft | ready | in-flight | merged | deferred
+deferred_reason: ""      # required when status is deferred — why this spec was not built
 type: feature            # feature | bugfix — a bugfix PR carries the `type:bugfix` label and
                          # must pass repro-gate: its new test FAILS against the pre-fix code
 risk: MEDIUM             # HIGH | MEDIUM | LOW — first-class field; sets review depth
 source: "—"              # the story / REQ-id this spec realizes, or — if standalone
 channel: ""              # optional — delivery surface (see channels/); blank = channel-agnostic
+owner: ""                # the named human accountable for intent and decisions (DoR requires this)
+developer: ""            # who drives the agent and approves the plan — filled at hand-off
+checker: ""              # non-author approval — filled at hand-off
+team: ""                 # the team this spec belongs to (see .sdlc/team.yaml, if present)
 harness_context: ""      # the ONE existing pattern this change reuses (DoR requires this named)
 created: "YYYY-MM-DD"
 ---

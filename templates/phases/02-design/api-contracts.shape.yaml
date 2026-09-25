@@ -1,0 +1,26 @@
+template: api-contracts
+version: "1.0"
+description: "The interfaces between components, precise enough that two teams can build against them independently."
+
+# "Endpoints" repeats per-endpoint in the real template ("### [METHOD] /[path]"), but each
+# instance is identified by method+path, not a sequential number — this shape format's
+# `repeats` needs a numeric numbering pattern, which doesn't fit, so the whole "Endpoints"
+# section is modeled as one field instead (coarser granularity, still correct presence/
+# absence and byte-for-byte round-trip).
+
+sections:
+  - heading: Endpoints
+    fields:
+      - label: Endpoints
+        anchor: section
+        type: longtext
+        required: true
+        guidance: "Each endpoint: summary, auth requirement, linked user story, full request schema, 200 response schema, and all error response cases"
+
+  - heading: Error Catalog
+    fields:
+      - label: Error Catalog
+        anchor: section
+        type: table
+        required: true
+        guidance: Every error code this API returns, with HTTP status, description, and how consumers should handle it

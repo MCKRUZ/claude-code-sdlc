@@ -93,6 +93,7 @@ def _fill(text: str) -> str:
     text = re.sub(r"^name:.*$", 'name: "carrier-idempotency"', text, count=1, flags=re.MULTILINE)
     text = re.sub(r"^harness_context:.*$", 'harness_context: "ClaimsController"', text,
                   count=1, flags=re.MULTILINE)
+    text = re.sub(r'^owner:.*$', 'owner: "@priya-n"', text, count=1, flags=re.MULTILINE)
     text = re.sub(r"^risk:.*$", "risk: MEDIUM", text, count=1, flags=re.MULTILINE)
     text = text.replace("# Spec NNNN — <title>", "# Spec 0001 — carrier idempotency")
     text = re.sub(r"\bNNNN\b", "0001", text)

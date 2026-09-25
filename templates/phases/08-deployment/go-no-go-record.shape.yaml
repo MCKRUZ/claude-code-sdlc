@@ -1,0 +1,46 @@
+template: go-no-go-record
+version: "1.0"
+
+sections:
+  - heading: The Decision
+    fields:
+      - label: Decision
+        anchor: inline
+        type: enum
+        required: true
+        guidance: go, no-go, or go-with-conditions
+        enum_values: [go, no-go, go-with-conditions]
+      - label: Date and time
+        anchor: inline
+        type: date
+        required: true
+        guidance: When the ceremony happened, with timezone
+      - label: Deploying
+        anchor: inline
+        type: text
+        required: true
+        guidance: A specific artifact — version, release tag, or commit — never "latest"
+      - label: Target
+        anchor: inline
+        type: enum
+        required: true
+        guidance: Which environments this decision covers
+        enum_values: [staging only, staging + production]
+      - label: Deployment window
+        anchor: inline
+        type: text
+        required: true
+        guidance: Start to end time of the deployment window
+      - label: Chaired by
+        anchor: inline
+        type: text
+        required: true
+        guidance: Who ran the ceremony
+
+  - heading: Roles Polled
+    fields:
+      - label: Roles Polled
+        anchor: section
+        type: table
+        required: true
+        guidance: Every role, the named person, their answer, and any condition attached — a role not polled is recorded as "not polled", not omitted

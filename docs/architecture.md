@@ -12,7 +12,8 @@ Comprehensive architectural documentation for `claude-code-sdlc` -- a Claude Cod
 4. [Directory Structure](#4-directory-structure)
 5. [Progressive Disclosure Strategy](#5-progressive-disclosure-strategy)
 6. [Two-Directory Model](#6-two-directory-model)
-7. [Cross-References](#7-cross-references)
+7. [What this deliberately does not integrate with](#7-what-this-deliberately-does-not-integrate-with)
+8. [Cross-References](#8-cross-references)
 
 ---
 
@@ -675,7 +676,40 @@ After initialization, all subsequent operations read from and write to the targe
 
 ---
 
-## 7. Cross-References
+## 7. What this deliberately does not integrate with
+
+**Decided 2026-09-24 by Matt. Revisit only with a reason, not with a request.**
+
+This system has no connector for Jira, Azure Boards, Linear, or any other work tracker, and
+that is a design decision rather than a missing feature.
+
+The unit of work is a spec file in the repository. Its live status is read from the pull
+request that its branch opened — which checks ran, who approved, whether it merged. The work
+item and the change are therefore the same object, and cannot disagree with each other. Every
+external tracker reintroduces exactly the drift this model exists to prevent: two records of
+the same work, updated by different people at different times, one of them quietly wrong.
+
+The cost is accepted openly: this does not meet a client where they already are. The judgement
+is that being one coherent thing beats being everything to everyone.
+
+### The one honest gap this leaves
+
+Azure DevOps is supported for **pipelines** — `doctor.py` checks the organization, variable
+groups and builds, and the `azure-devops` CI/CD pack ships real pipeline rails. It is **not**
+supported for reading or writing work status: `handoff.py` and `spec_status.py` speak to
+GitHub through `gh` and nothing else.
+
+So on an Azure DevOps project the `ado-enterprise` profiles give you pipelines and a board
+built from the spec files, with no live "who is this waiting on". That degrades honestly —
+every row still appears, with the reason stated, because an empty board would read as "there
+is no work" — but the limitation is real and belongs in any conversation about those profiles.
+
+Adding Azure DevOps as a second code host is the sanctioned way to close it, if a real
+engagement ever needs it. Adding a tracker connector is not.
+
+---
+
+## 8. Cross-References
 
 This document covers the system architecture at a high level. For detailed documentation on specific subsystems, see:
 

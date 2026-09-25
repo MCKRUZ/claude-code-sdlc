@@ -28,6 +28,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cadence_plan as cp
+import github_import as gi
+
 # Recognized outcome events and their meaningful fields (documentation + light validation).
 EVENT_TYPES = {
     "spec_merged": "a spec PR merged (fields: accepted_as_is=bool, risk=HIGH|MEDIUM|LOW)",
@@ -88,6 +92,29 @@ def load_events(events_path: Path) -> list[dict]:
             except json.JSONDecodeError:
                 continue
     return events
+
+
+def append_events(events_path: Path, events: list[dict]) -> None:
+    """Append already-built event dicts verbatim (import path) — unlike record_event,
+    the caller has already set `type`/`timestamp`/`gh_id`, not just the free-form fields."""
+    events_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(events_path, "a", encoding="utf-8") as f:
+        for event in events:
+            f.write(json.dumps(event) + "\n")
+
+
+def import_events(repo_root: Path, events_path: Path, since: str) -> dict[str, int]:
+    """Import GitHub history since `since`, skip anything already in the log by `gh_id`,
+    append the rest, and return counts by event type (empty dict = nothing new)."""
+    existing_ids = {e["gh_id"] for e in load_events(events_path) if "gh_id" in e}
+    collected = gi.collect_events(str(repo_root), since)
+    new_events = [e for e in collected if e["gh_id"] not in existing_ids]
+    if new_events:
+        append_events(events_path, new_events)
+    counts: dict[str, int] = {}
+    for e in new_events:
+        counts[e["type"]] = counts.get(e["type"], 0) + 1
+    return counts
 
 
 def _median(nums: list[float]):
@@ -152,7 +179,42 @@ def _hrs(v):
     return "no data" if v is None else f"{v:.1f}h"
 
 
-def format_report(sc: dict, window_days: int | None) -> str:
+def _alarm_status(wait: float | None, threshold: int) -> str:
+    if wait is None:
+        return ""
+    return "OVER ALARM" if wait > threshold else "under alarm"
+
+
+def format_team_alarms(sc: dict, limits: dict[str, dict]) -> list[str]:
+    """Per-team review-wait alarm lines, read from cadence-plan.md's `## WIP Limits` block.
+
+    review_wait events carry no team field, so this compares the one project-wide median wait
+    (already computed by compute_scorecard) against each team's own alarm threshold — it is not
+    a second, per-team wait computation. Defaults (24h review, 48h security) are called out
+    explicitly when a team left a threshold blank.
+    """
+    lines = ["", "Review-wait alarms by team (from cadence-plan.md):"]
+    review_wait = sc["review_wait_median_hours"]
+    sec_wait = sc["security_review_wait_median_hours"]
+    for team in sorted(limits):
+        entry = limits[team]
+        review_h = entry["review_alarm_hours"]
+        review_note = " (default)" if entry["review_alarm_hours_default"] else ""
+        sec_h = entry["security_alarm_hours"]
+        sec_note = " (default)" if entry["security_alarm_hours_default"] else ""
+        lines.append(f"  {team}:")
+        lines.append(
+            f"    Review wait     {_hrs(review_wait):<10} vs alarm {review_h}h{review_note}"
+            f"  {_alarm_status(review_wait, review_h)}"
+        )
+        lines.append(
+            f"    Security wait   {_hrs(sec_wait):<10} vs alarm {sec_h}h{sec_note}"
+            f"  {_alarm_status(sec_wait, sec_h)}"
+        )
+    return lines
+
+
+def format_report(sc: dict, window_days: int | None, limits: dict[str, dict] | None = None) -> str:
     window = f" (last {window_days} days)" if window_days else ""
     lines = [f"Steering Scorecard{window}", "=" * 44, "", "Trust & intent:"]
     lines.append(f"  Accepted-as-is rate     {_pct(sc['accepted_as_is_rate'])}")
@@ -176,6 +238,8 @@ def format_report(sc: dict, window_days: int | None) -> str:
         lines.append(f"  - {b['which_check']}" + (f" (spec {b['spec']})" if b.get("spec") else ""))
     lines.append("")
     lines.append("Never tracked: velocity, story points, PR count, lines of code.")
+    if limits:
+        lines.extend(format_team_alarms(sc, limits))
     return "\n".join(lines)
 
 
@@ -207,8 +271,25 @@ def main():
     p_rep.add_argument("--window-days", type=int, default=None, help="Label only (filtering by date is the caller's job)")
     p_rep.add_argument("--json", action="store_true", help="Emit the scorecard as JSON")
 
+    p_imp = sub.add_parser("import", parents=[common], help="Import outcome events from GitHub's history")
+    p_imp.add_argument("--since", required=True, help="Only activity on/after this date (YYYY-MM-DD)")
+
     args = parser.parse_args()
-    events_path = resolve_metrics_dir(args) / "loop-events.jsonl"
+    metrics_dir = resolve_metrics_dir(args)
+    events_path = metrics_dir / "loop-events.jsonl"
+
+    if args.command == "import":
+        try:
+            counts = import_events(metrics_dir.parent.parent, events_path, args.since)
+        except gi.GitHubImportError as e:
+            print(f"Error: {e}")
+            sys.exit(1)
+        if not counts:
+            print("Imported: no data")
+        else:
+            summary = ", ".join(f"{n} {t}" for t, n in sorted(counts.items()))
+            print(f"Imported {sum(counts.values())} event(s): {summary}")
+        return
 
     if args.command == "record":
         event_type = args.type.strip().lower()
@@ -229,11 +310,27 @@ def main():
         return
 
     # report
+    repo_root = metrics_dir.parent.parent
+    limits, cadence_errors = cp.load_limits(repo_root)
+    for e in cadence_errors:
+        print(f"ERROR (cadence-plan.md): {e}", file=sys.stderr)
+
     sc = compute_scorecard(load_events(events_path))
     if args.json:
-        print(json.dumps(sc, indent=2))
+        payload = dict(sc)
+        if limits:
+            payload["team_alarms"] = {
+                team: {
+                    "review_alarm_hours": entry["review_alarm_hours"],
+                    "review_alarm_hours_default": entry["review_alarm_hours_default"],
+                    "security_alarm_hours": entry["security_alarm_hours"],
+                    "security_alarm_hours_default": entry["security_alarm_hours_default"],
+                }
+                for team, entry in limits.items()
+            }
+        print(json.dumps(payload, indent=2))
     else:
-        print(format_report(sc, args.window_days))
+        print(format_report(sc, args.window_days, limits))
 
 
 if __name__ == "__main__":
