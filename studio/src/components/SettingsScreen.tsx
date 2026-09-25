@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { GateAuthPanel } from './GateAuthPanel'
 import type {
   ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, SettingsSection,
 } from '../../shared/types'
@@ -176,6 +177,12 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
           actually decides is whether a direct push is refused.
         </p>
       </Section>
+
+      {/* Outside edit mode on purpose, unlike everything else on this screen. The rest of
+          these settings live in files this screen edits; a credential lives on the code host
+          and is never written here, so there is nothing to stage, nothing to save, and no
+          reason to make somebody turn on editing to fix a gate that is failing closed. */}
+      <GateAuthPanel projectPath={projectPath} />
 
       {report && (
         <Section title="Connection checks" file="" fileLabel="">

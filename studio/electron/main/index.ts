@@ -15,7 +15,8 @@ import { confirmRestore, diffVersions, getVersionText, listVersions, previewRest
 import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
-  getConnectionReport, getFoundationSummary, getGateInventory, getLastSeenCommit,
+  clearGateAuth, getConnectionReport, getFoundationSummary, getGateAuth, getGateInventory,
+  getLastSeenCommit, setGateAuth,
   getProjectSettings, getScorecard, setLastSeenCommit, setRosterPerson, setStageApproval,
   setTeamLimit,
 } from './settings'
@@ -278,6 +279,37 @@ function registerIpcHandlers() {
     }
     return getFoundationSummary(projectPath, scriptsDir)
   })
+
+  ipcMain.handle('studio:getGateAuth', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      // Never "can sign in" when that could not be determined — reporting a gate as working
+      // when it is unknown is the direction that gets somebody merged without a review.
+      return { ok: false, repo: null, configured: [], gates_can_sign_in: false,
+               detail: 'claude-code-sdlc plugin scripts not found' }
+    }
+    return getGateAuth(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle(
+    'studio:setGateAuth',
+    async (_event, projectPath: string, mode: 'subscription' | 'api-key', credential: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPluginSetting
+      // The credential is handed straight to the plugin and kept nowhere here — not in
+      // settings, not in a variable that outlives this call, not in the console log.
+      return setGateAuth(projectPath, scriptsDir, mode, credential)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:clearGateAuth',
+    async (_event, projectPath: string, mode: 'subscription' | 'api-key') => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPluginSetting
+      return clearGateAuth(projectPath, scriptsDir, mode)
+    },
+  )
 
   ipcMain.handle('studio:getGateInventory', async (_event, projectPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()

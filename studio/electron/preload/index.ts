@@ -57,6 +57,11 @@ const studio: StudioApi = {
   getScorecard: (projectPath, windowDays) =>
     ipcRenderer.invoke('studio:getScorecard', projectPath, windowDays),
   getGateInventory: (projectPath) => ipcRenderer.invoke('studio:getGateInventory', projectPath),
+  getGateAuth: (projectPath) => ipcRenderer.invoke('studio:getGateAuth', projectPath),
+  setGateAuth: (projectPath, mode, credential) =>
+    ipcRenderer.invoke('studio:setGateAuth', projectPath, mode, credential),
+  clearGateAuth: (projectPath, mode) =>
+    ipcRenderer.invoke('studio:clearGateAuth', projectPath, mode),
   getFoundationSummary: (projectPath) =>
     ipcRenderer.invoke('studio:getFoundationSummary', projectPath),
   getDeclarationStatus: (projectPath, confirmedTeams) =>

@@ -7,6 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
 import type {
+  GateAuthResult, GateAuthStatus,
   ConnectionReport, FileSyncState, FoundationSummary, GateInventory, ProjectSettings,
   ProjectSyncState, RecentProject, Scorecard, SettingChangeResult, Settings,
 } from '../../shared/types'
@@ -323,5 +324,81 @@ export async function getFoundationSummary(
       stage: null,
       documents: [],
     }
+  }
+}
+
+// --- How the review gates sign in to Claude ------------------------------------------------
+
+/** Read, set or remove the credential the code host's review gates use.
+ *
+ * Studio owns none of this. The plugin's `gate_auth.py` validates the credential, talks to the
+ * code host, and reads the write back — so a person who configures it by hand and a person who
+ * uses this screen are held to the same rules, and neither route can quietly diverge.
+ *
+ * The credential goes to the script on STANDARD INPUT, never as an argument. Studio records
+ * every command it runs, including arguments, to a console a person can open; standard input is
+ * recorded nowhere. It is also never returned, never stored in settings, and never written to
+ * disk — the code host keeps it, encrypted, and one copy is enough.
+ */
+export async function getGateAuth(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<GateAuthStatus> {
+  const entry = await runPluginScript(pluginScriptsDir, 'gate_auth.py', [
+    '--repo', projectPath, '--json', 'status',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as GateAuthStatus
+  } catch {
+    // Never "configured" on an unreadable answer. Reporting a gate as able to sign in when
+    // that could not be determined is the direction that gets somebody hurt: they merge
+    // believing they were reviewed.
+    return {
+      ok: false,
+      repo: null,
+      configured: [],
+      gates_can_sign_in: false,
+      detail: entry.stderr.trim() || 'Whether the gates can sign in could not be determined.',
+    }
+  }
+}
+
+export async function setGateAuth(
+  projectPath: string,
+  pluginScriptsDir: string,
+  mode: 'subscription' | 'api-key',
+  credential: string,
+): Promise<GateAuthResult> {
+  const entry = await runPluginScript(
+    pluginScriptsDir, 'gate_auth.py',
+    ['--repo', projectPath, '--json', 'set', mode],
+    credential,
+  )
+  return parseGateAuthResult(entry.stdout, entry.stderr, 'The credential was not set.')
+}
+
+export async function clearGateAuth(
+  projectPath: string,
+  pluginScriptsDir: string,
+  mode: 'subscription' | 'api-key',
+): Promise<GateAuthResult> {
+  const entry = await runPluginScript(pluginScriptsDir, 'gate_auth.py', [
+    '--repo', projectPath, '--json', 'clear', mode,
+  ])
+  return parseGateAuthResult(entry.stdout, entry.stderr, 'The credential was not removed.')
+}
+
+function parseGateAuthResult(stdout: string, stderr: string, fallback: string): GateAuthResult {
+  try {
+    const parsed = JSON.parse(stdout)
+    if (parsed.ok !== true) {
+      return { ok: false, refusal: {
+        kind: String(parsed.refusal?.kind ?? 'other'),
+        message: String(parsed.refusal?.message ?? fallback),
+      } }
+    }
+    return parsed as GateAuthResult
+  } catch {
+    return { ok: false, refusal: { kind: 'other', message: stderr.trim() || fallback } }
   }
 }

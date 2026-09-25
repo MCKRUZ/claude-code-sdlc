@@ -567,6 +567,32 @@ export interface Scorecard {
 }
 
 /** One gate, as the rails guide describes it and as this project actually has it. */
+/** Which credential the code host's review gates will sign in with.
+ *
+ * Reports only WHETHER one exists, never any part of its value — the plugin refuses to return
+ * it and Studio has no use for it. `gates_can_sign_in: false` is the state that matters: the
+ * correctness and security reviews fail closed on the pull requests they review.
+ */
+export interface GateAuthStatus {
+  ok: boolean
+  repo: string | null
+  configured: Array<'subscription' | 'api-key' | string>
+  gates_can_sign_in: boolean
+  detail: string
+}
+
+export interface GateAuthResult {
+  ok: boolean
+  repo?: string
+  mode?: string
+  secret?: string
+  /** Stated at the moment of choosing, because the cost IS the decision between the two. */
+  cost?: string
+  gates_can_sign_in?: boolean
+  message?: string
+  refusal?: { kind: string; message: string }
+}
+
 export interface GateEntry {
   gate: string
   file: string
@@ -782,6 +808,13 @@ export interface StudioApi {
   getScorecard(projectPath: string, windowDays: number): Promise<Scorecard | null>
   /** Every gate a change must pass, against what this project actually has. */
   getGateInventory(projectPath: string): Promise<GateInventory>
+  /** Which credential the review gates sign in with. Never returns the value itself. */
+  getGateAuth(projectPath: string): Promise<GateAuthStatus>
+  /** Set it. The credential reaches the plugin on standard input and is never logged,
+   * never stored by Studio, and never written to this machine. */
+  setGateAuth(projectPath: string, mode: 'subscription' | 'api-key', credential: string):
+    Promise<GateAuthResult>
+  clearGateAuth(projectPath: string, mode: 'subscription' | 'api-key'): Promise<GateAuthResult>
   /** What Foundation handed to Build, read from those documents. */
   getFoundationSummary(projectPath: string): Promise<FoundationSummary>
   /** What stands between this project and declaring Build finished. Read-only. */

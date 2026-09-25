@@ -36,13 +36,19 @@ export async function runPluginScript(
   pluginScriptsDir: string,
   scriptName: string,
   args: string[],
+  /** Written to the script's standard input. This is how a CREDENTIAL reaches a script: an
+   * argument is visible to anything that can list processes, and the console log records the
+   * arguments of every command Studio runs. Standard input is recorded nowhere. */
+  input?: string,
 ): Promise<ConsoleEntry> {
   const venvPython = venvPythonPath(pluginScriptsDir)
   const script = scriptPath(pluginScriptsDir, scriptName)
+  const opts = input === undefined ? undefined : { input }
   if (existsSync(venvPython)) {
-    return runCommand(venvPython, [script, ...args], pluginScriptsDir)
+    return runCommand(venvPython, [script, ...args], pluginScriptsDir, opts)
   }
-  return runCommand('uv', ['run', '--project', pluginScriptsDir, script, ...args], pluginScriptsDir)
+  return runCommand(
+    'uv', ['run', '--project', pluginScriptsDir, script, ...args], pluginScriptsDir, opts)
 }
 
 export function hasSdlcProject(projectPath: string): boolean {
