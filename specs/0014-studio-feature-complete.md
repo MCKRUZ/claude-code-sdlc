@@ -58,21 +58,23 @@ unexplained case impossible.
 - [ ] The person declaring is recorded by name in the hand-over document and in the commit.
 - [x] The hand-over document is produced by the plugin's own generator, with the deferred items and
       reasons included, and the screen shows which of its sections are complete before declaring.
-- [ ] Declaring moves the project to the next stage in its own state file, through the plugin's command,
+- [x] Declaring moves the project to the next stage in its own state file, through the plugin's command,
       and nothing else changes.
 - [x] A spec that is deferred no longer counts towards any team's work in progress.
 - [ ] After the declaration the screen becomes read-only and states when it was declared and by whom.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Six of eleven ticked — still the fewest of any Studio spec, and the note below is longer than
-usual because the gap is real rather than a matter of verification. The DECIDING half of this
-flow is built and tested; half of the RECORDING half now is too.
+Seven of eleven ticked. The DECIDING half of this flow was always built and tested; the
+RECORDING half now is too, which was the whole of what this note used to be about.
 
-**Updated 2026-09-25, later:** the first TWO of the four gaps below are now closed, and every
+**Updated 2026-09-25, later:** all four gaps below are now closed or nearly so, and every
 assertion is made against a real git remote by reading the file back out of a FRESH CLONE
-(`test/deferReachesTheRepo.test.ts`, 13 cases) — reading the working copy only ever proved the
-half that already worked.
+(`test/deferReachesTheRepo.test.ts`, 18 cases) — reading the working copy only ever proved the
+half that already worked. The stage advance is tested in BOTH directions: refused while the
+gates are unmet with nothing changed for anybody else, and advancing for real once they are,
+with a fresh clone showing who signed and when. Testing only the refusal would have been
+indistinguishable from a feature that never works.
 
 Deferring commits, so the deferral and its reason reach everybody rather than only the machine
 that made the decision. A refused deferral commits nothing; deferring an already-deferred spec
@@ -102,7 +104,7 @@ once rather than the first, and every one carries its items.
 Also proven in the window: the declare button stays visible while it would be refused and
 explains itself when pressed, and a suggested deferral reason is offered but never pre-filled.
 
-**NOT BUILT — the recording half:**
+**The four gaps, as they now stand:**
 
 1. ~~**Deferring does not commit.**~~ **DONE** — see the update above. It was the most
    important of the four, and it is the one now closed.
@@ -112,16 +114,25 @@ explains itself when pressed, and a suggested deferral reason is offered but nev
    never asked the generator for anything. It is now produced and saved after a declaration,
    it refuses to overwrite a report somebody has edited (offered as a choice, never forced),
    and the screen states which of the three outcomes happened rather than only the good one.
-3. **Declaring does not advance the phase.** Deliberate so far: `advance_phase.py` is protected
-   core and already owns that transition with its own gate checks and sign-off recording, so
-   `declare_complete.py` answers whether Build MAY be declared and stops. Wiring the screen to
-   run the advance afterwards is the remaining step, and it must pass the declaring person's
-   name through as the sign-off.
-4. **The declaration is not persisted.** After declaring, the screen says who declared it — but
-   only until the window is closed. Nothing records that Build was declared complete, when, or
-   by whom, so "after the declaration the screen becomes read-only" is true of one session
-   rather than of the project. Closing this properly means the advance in (3), since the state
-   file's own phase record is the honest place for it rather than a second store.
+3. ~~**Declaring does not advance the phase.**~~ **DONE.** The screen now runs the plugin's
+   own `advance_phase.py` with the declaring person's name as the sign-off, as a separate and
+   explicitly named act rather than something the declaration does on the way past. Studio
+   still decides nothing: when the stage's gates refuse, the plugin's own output is shown
+   whole, because somebody who has to fix a gate needs to know which one.
+4. ~~**The declaration is not persisted.**~~ **MOSTLY DONE, via (3).** The state file now
+   carries who signed and when, so the declaration is a fact about the project — proven by
+   cloning fresh and reading the name back. What remains is smaller than it was: the screen
+   does not yet show the RECORDED time (it shows the session's own), and it reads its
+   read-only state from this session rather than from the state file, so reopening Studio on
+   a declared project does not yet present it as declared.
+
+**Still open, and now the only things left:**
+
+- The declaring person's name reaches the COMMIT but not the hand-over document itself —
+  `generate_handoff_report.py` has no flag for it, and inventing one in Studio would put the
+  name somewhere the plugin does not know about.
+- The unmerged list is still not GROUPED, and the choice is still modelled as defer-or-leave
+  rather than an explicit finish-first-or-defer.
 
 **Partly built:** the unmerged list shows each spec's team, state, risk and developer, but is
 not GROUPED so a run of related specs can be handled together. And the choice is modelled as
