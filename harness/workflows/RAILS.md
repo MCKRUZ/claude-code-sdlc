@@ -66,7 +66,12 @@ These are deliberate, outward-facing actions. Nothing in the kit performs them.
    to the repo default branch when applied.
 2. **Install the Claude GitHub App** on the repo (`/install-github-app` in Claude
    Code, or <https://github.com/apps/claude>). Needed for grader, security-review,
-   and correctness-review. (Repo admin required.)
+   and correctness-review. (Repo admin required.) This is not optional and not only
+   for the `@claude` mention flow: the action authenticates AS the app, and both of
+   Anthropic's documented setup paths begin here. Do not substitute the built-in
+   `secrets.GITHUB_TOKEN` — their docs say to remove it, because GitHub does not
+   trigger workflows on commits made with it, so a gate that pushed with it would be
+   invisible to every gate after it. A CUSTOM app's token is a supported alternative.
 3. **Add the `ANTHROPIC_API_KEY` repository secret** (Settings → Secrets and
    variables → Actions). The agent gates call the Claude API; there is a real per-PR
    token cost. Until this is set, security-review and correctness-review **fail

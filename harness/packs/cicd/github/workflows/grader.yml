@@ -120,7 +120,11 @@ jobs:
           # action ignores it. Set one with: uv run scripts/gate_auth.py set <mode>
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # No github_token on purpose. Anthropic's own documentation says to REMOVE it
+          # when it is the built-in workflow token, so the step authenticates as the
+          # Claude GitHub App instead. GitHub does not trigger workflows on commits made
+          # with the default token, so a gate that pushed with it would go unnoticed by
+          # every gate after it. Pass a CUSTOM app's token here if a policy requires one.
           prompt: |
             You are running as the grader for PR #${{ github.event.pull_request.number }}.
             Read the grading rubric at .github/profile/rubrics/grader.md and follow it exactly.

@@ -257,3 +257,25 @@ class TestTheSecretNamesMatchTheShippedPipelines:
         joined = "\n".join(p.read_text(encoding="utf-8") for p in self._pipelines())
         for spec in ga.MODES.values():
             assert f"secrets.{spec['secret']}" in joined, spec["secret"]
+
+    def test_no_gate_passes_the_BUILT_IN_workflow_token_to_the_action(self):
+        """Anthropic's own documentation says to remove it.
+
+        The action authenticates as the Claude GitHub App when no token is given. Passing the
+        built-in workflow token overrides that with an identity the App's permissions do not
+        cover — and GitHub does not trigger workflows on commits made with it, so a gate that
+        pushed with it would be invisible to every gate after it.
+
+        A custom app's token is still allowed here; the built-in one specifically is not.
+        """
+        offenders = []
+        for path in self._pipelines():
+            for i, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if stripped.startswith("#"):
+                    continue        # the comment explaining why it is absent
+                if stripped == "github_token: ${{ secrets.GITHUB_TOKEN }}":
+                    offenders.append(f"{path.name}:{i}")
+        assert not offenders, (
+            "these steps pass the built-in workflow token, which the action's own docs say to "
+            f"remove: {offenders}")
