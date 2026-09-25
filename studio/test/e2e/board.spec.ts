@@ -257,6 +257,39 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     })
   })
 
+  /** Declaring Build finished (spec 0014).
+   *
+   * This fixture has 200 specs in mixed states and no team confirmations, so it is exactly the
+   * situation where a declaration must be refused — and refused in a way somebody can act on.
+   */
+  test.describe('[spec 0014] declaring Build finished', () => {
+    test('it says what is outstanding rather than only refusing', async () => {
+      await page.getByRole('button', { name: 'Closing Build', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Declaring Build finished' }))
+        .toBeVisible({ timeout: 60_000 })
+      // A refusal a person cannot act on is a wall. This one names the count and the items.
+      await expect(page.getByText(/neither merged nor deferred/)).toBeVisible()
+      await expect(page.getByText(/have not confirmed their own list/)).toBeVisible()
+    })
+
+    test('the declare button stays visible while it would be refused', async () => {
+      // A hidden button makes the rule invisible; a visible one that explains itself teaches
+      // it. Pressing it shows the plugin's own reasons.
+      await expect(page.getByRole('button', { name: /Declare Build complete/ })).toBeVisible()
+      await page.getByRole('button', { name: /Declare Build complete/ }).click()
+      await expect(page.getByText(/neither merged nor deferred/).first()).toBeVisible()
+    })
+
+    test('a suggested deferral reason is offered but never pre-filled', async () => {
+      // Spec 0014 asks for exactly this: a default reason gets accepted unread, which turns a
+      // record of WHY into a record of the tool's wording.
+      await page.getByRole('button', { name: /^Defer$/ }).first().click()
+      const box = page.getByRole('textbox').last()
+      await expect(box).toHaveValue('')
+      await expect(page.getByRole('button', { name: /Start from a suggestion/ })).toBeVisible()
+    })
+  })
+
   test.describe('[spec 0012] the settings screen', () => {
     test('every section names the file its setting is stored in', async () => {
       await page.getByRole('button', { name: 'Settings', exact: true }).click()

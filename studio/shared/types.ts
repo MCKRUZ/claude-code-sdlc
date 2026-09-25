@@ -606,6 +606,52 @@ export interface FoundationSummary {
   documents: FoundationDocument[]
 }
 
+// --- Declaring Build finished (spec 0014) ----------------------------------------------
+
+/** One thing standing between this project and a declaration.
+ *
+ * It carries its ITEMS, not just a count. A refusal a person cannot act on is a wall; one that
+ * lists the specs and who is building each is a to-do list. */
+export interface DeclarationBlocker {
+  kind: 'unfinished_specs' | 'deferred_without_reason' | 'specs_with_no_team'
+    | 'unconfirmed_teams' | string
+  count: number
+  message: string
+  specs?: Array<{
+    spec: string
+    name: string
+    status: string
+    team?: string
+    developer?: string | null
+    risk?: string
+    reason?: string
+  }>
+  teams?: string[]
+}
+
+export interface DeclarationStatus {
+  ok: boolean
+  can_declare: boolean
+  /** Every problem at once, never just the first — somebody ending a phase wants the list. */
+  blockers: DeclarationBlocker[]
+  unfinished: Array<{ spec: string; name: string; status: string; team: string; developer: string | null; risk: string }>
+  deferred: Array<{ spec: string; name: string; team: string; reason: string }>
+  teamless: Array<{ spec: string; name: string; status: string }>
+  teams_in_list: string[]
+  totals: { specs: number; unfinished: number; deferred: number }
+}
+
+export interface DeclarationResult {
+  ok: boolean
+  declared_by?: string
+  deferred?: Array<{ spec: string; name: string; team: string; reason: string }>
+  message?: string
+  /** What still has to happen, said plainly: this reports that a declaration is PERMITTED and
+   * does not advance the phase, because that transition already has an owner. */
+  next_step?: string
+  refusal?: { kind: string; message: string }
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -677,6 +723,14 @@ export interface StudioApi {
   getGateInventory(projectPath: string): Promise<GateInventory>
   /** What Foundation handed to Build, read from those documents. */
   getFoundationSummary(projectPath: string): Promise<FoundationSummary>
+  /** What stands between this project and declaring Build finished. Read-only. */
+  getDeclarationStatus(projectPath: string, confirmedTeams: Record<string, string>):
+    Promise<DeclarationStatus>
+  /** Refuse, or report that a declaration is permitted. Refuses in the PLUGIN. */
+  declareComplete(projectPath: string, declaredBy: string, confirmedTeams: Record<string, string>):
+    Promise<DeclarationResult>
+  /** Defer one spec with a reason. The plugin refuses an empty or token reason. */
+  deferSpec(projectPath: string, specPath: string, reason: string): Promise<SpecTransitionResult>
   /** Save a document the person has already seen.
    *
    * Takes the TEXT rather than fetching anything, deliberately: spec 0013 asks an export to

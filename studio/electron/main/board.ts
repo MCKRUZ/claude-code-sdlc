@@ -14,7 +14,10 @@
 
 import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
-import type { Board, BoardRow, SpecReadiness, SpecStatus, SpecTransitionResult } from '../../shared/types'
+import type {
+  Board, BoardRow, DeclarationResult, DeclarationStatus, SpecReadiness, SpecStatus,
+  SpecTransitionResult,
+} from '../../shared/types'
 
 interface RawPullRequest {
   number: number
@@ -227,6 +230,102 @@ export async function transitionSpec(
     return { ok: false, refusal: {
       kind: 'other',
       message: entry.stderr.trim() || 'The change command gave no readable answer.',
+    } }
+  }
+}
+
+function confirmationArgs(confirmedTeams: Record<string, string>): string[] {
+  return Object.entries(confirmedTeams).flatMap(([team, handle]) => ['--confirmed', `${team}=${handle}`])
+}
+
+/** What stands between this project and declaring Build finished. Read-only. */
+export async function getDeclarationStatus(
+  projectPath: string,
+  pluginScriptsDir: string,
+  confirmedTeams: Record<string, string>,
+): Promise<DeclarationStatus> {
+  const entry = await runPluginScript(pluginScriptsDir, 'declare_complete.py', [
+    '--repo', projectPath, '--json', 'check', ...confirmationArgs(confirmedTeams),
+  ])
+  try {
+    return JSON.parse(entry.stdout) as DeclarationStatus
+  } catch {
+    // can_declare: false on an unreadable answer. The one direction that must never fail open
+    // — a declaration permitted because a check could not run is exactly the false statement
+    // this whole command exists to prevent.
+    return {
+      ok: false,
+      can_declare: false,
+      blockers: [{
+        kind: 'unreadable',
+        count: 1,
+        message: entry.stderr.trim()
+          || 'Whether Build can be declared finished could not be determined, so it cannot.',
+      }],
+      unfinished: [], deferred: [], teamless: [], teams_in_list: [],
+      totals: { specs: 0, unfinished: 0, deferred: 0 },
+    }
+  }
+}
+
+/** Refuse, or report that a declaration is permitted. Every rule is the plugin's. */
+export async function declareComplete(
+  projectPath: string,
+  pluginScriptsDir: string,
+  declaredBy: string,
+  confirmedTeams: Record<string, string>,
+): Promise<DeclarationResult> {
+  const entry = await runPluginScript(pluginScriptsDir, 'declare_complete.py', [
+    '--repo', projectPath, '--json', 'declare',
+    '--declared-by', declaredBy, ...confirmationArgs(confirmedTeams),
+  ])
+  try {
+    const parsed = JSON.parse(entry.stdout)
+    if (parsed.ok !== true) {
+      return { ok: false, refusal: {
+        kind: String(parsed.refusal?.kind ?? 'other'),
+        message: String(parsed.refusal?.message ?? 'The declaration was refused.'),
+      } }
+    }
+    return parsed as DeclarationResult
+  } catch {
+    return { ok: false, refusal: {
+      kind: 'other',
+      message: entry.stderr.trim() || 'The declaration command gave no readable answer.',
+    } }
+  }
+}
+
+/** Defer one spec with a reason. The plugin refuses an empty reason AND a token one. */
+export async function deferSpec(
+  projectPath: string,
+  pluginScriptsDir: string,
+  specPath: string,
+  reason: string,
+): Promise<SpecTransitionResult> {
+  let fullSpecPath: string
+  try {
+    fullSpecPath = resolveProjectDocument(projectPath, specPath)
+  } catch (err) {
+    return { ok: false, refusal: { kind: 'other', message: (err as Error).message } }
+  }
+
+  const entry = await runPluginScript(pluginScriptsDir, 'spec_transition.py', [
+    '--spec', fullSpecPath, '--json', 'defer', '--reason', reason,
+  ])
+  try {
+    const parsed = JSON.parse(entry.stdout)
+    if (parsed.ok !== true) {
+      return { ok: false, refusal: {
+        kind: String(parsed.refusal?.kind ?? 'other'),
+        message: String(parsed.refusal?.message ?? 'The deferral was refused.'),
+      } }
+    }
+    return { ok: true, changed: parsed.changed === true, message: String(parsed.message ?? '') }
+  } catch {
+    return { ok: false, refusal: {
+      kind: 'other',
+      message: entry.stderr.trim() || 'The deferral command gave no readable answer.',
     } }
   }
 }

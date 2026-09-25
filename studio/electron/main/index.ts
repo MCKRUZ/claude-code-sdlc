@@ -20,7 +20,10 @@ import {
   setTeamLimit,
 } from './settings'
 import { runGitTolerant } from './git'
-import { getBoard, getSpecReadiness, getSpecStatus, transitionSpec } from './board'
+import {
+  declareComplete, deferSpec, getBoard, getDeclarationStatus, getSpecReadiness, getSpecStatus,
+  transitionSpec,
+} from './board'
 import { handOff } from './handoff'
 import type { ClashChoice, DraftOutcome } from '../../shared/types'
 
@@ -344,6 +347,43 @@ function registerIpcHandlers() {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
       return setStageApproval(projectPath, scriptsDir, stage, required, approver)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:getDeclarationStatus',
+    async (_event, projectPath: string, confirmedTeams: Record<string, string>) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) {
+        // can_declare stays false — a declaration permitted because a check could not run is
+        // the false statement this whole flow exists to prevent.
+        return {
+          ok: false, can_declare: false,
+          blockers: [{ kind: 'unreadable', count: 1,
+                       message: 'claude-code-sdlc plugin scripts not found' }],
+          unfinished: [], deferred: [], teamless: [], teams_in_list: [],
+          totals: { specs: 0, unfinished: 0, deferred: 0 },
+        }
+      }
+      return getDeclarationStatus(projectPath, scriptsDir, confirmedTeams ?? {})
+    },
+  )
+
+  ipcMain.handle(
+    'studio:declareComplete',
+    async (_event, projectPath: string, declaredBy: string, confirmedTeams: Record<string, string>) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPluginSetting
+      return declareComplete(projectPath, scriptsDir, declaredBy, confirmedTeams ?? {})
+    },
+  )
+
+  ipcMain.handle(
+    'studio:deferSpec',
+    async (_event, projectPath: string, specPath: string, reason: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPluginSetting
+      return deferSpec(projectPath, scriptsDir, specPath, reason)
     },
   )
 

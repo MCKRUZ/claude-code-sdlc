@@ -59,6 +59,12 @@ const studio: StudioApi = {
   getGateInventory: (projectPath) => ipcRenderer.invoke('studio:getGateInventory', projectPath),
   getFoundationSummary: (projectPath) =>
     ipcRenderer.invoke('studio:getFoundationSummary', projectPath),
+  getDeclarationStatus: (projectPath, confirmedTeams) =>
+    ipcRenderer.invoke('studio:getDeclarationStatus', projectPath, confirmedTeams),
+  declareComplete: (projectPath, declaredBy, confirmedTeams) =>
+    ipcRenderer.invoke('studio:declareComplete', projectPath, declaredBy, confirmedTeams),
+  deferSpec: (projectPath, specPath, reason) =>
+    ipcRenderer.invoke('studio:deferSpec', projectPath, specPath, reason),
   exportDocument: (suggestedName, contents) =>
     ipcRenderer.invoke('studio:exportDocument', suggestedName, contents),
   setRosterPerson: (projectPath, handle, fields) =>
