@@ -35,6 +35,11 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  # Required because no github_token is passed: the action exchanges a GitHub identity
+  # token for a Claude GitHub App token, and without this the exchange cannot even start
+  # ("Unable to get ACTIONS_ID_TOKEN_REQUEST_URL"). Removing the built-in token without
+  # adding this is half a fix — the gate then fails closed on every pull request.
+  id-token: write
 
 concurrency:
   group: grader-${{ github.event.pull_request.number }}

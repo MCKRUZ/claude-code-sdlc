@@ -279,3 +279,25 @@ class TestTheSecretNamesMatchTheShippedPipelines:
         assert not offenders, (
             "these steps pass the built-in workflow token, which the action's own docs say to "
             f"remove: {offenders}")
+
+    def test_a_gate_with_no_github_token_declares_the_identity_permission(self):
+        """The other half of removing the built-in token.
+
+        With no `github_token`, the action exchanges a GitHub identity token for a Claude
+        GitHub App token. That exchange needs `id-token: write`, and without it the gate cannot
+        even begin — it fails closed on every pull request with an error about a missing
+        environment variable that names nothing recognisable.
+
+        Removing the token without adding the permission is half a fix, and the half that is
+        missing is invisible until a real pull request runs. This pins the pair together.
+        """
+        missing = []
+        for path in self._pipelines():
+            text = path.read_text(encoding="utf-8")
+            if "anthropics/claude-code-action" not in text:
+                continue
+            if "id-token: write" not in text:
+                missing.append(path.name)
+        assert not missing, (
+            f"these gates call the action without declaring id-token: write, so the app-token "
+            f"exchange cannot start: {missing}")
