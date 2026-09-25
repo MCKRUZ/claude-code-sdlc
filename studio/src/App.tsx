@@ -190,7 +190,7 @@ function App() {
         </div>
 
         {area === 'settings' ? (
-          <SettingsScreen projectPath={projectPath} />
+          <SettingsScreen projectPath={projectPath} actor={actor} />
         ) : area === 'build' ? (
           handingOff && openSpec ? (
             <HandoffDialog

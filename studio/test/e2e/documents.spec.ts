@@ -100,7 +100,10 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
 
   test('opens the project from the welcome screen', async () => {
     await page.getByText('e2e project').click()
-    await expect(page.getByText('Documents')).toBeVisible({ timeout: 30_000 })
+    // The stage home's HEADING specifically. A bare text match became ambiguous once a
+    // Documents navigation tab existed, which is the kind of breakage a loose locator
+    // invites — it was only ever unique by accident.
+    await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
   })
 
   test('the stage home lists the document and what it is for', async () => {

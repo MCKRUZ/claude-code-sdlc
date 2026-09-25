@@ -24,7 +24,8 @@ const studio: StudioApi = {
   pull: (projectPath) => ipcRenderer.invoke('studio:pull', projectPath),
   resolveClash: (projectPath, filePath, sectionKey, choice, combinedText) =>
     ipcRenderer.invoke('studio:resolveClash', projectPath, filePath, sectionKey, choice, combinedText),
-  save: (projectPath, changeNote) => ipcRenderer.invoke('studio:save', projectPath, changeNote),
+  save: (projectPath, changeNote, options) =>
+    ipcRenderer.invoke('studio:save', projectPath, changeNote, options),
   onSyncState: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, state: SyncState) => callback(state)
     ipcRenderer.on('studio:syncState', handler)
@@ -52,6 +53,12 @@ const studio: StudioApi = {
 
   getBoard: (projectPath) => ipcRenderer.invoke('studio:getBoard', projectPath),
   getProjectSettings: (projectPath) => ipcRenderer.invoke('studio:getProjectSettings', projectPath),
+  setRosterPerson: (projectPath, handle, fields) =>
+    ipcRenderer.invoke('studio:setRosterPerson', projectPath, handle, fields),
+  setTeamLimit: (projectPath, team, limit) =>
+    ipcRenderer.invoke('studio:setTeamLimit', projectPath, team, limit),
+  setStageApproval: (projectPath, stage, required, approver) =>
+    ipcRenderer.invoke('studio:setStageApproval', projectPath, stage, required, approver),
   getSpecReadiness: (projectPath, specPath) =>
     ipcRenderer.invoke('studio:getSpecReadiness', projectPath, specPath),
   markSpecReady: (projectPath, specPath) =>

@@ -6,7 +6,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
-import type { FileSyncState, ProjectSettings, ProjectSyncState, RecentProject, Settings } from '../../shared/types'
+import type {
+  FileSyncState, ProjectSettings, ProjectSyncState, RecentProject,
+  SettingChangeResult, Settings,
+} from '../../shared/types'
 
 export type { FileSyncState, ProjectSyncState, RecentProject, Settings }
 
@@ -144,4 +147,82 @@ export async function getProjectSettings(
   } catch {
     return empty(entry.stderr.trim() || 'Could not read this project’s settings.')
   }
+}
+
+/** Change one setting through the plugin's own command, which validates before it writes.
+ *
+ * Studio adds no rule here — the plugin refuses a handle that is not a handle, a team the
+ * roster does not know, an approver nobody could route an approval to, and any change that
+ * would leave the roster invalid. The window asks, and reports the answer.
+ *
+ * Writes the file only. Committing is spec 0009's save, which is what makes a settings change
+ * an ordinary commit with a person and a reason on it. Keeping the two apart is deliberate: a
+ * change that wrote AND committed would give nobody the chance to look at what they did
+ * before it left their machine.
+ */
+async function runSetSetting(
+  projectPath: string,
+  pluginScriptsDir: string,
+  args: string[],
+): Promise<SettingChangeResult> {
+  const entry = await runPluginScript(pluginScriptsDir, 'set_setting.py', [
+    '--repo', projectPath, '--json', ...args,
+  ])
+  try {
+    const parsed = JSON.parse(entry.stdout)
+    if (parsed.ok !== true) {
+      return {
+        ok: false,
+        refusal: {
+          kind: String(parsed.refusal?.kind ?? 'other'),
+          message: String(parsed.refusal?.message ?? 'That change was refused.'),
+        },
+      }
+    }
+    return {
+      ok: true,
+      changed: parsed.changed === true,
+      message: String(parsed.message ?? ''),
+      note: parsed.note ? String(parsed.note) : undefined,
+      file: parsed.file ? String(parsed.file) : undefined,
+    }
+  } catch {
+    // The command validates before it writes, so an unreadable answer means nothing changed.
+    return {
+      ok: false,
+      refusal: {
+        kind: 'other',
+        message: entry.stderr.trim() || 'The settings command gave no readable answer.',
+      },
+    }
+  }
+}
+
+export function setRosterPerson(
+  projectPath: string,
+  pluginScriptsDir: string,
+  handle: string,
+  fields: { name?: string; team?: string; roles?: string[]; signsOff?: string[] },
+): Promise<SettingChangeResult> {
+  const args = ['person', handle]
+  if (fields.name !== undefined) args.push('--name', fields.name)
+  if (fields.team !== undefined) args.push('--team', fields.team)
+  if (fields.roles?.length) args.push('--roles', ...fields.roles)
+  if (fields.signsOff?.length) args.push('--signs-off', ...fields.signsOff)
+  return runSetSetting(projectPath, pluginScriptsDir, args)
+}
+
+export function setTeamLimit(
+  projectPath: string, pluginScriptsDir: string, team: string, limit: number,
+): Promise<SettingChangeResult> {
+  return runSetSetting(projectPath, pluginScriptsDir, ['limit', team, String(limit)])
+}
+
+export function setStageApproval(
+  projectPath: string, pluginScriptsDir: string, stage: string,
+  required: boolean, approver?: string,
+): Promise<SettingChangeResult> {
+  const args = ['approval', stage, required ? '--on' : '--off']
+  if (approver?.trim()) args.push('--approver', approver.trim())
+  return runSetSetting(projectPath, pluginScriptsDir, args)
 }

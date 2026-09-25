@@ -13,7 +13,10 @@ import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } f
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
-import { getLastSeenCommit, getProjectSettings, setLastSeenCommit } from './settings'
+import {
+  getLastSeenCommit, getProjectSettings, setLastSeenCommit,
+  setRosterPerson, setStageApproval, setTeamLimit,
+} from './settings'
 import { runGitTolerant } from './git'
 import { getBoard, getSpecReadiness, getSpecStatus, transitionSpec } from './board'
 import { handOff } from './handoff'
@@ -193,11 +196,17 @@ function registerIpcHandlers() {
     },
   )
 
-  ipcMain.handle('studio:save', async (_event, projectPath: string, changeNote: string) => {
-    const scriptsDir = await resolvePluginScriptsDir()
-    if (!scriptsDir) return { ok: false, entries: [], error: 'claude-code-sdlc plugin scripts not found' }
-    return save(projectPath, scriptsDir, changeNote)
-  })
+  ipcMain.handle(
+    'studio:save',
+    async (
+      _event, projectPath: string, changeNote: string,
+      options?: { actor?: string; onlyPath?: string },
+    ) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return { ok: false, entries: [], error: 'claude-code-sdlc plugin scripts not found' }
+      return save(projectPath, scriptsDir, changeNote, options ?? {})
+    },
+  )
 
   ipcMain.handle('studio:getPendingClashes', async (_event, projectPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
@@ -239,6 +248,38 @@ function registerIpcHandlers() {
     }
     return getProjectSettings(projectPath, scriptsDir)
   })
+
+  const noPluginSetting = {
+    ok: false,
+    refusal: { kind: 'other', message: 'claude-code-sdlc plugin scripts not found' },
+  }
+
+  ipcMain.handle(
+    'studio:setRosterPerson',
+    async (
+      _event, projectPath: string, handle: string,
+      fields: { name?: string; team?: string; roles?: string[]; signsOff?: string[] },
+    ) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPluginSetting
+      return setRosterPerson(projectPath, scriptsDir, handle, fields)
+    },
+  )
+
+  ipcMain.handle('studio:setTeamLimit', async (_event, projectPath: string, team: string, limit: number) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return noPluginSetting
+    return setTeamLimit(projectPath, scriptsDir, team, limit)
+  })
+
+  ipcMain.handle(
+    'studio:setStageApproval',
+    async (_event, projectPath: string, stage: string, required: boolean, approver?: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPluginSetting
+      return setStageApproval(projectPath, scriptsDir, stage, required, approver)
+    },
+  )
 
   ipcMain.handle('studio:getBoard', async (_event, projectPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()

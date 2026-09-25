@@ -491,6 +491,18 @@ export interface ProjectSettings {
   fixed_rules: FixedRule[]
 }
 
+/** The outcome of changing a setting. A refusal carries the plugin's own message and kind —
+ * Studio has no rule of its own to explain here. `file` names what changed, so the screen
+ * can offer to commit exactly that and nothing else. */
+export interface SettingChangeResult {
+  ok: boolean
+  changed?: boolean
+  message?: string
+  note?: string
+  file?: string
+  refusal?: { kind: string; message: string }
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -513,7 +525,17 @@ export interface StudioApi {
     choice: ClashChoice,
     combinedText?: string,
   ): Promise<ResolveClashResult>
-  save(projectPath: string, changeNote: string): Promise<SaveResult>
+  /** Commit and push the project's changed documents.
+   *
+   * `actor` is what records a version against a person — without it the save still happens
+   * but the history cannot answer "who changed this", which is most of the point of having
+   * one. `onlyPath` narrows the commit to a single file, so one deliberate change does not
+   * sweep up whatever else happened to be edited. */
+  save(
+    projectPath: string,
+    changeNote: string,
+    options?: { actor?: string; onlyPath?: string },
+  ): Promise<SaveResult>
   onSyncState(callback: (state: SyncState) => void): () => void
   getPendingClashes(projectPath: string): Promise<FileClash[]>
   combineWithClaude(projectPath: string, localText: string, remoteText: string): Promise<{ combined: string } | { error: string }>
@@ -543,6 +565,16 @@ export interface StudioApi {
   getBoard(projectPath: string): Promise<Board>
   /** Every project setting and the file that owns it. Read-only. */
   getProjectSettings(projectPath: string): Promise<ProjectSettings>
+  /** Add or update someone in the roster. The PLUGIN validates the whole roster first and
+   * refuses a change that would break it. Writes the file only; committing is a separate,
+   * deliberate save. */
+  setRosterPerson(
+    projectPath: string, handle: string,
+    fields: { name?: string; team?: string; roles?: string[]; signsOff?: string[] },
+  ): Promise<SettingChangeResult>
+  setTeamLimit(projectPath: string, team: string, limit: number): Promise<SettingChangeResult>
+  setStageApproval(projectPath: string, stage: string, required: boolean, approver?: string):
+    Promise<SettingChangeResult>
   /** One spec in full. NOTE: this is the plugin's per-spec call, which records
    * `status: merged` if the pull request has merged since anyone last looked — a read
    * that can commit, stated here rather than discovered. */

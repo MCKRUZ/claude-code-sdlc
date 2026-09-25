@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ConnectionInfo, ProjectSettings, SettingsSection } from '../../shared/types'
+import type { ApprovalStage, ConnectionInfo, ProjectSettings, SettingsSection } from '../../shared/types'
 
 /** The project's settings (spec 0012) — read-only in this first cut, and honest about it.
  *
@@ -17,10 +17,21 @@ import type { ConnectionInfo, ProjectSettings, SettingsSection } from '../../sha
  *   protected by something that is not there — which is why this spec's own acceptance check
  *   was amended before this screen existed.
  */
-export function SettingsScreen({ projectPath }: { projectPath: string }) {
+export function SettingsScreen({ projectPath, actor }: { projectPath: string; actor: string }) {
   const [settings, setSettings] = useState<ProjectSettings | null>(null)
   const [connection, setConnection] = useState<ConnectionInfo | null>(null)
   const [loading, setLoading] = useState(true)
+  /** Nothing on this screen changes anything until edit mode is on, and the controls are
+   * ABSENT rather than disabled outside it — the same rule spec 0010's document editor
+   * follows, for the same reason: a greyed-out control still advertises something you
+   * cannot do. */
+  const [editing, setEditing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [refusal, setRefusal] = useState<string | null>(null)
+  /** What changed locally but has not reached the repository yet. Kept as the set of FILES
+   * rather than a boolean, so the save can name exactly what it is committing. */
+  const [unsaved, setUnsaved] = useState<string[]>([])
+  const [reason, setReason] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -35,18 +46,103 @@ export function SettingsScreen({ projectPath }: { projectPath: string }) {
 
   useEffect(() => { load() }, [load])
 
+  /** Run one setting change, then re-read. The plugin validated before it wrote, so a refusal
+   * means the file is untouched and there is nothing to undo. */
+  const change = async (run: () => Promise<{ ok: boolean; file?: string; refusal?: { message: string } }>) => {
+    setBusy(true)
+    setRefusal(null)
+    const result = await run()
+    setBusy(false)
+    if (!result.ok) {
+      setRefusal(result.refusal?.message ?? 'That change was refused.')
+      return
+    }
+    if (result.file) setUnsaved((prev) => (prev.includes(result.file!) ? prev : [...prev, result.file!]))
+    await load()
+  }
+
+  /** Send the change to the repository as an ordinary commit, with who and why — spec 0012's
+   * own requirement. Deliberately a separate act from making the change: writing and
+   * committing in one step gives nobody the chance to look at what they did first. */
+  const saveToRepository = async () => {
+    setBusy(true)
+    setRefusal(null)
+    const result = await window.studio.save(projectPath, reason.trim(), { actor })
+    setBusy(false)
+    if (!result.ok) {
+      setRefusal(result.error ?? 'Could not save this change.')
+      return
+    }
+    setUnsaved([])
+    setReason('')
+  }
+
   if (loading && !settings) return <p className="text-sm text-slate-400">Reading this project’s settings…</p>
   if (!settings) return null
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-base font-semibold text-slate-900">Settings</h2>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Every setting here is stored in the project itself, not in Studio — so it travels with
-          the repository and changes like any other file.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900">Settings</h2>
+          <p className="mt-0.5 text-sm text-slate-500">
+            Every setting here is stored in the project itself, not in Studio — so it travels with
+            the repository and changes like any other file.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => { setEditing((on) => !on); setRefusal(null) }}
+          className={editing
+            ? 'shrink-0 rounded-lg border border-brand-600 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700'
+            : 'shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700'}
+        >
+          {editing ? 'Done editing' : 'Edit'}
+        </button>
       </div>
+
+      {refusal && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {/* The plugin's own words — it knows why it refused, and it refused before writing,
+              so nothing needs undoing. */}
+          <p className="whitespace-pre-wrap">{refusal}</p>
+        </div>
+      )}
+
+      {unsaved.length > 0 && (
+        <div className="rounded-xl border border-brand-200 bg-brand-50 p-4">
+          <p className="text-sm font-medium text-brand-900">
+            Changed here, not yet in the repository
+          </p>
+          <ul className="mt-1 space-y-0.5">
+            {unsaved.map((f) => <li key={f} className="font-mono text-xs text-brand-800">{f}</li>)}
+          </ul>
+          <label className="mt-3 block">
+            <span className="text-xs font-medium text-brand-900">Why did this change?</span>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-brand-300 px-3 py-2 text-sm"
+            />
+          </label>
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={saveToRepository}
+              disabled={busy || !reason.trim() || !actor.trim()}
+              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
+            >
+              Save to the repository
+            </button>
+            {!reason.trim() && (
+              <span className="text-xs text-brand-800">
+                A reason is required — it becomes the commit message, which is how anyone later
+                finds out why this is set the way it is.
+              </span>
+            )}
+          </div>
+        </div>
+      )}
 
       <Section title="Repository" file={connection?.localFolder ?? ''} fileLabel="This project lives at">
         <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -105,8 +201,15 @@ export function SettingsScreen({ projectPath }: { projectPath: string }) {
         {settings.wip_limits.teams.length > 0 && (
           <ul className="space-y-2">
             {settings.wip_limits.teams.map((t) => (
-              <li key={t.team} className="flex items-baseline justify-between text-sm">
+              <li key={t.team} className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-slate-900">{t.team}</span>
+                {editing && (
+                  <LimitEditor
+                    current={t.wip_limit}
+                    busy={busy}
+                    onSet={(value) => change(() => window.studio.setTeamLimit(projectPath, t.team, value))}
+                  />
+                )}
                 <span>
                   {/* The limit and what is actually in flight, always together. One without
                       the other invites the reader to supply the missing half from memory. */}
@@ -126,11 +229,21 @@ export function SettingsScreen({ projectPath }: { projectPath: string }) {
         {settings.approval.stages.length > 0 ? (
           <ul className="space-y-1 text-sm">
             {settings.approval.stages.map((st) => (
-              <li key={st.stage} className="flex items-baseline justify-between">
+              <li key={st.stage} className="flex items-baseline justify-between gap-3">
                 <span className="text-slate-900">{st.stage}</span>
-                <span className="text-slate-600">
-                  {st.approval_required ? `needs ${st.approver || 'a named approver'}` : 'no approval needed'}
-                </span>
+                {editing ? (
+                  <ApprovalEditor
+                    stage={st}
+                    busy={busy}
+                    people={settings.roster.people.map((p) => p.handle)}
+                    onSet={(required, approver) =>
+                      change(() => window.studio.setStageApproval(projectPath, st.stage, required, approver))}
+                  />
+                ) : (
+                  <span className="text-slate-600">
+                    {st.approval_required ? `needs ${st.approver || 'a named approver'}` : 'no approval needed'}
+                  </span>
+                )}
               </li>
             ))}
           </ul>
@@ -202,6 +315,85 @@ function Section({
 
       <div className="mt-3">{children}</div>
     </div>
+  )
+}
+
+/** One team's limit. Committed on blur or Enter rather than per keystroke — the plugin
+ * validates and writes on every call, and doing that per character would write the file
+ * four times to set a two-digit number. */
+function LimitEditor({
+  current, busy, onSet,
+}: {
+  current: number
+  busy: boolean
+  onSet: (value: number) => void
+}) {
+  const [value, setValue] = useState(String(current))
+
+  useEffect(() => { setValue(String(current)) }, [current])
+
+  const commit = () => {
+    const parsed = Number(value)
+    // Refused by the plugin anyway; not sending it saves a pointless round trip and an
+    // error message for something the person is probably mid-typing.
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed === current) {
+      setValue(String(current))
+      return
+    }
+    onSet(parsed)
+  }
+
+  return (
+    <input
+      value={value}
+      disabled={busy}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') commit() }}
+      className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs"
+      aria-label="limit"
+    />
+  )
+}
+
+/** Approval for one stage. The approver list is the ROSTER — the plugin refuses anyone not on
+ * it, since nothing could route an approval to them, so offering a free-text box here would
+ * only invite a refusal. */
+function ApprovalEditor({
+  stage, busy, people, onSet,
+}: {
+  stage: ApprovalStage
+  busy: boolean
+  people: string[]
+  onSet: (required: boolean, approver?: string) => void
+}) {
+  const [approver, setApprover] = useState(stage.approver ?? '')
+
+  return (
+    <span className="flex items-center gap-2">
+      <select
+        value={stage.approval_required ? 'on' : 'off'}
+        disabled={busy}
+        onChange={(e) => onSet(e.target.value === 'on', approver || undefined)}
+        className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+        aria-label={`approval for ${stage.stage}`}
+      >
+        <option value="off">no approval needed</option>
+        <option value="on">needs approval</option>
+      </select>
+      {stage.approval_required && (
+        <select
+          value={approver}
+          disabled={busy}
+          onChange={(e) => { setApprover(e.target.value); onSet(true, e.target.value) }}
+          className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+          aria-label={`approver for ${stage.stage}`}
+        >
+          <option value="">choose someone</option>
+          {people.map((h) => <option key={h} value={h}>{h}</option>)}
+        </select>
+      )}
+    </span>
   )
 }
 

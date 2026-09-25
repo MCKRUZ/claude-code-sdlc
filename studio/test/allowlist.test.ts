@@ -17,6 +17,14 @@ describe('isAllowlisted', () => {
     '.sdlc/metrics/spec-log.jsonl',
     'specs/0009-studio-repo-sync.md',
     'specs/0001-spec-people-fields.md',
+    // REVERSED for spec 0012, deliberately. This file previously asserted the roster was
+    // refused, on the reasoning that "the roster is not a document" — which was true when
+    // nothing could change it. Spec 0012's settings screen edits people and teams and
+    // requires that change to reach the repository as an ordinary commit, so the question
+    // this list answers is not "is it a document" but "may Studio change and commit it".
+    // The roster now is. Left excluded, an edit would have sat on one person's machine
+    // looking saved.
+    '.sdlc/team.yaml',
   ])('allows %s', (path) => {
     expect(isAllowlisted(path)).toBe(true)
   })
@@ -30,7 +38,6 @@ describe('isAllowlisted', () => {
     '.gitignore',
     '.env',
     'README.md',
-    '.sdlc/team.yaml', // deliberately not in the allowlist — the roster is not a document
   ])('refuses %s', (path) => {
     expect(isAllowlisted(path)).toBe(false)
   })
