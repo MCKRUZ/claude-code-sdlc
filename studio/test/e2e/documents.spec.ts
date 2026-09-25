@@ -33,6 +33,7 @@ const PLUGIN_ROOT = PLUGIN.root
 const SCRIPTS_DIR = PLUGIN.scriptsDir
 const VENV_PYTHON = PLUGIN.python
 const REQUIREMENTS = '.sdlc/artifacts/01-requirements/requirements.md'
+const NON_FUNCTIONAL = '.sdlc/artifacts/01-requirements/non-functional-requirements.md'
 
 let app: ElectronApplication
 let page: Page
@@ -56,6 +57,12 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
 
     mkdirSync(join(project, '.sdlc', 'artifacts', '01-requirements'), { recursive: true })
     cpSync(join(SCRIPTS_DIR, 'tests', 'fixtures', 'documents', 'requirements.md'), join(project, REQUIREMENTS))
+    // A second, shaped document that has NO numbered sections — which is the ordinary case,
+    // 22 of the 27 shapes. Needed to prove edit mode stays quiet there; see the test below.
+    cpSync(
+      join(SCRIPTS_DIR, 'tests', 'fixtures', 'documents', 'non-functional-requirements.md'),
+      join(project, NON_FUNCTIONAL),
+    )
 
     // A fresh project starts in Phase 0, whose documents do not exist yet — so the stage home
     // would correctly show nothing openable. Move it to Phase 1, which is where the document
@@ -152,6 +159,46 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     // feature; the control it waits on now says "Working out the next number…" while the
     // answer is outstanding, so a real absence and a slow answer no longer look alike.
     await expect(page.getByRole('button', { name: /^Add FR-\d+$/ })).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('a document with no numbered sections raises no alarm in edit mode', async () => {
+    // The regression guard for a defect the correctness review caught in this very change.
+    // Surfacing the "could not work out the next number" failure was right; asking for a
+    // number on a document that cannot have one was not. The plugin answers, correctly, that
+    // there are no numbered sections — and that answer was being painted as an error banner
+    // on 22 of the 27 shapes. A false alarm on a healthy document is worse than the silence
+    // it replaced, because it teaches people that the red box means nothing.
+    await page.getByRole('button', { name: /Done editing/i }).click()
+    await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    await page.getByRole('button', { name: /^non-functional-requirements\.md/ }).click()
+    await expect(page.getByRole('heading', { name: /non-functional-requirements\.md/i }))
+      .toBeVisible({ timeout: 30_000 })
+
+    await page.getByRole('button', { name: /^Edit$/ }).click()
+    // Edit mode works — the fields are editable — and raises nothing.
+    await expect(page.getByRole('button', { name: /^Save field$/ }).first()).toBeVisible()
+    // Proving a NEGATIVE across a process boundary needs elapsed time, and this assertion
+    // took two goes to get right. Both failures were the same shape — passing vacuously:
+    //
+    //   1. it matched wording the plugin never uses ("no numbered sections"; it actually says
+    //      "this shape declares no repeating section"), so it looked for a sentence nobody
+    //      writes and of course did not find it;
+    //   2. then it checked the banner's absence IMMEDIATELY after clicking Edit, which
+    //      succeeds instantly against an element that has merely not rendered YET.
+    //
+    // A fixed wait is the right tool here, unlike almost everywhere else: the claim is "no
+    // banner ever appears", and that is only meaningful once the round trip has had time to
+    // land. It takes a few hundred milliseconds; this allows ten times that.
+    await page.waitForTimeout(3_000)
+    await expect(page.getByTestId('document-error')).toHaveCount(0)
+    // And no add control at all, because there is nothing to add.
+    await expect(page.getByRole('button', { name: /^Add /i })).toHaveCount(0)
+
+    await page.getByRole('button', { name: /Done editing/i }).click()
+    await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    await page.getByRole('button', { name: /^requirements\.md/ }).click()
+    await expect(page.getByRole('heading', { name: /requirements\.md/i })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: /^Edit$/ }).click()
   })
 
   test('leaving edit mode takes them away again', async () => {
