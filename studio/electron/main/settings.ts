@@ -4,8 +4,9 @@
 // never inside a project.
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
-import type { FileSyncState, ProjectSyncState, RecentProject, Settings } from '../../shared/types'
+import type { FileSyncState, ProjectSettings, ProjectSyncState, RecentProject, Settings } from '../../shared/types'
 
 export type { FileSyncState, ProjectSyncState, RecentProject, Settings }
 
@@ -112,4 +113,35 @@ export function storeAncestorBlob(hash: string, bytes: Buffer): void {
 export function readAncestorBlob(hash: string): Buffer | null {
   const path = objectPath(hash)
   return existsSync(path) ? readFileSync(path) : null
+}
+
+
+// --- Project settings (spec 0012) --------------------------------------------------------
+//
+// Note what this does NOT do: it reads. Changing a setting writes to the file that owns it,
+// which is a separate act with its own rules — and then reaches the repository through spec
+// 0009's save like every other change, so a settings change is a commit with a person and a
+// reason on it, not a silent mutation.
+
+/** Every project setting, composed by the plugin, with the file each came from. */
+export async function getProjectSettings(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<ProjectSettings> {
+  const empty = (error: string): ProjectSettings => ({
+    ok: false,
+    roster: { file: '.sdlc/team.yaml', present: false, errors: [error], teams: [], people: [] },
+    wip_limits: { file: '', present: false, errors: [], teams: [] },
+    approval: { file: '.sdlc/approval-settings.yaml', present: false, errors: [], stages: [] },
+    fixed_rules: [],
+  })
+
+  const entry = await runPluginScript(pluginScriptsDir, 'project_settings.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as ProjectSettings
+  } catch {
+    return empty(entry.stderr.trim() || 'Could not read this project’s settings.')
+  }
 }

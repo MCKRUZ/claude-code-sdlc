@@ -178,4 +178,43 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     await expect(page.locator('textarea')).toHaveCount(0)
     await expect(page.locator('input')).toHaveCount(0)
   })
+
+
+  /** The settings screen (spec 0012), in the real window.
+   *
+   * Its two load-bearing promises are both about honesty rather than function, so neither can
+   * be proven by a function test: every section must name the FILE its setting lives in, and a
+   * setting nobody has configured must read as "not set up" rather than as an error. The
+   * project this suite builds has configured none of them, which makes it the right fixture for
+   * the second one.
+   */
+  test.describe('[spec 0012] the settings screen', () => {
+    test('every section names the file its setting is stored in', async () => {
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible({ timeout: 60_000 })
+
+      // Named, even when the file does not exist yet — that is the point: a person has to know
+      // where to go to create it.
+      await expect(page.getByText('.sdlc/team.yaml')).toBeVisible()
+      await expect(page.getByText('.sdlc/approval-settings.yaml')).toBeVisible()
+      await expect(page.getByText(/cadence-plan\.md/)).toBeVisible()
+    })
+
+    test('an unconfigured setting reads as not set up, never as an error', async () => {
+      // "You have not set this up" and "you set it up wrong" send a person to two different
+      // places. This fixture has configured nothing, so every section should say the former.
+      await expect(page.getByText(/has not set this up/).first()).toBeVisible()
+      await expect(page.getByText(/could not be read cleanly/)).toHaveCount(0)
+    })
+
+    test('each fixed rule says where it is actually enforced', async () => {
+      // A rule listed without that is a claim nobody can check — and spec 0012's own
+      // acceptance check was amended because one of them was not enforced anywhere.
+      await expect(page.getByText(/Nobody checks their own work/)).toBeVisible()
+      await expect(page.getByText(/handoff\.py refuses a developer who is also/)).toBeVisible()
+      await expect(page.getByText(/Lowering a risk tier is recorded against whoever decided it/)).toBeVisible()
+      // The claim that was removed must not reappear.
+      await expect(page.getByText(/only a team lead/i)).toHaveCount(0)
+    })
+  })
 })

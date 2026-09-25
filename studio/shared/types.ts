@@ -435,6 +435,62 @@ export interface SpecTransitionResult {
   refusal?: { kind: string; message: string }
 }
 
+
+// --- Project settings (spec 0012) -------------------------------------------------------
+
+/** Every section carries the FILE it came from: spec 0012 asks each settings screen to name
+ * where the setting is stored, because a setting whose home is invisible is one nobody can
+ * correct outside the app.
+ *
+ * `present: false` means the project has not adopted this setting — ordinary, not broken.
+ * Errors mean the file exists and is wrong. Those two send a person to different places, so
+ * the screen must never merge them. */
+export interface SettingsSection {
+  file: string
+  present: boolean
+  errors: string[]
+}
+
+export interface RosterPerson {
+  handle: string
+  name?: string
+  team?: string
+  roles?: string[]
+  signs_off?: string[]
+}
+
+export interface TeamLimit {
+  team: string
+  wip_limit: number
+  in_flight: number
+  at_limit: boolean
+  over_limit: boolean
+  review_alarm_hours?: number
+  security_alarm_hours?: number
+}
+
+export interface ApprovalStage {
+  stage: string
+  approval_required?: boolean
+  approver?: string | null
+}
+
+/** A rule a person cannot change here, with WHERE it is enforced. Every entry names real
+ * code — a screen listing an unenforced rule as a fact tells someone they are protected by
+ * something that is not there. */
+export interface FixedRule {
+  rule: string
+  enforced_by: string
+}
+
+export interface ProjectSettings {
+  ok: boolean
+  roster: SettingsSection & { teams: Array<{ name: string; lead: string }>; people: RosterPerson[] }
+  wip_limits: SettingsSection & { teams: TeamLimit[] }
+  approval: SettingsSection & { stages: ApprovalStage[] }
+  fixed_rules: FixedRule[]
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -485,6 +541,8 @@ export interface StudioApi {
    * board filters and groups what it already has, because switching a role view must not
    * re-read the repository (spec 0011). */
   getBoard(projectPath: string): Promise<Board>
+  /** Every project setting and the file that owns it. Read-only. */
+  getProjectSettings(projectPath: string): Promise<ProjectSettings>
   /** One spec in full. NOTE: this is the plugin's per-spec call, which records
    * `status: merged` if the pull request has merged since anyone last looked — a read
    * that can commit, stated here rather than discovered. */

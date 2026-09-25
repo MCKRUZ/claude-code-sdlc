@@ -51,6 +51,7 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:confirmRestore', projectPath, relPath, ref, actor, diffHash, ackSignOff),
 
   getBoard: (projectPath) => ipcRenderer.invoke('studio:getBoard', projectPath),
+  getProjectSettings: (projectPath) => ipcRenderer.invoke('studio:getProjectSettings', projectPath),
   getSpecReadiness: (projectPath, specPath) =>
     ipcRenderer.invoke('studio:getSpecReadiness', projectPath, specPath),
   markSpecReady: (projectPath, specPath) =>

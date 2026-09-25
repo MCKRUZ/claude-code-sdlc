@@ -13,7 +13,7 @@ import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } f
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
-import { getLastSeenCommit, setLastSeenCommit } from './settings'
+import { getLastSeenCommit, getProjectSettings, setLastSeenCommit } from './settings'
 import { runGitTolerant } from './git'
 import { getBoard, getSpecReadiness, getSpecStatus, transitionSpec } from './board'
 import { handOff } from './handoff'
@@ -226,6 +226,18 @@ function registerIpcHandlers() {
   const noScripts = (relPath: string) => ({
     ok: false, path: relPath, shaped: false, warnings: [], sections: [],
     error: 'claude-code-sdlc plugin scripts not found',
+  })
+
+  ipcMain.handle('studio:getProjectSettings', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { ok: false, fixed_rules: [],
+               roster: { file: '.sdlc/team.yaml', present: false, teams: [], people: [],
+                         errors: ['claude-code-sdlc plugin scripts not found'] },
+               wip_limits: { file: '', present: false, errors: [], teams: [] },
+               approval: { file: '.sdlc/approval-settings.yaml', present: false, errors: [], stages: [] } }
+    }
+    return getProjectSettings(projectPath, scriptsDir)
   })
 
   ipcMain.handle('studio:getBoard', async (_event, projectPath: string) => {
