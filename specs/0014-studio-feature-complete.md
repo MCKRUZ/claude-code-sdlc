@@ -51,17 +51,64 @@ unexplained case impossible.
 - [ ] Each one must be set to finish first or deferred; deferring requires a reason in the person's own
       words, and a suggested reason may be offered but never saved unedited by default.
 - [ ] Deferring writes the deferred status and the reason to the spec file, through the plugin, as a commit.
-- [ ] The declaration is refused while any spec is undecided, and says how many are left.
-- [ ] The declaration is refused while any spec is set to finish first, naming them and who is building each.
-- [ ] Each team lead confirms their own team's list; the declaration is refused until every team with a
+- [x] The declaration is refused while any spec is undecided, and says how many are left.
+- [x] The declaration is refused while any spec is set to finish first, naming them and who is building each.
+- [x] Each team lead confirms their own team's list; the declaration is refused until every team with a
       spec in the list has confirmed.
 - [ ] The person declaring is recorded by name in the hand-over document and in the commit.
 - [ ] The hand-over document is produced by the plugin's own generator, with the deferred items and
       reasons included, and the screen shows which of its sections are complete before declaring.
 - [ ] Declaring moves the project to the next stage in its own state file, through the plugin's command,
       and nothing else changes.
-- [ ] A spec that is deferred no longer counts towards any team's work in progress.
+- [x] A spec that is deferred no longer counts towards any team's work in progress.
 - [ ] After the declaration the screen becomes read-only and states when it was declared and by whom.
+
+### What is proven, and what is still missing (2026-09-25)
+
+Four of eleven ticked — the fewest of any Studio spec, and the note below is longer than usual
+because the gap is real rather than a matter of verification. The DECIDING half of this flow is
+built and tested; the RECORDING half is not.
+
+**Proven** (`scripts/tests/test_declare_complete.py`, 24 cases, plus three window tests): the
+declaration is refused while any spec is neither merged nor deferred, naming each one and who
+is building it; refused until every team with a spec confirms its own list, including a team
+whose specs were all deferred; and a deferred spec drops out of its team's work in progress —
+that last one verified by running the tracker, not by reading it. Every blocker is reported at
+once rather than the first, and every one carries its items.
+
+Also proven in the window: the declare button stays visible while it would be refused and
+explains itself when pressed, and a suggested deferral reason is offered but never pre-filled.
+
+**NOT BUILT — the recording half:**
+
+1. **Deferring does not commit.** The status and reason are written to the spec file through
+   the plugin, correctly — but nothing then saves that to the repository. On one machine it
+   looks done; to everyone else nothing happened. The save path exists (spec 0009) and is
+   already used by the settings screen; this simply is not wired to it yet. **The most
+   important of these four.**
+2. **The hand-over document is not produced.** `generate_handoff_report.py` exists and already
+   assembles the phase reports, gate results and metrics history. What it does not yet receive
+   is the deferred items and their reasons, which is the one part this spec owns — and the part
+   somebody will actually look for when they ask why an expected thing is not there.
+3. **Declaring does not advance the phase.** Deliberate so far: `advance_phase.py` is protected
+   core and already owns that transition with its own gate checks and sign-off recording, so
+   `declare_complete.py` answers whether Build MAY be declared and stops. Wiring the screen to
+   run the advance afterwards is the remaining step, and it must pass the declaring person's
+   name through as the sign-off.
+4. **The declaration is not persisted.** After declaring, the screen says who declared it — but
+   only until the window is closed. Nothing records that Build was declared complete, when, or
+   by whom, so "after the declaration the screen becomes read-only" is true of one session
+   rather than of the project. Closing this properly means the advance in (3), since the state
+   file's own phase record is the honest place for it rather than a second store.
+
+**Partly built:** the unmerged list shows each spec's team, state, risk and developer, but is
+not GROUPED so a run of related specs can be handled together. And the choice is modelled as
+defer-or-leave rather than an explicit finish-first-or-defer, so "undecided" and "chosen to
+finish first" look identical to the plugin — which is why the refusal names both together.
+
+**Why this matters more than the count suggests:** a declaration that is not recorded anywhere
+is a conversation, not a declaration. Items 1 and 4 are what make it a fact about the project
+rather than a state of somebody's window.
 
 ## Risk Tier
 
