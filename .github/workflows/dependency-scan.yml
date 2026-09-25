@@ -124,6 +124,17 @@ jobs:
             | [.severity, $v.name, ($v.range // "unknown"), (.url // "unknown")] | @tsv
           ' "${RUNNER_TEMP}/npm-audit.json" | sort -u >> "${RUNNER_TEMP}/findings.tsv"
 
+          # HOW MANY PACKAGES WERE ACTUALLY LOOKED AT. "0 advisories" is also what a step that
+          # scanned nothing reports, and that ambiguity is the entire reason this gap survived
+          # for as long as it did. Saying the denominator makes the clean result a claim that
+          # cannot be satisfied by doing nothing — and zero audited is a failure, not a pass.
+          AUDITED="$(jq -r '.metadata.dependencies.total // 0' "${RUNNER_TEMP}/npm-audit.json")"
+          if [ "${AUDITED:-0}" -eq 0 ]; then
+            echo "::error title=Studio dependency scan examined nothing::npm audit reported 0 dependencies, so a clean result here means the scan did not run, not that Studio is clean. Check studio/package-lock.json."
+            exit 1
+          fi
+          echo "Studio: ${AUDITED} Node dependencies examined."
+
           sort -u -o "${RUNNER_TEMP}/findings.tsv" "${RUNNER_TEMP}/findings.tsv"
           COUNT="$(wc -l < "${RUNNER_TEMP}/findings.tsv" | tr -d ' ')"
           echo "count=${COUNT}" >> "$GITHUB_OUTPUT"
