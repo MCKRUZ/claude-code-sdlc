@@ -57,6 +57,8 @@ const studio: StudioApi = {
   getScorecard: (projectPath, windowDays) =>
     ipcRenderer.invoke('studio:getScorecard', projectPath, windowDays),
   getGateInventory: (projectPath) => ipcRenderer.invoke('studio:getGateInventory', projectPath),
+  exportDocument: (suggestedName, contents) =>
+    ipcRenderer.invoke('studio:exportDocument', suggestedName, contents),
   setRosterPerson: (projectPath, handle, fields) =>
     ipcRenderer.invoke('studio:setRosterPerson', projectPath, handle, fields),
   setTeamLimit: (projectPath, team, limit) =>

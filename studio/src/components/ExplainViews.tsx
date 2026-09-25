@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import type { GateInventory, Scorecard } from '../../shared/types'
+import { buildScorecardExport, hasNothingRecorded } from '../../shared/scorecardExport'
 
 /** Two read-only screens (spec 0013): how Build is going, and every check a change must pass.
  *
@@ -48,6 +49,7 @@ function ScorecardView({ projectPath }: { projectPath: string }) {
   const [card, setCard] = useState<Scorecard | null>(null)
   const [loading, setLoading] = useState(true)
   const [unreadable, setUnreadable] = useState(false)
+  const [exported, setExported] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -61,12 +63,23 @@ function ScorecardView({ projectPath }: { projectPath: string }) {
 
   /** Has anything happened at all in this window? Used to say "no data yet" ONCE rather than
    * eleven times, which is the difference between a screen that informs and one that nags. */
-  const nothingRecorded = useMemo(
-    () => card !== null && card.totals.merges === 0 && card.totals.reverts === 0
-      && card.totals.bounces === 0 && card.dora.deploy_count === 0
-      && card.escaped_bugs.length === 0,
-    [card],
-  )
+  const nothingRecorded = card !== null && hasNothingRecorded(card)
+
+  /** Built from the SAME object this screen rendered, never from a fresh fetch. Spec 0013
+   * asks an export to contain exactly what is on screen, and a second fetch could return
+   * something else between somebody reading a number and taking it to a room. */
+  const exportScorecard = async () => {
+    if (!card) return
+    const contents = buildScorecardExport(card, {
+      // Both separators: on Windows a forward-slash-only split leaves the whole path, which
+      // would put an absolute directory where a project name belongs in a steering document.
+      projectName: projectPath.split(/[\\/]/).filter(Boolean).pop() ?? 'this project',
+      windowDays,
+      now: new Date(),
+    })
+    const result = await window.studio.exportDocument(`how-build-is-going-${windowDays}d.md`, contents)
+    setExported(result.ok ? (result.path ?? 'saved') : null)
+  }
 
   if (loading && !card) return <p className="text-sm text-slate-400">Reading the scorecard…</p>
 
@@ -96,7 +109,14 @@ function ScorecardView({ projectPath }: { projectPath: string }) {
             arithmetic of its own.
           </p>
         </div>
-        <span className="flex shrink-0 gap-1">
+        <span className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            onClick={exportScorecard}
+            className="mr-2 rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-slate-300"
+          >
+            Export for a meeting
+          </button>
           {WINDOWS.map((d) => (
             <button
               key={d}
@@ -111,6 +131,13 @@ function ScorecardView({ projectPath }: { projectPath: string }) {
           ))}
         </span>
       </div>
+
+      {exported && (
+        <p className="text-xs text-[var(--color-command-ok)]">
+          Saved to <span className="font-mono">{exported}</span> — it contains exactly what is
+          on this screen.
+        </p>
+      )}
 
       {nothingRecorded && (
         <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">

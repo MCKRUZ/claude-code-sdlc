@@ -652,6 +652,14 @@ export interface StudioApi {
   getScorecard(projectPath: string, windowDays: number): Promise<Scorecard | null>
   /** Every gate a change must pass, against what this project actually has. */
   getGateInventory(projectPath: string): Promise<GateInventory>
+  /** Save a document the person has already seen.
+   *
+   * Takes the TEXT rather than fetching anything, deliberately: spec 0013 asks an export to
+   * contain exactly what is on screen, and a second fetch could return something else. The
+   * person chooses the location through a save dialog — the one way Studio writes outside a
+   * project folder, and only ever because somebody pointed at the place. */
+  exportDocument(suggestedName: string, contents: string):
+    Promise<{ ok: boolean; path?: string; cancelled?: boolean; error?: string }>
   /** Add or update someone in the roster. The PLUGIN validates the whole roster first and
    * refuses a change that would break it. Writes the file only; committing is a separate,
    * deliberate save. */

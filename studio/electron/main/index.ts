@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
@@ -235,6 +236,25 @@ function registerIpcHandlers() {
   const noScripts = (relPath: string) => ({
     ok: false, path: relPath, shaped: false, warnings: [], sections: [],
     error: 'claude-code-sdlc plugin scripts not found',
+  })
+
+  // The ONE place Studio writes outside a project folder, and only to a location a person
+  // pointed at in a save dialog. It takes the text it is given rather than fetching anything:
+  // spec 0013 asks an export to contain exactly what was on screen, and re-fetching could
+  // quietly produce a different document from the one somebody just read.
+  ipcMain.handle('studio:exportDocument', async (_event, suggestedName: string, contents: string) => {
+    if (!win) return { ok: false, error: 'No window to ask from.' }
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: suggestedName,
+      filters: [{ name: 'Markdown', extensions: ['md'] }],
+    })
+    if (result.canceled || !result.filePath) return { ok: false, cancelled: true }
+    try {
+      writeFileSync(result.filePath, contents, 'utf-8')
+      return { ok: true, path: result.filePath }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   ipcMain.handle('studio:getScorecard', async (_event, projectPath: string, windowDays: number) => {
