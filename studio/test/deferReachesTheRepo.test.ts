@@ -14,13 +14,13 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { deferSpec } from '../electron/main/board'
+import { deferSpec, generateHandoffReport } from '../electron/main/board'
 import { initSettingsPath } from '../electron/main/settings'
-import { pull } from '../electron/main/sync'
+import { pull, save } from '../electron/main/sync'
 
 function findPluginRoot(): string | null {
   const candidates = [
@@ -150,5 +150,167 @@ describe.skipIf(!available)('deferring a spec reaches the repository', () => {
 
     writeFileSync(join(project, second), text)
     rmSync(join(project, second))
+  }, 120_000)
+})
+
+describe.skipIf(!available)('the hand-over document carries the deferred items', () => {
+  /** The part of spec 0014 that somebody reads months later.
+   *
+   * The generator was already capable of this — it assembles one line per deferred spec from
+   * the specs themselves. What was missing was that Studio never asked it to. So the test
+   * that matters is not "does the generator work" but "does declaring produce a document a
+   * colleague can read, with the reasons in it".
+   */
+
+  const REPORT = '.sdlc/artifacts/close/final-handoff-report.md'
+  let reportWorkspace = ''
+  let reportOrigin = ''
+  let reportProject = ''
+
+  beforeAll(async () => {
+    reportWorkspace = mkdtempSync(join(tmpdir(), 'studio-handoff-'))
+    reportOrigin = join(reportWorkspace, 'origin.git')
+    reportProject = join(reportWorkspace, 'project')
+    git(['init', '--bare', '--initial-branch=main', reportOrigin], reportWorkspace)
+    git(['clone', reportOrigin, reportProject], reportWorkspace)
+    git(['config', 'user.email', 'test@example.com'], reportProject)
+    git(['config', 'user.name', 'Test Person'], reportProject)
+
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'init_project.py'),
+      '--profile', join(PLUGIN_ROOT!, 'profiles', 'microsoft-enterprise', 'profile.yaml'),
+      '--target', reportProject,
+    ], { cwd: SCRIPTS_DIR })
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'new_spec.py'),
+      '--repo', reportProject, '--name', 'vendor integration', '--risk', 'LOW',
+    ], { cwd: SCRIPTS_DIR })
+
+    git(['add', '-A'], reportProject)
+    git(['commit', '-m', 'initial project'], reportProject)
+    git(['push', '-u', 'origin', 'main'], reportProject)
+    const first = await pull(reportProject, SCRIPTS_DIR)
+    expect(first.ok, first.error).toBe(true)
+
+    const deferred = await deferSpec(
+      reportProject, SCRIPTS_DIR, 'specs/0001-vendor-integration.md', REASON, 'matt')
+    expect(deferred.ok, deferred.refusal?.message).toBe(true)
+  }, 180_000)
+
+  afterAll(() => {
+    if (reportWorkspace) rmSync(reportWorkspace, { recursive: true, force: true })
+  })
+
+  it('produces the document and saves it', async () => {
+    const result = await generateHandoffReport(reportProject, SCRIPTS_DIR, { actor: 'matt' })
+    expect(result.ok, result.error).toBe(true)
+    expect(result.path).toBe(REPORT)
+  }, 120_000)
+
+  it('a colleague who was not there can read the deferral and its reason', () => {
+    const colleague = join(reportWorkspace, 'colleague')
+    git(['clone', reportOrigin, colleague], reportWorkspace)
+    const doc = readFileSync(join(colleague, REPORT), 'utf-8')
+    expect(doc).toContain('vendor-integration')
+    expect(doc).toContain(REASON)
+  }, 60_000)
+
+  it('refuses to overwrite a document somebody has edited, and says so as a choice', async () => {
+    const edited = readFileSync(join(reportProject, REPORT), 'utf-8')
+      + '\n\nSomebody wrote this paragraph by hand.\n'
+    writeFileSync(join(reportProject, REPORT), edited)
+
+    const result = await generateHandoffReport(reportProject, SCRIPTS_DIR, { actor: 'matt' })
+    expect(result.ok).toBe(false)
+    expect(result.alreadyExists).toBe(true)
+    // And the editing is still there — a refusal that destroyed the thing it refused to
+    // overwrite would be worse than no refusal at all.
+    expect(readFileSync(join(reportProject, REPORT), 'utf-8')).toContain('by hand')
+  }, 120_000)
+
+  it('replaces it only when explicitly told to', async () => {
+    const result = await generateHandoffReport(
+      reportProject, SCRIPTS_DIR, { actor: 'matt', replaceExisting: true })
+    expect(result.ok, result.error).toBe(true)
+    expect(readFileSync(join(reportProject, REPORT), 'utf-8')).not.toContain('by hand')
+  }, 120_000)
+
+  it('says the judgement sections still need a person', async () => {
+    const doc = readFileSync(join(reportProject, REPORT), 'utf-8')
+    // The numbers are assembled; the conclusions are not, and the document is explicit about
+    // which is which rather than reading as finished.
+    expect(doc).toContain('[Fill:')
+  })
+})
+
+describe.skipIf(!available)('a document that did not exist before can still be saved', () => {
+  /** The bug underneath the hand-over document, which was not about hand-over documents.
+   *
+   * A pull recorded a file that exists HERE but not on the remote as "first sync, already in
+   * step", storing its current contents as the shared baseline. `save()` pulls before working
+   * out what changed — so anything newly created was marked unchanged moments before the save
+   * looked at it, and the save answered "nothing to save" while reporting success.
+   *
+   * Nothing Studio created could ever reach the repository. It went unnoticed because every
+   * other test edits a file that was already there, which takes a different path entirely.
+   */
+
+  const NEW_DOC = '.sdlc/artifacts/close/lessons-learned.md'
+  let ws = ''
+  let originPath = ''
+  let projectPath = ''
+
+  beforeAll(async () => {
+    ws = mkdtempSync(join(tmpdir(), 'studio-newfile-'))
+    originPath = join(ws, 'origin.git')
+    projectPath = join(ws, 'project')
+    git(['init', '--bare', '--initial-branch=main', originPath], ws)
+    git(['clone', originPath, projectPath], ws)
+    git(['config', 'user.email', 'test@example.com'], projectPath)
+    git(['config', 'user.name', 'Test Person'], projectPath)
+
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'init_project.py'),
+      '--profile', join(PLUGIN_ROOT!, 'profiles', 'microsoft-enterprise', 'profile.yaml'),
+      '--target', projectPath,
+    ], { cwd: SCRIPTS_DIR })
+    git(['add', '-A'], projectPath)
+    git(['commit', '-m', 'initial project'], projectPath)
+    git(['push', '-u', 'origin', 'main'], projectPath)
+    expect((await pull(projectPath, SCRIPTS_DIR)).ok).toBe(true)
+  }, 180_000)
+
+  afterAll(() => {
+    if (ws) rmSync(ws, { recursive: true, force: true })
+  })
+
+  it('reaches the repository on its first save', async () => {
+    mkdirSync(join(projectPath, '.sdlc', 'artifacts', 'close'), { recursive: true })
+    writeFileSync(join(projectPath, NEW_DOC), '# Lessons learned\n\nThe upstream vendor.\n')
+
+    const result = await save(projectPath, SCRIPTS_DIR, 'wrote the lessons up', {
+      onlyPath: NEW_DOC, actor: 'matt',
+    })
+    expect(result.ok, result.error).toBe(true)
+    // The assertion that catches it: "nothing to save" came back as ok, so ok alone is not
+    // evidence that anything was saved.
+    expect(result.outcome).toBe('pushed_directly')
+
+    const colleague = join(ws, 'colleague')
+    git(['clone', originPath, colleague], ws)
+    expect(readFileSync(join(colleague, NEW_DOC), 'utf-8')).toContain('The upstream vendor.')
+  }, 120_000)
+
+  it('a file already shared by both sides is still treated as in step', async () => {
+    // The control. The branch that was wrong had a correct half — a file that exists on BOTH
+    // sides with identical contents genuinely is the shared baseline, and must keep being
+    // recorded as one or every pull would re-merge everything.
+    await pull(projectPath, SCRIPTS_DIR)
+    const again = await save(projectPath, SCRIPTS_DIR, 'no change at all', {
+      onlyPath: NEW_DOC, actor: 'matt',
+    })
+    expect(again.ok).toBe(true)
+    expect(again.outcome).toBeUndefined()
+    expect(again.error).toMatch(/nothing to save/i)
   }, 120_000)
 })

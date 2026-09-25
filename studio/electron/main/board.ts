@@ -14,10 +14,10 @@
 
 import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
-import { save } from './sync'
+import { isOnRemote, save } from './sync'
 import type {
-  Board, BoardRow, DeclarationResult, DeclarationStatus, SpecReadiness, SpecStatus,
-  SpecTransitionResult,
+  Board, BoardRow, DeclarationResult, DeclarationStatus, HandoffReportResult, SpecReadiness,
+  SpecStatus, SpecTransitionResult,
 } from '../../shared/types'
 
 interface RawPullRequest {
@@ -371,5 +371,88 @@ export async function deferSpec(
     changed: true,
     message,
     note: 'Saved to the repository, so the deferral and its reason are on the record.',
+  }
+}
+
+const HANDOFF_REPORT = '.sdlc/artifacts/close/final-handoff-report.md'
+
+/** Produce the hand-over document, through the plugin's own generator (spec 0014).
+ *
+ * Studio composes nothing here. `generate_handoff_report.py` already assembles the phase
+ * report index, the per-phase gate and sign-off table, the metrics history and the spec
+ * backlog — and, the part this spec cares about, one line per deferred spec with the reason
+ * somebody typed. That list is what a person goes looking for months later when they ask why
+ * an expected feature is not there, so it has to come from the specs themselves rather than
+ * from anything Studio remembers.
+ *
+ * It refuses to overwrite an existing report, and that refusal is passed through rather than
+ * forced. A hand-over document somebody has already edited is exactly the kind of work this
+ * product exists not to destroy, so replacing it is a question for a person, not a default.
+ */
+export async function generateHandoffReport(
+  projectPath: string,
+  pluginScriptsDir: string,
+  options: { actor?: string; replaceExisting?: boolean } = {},
+): Promise<HandoffReportResult> {
+  const args = ['--repo', projectPath]
+  if (options.replaceExisting) args.push('--force')
+
+  const entry = await runPluginScript(pluginScriptsDir, 'generate_handoff_report.py', args)
+  if (!entry.ok) {
+    const stderr = entry.stderr.trim()
+    // The generator's own refusal, recognised so the screen can offer the choice rather than
+    // showing a person a raw error they cannot act on.
+    if (/refusing to overwrite/i.test(stderr)) {
+      return {
+        ok: false,
+        alreadyExists: true,
+        path: HANDOFF_REPORT,
+        error: 'A hand-over document already exists. Replacing it would discard whatever has '
+          + 'been written into it since.',
+      }
+    }
+    return { ok: false, error: stderr || 'The hand-over document could not be produced.' }
+  }
+
+  // Produced locally is not produced. The whole point of this document is that somebody else
+  // reads it, and until it is saved it exists on one machine.
+  const saved = await save(projectPath, pluginScriptsDir, 'Drafted the hand-over document', {
+    onlyPath: HANDOFF_REPORT,
+    actor: options.actor,
+  })
+  // `ok` alone is not enough, and trusting it was a real bug caught by a real remote: save()
+  // answers ok:true with "nothing to save" when it found no change to commit. So when no
+  // commit happened, the remote is ASKED — because the question here is "can somebody else
+  // read this?", not "did a commit happen". Regenerating a document that is already saved
+  // legitimately commits nothing, and that is a success; a document that never left this
+  // machine is the failure, and the two are indistinguishable from the save's answer alone.
+  if (saved.ok && !saved.outcome && !(await isOnRemote(projectPath, HANDOFF_REPORT))) {
+    return {
+      ok: false,
+      path: HANDOFF_REPORT,
+      wroteLocally: true,
+      error: `The hand-over document was written on this machine, but nothing was committed, `
+        + `so nobody else can read it yet: ${saved.error ?? 'no change was detected to save'}`,
+    }
+  }
+  if (!saved.ok) {
+    return {
+      ok: false,
+      path: HANDOFF_REPORT,
+      wroteLocally: true,
+      error: `The hand-over document was written on this machine, but saving it to the `
+        + `repository failed, so nobody else can read it yet: `
+        + `${saved.error ?? 'the save gave no reason'}`,
+    }
+  }
+
+  return {
+    ok: true,
+    path: HANDOFF_REPORT,
+    note: entry.stdout.includes('[Fill:')
+      || /fill the \[Fill/i.test(entry.stdout)
+      ? 'Drafted and saved. The sections marked to fill need a person before delivery — the '
+        + 'numbers are assembled, the judgement is not.'
+      : 'Drafted and saved.',
   }
 }

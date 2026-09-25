@@ -21,8 +21,8 @@ import {
 } from './settings'
 import { runGitTolerant } from './git'
 import {
-  declareComplete, deferSpec, getBoard, getDeclarationStatus, getSpecReadiness, getSpecStatus,
-  transitionSpec,
+  declareComplete, deferSpec, generateHandoffReport, getBoard, getDeclarationStatus,
+  getSpecReadiness, getSpecStatus, transitionSpec,
 } from './board'
 import { handOff } from './handoff'
 import type { ClashChoice, DraftOutcome } from '../../shared/types'
@@ -384,6 +384,21 @@ function registerIpcHandlers() {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
       return deferSpec(projectPath, scriptsDir, specPath, reason, actor)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:generateHandoffReport',
+    async (
+      _event,
+      projectPath: string,
+      options?: { actor?: string; replaceExisting?: boolean },
+    ) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) {
+        return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+      }
+      return generateHandoffReport(projectPath, scriptsDir, options ?? {})
     },
   )
 

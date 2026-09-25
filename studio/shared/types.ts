@@ -644,6 +644,23 @@ export interface DeclarationStatus {
   totals: { specs: number; unfinished: number; deferred: number }
 }
 
+/** The outcome of producing the hand-over document (spec 0014).
+ *
+ * `wroteLocally` exists because the two halves fail separately and a person needs to know
+ * which one they have: a document written here but not saved is not a hand-over document at
+ * all, since the whole point is that somebody else reads it.
+ */
+export interface HandoffReportResult {
+  ok: boolean
+  path?: string
+  /** The generator refused rather than overwrite a report somebody has already edited. */
+  alreadyExists?: boolean
+  /** The document was written on this machine but did not reach the repository. */
+  wroteLocally?: boolean
+  note?: string
+  error?: string
+}
+
 export interface DeclarationResult {
   ok: boolean
   declared_by?: string
@@ -735,6 +752,11 @@ export interface StudioApi {
   /** Defer one spec with a reason. The plugin refuses an empty or token reason. */
   deferSpec(projectPath: string, specPath: string, reason: string, actor?: string):
     Promise<SpecTransitionResult>
+  /** Produce the hand-over document through the plugin's own generator, and save it. */
+  generateHandoffReport(
+    projectPath: string,
+    options?: { actor?: string; replaceExisting?: boolean },
+  ): Promise<HandoffReportResult>
   /** Save a document the person has already seen.
    *
    * Takes the TEXT rather than fetching anything, deliberately: spec 0013 asks an export to

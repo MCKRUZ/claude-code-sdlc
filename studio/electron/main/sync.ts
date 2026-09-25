@@ -113,6 +113,26 @@ async function currentBranch(projectPath: string): Promise<string> {
   return (await runGit(['branch', '--show-current'], projectPath)).trim()
 }
 
+/** Does the shared branch hold this file, byte for byte as it is here?
+ *
+ * The question a caller actually wants after saving something is "can somebody else read
+ * this?", and that is not the same as "did a commit happen". A save can honestly report
+ * nothing to commit because the remote already holds identical content — success — or because
+ * it saw no change at all. Asking the remote answers the property rather than the mechanism.
+ */
+export async function isOnRemote(projectPath: string, relPath: string): Promise<boolean> {
+  try {
+    const branch = await currentBranch(projectPath)
+    const remoteBytes = await readRemoteBlob(projectPath, branch, relPath)
+    if (!remoteBytes) return false
+    const localFullPath = resolveInProject(projectPath, relPath)
+    if (!existsSync(localFullPath)) return false
+    return hashBytes(remoteBytes) === hashBytes(readFileSync(localFullPath))
+  } catch {
+    return false
+  }
+}
+
 async function readRemoteBlob(projectPath: string, branch: string, relPath: string): Promise<Buffer | null> {
   const entry = await runGitTolerant(['show', `origin/${branch}:${relPath}`], projectPath)
   if (!entry.ok) return null
@@ -211,7 +231,20 @@ async function pullOneFile(
 
   if (!existing) {
     // True first sync for this file.
-    if (localBytes && (!remoteBytes || localHash === remoteHash)) {
+    //
+    // A file that exists HERE and not on the remote is new work, and gets no ancestor. It used
+    // to be baselined against its own current contents, which quietly made it unsaveable: save()
+    // pulls before working out what changed, so the new document was recorded as "already in
+    // step" moments before the save looked, and the save answered "nothing to save" while
+    // reporting success. Nothing Studio created could ever reach the repository — found by
+    // producing a hand-over document and then failing to find it in a fresh clone.
+    //
+    // Leaving the ancestor unset is also the honest description: there is no shared history
+    // with the remote yet, because the remote has never seen this file.
+    if (localBytes && !remoteBytes) {
+      return { merged: false }
+    }
+    if (localBytes && localHash === remoteHash) {
       storeAncestorBlob(localHash!, localBytes)
       syncState.files[relPath] = { ancestorHash: localHash! }
       return { merged: false }

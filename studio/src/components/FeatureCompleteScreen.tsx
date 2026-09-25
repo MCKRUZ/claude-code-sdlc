@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DeclarationStatus } from '../../shared/types'
+import type { DeclarationStatus, HandoffReportResult } from '../../shared/types'
 
 /** Declaring Build finished (spec 0014).
  *
@@ -36,6 +36,11 @@ export function FeatureCompleteScreen({
   const [refusal, setRefusal] = useState<string | null>(null)
   const [declared, setDeclared] = useState<{ by: string; nextStep: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  /** The hand-over document is produced immediately after the declaration, and its outcome is
+   * shown whether it worked or not. A document that failed to appear is the one somebody will
+   * go looking for later, so silence here would be the expensive kind. */
+  const [handoff, setHandoff] = useState<HandoffReportResult | null>(null)
+  const [handoffBusy, setHandoffBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -55,6 +60,18 @@ export function FeatureCompleteScreen({
       return
     }
     setDeclared({ by: result.declared_by ?? actor, nextStep: result.next_step ?? '' })
+    await produceHandoff(false)
+  }
+
+  /** Produced through the plugin's own generator, which assembles the deferred items and their
+   * reasons from the specs themselves. Studio composes none of it. */
+  const produceHandoff = async (replaceExisting: boolean) => {
+    setHandoffBusy(true)
+    setHandoff(await window.studio.generateHandoffReport(projectPath, {
+      actor,
+      replaceExisting,
+    }))
+    setHandoffBusy(false)
   }
 
   if (loading && !status) return <p className="text-sm text-slate-400">Reading the backlog…</p>
@@ -72,6 +89,12 @@ export function FeatureCompleteScreen({
             <p className="mt-2 text-xs text-slate-500">{declared.nextStep}</p>
           )}
         </div>
+        <HandoffPanel
+          result={handoff}
+          busy={handoffBusy}
+          onReplace={() => produceHandoff(true)}
+          onRetry={() => produceHandoff(false)}
+        />
         {status.deferred.length > 0 && (
           <DeferredList deferred={status.deferred} />
         )}
@@ -170,6 +193,79 @@ export function FeatureCompleteScreen({
           : <span className="text-xs text-amber-800">
               A declaration needs a name — an unnamed one is an announcement nobody made.
             </span>}
+      </div>
+    </div>
+  )
+}
+
+/** What happened to the hand-over document, said plainly in every case.
+ *
+ * Three outcomes, and each needs a different thing from the person, so none of them is folded
+ * into the others:
+ *
+ *   produced and saved  — the numbers are assembled; the judgement sections still need writing
+ *   one already exists  — the generator refused rather than overwrite somebody's editing, and
+ *                         replacing it is offered as a choice rather than taken as a default
+ *   it failed           — including the half-and-half case, where it was written here but
+ *                         never reached anybody
+ */
+function HandoffPanel({
+  result, busy, onReplace, onRetry,
+}: {
+  result: HandoffReportResult | null
+  busy: boolean
+  onReplace: () => void
+  onRetry: () => void
+}) {
+  if (busy) {
+    return <p className="text-sm text-slate-400">Drafting the hand-over document…</p>
+  }
+  if (!result) return null
+
+  if (result.ok) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-medium text-slate-900">Hand-over document</h3>
+        <p className="mt-1 font-mono text-xs text-slate-500">{result.path}</p>
+        <p className="mt-2 text-sm text-slate-700">{result.note}</p>
+        <p className="mt-2 text-xs text-slate-500">
+          The deferred items and their reasons are in it, taken from the specs themselves.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+      <h3 className="text-sm font-medium text-amber-900">
+        {result.alreadyExists
+          ? 'A hand-over document is already there'
+          : 'The hand-over document was not produced'}
+      </h3>
+      <p className="mt-1 text-sm text-amber-900">{result.error}</p>
+      <div className="mt-2 flex items-center gap-3">
+        {result.alreadyExists ? (
+          <button
+            type="button"
+            onClick={onReplace}
+            className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white"
+          >
+            Replace it with a fresh draft
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white"
+          >
+            Try again
+          </button>
+        )}
+        {result.wroteLocally && (
+          <span className="text-xs text-amber-800">
+            The file exists on this machine only — saving it is what makes it a hand-over.
+          </span>
+        )}
       </div>
     </div>
   )

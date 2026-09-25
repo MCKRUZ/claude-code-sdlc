@@ -65,6 +65,8 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:declareComplete', projectPath, declaredBy, confirmedTeams),
   deferSpec: (projectPath, specPath, reason, actor) =>
     ipcRenderer.invoke('studio:deferSpec', projectPath, specPath, reason, actor),
+  generateHandoffReport: (projectPath, options) =>
+    ipcRenderer.invoke('studio:generateHandoffReport', projectPath, options),
   exportDocument: (suggestedName, contents) =>
     ipcRenderer.invoke('studio:exportDocument', suggestedName, contents),
   setRosterPerson: (projectPath, handle, fields) =>
