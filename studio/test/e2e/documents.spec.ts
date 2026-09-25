@@ -33,6 +33,7 @@ const PLUGIN_ROOT = PLUGIN.root
 const SCRIPTS_DIR = PLUGIN.scriptsDir
 const VENV_PYTHON = PLUGIN.python
 const REQUIREMENTS = '.sdlc/artifacts/01-requirements/requirements.md'
+const NON_FUNCTIONAL = '.sdlc/artifacts/01-requirements/non-functional-requirements.md'
 
 let app: ElectronApplication
 let page: Page
@@ -56,6 +57,12 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
 
     mkdirSync(join(project, '.sdlc', 'artifacts', '01-requirements'), { recursive: true })
     cpSync(join(SCRIPTS_DIR, 'tests', 'fixtures', 'documents', 'requirements.md'), join(project, REQUIREMENTS))
+    // A second, shaped document that has NO numbered sections — which is the ordinary case,
+    // 22 of the 27 shapes. Needed to prove edit mode stays quiet there; see the test below.
+    cpSync(
+      join(SCRIPTS_DIR, 'tests', 'fixtures', 'documents', 'non-functional-requirements.md'),
+      join(project, NON_FUNCTIONAL),
+    )
 
     // A fresh project starts in Phase 0, whose documents do not exist yet — so the stage home
     // would correctly show nothing openable. Move it to Phase 1, which is where the document
@@ -91,9 +98,19 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   })
 
   test.afterAll(async () => {
-    if (page) await page.screenshot({ path: 'test/screenshots/spec-0010-documents.png' }).catch(() => {})
-    if (app) await app.close()
-    if (workspace) rmSync(workspace, { recursive: true, force: true })
+    // The same teardown race board.spec.ts already fixed, which this file never got. Studio
+    // runs a repeating background pull that spawns git, so at shutdown the application can be
+    // mid-subprocess while this tries to delete the folder underneath it — and on Windows a
+    // directory with live handles does not go quietly. Closing and deleting together then
+    // exceed the default 30s hook budget, which failed the whole file while every assertion
+    // in it had passed. Each step is guarded so one slow step cannot strand the others, and a
+    // temp directory that survives is the operating system's problem, never a test result.
+    test.setTimeout(120_000)
+    await page?.screenshot({ path: 'test/screenshots/spec-0010-documents.png' }).catch(() => {})
+    await app?.close().catch(() => {})
+    try {
+      if (workspace) rmSync(workspace, { recursive: true, force: true })
+    } catch { /* a leftover temp directory is not a failed test */ }
   })
 
   test('opens the project from the welcome screen', async () => {
@@ -135,7 +152,53 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('button', { name: /Ask Claude to draft/i }).first()).toBeVisible()
     // "that number is shown before the person saves it" — the add control names the id it
     // will use, rather than revealing it afterwards.
-    await expect(page.getByRole('button', { name: /^Add FR-\d+$/ })).toBeVisible()
+    //
+    // The wait is generous because the number comes from the plugin running in ANOTHER
+    // PROCESS, and the default five seconds is not a promise the machine makes under load.
+    // This assertion has already failed once on timing alone and was read as a missing
+    // feature; the control it waits on now says "Working out the next number…" while the
+    // answer is outstanding, so a real absence and a slow answer no longer look alike.
+    await expect(page.getByRole('button', { name: /^Add FR-\d+$/ })).toBeVisible({ timeout: 30_000 })
+  })
+
+  test('a document with no numbered sections raises no alarm in edit mode', async () => {
+    // The regression guard for a defect the correctness review caught in this very change.
+    // Surfacing the "could not work out the next number" failure was right; asking for a
+    // number on a document that cannot have one was not. The plugin answers, correctly, that
+    // there are no numbered sections — and that answer was being painted as an error banner
+    // on 22 of the 27 shapes. A false alarm on a healthy document is worse than the silence
+    // it replaced, because it teaches people that the red box means nothing.
+    await page.getByRole('button', { name: /Done editing/i }).click()
+    await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    await page.getByRole('button', { name: /^non-functional-requirements\.md/ }).click()
+    await expect(page.getByRole('heading', { name: /non-functional-requirements\.md/i }))
+      .toBeVisible({ timeout: 30_000 })
+
+    await page.getByRole('button', { name: /^Edit$/ }).click()
+    // Edit mode works — the fields are editable — and raises nothing.
+    await expect(page.getByRole('button', { name: /^Save field$/ }).first()).toBeVisible()
+    // Proving a NEGATIVE across a process boundary needs elapsed time, and this assertion
+    // took two goes to get right. Both failures were the same shape — passing vacuously:
+    //
+    //   1. it matched wording the plugin never uses ("no numbered sections"; it actually says
+    //      "this shape declares no repeating section"), so it looked for a sentence nobody
+    //      writes and of course did not find it;
+    //   2. then it checked the banner's absence IMMEDIATELY after clicking Edit, which
+    //      succeeds instantly against an element that has merely not rendered YET.
+    //
+    // A fixed wait is the right tool here, unlike almost everywhere else: the claim is "no
+    // banner ever appears", and that is only meaningful once the round trip has had time to
+    // land. It takes a few hundred milliseconds; this allows ten times that.
+    await page.waitForTimeout(3_000)
+    await expect(page.getByTestId('document-error')).toHaveCount(0)
+    // And no add control at all, because there is nothing to add.
+    await expect(page.getByRole('button', { name: /^Add /i })).toHaveCount(0)
+
+    await page.getByRole('button', { name: /Done editing/i }).click()
+    await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    await page.getByRole('button', { name: /^requirements\.md/ }).click()
+    await expect(page.getByRole('heading', { name: /requirements\.md/i })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: /^Edit$/ }).click()
   })
 
   test('leaving edit mode takes them away again', async () => {
@@ -150,6 +213,14 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   // offered rather than applied, that the person can throw it away, and that throwing it away
   // is still recorded — so a live call is the only way to get a real draft to act on.
   test('a Claude draft is offered for review, not applied, and a discard is still recorded', async () => {
+    // Somewhere with no Claude login — CI, most obviously — this test would spend two
+    // minutes waiting for a draft that is never coming, then skip. Saying so up front costs
+    // nothing and is the same bargain as STUDIO_SKIP_PLUGIN_TESTS: the run may decline to
+    // prove something, but only out loud and only because somebody asked it to.
+    test.skip(
+      process.env.STUDIO_SKIP_LIVE_MODEL === '1',
+      'STUDIO_SKIP_LIVE_MODEL=1 — this needs a real, signed-in model call, so it was not run.',
+    )
     test.setTimeout(180_000)
     await page.getByRole('button', { name: /^Edit$/ }).click()
 

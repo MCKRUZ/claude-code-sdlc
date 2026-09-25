@@ -28,6 +28,9 @@ export function DocumentView({
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nextId, setNextId] = useState<string | null>(null)
+  // Working out the next number means asking the plugin, in another process. Until that
+  // answers, the control must not claim to know — see the comment on the button itself.
+  const [numbering, setNumbering] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -46,9 +49,27 @@ export function DocumentView({
 
   const enterEditMode = useCallback(async () => {
     setEditing(true)
+
+    // Most documents have no numbered sections at all — 22 of the 27 shapes — so there is no
+    // next number to work out and asking for one is both pointless and actively misleading:
+    // the plugin correctly answers "no numbered sections here", and reporting that as a
+    // failure puts an error banner on an ordinary, healthy document. Ask only where an
+    // answer is meaningful.
+    if (!(doc?.sections ?? []).some((s) => s.kind === 'repeating_instance')) {
+      setNextId(null)
+      return
+    }
+
+    setNumbering(true)
     const next = await window.studio.nextNumber(projectPath, relPath)
+    setNumbering(false)
     setNextId(next.ok ? next.id ?? null : null)
-  }, [projectPath, relPath])
+    // Here a failure IS a failure: this document has numbered sections, so not being able to
+    // name the next one means something went wrong. It used to be discarded, and the only
+    // visible trace was the add control quietly reading "Add another" — a silent degradation
+    // wearing the costume of a design choice.
+    if (!next.ok) setError(next.error ?? 'Could not work out the next number for this document.')
+  }, [projectPath, relPath, doc])
 
   const saveField = useCallback(async (section: DocumentSection, label: string, value: string) => {
     setBusy(true)
@@ -66,8 +87,11 @@ export function DocumentView({
     if (!result.ok) setError(result.error ?? 'Could not add that.')
     else {
       setDoc(result)
+      setNumbering(true)
       const next = await window.studio.nextNumber(projectPath, relPath)
+      setNumbering(false)
       setNextId(next.ok ? next.id ?? null : null)
+      if (!next.ok) setError(next.error ?? 'Could not work out the next number for this document.')
     }
     setBusy(false)
   }, [projectPath, relPath])
@@ -160,7 +184,14 @@ export function DocumentView({
       )}
 
       {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
+        // The test hook is here because asserting "no error is shown" by matching the wording
+        // proves nothing: a test that looks for the wrong sentence passes whether or not the
+        // banner is there. That happened — a regression test for the false-alarm defect below
+        // passed with the defect still in place, because the real message was different.
+        <div
+          data-testid="document-error"
+          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]"
+        >
           {error}
         </div>
       )}
@@ -181,15 +212,19 @@ export function DocumentView({
       </div>
 
       {/* The add control exists ONLY in edit mode, and shows the number it will use before
-          anything is created — spec 0010's acceptance check asks for exactly that. */}
+          anything is created — spec 0010's acceptance check asks for exactly that.
+          THREE states, never two. "Add another" once meant both "this document has no
+          numbered sections" and "the number has not come back yet", because working it out
+          is a call into another process. A slow answer then looked exactly like no answer —
+          which is how a passing feature came to be reported as an unbuilt one. */}
       {editing && hasRepeating && (
         <button
           type="button"
           onClick={addRequirement}
-          disabled={busy}
+          disabled={busy || numbering}
           className="w-full rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-brand-500 hover:text-brand-700 disabled:opacity-40"
         >
-          {nextId ? `Add ${nextId}` : 'Add another'}
+          {numbering ? 'Working out the next number…' : nextId ? `Add ${nextId}` : 'Add another'}
         </button>
       )}
     </div>
