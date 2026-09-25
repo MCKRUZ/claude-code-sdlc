@@ -6,6 +6,7 @@ CI/CD pack's toolchain_map, and the substitute/residual-scan primitives. The end
 is covered in test_install_harness.py::TestCiSeam.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,9 @@ DOTNET_CI_PROFILE = {
     "coverage": {"floor_percent": 80, "tool": "coverlet"},
     "eval_gate": {"enabled": False,
                   "command": 'dotnet test <<EVAL_TEST_PROJECT>> --filter "Category=OwaspAgentic"'},
+    "dependency_scan": {"enabled": True,
+                        "command": "dotnet list {{SOLUTION_OR_PROJECT}} package --vulnerable",
+                        "block_severities": "High,Critical"},
 }
 
 GITHUB_TOOLCHAIN_MAP = {
@@ -239,14 +243,48 @@ class TestResidualTokens:
 
 
 class TestSeamVocabulary:
-    def test_is_exactly_the_nine_designed_tokens(self):
+    def test_is_exactly_the_eleven_designed_tokens(self):
         """The vocabulary is closed and small on purpose — every entry must be filled by a real
-        ci-profile value or toolchain_map field, and each is referenced by a pack workflow."""
+        ci-profile value or toolchain_map field, and each is referenced by a pack workflow.
+
+        The two dependency tokens were added after the omission they caused was found by
+        installing the harness and reading the result. Because the residual audit is scoped to
+        THIS SET, a token missing here is invisible twice over: never substituted, and never
+        reported as surviving. The dependency-scan pipeline shipped with a literal token where
+        its command belongs, and the installer called that a success.
+
+        So this test is not bookkeeping. It is the thing that makes leaving a token out of the
+        vocabulary a deliberate act rather than a silent one.
+        """
         assert SEAM_TOKENS == {
             "<<CI_TOOLCHAIN_ACTION>>", "<<CI_TOOLCHAIN_INPUT>>", "<<CI_TOOLCHAIN_VERSION>>",
             "<<CI_RESTORE_CMD>>", "<<CI_BUILD_CMD>>", "<<CI_TEST_CMD>>", "<<CI_LINT_CMD>>",
             "<<CI_COVERAGE_FLOOR>>", "<<CI_EVAL_CMD>>",
+            "<<CI_DEPENDENCY_SCAN_CMD>>", "<<CI_DEPENDENCY_BLOCK_SEVERITIES>>",
         }
+
+    def test_every_seam_token_a_shipped_pipeline_uses_is_in_the_vocabulary(self):
+        """The check that would have caught the original omission.
+
+        Reads the pipelines the packs actually ship and asserts that every `<<CI_*>>` token in
+        them is one the installer knows how to fill. A token a pipeline uses but the seam does
+        not define is exactly the defect this guards: it survives into the installed file, in a
+        live shell line, and nothing says so.
+        """
+        packs = Path(__file__).resolve().parents[2] / "harness" / "packs" / "cicd"
+        used: set[str] = set()
+        for pipeline in packs.rglob("*.yml"):
+            for line in pipeline.read_text(encoding="utf-8").splitlines():
+                if line.lstrip().startswith("#"):
+                    continue        # prose describing the seam, not a use of it
+                used.update(re.findall(r"<<CI_[A-Z0-9_]*>>", line))
+
+        # Phase-3 repo blanks share the prefix and are deliberately NOT the installer's business
+        # (see the module docstring) — they name the CI pipeline, not the stack seam.
+        phase3 = {"<<CI_WORKFLOW_NAME>>", "<<CI_PIPELINE_NAME>>", "<<CI_PIPELINE_RESOURCE>>"}
+        assert (used - phase3) <= SEAM_TOKENS, (
+            f"shipped pipelines use seam token(s) the installer cannot fill: "
+            f"{sorted((used - phase3) - SEAM_TOKENS)}")
 
     def test_a_built_table_fills_every_seam_token(self):
         table = build_token_table(DOTNET_CI_PROFILE, _cicd_manifest(GITHUB_TOOLCHAIN_MAP), "github")
