@@ -73,3 +73,48 @@ jobs:
       # `npx vitest run` rather than `npm test`, which would first run a `pretest` Vite build
       # that only the Playwright end-to-end suite needs. Same command that is run locally.
       - run: npx vitest run
+
+  # The tests above never open the application. These do — they launch the real Electron
+  # window and drive it, which is the only evidence that what was built actually works
+  # rather than merely compiling. They existed for weeks and ran nowhere, so two timing
+  # failures sat unnoticed until somebody ran them by hand.
+  ui:
+    name: studio (the real window)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Build the plugin's Python environment
+        working-directory: .
+        # The window drives real documents through the plugin's real scripts; without this
+        # the suite cannot start at all.
+        run: uv sync --project scripts
+
+      - run: npm ci
+
+      # Electron is a browser, and a browser on a headless Linux runner needs the system
+      # libraries Playwright knows about, plus a virtual display to open a window onto.
+      - name: Install the libraries a window needs
+        run: npx playwright install-deps chromium
+
+      # `vite build --mode=test` — the package's own `pretest`. Playwright launches the
+      # BUILT application, not the dev server, so this is not optional.
+      - run: npm run pretest
+
+      - name: Drive the real window
+        env:
+          # No Claude login here, and one test needs a genuine model call. It declines
+          # explicitly rather than spending two minutes timing out into the same answer.
+          STUDIO_SKIP_LIVE_MODEL: '1'
+        run: xvfb-run -a npx playwright test

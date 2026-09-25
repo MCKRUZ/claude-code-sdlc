@@ -28,6 +28,9 @@ export function DocumentView({
   const [editing, setEditing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [nextId, setNextId] = useState<string | null>(null)
+  // Working out the next number means asking the plugin, in another process. Until that
+  // answers, the control must not claim to know — see the comment on the button itself.
+  const [numbering, setNumbering] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const load = useCallback(async () => {
@@ -46,8 +49,16 @@ export function DocumentView({
 
   const enterEditMode = useCallback(async () => {
     setEditing(true)
+    setNumbering(true)
     const next = await window.studio.nextNumber(projectPath, relPath)
+    setNumbering(false)
     setNextId(next.ok ? next.id ?? null : null)
+    // A failure here used to be discarded, and the only visible trace was the add control
+    // quietly reading "Add another" instead of naming the number. That is a silent
+    // degradation wearing the costume of a design choice: the person cannot tell the
+    // difference between "this document has no numbered sections" and "working out the next
+    // number just failed", and neither can anyone reading a screenshot.
+    if (!next.ok) setError(next.error ?? 'Could not work out the next number for this document.')
   }, [projectPath, relPath])
 
   const saveField = useCallback(async (section: DocumentSection, label: string, value: string) => {
@@ -66,8 +77,11 @@ export function DocumentView({
     if (!result.ok) setError(result.error ?? 'Could not add that.')
     else {
       setDoc(result)
+      setNumbering(true)
       const next = await window.studio.nextNumber(projectPath, relPath)
+      setNumbering(false)
       setNextId(next.ok ? next.id ?? null : null)
+      if (!next.ok) setError(next.error ?? 'Could not work out the next number for this document.')
     }
     setBusy(false)
   }, [projectPath, relPath])
@@ -181,15 +195,19 @@ export function DocumentView({
       </div>
 
       {/* The add control exists ONLY in edit mode, and shows the number it will use before
-          anything is created — spec 0010's acceptance check asks for exactly that. */}
+          anything is created — spec 0010's acceptance check asks for exactly that.
+          THREE states, never two. "Add another" once meant both "this document has no
+          numbered sections" and "the number has not come back yet", because working it out
+          is a call into another process. A slow answer then looked exactly like no answer —
+          which is how a passing feature came to be reported as an unbuilt one. */}
       {editing && hasRepeating && (
         <button
           type="button"
           onClick={addRequirement}
-          disabled={busy}
+          disabled={busy || numbering}
           className="w-full rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-brand-500 hover:text-brand-700 disabled:opacity-40"
         >
-          {nextId ? `Add ${nextId}` : 'Add another'}
+          {numbering ? 'Working out the next number…' : nextId ? `Add ${nextId}` : 'Add another'}
         </button>
       )}
     </div>

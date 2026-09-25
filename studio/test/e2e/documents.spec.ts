@@ -135,7 +135,13 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('button', { name: /Ask Claude to draft/i }).first()).toBeVisible()
     // "that number is shown before the person saves it" — the add control names the id it
     // will use, rather than revealing it afterwards.
-    await expect(page.getByRole('button', { name: /^Add FR-\d+$/ })).toBeVisible()
+    //
+    // The wait is generous because the number comes from the plugin running in ANOTHER
+    // PROCESS, and the default five seconds is not a promise the machine makes under load.
+    // This assertion has already failed once on timing alone and was read as a missing
+    // feature; the control it waits on now says "Working out the next number…" while the
+    // answer is outstanding, so a real absence and a slow answer no longer look alike.
+    await expect(page.getByRole('button', { name: /^Add FR-\d+$/ })).toBeVisible({ timeout: 30_000 })
   })
 
   test('leaving edit mode takes them away again', async () => {
@@ -150,6 +156,14 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   // offered rather than applied, that the person can throw it away, and that throwing it away
   // is still recorded — so a live call is the only way to get a real draft to act on.
   test('a Claude draft is offered for review, not applied, and a discard is still recorded', async () => {
+    // Somewhere with no Claude login — CI, most obviously — this test would spend two
+    // minutes waiting for a draft that is never coming, then skip. Saying so up front costs
+    // nothing and is the same bargain as STUDIO_SKIP_PLUGIN_TESTS: the run may decline to
+    // prove something, but only out loud and only because somebody asked it to.
+    test.skip(
+      process.env.STUDIO_SKIP_LIVE_MODEL === '1',
+      'STUDIO_SKIP_LIVE_MODEL=1 — this needs a real, signed-in model call, so it was not run.',
+    )
     test.setTimeout(180_000)
     await page.getByRole('button', { name: /^Edit$/ }).click()
 
