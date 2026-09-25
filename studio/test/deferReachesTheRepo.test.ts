@@ -205,6 +205,15 @@ describe.skipIf(!available)('the hand-over document carries the deferred items',
     expect(result.path).toBe(REPORT)
   }, 120_000)
 
+  it('names the person who declared it', async () => {
+    // The line a reader looks at first. Offered by Studio at the moment of declaring, because
+    // the stage has not moved yet and so the project has recorded nobody — the generator
+    // prefers its own record the instant one exists.
+    const doc = readFileSync(join(reportProject, REPORT), 'utf-8')
+    expect(doc).toContain('Build declared complete by:')
+    expect(doc).toContain('matt')
+  })
+
   it('a colleague who was not there can read the deferral and its reason', () => {
     const colleague = join(reportWorkspace, 'colleague')
     git(['clone', reportOrigin, colleague], reportWorkspace)

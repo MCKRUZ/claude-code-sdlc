@@ -396,6 +396,11 @@ export async function generateHandoffReport(
 ): Promise<HandoffReportResult> {
   const args = ['--repo', projectPath]
   if (options.replaceExisting) args.push('--force')
+  // Offered, not asserted. The generator prefers whatever the project's own state records and
+  // uses this only until there is such a record — which there is not yet, since the document is
+  // drafted at the moment of declaring and the stage moves afterwards. That ordering is why the
+  // name has to be passed at all rather than simply read.
+  if (options.actor?.trim()) args.push('--declared-by', options.actor.trim())
 
   const entry = await runPluginScript(pluginScriptsDir, 'generate_handoff_report.py', args)
   if (!entry.ok) {
