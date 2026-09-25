@@ -188,6 +188,57 @@ test.describe('[spec 0011] the Build board in the real window', () => {
    * project this suite builds has configured none of them, which makes it the right fixture for
    * the second one.
    */
+  /** The two read-only explainer screens (spec 0013).
+   *
+   * Both promises here are about honesty rather than function, so neither can be proven by a
+   * function test: a measure with nothing behind it must read "no data" and never zero, and
+   * the activity measures this standard refuses must be STATED as refused rather than merely
+   * absent. The fixture project has no recorded events at all, which makes it the right one
+   * for the first.
+   */
+  test.describe('[spec 0013] the explainer screens', () => {
+    test('a measure with nothing behind it reads no data, never zero', async () => {
+      await page.getByRole('button', { name: 'How it is going', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'How Build is going' })).toBeVisible({ timeout: 60_000 })
+
+      // "Nobody has merged anything yet" and "everything merged was rejected" are opposite
+      // situations, and a zero shows them identically.
+      await expect(page.getByText('no data').first()).toBeVisible()
+      await expect(page.getByText(/No data in the last 14 days/)).toBeVisible()
+      await expect(page.getByText(/empty record, not a score of zero/)).toBeVisible()
+    })
+
+    test('a measure with no data says what would produce some', async () => {
+      await expect(page.getByText(/Produced by a merged spec recorded as accepted/)).toBeVisible()
+    })
+
+    test('the security review wait is on its own line', async () => {
+      // Folded into an average, a slow security review is one nobody acts on.
+      await expect(page.getByText(/Security review wait/)).toBeVisible()
+    })
+
+    test('the refused activity measures are STATED as refused, not just absent', async () => {
+      // An absence explains nothing. Saying why they are not measured is what changes a
+      // conversation in a steering meeting.
+      await expect(page.getByText(/Not measured here, on purpose/)).toBeVisible()
+      await expect(page.getByText(/Velocity, story points, pull-request counts and lines of code/)).toBeVisible()
+      await expect(page.getByText(/measure activity rather than outcome/)).toBeVisible()
+    })
+
+    test('the gates screen names which guide describes them', async () => {
+      await page.getByRole('button', { name: 'Checks and gates' }).click()
+      await expect(page.getByRole('heading', { name: 'Checks and gates' })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByText(/Studio does not\s+describe the gates itself/)).toBeVisible()
+    })
+
+    test('a gate the playbook ships but this project lacks is not shown as protecting anything', async () => {
+      await expect(
+        page.getByText(/The playbook ships these; this project does not run them/),
+      ).toBeVisible()
+      await expect(page.getByText(/not protecting anything here/)).toBeVisible()
+    })
+  })
+
   test.describe('[spec 0012] the settings screen', () => {
     test('every section names the file its setting is stored in', async () => {
       await page.getByRole('button', { name: 'Settings', exact: true }).click()

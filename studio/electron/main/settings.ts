@@ -7,8 +7,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
 import type {
-  ConnectionReport, FileSyncState, ProjectSettings, ProjectSyncState, RecentProject,
-  SettingChangeResult, Settings,
+  ConnectionReport, FileSyncState, GateInventory, ProjectSettings, ProjectSyncState,
+  RecentProject, Scorecard, SettingChangeResult, Settings,
 } from '../../shared/types'
 
 export type { FileSyncState, ProjectSyncState, RecentProject, Settings }
@@ -253,6 +253,52 @@ export async function getConnectionReport(
         detail: entry.stderr.trim() || 'The connection report could not be read.',
       }],
       not_universally_expected: {},
+    }
+  }
+}
+
+/** The steering scorecard, straight from the plugin.
+ *
+ * Returns null rather than a zeroed shape when it cannot be read: an all-zero scorecard is a
+ * claim about the project ("nothing is happening") and this would be a claim about the tool
+ * ("I could not look"). Showing the first when the second is true is how a screen lies
+ * quietly, and a steering meeting is exactly where that costs something.
+ */
+export async function getScorecard(
+  projectPath: string,
+  pluginScriptsDir: string,
+  windowDays: number,
+): Promise<Scorecard | null> {
+  const entry = await runPluginScript(pluginScriptsDir, 'scorecard.py', [
+    'report', '--repo', projectPath, '--window-days', String(windowDays), '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as Scorecard
+  } catch {
+    return null
+  }
+}
+
+/** Every gate a change must pass. The descriptions come from the rails guide, so Studio and
+ * the pipelines cannot disagree about what a gate does. */
+export async function getGateInventory(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<GateInventory> {
+  const entry = await runPluginScript(pluginScriptsDir, 'gate_inventory.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as GateInventory
+  } catch {
+    return {
+      ok: false,
+      guide_source: null,
+      gates: [],
+      unexpected: [],
+      bypass_ledgers: [],
+      // Never "this project has no gates" — that is a different and much more alarming claim.
+      error: entry.stderr.trim() || 'The gate inventory could not be read.',
     }
   }
 }

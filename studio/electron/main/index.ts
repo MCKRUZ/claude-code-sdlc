@@ -14,8 +14,8 @@ import { confirmRestore, diffVersions, getVersionText, listVersions, previewRest
 import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
-  getConnectionReport, getLastSeenCommit, getProjectSettings, setLastSeenCommit,
-  setRosterPerson, setStageApproval, setTeamLimit,
+  getConnectionReport, getGateInventory, getLastSeenCommit, getProjectSettings, getScorecard,
+  setLastSeenCommit, setRosterPerson, setStageApproval, setTeamLimit,
 } from './settings'
 import { runGitTolerant } from './git'
 import { getBoard, getSpecReadiness, getSpecStatus, transitionSpec } from './board'
@@ -235,6 +235,23 @@ function registerIpcHandlers() {
   const noScripts = (relPath: string) => ({
     ok: false, path: relPath, shaped: false, warnings: [], sections: [],
     error: 'claude-code-sdlc plugin scripts not found',
+  })
+
+  ipcMain.handle('studio:getScorecard', async (_event, projectPath: string, windowDays: number) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return null
+    return getScorecard(projectPath, scriptsDir, windowDays)
+  })
+
+  ipcMain.handle('studio:getGateInventory', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return {
+        ok: false, guide_source: null, gates: [], unexpected: [], bypass_ledgers: [],
+        error: 'claude-code-sdlc plugin scripts not found',
+      }
+    }
+    return getGateInventory(projectPath, scriptsDir)
   })
 
   ipcMain.handle('studio:getConnectionReport', async (_event, projectPath: string) => {

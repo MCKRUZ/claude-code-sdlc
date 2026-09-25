@@ -523,6 +523,66 @@ export interface ConnectionReport {
   not_universally_expected: Record<string, string>
 }
 
+// --- The three read-only views (spec 0013) ---------------------------------------------
+
+/** The steering scorecard, exactly as the plugin computes it.
+ *
+ * A rate is `null` when nothing has happened to compute it from — NOT zero. The distinction
+ * is the whole point: "nobody has merged anything yet" and "everything merged was rejected"
+ * are opposite situations, and a zero would show them identically. Studio performs no
+ * arithmetic on these; every number is the plugin's.
+ *
+ * Counts stay numeric because a count of zero is a true statement about a real quantity. */
+export interface Scorecard {
+  accepted_as_is_rate: number | null
+  review_wait_median_hours: number | null
+  /** On its own line, never folded into the general figure — spec 0013 asks for that
+   * explicitly, because a slow security review hidden inside an average is a slow security
+   * review nobody acts on. */
+  security_review_wait_median_hours: number | null
+  rework_revert_rate: number | null
+  bounce_back_rate: number | null
+  escaped_bugs: Array<{
+    /** The check that should have caught it, and what to do about that — the retro input,
+     * not just a bug count. */
+    which_check?: string
+    proposed_fix?: string
+    summary?: string
+    [key: string]: unknown
+  }>
+  dora: {
+    deploy_count: number
+    lead_time_median_hours: number | null
+    change_fail_rate: number | null
+    time_to_recover_median_hours: number | null
+  }
+  totals: { merges: number; reverts: number; bounces: number }
+}
+
+/** One gate, as the rails guide describes it and as this project actually has it. */
+export interface GateEntry {
+  gate: string
+  file: string
+  fires_on: string
+  blocks: string
+  optional: boolean
+  /** installed — described and present. missing — the playbook ships it, this project does
+   * not run it. not_a_pipeline — a local gate that cannot be confirmed from the repository
+   * alone, so calling it missing would be a false alarm. */
+  state: 'installed' | 'missing' | 'not_a_pipeline'
+  detail: string
+}
+
+export interface GateInventory {
+  ok: boolean
+  /** Which copy of the guide was read — the project's own wins over the playbook's. */
+  guide_source: string | null
+  gates: GateEntry[]
+  unexpected: Array<{ file: string; detail: string }>
+  bypass_ledgers: Array<{ file: string; gate: string; present: boolean }>
+  error: string | null
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -588,6 +648,10 @@ export interface StudioApi {
   /** Whether this project is actually wired up — signed in, readable, able to open pull
    * requests, and holding every check its playbook expects. Read-only. */
   getConnectionReport(projectPath: string): Promise<ConnectionReport>
+  /** The steering scorecard. Studio renders it and computes nothing. */
+  getScorecard(projectPath: string, windowDays: number): Promise<Scorecard | null>
+  /** Every gate a change must pass, against what this project actually has. */
+  getGateInventory(projectPath: string): Promise<GateInventory>
   /** Add or update someone in the roster. The PLUGIN validates the whole roster first and
    * refuses a change that would break it. Writes the file only; committing is a separate,
    * deliberate save. */

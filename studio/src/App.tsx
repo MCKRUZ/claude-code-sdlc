@@ -12,6 +12,7 @@ import { BuildBoard } from './components/BuildBoard'
 import { SpecStatusView } from './components/SpecStatusView'
 import { HandoffDialog } from './components/HandoffDialog'
 import { SettingsScreen } from './components/SettingsScreen'
+import { ExplainViews } from './components/ExplainViews'
 
 type Screen =
   | { kind: 'loading' }
@@ -36,7 +37,7 @@ function App() {
   const [actor, setActor] = useState('')
   /** Which area of the project is showing. Documents is where spec 0010 lives; Build is
    * spec 0011's board. Kept here rather than in a router, because there are two areas. */
-  const [area, setArea] = useState<'documents' | 'build' | 'settings'>('documents')
+  const [area, setArea] = useState<'documents' | 'build' | 'explain' | 'settings'>('documents')
   /** The spec whose status is open, and separately whether its hand-off is showing — a
    * hand-off is a decision taken FROM a spec, not a different place in the app. */
   const [openSpec, setOpenSpec] = useState<BoardRow | null>(null)
@@ -175,7 +176,8 @@ function App() {
           </div>
         )}
         <div className="mb-4 flex gap-1">
-          {([['documents', 'Documents'], ['build', 'Build'], ['settings', 'Settings']] as const).map(([value, label]) => (
+          {([['documents', 'Documents'], ['build', 'Build'], ['explain', 'How it is going'],
+            ['settings', 'Settings']] as const).map(([value, label]) => (
             <button
               key={value}
               type="button"
@@ -189,7 +191,9 @@ function App() {
           ))}
         </div>
 
-        {area === 'settings' ? (
+        {area === 'explain' ? (
+          <ExplainViews projectPath={projectPath} />
+        ) : area === 'settings' ? (
           <SettingsScreen projectPath={projectPath} actor={actor} />
         ) : area === 'build' ? (
           handingOff && openSpec ? (

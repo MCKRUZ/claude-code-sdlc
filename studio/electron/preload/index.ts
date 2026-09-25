@@ -54,6 +54,9 @@ const studio: StudioApi = {
   getBoard: (projectPath) => ipcRenderer.invoke('studio:getBoard', projectPath),
   getProjectSettings: (projectPath) => ipcRenderer.invoke('studio:getProjectSettings', projectPath),
   getConnectionReport: (projectPath) => ipcRenderer.invoke('studio:getConnectionReport', projectPath),
+  getScorecard: (projectPath, windowDays) =>
+    ipcRenderer.invoke('studio:getScorecard', projectPath, windowDays),
+  getGateInventory: (projectPath) => ipcRenderer.invoke('studio:getGateInventory', projectPath),
   setRosterPerson: (projectPath, handle, fields) =>
     ipcRenderer.invoke('studio:setRosterPerson', projectPath, handle, fields),
   setTeamLimit: (projectPath, team, limit) =>
