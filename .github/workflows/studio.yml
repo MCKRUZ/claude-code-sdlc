@@ -103,6 +103,18 @@ jobs:
 
       - run: npm ci
 
+      # Studio REFUSES to open a project when Claude Code is not on the machine — spec 0008,
+      # and the first CI run proved it by showing "Before Studio can open a project" instead
+      # of the welcome screen. The application was right and the tests had an undeclared
+      # dependency. Installing it keeps the tests driving the real path rather than teaching
+      # them to tolerate a half-configured machine.
+      #
+      # It is never signed in here, and does not need to be: what Studio checks at startup is
+      # that the binary exists and answers `--version`. The one test that needs a real model
+      # call declines separately, below.
+      - name: Install Claude Code, which Studio requires before it will open anything
+        run: npm install -g @anthropic-ai/claude-code
+
       # Electron is a browser, and a browser on a headless Linux runner needs the system
       # libraries Playwright knows about, plus a virtual display to open a window onto.
       - name: Install the libraries a window needs
