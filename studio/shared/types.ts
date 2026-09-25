@@ -676,6 +676,9 @@ export interface AdvanceResult {
   fromPhase?: string
   toPhase?: string
   signedBy?: string
+  /** When the project records the declaration as having happened, read back OUT of the record.
+   * Null when nothing was recorded — which is reported as such, never filled in with now. */
+  declaredAt?: string | null
   advancedLocally?: boolean
   note?: string
   error?: string

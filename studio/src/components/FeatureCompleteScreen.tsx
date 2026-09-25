@@ -112,7 +112,21 @@ export function FeatureCompleteScreen({
       <div className="space-y-4">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <h2 className="text-base font-semibold text-slate-900">Build is declared complete</h2>
-          <p className="mt-1 text-sm text-slate-700">Declared by {declared.by}.</p>
+          <p className="mt-1 text-sm text-slate-700">
+            Declared by {advance?.signedBy ?? declared.by}
+            {/* The time comes from the project's record, and only once there IS one. Until the
+                stage moves nothing has recorded when this happened, and printing the current
+                clock would invent the single fact this screen exists to protect. */}
+            {advance?.declaredAt
+              ? <> on {new Date(advance.declaredAt).toLocaleString()}.</>
+              : <>.</>}
+          </p>
+          {!advance?.ok && (
+            <p className="mt-1 text-xs text-amber-800">
+              Not recorded in the project yet — until the stage moves below, this is true on
+              this screen and nowhere else.
+            </p>
+          )}
           {declared.nextStep && (
             <p className="mt-2 text-xs text-slate-500">{declared.nextStep}</p>
           )}

@@ -460,17 +460,33 @@ export async function generateHandoffReport(
 const STATE_FILE = '.sdlc/state.yaml'
 
 /** The current phase, as the plugin reports it. Studio never parses the state file itself. */
-async function currentPhaseId(
+interface StageRecord {
+  id?: string
+  completed_at?: string | null
+  signed_off_by?: string | null
+}
+
+interface ProjectPhaseRecord {
+  phaseId: string | null
+  stages: StageRecord[]
+}
+
+/** The project's phase record, as the plugin reports it. Studio never parses the state file. */
+async function readPhaseRecord(
   projectPath: string,
   pluginScriptsDir: string,
-): Promise<string | null> {
+): Promise<ProjectPhaseRecord> {
   const entry = await runPluginScript(pluginScriptsDir, 'generate_status.py', [
     '--state', `${projectPath}/${STATE_FILE}`, '--json',
   ])
   try {
-    return String(JSON.parse(entry.stdout)?.current_phase?.id ?? '') || null
+    const parsed = JSON.parse(entry.stdout)
+    return {
+      phaseId: String(parsed?.current_phase?.id ?? '') || null,
+      stages: Array.isArray(parsed?.stages) ? (parsed.stages as StageRecord[]) : [],
+    }
   } catch {
-    return null
+    return { phaseId: null, stages: [] }
   }
 }
 
@@ -500,11 +516,12 @@ export async function advanceAfterDeclaration(
     return { ok: false, error: 'Advancing a stage needs the name of the person who signed it off.' }
   }
 
-  const before = await currentPhaseId(projectPath, pluginScriptsDir)
+  const before = (await readPhaseRecord(projectPath, pluginScriptsDir)).phaseId
   const entry = await runPluginScript(pluginScriptsDir, 'advance_phase.py', [
     '--state', `${projectPath}/${STATE_FILE}`, '--confirmed', '--signed-by', declaredBy,
   ])
-  const after = await currentPhaseId(projectPath, pluginScriptsDir)
+  const record = await readPhaseRecord(projectPath, pluginScriptsDir)
+  const after = record.phaseId
 
   if (!after || after === before) {
     return {
@@ -523,6 +540,7 @@ export async function advanceAfterDeclaration(
     onlyPath: STATE_FILE,
     actor: declaredBy,
   })
+  const completed = record.stages.find((s) => s.id === before)
   const onRemote = saved.outcome ? true : await isOnRemote(projectPath, STATE_FILE)
   if (!saved.ok && !onRemote) {
     return {
@@ -539,7 +557,18 @@ export async function advanceAfterDeclaration(
     ok: true,
     fromPhase: before ?? undefined,
     toPhase: after,
-    signedBy: declaredBy,
+    // Read back OUT of the record rather than echoed from what was passed in. The screen's job
+    // after a declaration is to state what the project now says, and the only way to do that
+    // honestly is to say what it actually says — if the plugin recorded something other than
+    // what was sent, the person should see the recorded version, not the request.
+    //
+    // Keyed on the stage that JUST completed rather than on Build by name. It is Build in this
+    // screen, but "the stage we just signed off" is the thing actually being reported, and
+    // naming a specific stage here would have been right by coincidence.
+    signedBy: completed?.signed_off_by ?? declaredBy,
+    // The one fact the declaring session could not state before, because until the stage moved
+    // there was no recorded time and the current clock would have been an invented one.
+    declaredAt: completed?.completed_at ?? null,
     note: onRemote
       ? 'Recorded in the project, with your name and the time — not just on this screen.'
       : 'The stage moved; the record has not reached the repository yet.',

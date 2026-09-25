@@ -418,6 +418,13 @@ describe.skipIf(!available)('declaring records itself in the project', () => {
     expect(result.toPhase).not.toBe('0')
     expect(result.signedBy).toBe('Matt K')
     expect(phaseOf(projectPath)).toBe(result.toPhase)
+
+    // Read back OUT of the record, not echoed from what was sent. Until the stage moved there
+    // was no recorded time at all, which is why the declaring screen could not state one — and
+    // why printing the current clock instead would have invented the one fact this whole flow
+    // exists to protect.
+    expect(result.declaredAt).toBeTruthy()
+    expect(new Date(result.declaredAt!).toString()).not.toBe('Invalid Date')
   }, 180_000)
 
   it('the declaration outlives the window — a colleague can see who signed and when', () => {
