@@ -16,7 +16,7 @@ import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
 import { isOnRemote, save } from './sync'
 import type {
-  Board, BoardRow, DeclarationResult, DeclarationStatus, HandoffReportResult, SpecReadiness,
+  AdvanceResult, Board, BoardRow, DeclarationResult, DeclarationStatus, HandoffReportResult, SpecReadiness,
   SpecStatus, SpecTransitionResult,
 } from '../../shared/types'
 
@@ -454,5 +454,94 @@ export async function generateHandoffReport(
       ? 'Drafted and saved. The sections marked to fill need a person before delivery — the '
         + 'numbers are assembled, the judgement is not.'
       : 'Drafted and saved.',
+  }
+}
+
+const STATE_FILE = '.sdlc/state.yaml'
+
+/** The current phase, as the plugin reports it. Studio never parses the state file itself. */
+async function currentPhaseId(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<string | null> {
+  const entry = await runPluginScript(pluginScriptsDir, 'generate_status.py', [
+    '--state', `${projectPath}/${STATE_FILE}`, '--json',
+  ])
+  try {
+    return String(JSON.parse(entry.stdout)?.current_phase?.id ?? '') || null
+  } catch {
+    return null
+  }
+}
+
+/** Move the project to the next stage, and thereby record that Build was declared finished
+ * (spec 0014, the last two gaps — they are one piece of work).
+ *
+ * `advance_phase.py` is protected core and already owns this transition, with its own gate
+ * checks and its own sign-off recording. Studio triggers it and passes the declaring person's
+ * name through; it does not decide whether a phase may end, and must not — a second opinion
+ * about that, living in a window, would eventually disagree with the one that actually governs.
+ *
+ * This is also what makes the declaration durable. Before it, the screen said who declared
+ * Build finished and forgot the moment the window closed; afterwards the project's own state
+ * file carries who signed and when, which is the honest place for it rather than a second store
+ * Studio would have had to invent.
+ *
+ * The exit code is not trusted, for the same reason the save's was not: the command answers 0
+ * both when it advanced and when it is telling you to re-run with confirmation. So the phase is
+ * read before and after, and "advanced" means the project actually moved.
+ */
+export async function advanceAfterDeclaration(
+  projectPath: string,
+  pluginScriptsDir: string,
+  declaredBy: string,
+): Promise<AdvanceResult> {
+  if (!declaredBy.trim()) {
+    return { ok: false, error: 'Advancing a stage needs the name of the person who signed it off.' }
+  }
+
+  const before = await currentPhaseId(projectPath, pluginScriptsDir)
+  const entry = await runPluginScript(pluginScriptsDir, 'advance_phase.py', [
+    '--state', `${projectPath}/${STATE_FILE}`, '--confirmed', '--signed-by', declaredBy,
+  ])
+  const after = await currentPhaseId(projectPath, pluginScriptsDir)
+
+  if (!after || after === before) {
+    return {
+      ok: false,
+      fromPhase: before ?? undefined,
+      // The plugin's own gate output, passed through whole. It names which gates are not met,
+      // and re-wording that here would put Studio between a person and the reason.
+      error: entry.stdout.trim() || entry.stderr.trim()
+        || 'The project did not move to the next stage, and gave no reason.',
+    }
+  }
+
+  // The transition is a fact about the project, so it has to reach the project — not sit in
+  // one person's copy of the state file.
+  const saved = await save(projectPath, pluginScriptsDir, `Build declared complete by ${declaredBy}`, {
+    onlyPath: STATE_FILE,
+    actor: declaredBy,
+  })
+  const onRemote = saved.outcome ? true : await isOnRemote(projectPath, STATE_FILE)
+  if (!saved.ok && !onRemote) {
+    return {
+      ok: false,
+      advancedLocally: true,
+      fromPhase: before ?? undefined,
+      toPhase: after,
+      error: `The project moved to the next stage on this machine, but saving that failed, so `
+        + `for everybody else Build is still open: ${saved.error ?? 'the save gave no reason'}`,
+    }
+  }
+
+  return {
+    ok: true,
+    fromPhase: before ?? undefined,
+    toPhase: after,
+    signedBy: declaredBy,
+    note: onRemote
+      ? 'Recorded in the project, with your name and the time — not just on this screen.'
+      : 'The stage moved; the record has not reached the repository yet.',
   }
 }

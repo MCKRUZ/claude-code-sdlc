@@ -661,6 +661,22 @@ export interface HandoffReportResult {
   error?: string
 }
 
+/** Moving the project to the next stage, which is also what records the declaration (0014).
+ *
+ * `advancedLocally` is the half-and-half case, kept separate for the same reason it is
+ * everywhere else in this product: a stage that moved on one machine is not a stage that
+ * moved, and the person needs to know which they have.
+ */
+export interface AdvanceResult {
+  ok: boolean
+  fromPhase?: string
+  toPhase?: string
+  signedBy?: string
+  advancedLocally?: boolean
+  note?: string
+  error?: string
+}
+
 export interface DeclarationResult {
   ok: boolean
   declared_by?: string
@@ -750,6 +766,7 @@ export interface StudioApi {
   declareComplete(projectPath: string, declaredBy: string, confirmedTeams: Record<string, string>):
     Promise<DeclarationResult>
   /** Defer one spec with a reason. The plugin refuses an empty or token reason. */
+  advanceAfterDeclaration(projectPath: string, declaredBy: string): Promise<AdvanceResult>
   deferSpec(projectPath: string, specPath: string, reason: string, actor?: string):
     Promise<SpecTransitionResult>
   /** Produce the hand-over document through the plugin's own generator, and save it. */

@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { deferSpec, generateHandoffReport } from '../electron/main/board'
+import { advanceAfterDeclaration, deferSpec, generateHandoffReport } from '../electron/main/board'
 import { initSettingsPath } from '../electron/main/settings'
 import { pull, save } from '../electron/main/sync'
 
@@ -313,4 +313,124 @@ describe.skipIf(!available)('a document that did not exist before can still be s
     expect(again.outcome).toBeUndefined()
     expect(again.error).toMatch(/nothing to save/i)
   }, 120_000)
+})
+
+describe.skipIf(!available)('declaring records itself in the project', () => {
+  /** Spec 0014's last two gaps, which are one piece of work.
+   *
+   * Before this, the screen said who declared Build finished and forgot it the moment the
+   * window closed — true of one session rather than of the project. Moving the stage is what
+   * writes the name and the time into the project's own record, so the declaration becomes a
+   * fact somebody can find later rather than something they had to be present for.
+   *
+   * Studio decides none of it: `advance_phase.py` is the plugin's protected core and already
+   * owns the transition, its gate checks and its sign-off recording.
+   */
+
+  let ws = ''
+  let originPath = ''
+  let projectPath = ''
+
+  beforeAll(async () => {
+    ws = mkdtempSync(join(tmpdir(), 'studio-advance-'))
+    originPath = join(ws, 'origin.git')
+    projectPath = join(ws, 'project')
+    git(['init', '--bare', '--initial-branch=main', originPath], ws)
+    git(['clone', originPath, projectPath], ws)
+    git(['config', 'user.email', 'test@example.com'], projectPath)
+    git(['config', 'user.name', 'Test Person'], projectPath)
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'init_project.py'),
+      '--profile', join(PLUGIN_ROOT!, 'profiles', 'microsoft-enterprise', 'profile.yaml'),
+      '--target', projectPath,
+    ], { cwd: SCRIPTS_DIR })
+    git(['add', '-A'], projectPath)
+    git(['commit', '-m', 'initial project'], projectPath)
+    git(['push', '-u', 'origin', 'main'], projectPath)
+    expect((await pull(projectPath, SCRIPTS_DIR)).ok).toBe(true)
+  }, 180_000)
+
+  afterAll(() => {
+    if (ws) rmSync(ws, { recursive: true, force: true })
+  })
+
+  function phaseOf(root: string): string {
+    const out = execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'generate_status.py'), '--state', join(root, '.sdlc', 'state.yaml'), '--json',
+    ], { cwd: SCRIPTS_DIR, encoding: 'utf-8' })
+    return JSON.parse(out).current_phase.id
+  }
+
+  it('is refused without a name', async () => {
+    const result = await advanceAfterDeclaration(projectPath, SCRIPTS_DIR, '   ')
+    expect(result.ok).toBe(false)
+    expect(result.error).toMatch(/name/i)
+  })
+
+  it('is refused while the stage\'s own gates are not met, and says which', async () => {
+    // A freshly initialised project has none of Phase 0's artifacts, so the plugin's gate
+    // checks refuse. That refusal is the point: Studio must not be able to advance past a
+    // gate the plugin would stop.
+    const before = phaseOf(projectPath)
+    const result = await advanceAfterDeclaration(projectPath, SCRIPTS_DIR, 'Matt K')
+    expect(result.ok).toBe(false)
+    // The plugin's own words, naming the gate — not a summary Studio invented.
+    expect(result.error).toMatch(/NON-COMPLIANT|Missing|gate/i)
+    expect(phaseOf(projectPath)).toBe(before)
+  }, 120_000)
+
+  it('a refused advance changes nothing that anybody else can see', () => {
+    const colleague = join(ws, 'colleague-refused')
+    git(['clone', originPath, colleague], ws)
+    expect(phaseOf(colleague)).toBe('0')
+  }, 60_000)
+
+  // The CONTROL, and the half that actually matters. Everything above proves the advance
+  // REFUSES; without this it would be indistinguishable from an advance that never works.
+  // The five artifacts below are the plugin's own recipe for a Phase 0 whose gates pass
+  // (scripts/tests/test_advance_signoff.py) — reused rather than reinvented, so this test
+  // cannot drift away from what the plugin actually requires.
+  const PHASE0: Record<string, string> = {
+    'problem-statement.md':
+      '# Problem Statement\n\nWe need a better claims process.\n\n## Scope\nIn scope: everything.\n',
+    'constitution.md':
+      '# Constitution\n\nCore principles and constraints for this project.\n',
+    'success-criteria.md':
+      '# Success Criteria\n\nThe project succeeds when all users can log in.\n',
+    'constraints.md':
+      '# Constraints\n\nMust use the existing infrastructure.\n',
+    'phase1-handoff.md':
+      '# Phase 1 Handoff\n\nReady for the requirements phase.\n',
+  }
+
+  it('advances once the gates are met, and records who signed it', async () => {
+    const discovery = join(projectPath, '.sdlc', 'artifacts', '00-discovery')
+    mkdirSync(discovery, { recursive: true })
+    for (const [name, content] of Object.entries(PHASE0)) {
+      writeFileSync(join(discovery, name), content)
+    }
+    git(['add', '-A'], projectPath)
+    git(['commit', '-m', 'discovery artifacts'], projectPath)
+    git(['push', 'origin', 'main'], projectPath)
+    await pull(projectPath, SCRIPTS_DIR)
+
+    const result = await advanceAfterDeclaration(projectPath, SCRIPTS_DIR, 'Matt K')
+    expect(result.ok, result.error).toBe(true)
+    expect(result.fromPhase).toBe('0')
+    expect(result.toPhase).not.toBe('0')
+    expect(result.signedBy).toBe('Matt K')
+    expect(phaseOf(projectPath)).toBe(result.toPhase)
+  }, 180_000)
+
+  it('the declaration outlives the window — a colleague can see who signed and when', () => {
+    // The whole point of the last two gaps. Before this, the screen said who declared Build
+    // finished and forgot it when the window closed.
+    const colleague = join(ws, 'colleague-advanced')
+    git(['clone', originPath, colleague], ws)
+    expect(phaseOf(colleague)).not.toBe('0')
+
+    const state = readFileSync(join(colleague, '.sdlc', 'state.yaml'), 'utf-8')
+    expect(state).toContain('Matt K')
+    expect(state).toMatch(/completed_at/)
+  }, 60_000)
 })

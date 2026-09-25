@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DeclarationStatus, HandoffReportResult } from '../../shared/types'
+import type { AdvanceResult, DeclarationStatus, HandoffReportResult } from '../../shared/types'
 
 /** Declaring Build finished (spec 0014).
  *
@@ -41,6 +41,11 @@ export function FeatureCompleteScreen({
    * go looking for later, so silence here would be the expensive kind. */
   const [handoff, setHandoff] = useState<HandoffReportResult | null>(null)
   const [handoffBusy, setHandoffBusy] = useState(false)
+  /** Moving the stage is a SEPARATE, named act rather than something the declaration does on
+   * the way past. It runs the plugin's own gate checks and it is what makes the declaration
+   * permanent, so it deserves its own press and its own explanation of what happened. */
+  const [advance, setAdvance] = useState<AdvanceResult | null>(null)
+  const [advanceBusy, setAdvanceBusy] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -74,6 +79,12 @@ export function FeatureCompleteScreen({
     setHandoffBusy(false)
   }
 
+  const moveToNextStage = async () => {
+    setAdvanceBusy(true)
+    setAdvance(await window.studio.advanceAfterDeclaration(projectPath, actor))
+    setAdvanceBusy(false)
+  }
+
   if (loading && !status) return <p className="text-sm text-slate-400">Reading the backlog…</p>
   if (!status) return null
 
@@ -94,6 +105,11 @@ export function FeatureCompleteScreen({
           busy={handoffBusy}
           onReplace={() => produceHandoff(true)}
           onRetry={() => produceHandoff(false)}
+        />
+        <AdvancePanel
+          result={advance}
+          busy={advanceBusy}
+          onAdvance={moveToNextStage}
         />
         {status.deferred.length > 0 && (
           <DeferredList deferred={status.deferred} />
@@ -194,6 +210,70 @@ export function FeatureCompleteScreen({
               A declaration needs a name — an unnamed one is an announcement nobody made.
             </span>}
       </div>
+    </div>
+  )
+}
+
+/** Moving the project to the next stage — the act that makes the declaration permanent.
+ *
+ * Before this existed, the screen said who declared Build finished and forgot it the moment the
+ * window closed: true of one session rather than of the project. The stage move is what writes
+ * the name and the time into the project's own record, which is why the two are one piece of
+ * work rather than two.
+ *
+ * Every rule belongs to the plugin. Its gate checks decide whether the stage may move, and when
+ * they refuse, their own words are shown rather than a summary — a person who needs to fix a
+ * gate needs to know which one.
+ */
+function AdvancePanel({
+  result, busy, onAdvance,
+}: {
+  result: AdvanceResult | null
+  busy: boolean
+  onAdvance: () => void
+}) {
+  if (result?.ok) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-medium text-slate-900">
+          Moved on from {result.fromPhase} to {result.toPhase}
+        </h3>
+        <p className="mt-1 text-sm text-slate-700">
+          Signed off by {result.signedBy}. {result.note}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4">
+      <h3 className="text-sm font-medium text-slate-900">Move to the next stage</h3>
+      <p className="mt-1 text-sm text-slate-600">
+        This is what records the declaration in the project itself, rather than only here. It
+        runs the stage's own gate checks first.
+      </p>
+      {result && !result.ok && (
+        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          {/* The plugin's gate output, whole. Somebody who has to fix a gate needs to know
+              which one, and a tidied summary is how that gets lost. */}
+          <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-amber-900">
+            {result.error}
+          </pre>
+          {result.advancedLocally && (
+            <p className="mt-2 text-xs font-medium text-amber-900">
+              The stage moved on this machine only — for everybody else Build is still open.
+            </p>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={onAdvance}
+        disabled={busy}
+        className="mt-3 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
+      >
+        {busy ? 'Moving…' : result && !result.ok ? 'Try again' : 'Move to the next stage'}
+      </button>
     </div>
   )
 }

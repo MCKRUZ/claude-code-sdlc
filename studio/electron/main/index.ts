@@ -21,7 +21,8 @@ import {
 } from './settings'
 import { runGitTolerant } from './git'
 import {
-  declareComplete, deferSpec, generateHandoffReport, getBoard, getDeclarationStatus,
+  advanceAfterDeclaration, declareComplete, deferSpec, generateHandoffReport, getBoard,
+  getDeclarationStatus,
   getSpecReadiness, getSpecStatus, transitionSpec,
 } from './board'
 import { handOff } from './handoff'
@@ -384,6 +385,17 @@ function registerIpcHandlers() {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
       return deferSpec(projectPath, scriptsDir, specPath, reason, actor)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:advanceAfterDeclaration',
+    async (_event, projectPath: string, declaredBy: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) {
+        return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+      }
+      return advanceAfterDeclaration(projectPath, scriptsDir, declaredBy)
     },
   )
 

@@ -63,6 +63,8 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:getDeclarationStatus', projectPath, confirmedTeams),
   declareComplete: (projectPath, declaredBy, confirmedTeams) =>
     ipcRenderer.invoke('studio:declareComplete', projectPath, declaredBy, confirmedTeams),
+  advanceAfterDeclaration: (projectPath, declaredBy) =>
+    ipcRenderer.invoke('studio:advanceAfterDeclaration', projectPath, declaredBy),
   deferSpec: (projectPath, specPath, reason, actor) =>
     ipcRenderer.invoke('studio:deferSpec', projectPath, specPath, reason, actor),
   generateHandoffReport: (projectPath, options) =>
