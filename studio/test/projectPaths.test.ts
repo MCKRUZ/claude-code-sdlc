@@ -47,6 +47,15 @@ afterAll(() => {
 })
 
 describe('isAllowlisted', () => {
+  it('accepts every file a settings change has to reach', () => {
+    // Spec 0012 edits all three, and requires each change to arrive as an ordinary commit.
+    // A settings file missing from this list can be read but never synced — so an edit would
+    // sit on one person's machine looking saved.
+    expect(isAllowlisted('.sdlc/team.yaml')).toBe(true)
+    expect(isAllowlisted('.sdlc/approval-settings.yaml')).toBe(true)
+    expect(isAllowlisted('.sdlc/artifacts/03-foundation/cadence-plan.md')).toBe(true)
+  })
+
   it('accepts the documents Studio edits', () => {
     expect(isAllowlisted('.sdlc/artifacts/01-requirements/requirements.md')).toBe(true)
     expect(isAllowlisted('specs/0010-studio-documents.md')).toBe(true)

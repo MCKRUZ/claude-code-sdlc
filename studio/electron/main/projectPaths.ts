@@ -30,6 +30,11 @@ const ALLOWLIST_PATTERNS: RegExp[] = [
   /^\.sdlc\/decision-log\.md$/,
   /^\.sdlc\/metrics\/.+\.jsonl$/,
   /^\.sdlc\/approval-settings\.yaml$/,
+  // The team roster. Added when spec 0012 needed to WRITE it: the settings screen edits
+  // people and teams, and spec 0012 requires that change to reach the repository as an
+  // ordinary commit. Without this entry the file could be read but never synced or saved —
+  // an edit would have stayed on one person's machine, silently.
+  /^\.sdlc\/team\.yaml$/,
   /^specs\//,
 ]
 
