@@ -54,9 +54,25 @@ class DeclarationError(Exception):
         self.kind = kind
 
 
-def _specs(repo_root: Path) -> list[dict]:
+def _specs(repo_root: Path) -> tuple[list[dict], list[str], bool]:
+    """The specs, the spec FILES that could not be read, and whether specs/ was readable at all.
+
+    The middle value is the whole point. `scan_specs` silently skips a file whose frontmatter is
+    missing or unclosed — right for a tracker, and wrong here: a skipped spec appears in neither
+    the unfinished list nor the team list, so it raises no blocker and requests no confirmation,
+    and the declaration goes through as if it did not exist. Unreadable is not finished, and an
+    empty answer from a directory that could not be read is not "nothing left to build".
+    """
     specs_dir = repo_root / "specs"
-    return ts.scan_specs(specs_dir) if specs_dir.is_dir() else []
+    if not specs_dir.is_dir():
+        return [], [], False
+    files = sorted(p.name for p in specs_dir.glob("*.md") if p.name.lower() != "readme.md")
+    specs = ts.scan_specs(specs_dir)
+    # scan_specs does not say WHICH files it dropped, so the difference is taken by name — each
+    # record carries the path it was read from.
+    seen = {Path(str(s.get("path", ""))).name for s in specs}
+    unreadable = [f for f in files if f not in seen]
+    return specs, unreadable, True
 
 
 def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> dict:
@@ -66,7 +82,7 @@ def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> di
     to end a phase wants the list, not a game of whack-a-mole.
     """
     confirmed_teams = confirmed_teams or {}
-    specs = _specs(repo_root)
+    specs, unreadable, specs_dir_ok = _specs(repo_root)
 
     unfinished = [
         {"spec": s.get("id", "????"), "name": s.get("name", ""), "status": s.get("status", ""),
@@ -103,6 +119,28 @@ def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> di
     deferred_without_reason = [d for d in deferred if not d["reason"]]
 
     blockers = []
+    # These two go FIRST, and they are the only blockers here that are not about the work — they
+    # are about whether the answer can be trusted at all. Every other check below reasons over
+    # the specs that were read; if some could not be read, that reasoning is over a subset and
+    # an empty result means "nothing was seen", which is not the same as "nothing is left".
+    if not specs_dir_ok:
+        blockers.append({
+            "kind": "no_specs_directory",
+            "count": 1,
+            "message": "specs/ could not be read, so what Build contains is unknown — which is "
+                       "not the same as Build containing nothing. Check the folder exists and "
+                       "is readable before declaring anything about what is in it.",
+        })
+    if unreadable:
+        blockers.append({
+            "kind": "unreadable_specs",
+            "count": len(unreadable),
+            "message": f"{len(unreadable)} spec file(s) could not be read — their frontmatter is "
+                       f"missing or not closed. A spec whose status cannot be determined is not "
+                       f"evidence that it is finished, so it is counted as outstanding: "
+                       f"{', '.join(unreadable)}.",
+            "specs": [{"spec": "????", "name": f, "status": "unreadable"} for f in unreadable],
+        })
     if unfinished:
         blockers.append({
             "kind": "unfinished_specs",
@@ -147,7 +185,9 @@ def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> di
         "teamless": teamless,
         "teams_in_list": teams_in_list,
         "confirmed_teams": confirmed_teams,
-        "totals": {"specs": len(specs), "unfinished": len(unfinished), "deferred": len(deferred)},
+        "unreadable": unreadable,
+        "totals": {"specs": len(specs), "unfinished": len(unfinished), "deferred": len(deferred),
+                   "unreadable": len(unreadable)},
     }
 
 

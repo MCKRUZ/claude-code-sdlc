@@ -31,6 +31,8 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import approval_settings as aps
 import cadence_plan as cp
@@ -86,9 +88,18 @@ def _check_roster_text(text: str) -> None:
 
 
 def _render_field(indent: str, key: str, value, eol: str) -> str:
-    if isinstance(value, list):
-        return f"{indent}{key}: [{', '.join(str(v) for v in value)}]{eol}"
-    return f'{indent}{key}: "{value}"{eol}'
+    """Render one roster line, letting the serializer do the quoting.
+
+    Hand-quoting with `"` was how a `--name` carrying line breaks wrote a second person into the
+    file. The roster is re-validated after the edit, which catches MALFORMED output — but a
+    smuggled person is perfectly well-formed, so validation passed and the command reported one
+    change while the file gained two. Asking YAML to quote the value closes it at the source.
+    """
+    rendered = yaml.safe_dump(
+        value, default_flow_style=True, allow_unicode=True, width=10 ** 6).strip()
+    if rendered.endswith("..."):
+        rendered = rendered[:-3].strip()
+    return f"{indent}{key}: {rendered}{eol}"
 
 
 def _person_span(lines: list[str], handle: str) -> tuple[int, int, str] | None:
@@ -182,6 +193,14 @@ def set_person(repo_root: Path, handle: str, name: str | None, team: str | None,
         if role not in vt.ROLES:
             raise SettingError(
                 f"'{role}' is not a role — expected one of {', '.join(vt.ROLES)}.", "unknown_role")
+    # `signs_off` was the one list written through with no check at all, and it is the one that
+    # matters most: approval_settings cross-checks a named approver against this roster, so an
+    # unchecked value here mints somebody the sign-off machinery will subsequently treat as real.
+    for stage in signs_off or []:
+        if not isinstance(stage, str) or not stage.strip() or any(c in stage for c in "\r\n"):
+            raise SettingError(
+                f"'{stage}' is not a stage name — a stage is a single line of text.",
+                "bad_stage")
 
     path = _roster_path(repo_root)
     original = path.read_text(encoding="utf-8")
@@ -191,6 +210,23 @@ def set_person(repo_root: Path, handle: str, name: str | None, team: str | None,
         {"name": name, "team": team, "roles": roles, "signs_off": signs_off})
 
     _check_roster_text(proposed)
+
+    # The roster is re-validated above, which catches output that is MALFORMED. It cannot catch
+    # output that is well-formed and wrong — an extra person, written by a value that carried
+    # its own YAML structure, validates perfectly. So the edit is checked against what it said
+    # it would do: one named person, and nobody else. This holds whatever a value contains,
+    # which is why it is here as well as the escaping, not instead of it.
+    before = {p.get("handle") for p in roster.get("people") or []}
+    after = vt.people_handles(yaml.safe_load(proposed) or {})
+    smuggled = after - before - {handle}
+    lost = before - after
+    if smuggled or lost:
+        raise SettingError(
+            "That change would alter people you did not name — "
+            + ", ".join(sorted(f"added {h}" for h in smuggled)
+                        + sorted(f"removed {h}" for h in lost))
+            + ". Nothing was written.", "would_be_invalid")
+
     path.write_text(proposed, encoding="utf-8")
     return {"ok": True, "changed": True, "file": ".sdlc/team.yaml",
             "message": f"{'Updated' if updating else 'Added'} {handle}.",

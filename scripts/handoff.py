@@ -93,7 +93,9 @@ def find_existing_handoff(repo_root, branch_name: str, spec_rel_path: str) -> st
     heads = run_git(["ls-remote", "--heads", "origin", branch_name], cwd=repo_root)
     if not heads.strip():
         return None
-    run_git(["fetch", "origin", branch_name], cwd=repo_root)
+    # `--` so a branch name can never be read as a flag. It comes from the remote's own symref,
+    # not from us, and `--upload-pack=` is the kind of thing that turns a name into an argument.
+    run_git(["fetch", "origin", "--", branch_name], cwd=repo_root)
     content = run_git(["show", f"FETCH_HEAD:{spec_rel_path}"], cwd=repo_root)
     fm, _ = cs.parse_frontmatter(content)
     return fm.get("developer") or "(unset)"
@@ -107,9 +109,24 @@ def set_status_and_developer(text: str, developer: str) -> str:
     end = text.find("\n---", 3)
     if end == -1:
         raise HandoffError("Spec frontmatter block is not closed")
+
+    # One field is one line. The frontmatter reader is line-based and last-key-wins, so a handle
+    # carrying a line break would not be a long name — its second line would land as a separate
+    # FIELD, silently rewriting whichever fields the template declares above `developer:`
+    # (`risk` among them). Handles come from a roster that ships inside a repository, so this is
+    # reachable by cloning one, and a risk tier quietly downgraded at hand-off time is the
+    # checking ladder collapsing with nobody's name on it.
+    if any(c in str(developer) for c in "\r\n"):
+        raise HandoffError(
+            "A developer handle cannot contain a line break — one field is one line, and a "
+            "second line would be read as a different field entirely.")
+
     fm_block, rest = text[:end], text[end:]
     fm_block = re.sub(r"^status:.*$", "status: in-flight", fm_block, count=1, flags=re.MULTILINE)
-    fm_block = re.sub(r'^developer:.*$', f'developer: "{developer}"', fm_block, count=1, flags=re.MULTILINE)
+    # Lambda replacements, not template strings: re.sub expands `\n`, `\1` and friends inside a
+    # replacement template, so a literal backslash in a handle would become something else.
+    fm_block = re.sub(r'^developer:.*$', lambda _m: f'developer: "{developer}"', fm_block,
+                      count=1, flags=re.MULTILINE)
     return fm_block + rest
 
 
@@ -118,7 +135,7 @@ def push_handoff_commit(repo_root, branch_name: str, base_branch: str,
     """Create the branch, write the frontmatter change, commit and push — via a throwaway
     git worktree, so the caller's own checkout (dirty or not, on any branch) is never
     touched. Cleaned up whether the push succeeds or fails."""
-    run_git(["fetch", "origin", base_branch], cwd=repo_root)
+    run_git(["fetch", "origin", "--", base_branch], cwd=repo_root)
     with tempfile.TemporaryDirectory() as tmp:
         wt_path = Path(tmp) / "handoff-wt"
         run_git(["worktree", "add", "-b", branch_name, str(wt_path), f"origin/{base_branch}"], cwd=repo_root)

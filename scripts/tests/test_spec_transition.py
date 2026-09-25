@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+import check_spec as cs
 import risk_model as rm
 import spec_transition as st
 
@@ -193,11 +194,12 @@ class TestDefer:
 
     def test_a_real_reason_is_written_to_the_spec(self, tmp_path):
         spec = _spec(tmp_path)
-        result = st.defer(spec, "the upstream API it needs is not live until Q2")
+        reason = "the upstream API it needs is not live until Q2"
+        result = st.defer(spec, reason)
         text = spec.read_text(encoding="utf-8")
         assert result["ok"] and result["changed"]
         assert "status: deferred" in text
-        assert 'deferred_reason: "the upstream API it needs is not live until Q2"' in text
+        assert cs.parse_frontmatter(text)[0]["deferred_reason"] == reason
 
     def test_no_reason_is_refused_and_the_spec_is_untouched(self, tmp_path):
         spec = _spec(tmp_path)
@@ -247,10 +249,14 @@ class TestDefer:
         # schema while somebody is trying to record why something was not built.
         assert "deferred_reason" not in READY_SPEC
         spec = _spec(tmp_path)
-        st.defer(spec, "the upstream API it needs is not live until Q2")
+        reason = "the upstream API it needs is not live until Q2"
+        st.defer(spec, reason)
         text = spec.read_text(encoding="utf-8")
         assert "status: deferred" in text
-        assert 'deferred_reason: "the upstream API it needs is not live until Q2"' in text
+        # Asserted through the parser rather than as a literal string: the value is serialized,
+        # so which quote character it wears is the serializer's business, and pinning the
+        # rendered bytes here would be a test of formatting rather than of the record.
+        assert cs.parse_frontmatter(text)[0]["deferred_reason"] == reason
 
     def test_a_MALFORMED_frontmatter_is_still_refused(self, tmp_path):
         # Adding a missing optional field is tolerance; inventing a whole frontmatter block is
@@ -259,3 +265,68 @@ class TestDefer:
         with pytest.raises(st.TransitionError) as e:
             st.defer(spec, "a reason long enough to pass the length check")
         assert e.value.kind == "malformed"
+
+
+class TestAValueCannotBecomeAnotherField:
+    """The frontmatter is line-based and last-key-wins, so a value that reaches a second line
+    lands as a DIFFERENT FIELD. That is not a formatting nuisance — it is the whole
+    authorisation model walking out of the building:
+
+        defer --reason 'slipped\nrisk: LOW\nstatus: merged'
+
+    would set the risk tier with no named authoriser (which `risk` refuses without one) and mark
+    the spec merged (which makes `declare_complete` count it as built). A text box on a screen
+    is not a place where that should be reachable, and this was reachable from one.
+    """
+
+    PAYLOADS = [
+        ("a real line break", "slipped a quarter\nrisk: LOW\nstatus: merged"),
+        ("a carriage return", "slipped a quarter\rrisk: LOW"),
+        ("both", "slipped a quarter\r\nstatus: merged"),
+    ]
+
+    @pytest.mark.parametrize("label,payload", PAYLOADS, ids=[p[0] for p in PAYLOADS])
+    def test_a_multi_line_value_is_refused_outright(self, label, payload):
+        with pytest.raises(st.TransitionError) as e:
+            st.set_frontmatter_field(READY_SPEC, "deferred_reason", payload, add_if_missing=True)
+        assert e.value.kind == "bad_value"
+
+    @pytest.mark.parametrize("label,payload", PAYLOADS, ids=[p[0] for p in PAYLOADS])
+    def test_deferring_with_one_is_refused_in_the_persons_own_terms(self, tmp_path, label, payload):
+        spec = _spec(tmp_path)
+        before = spec.read_text(encoding="utf-8")
+        with pytest.raises(st.TransitionError) as e:
+            st.defer(spec, payload)
+        assert e.value.kind == "reason_multiline"
+        assert spec.read_text(encoding="utf-8") == before   # and nothing was written
+
+    def test_a_backslash_n_TYPED_as_two_characters_stays_two_characters(self, tmp_path):
+        # The original defect needed no real newline at all: the value went into re.sub as a
+        # REPLACEMENT TEMPLATE, where the two characters `\` and `n` expand to a line break.
+        # Typing that into a single-line text box was enough.
+        spec = _spec(tmp_path)
+        st.defer(spec, r"slipped a quarter\nrisk: LOW\nstatus: merged")
+        fm, _ = cs.parse_frontmatter(spec.read_text(encoding="utf-8"))
+        assert fm["risk"] == "HIGH"          # untouched — a LOWER needs a named authoriser
+        assert fm["status"] == "deferred"    # what defer actually does, and nothing else
+
+    def test_a_regex_backreference_in_a_reason_is_not_expanded(self, tmp_path):
+        spec = _spec(tmp_path)
+        st.defer(spec, r"blocked by \1 and \g<0> in the vendor's own spec")
+        fm, _ = cs.parse_frontmatter(spec.read_text(encoding="utf-8"))
+        assert r"\1" in fm["deferred_reason"]
+
+    def test_a_reason_ending_in_a_backslash_does_not_crash(self, tmp_path):
+        # A trailing backslash is an ERROR in a re.sub replacement template, so the old code
+        # failed closed here — loudly, with a traceback, on a reason somebody typed by hand.
+        spec = _spec(tmp_path)
+        assert st.defer(spec, "the vendor spec is incomplete \\")["ok"]
+
+    def test_quotes_in_a_reason_survive_being_read_back(self, tmp_path):
+        # Somebody quoting a client is the ordinary case, and the old hand-quoting produced
+        # `deferred_reason: "the client said "not now""` — which is not valid YAML.
+        spec = _spec(tmp_path)
+        reason = 'the client said "not now" until the next budget round'
+        st.defer(spec, reason)
+        fm, _ = cs.parse_frontmatter(spec.read_text(encoding="utf-8"))
+        assert fm["deferred_reason"] == reason

@@ -185,3 +185,62 @@ class TestParsingConfirmations:
 
     def test_no_confirmations_is_an_empty_map_not_an_error(self):
         assert dc._parse_confirmations(None) == {}
+
+
+class TestItNeverDeclaresOverAThingItCouldNotRead:
+    """The one direction this command must never fail in.
+
+    `scan_specs` silently skips a spec whose frontmatter is missing or unclosed — correct for a
+    tracker, which is reporting on what it can see. Here it was catastrophic: a skipped spec
+    appeared in neither the unfinished list nor the team list, so it raised no blocker and
+    requested no confirmation, and the declaration went through as though the file did not
+    exist. An in-flight spec became "Build is complete" because of a missing `---`.
+
+    Unreadable is not finished. An empty answer from a directory that could not be read is not
+    "there is nothing left to build".
+    """
+
+    UNCLOSED = '---\nspec: "0002"\nname: "unfinished"\nstatus: in-flight\nteam: "core"\n\n# body\n'
+
+    def _with_unreadable(self, tmp_path):
+        project = _project(tmp_path, ALL_MERGED)
+        (project / "specs" / "0002-unfinished.md").write_text(self.UNCLOSED, encoding="utf-8")
+        return project
+
+    def test_an_unreadable_spec_blocks_the_declaration(self, tmp_path):
+        result = dc.assess(self._with_unreadable(tmp_path), CONFIRMED)
+        assert result["can_declare"] is False
+        blocker = next(b for b in result["blockers"] if b["kind"] == "unreadable_specs")
+        assert blocker["count"] == 1
+
+    def test_the_refusal_NAMES_the_file_so_it_can_be_fixed(self, tmp_path):
+        result = dc.assess(self._with_unreadable(tmp_path), CONFIRMED)
+        blocker = next(b for b in result["blockers"] if b["kind"] == "unreadable_specs")
+        assert "0002-unfinished.md" in blocker["message"]
+
+    def test_declaring_over_one_is_refused(self, tmp_path):
+        with pytest.raises(dc.DeclarationError) as e:
+            dc.declare(self._with_unreadable(tmp_path), "Matt K", CONFIRMED)
+        assert e.value.kind == "unreadable_specs"
+
+    def test_a_MISSING_specs_directory_is_not_an_empty_backlog(self, tmp_path):
+        # Renamed, not yet created, or unreadable — every one of those answers "what is in
+        # Build?" with "unknown", and unknown is not nothing.
+        result = dc.assess(tmp_path, {})
+        assert result["can_declare"] is False
+        assert any(b["kind"] == "no_specs_directory" for b in result["blockers"])
+
+    def test_an_EMPTY_specs_directory_still_can_declare(self, tmp_path):
+        # The control for the case above: a directory that was read and genuinely holds nothing
+        # is a real answer, and must stay distinguishable from one that could not be read.
+        (tmp_path / "specs").mkdir()
+        assert dc.assess(tmp_path, {})["can_declare"] is True
+
+    def test_a_README_in_specs_is_not_mistaken_for_an_unreadable_spec(self, tmp_path):
+        project = _project(tmp_path, ALL_MERGED)
+        (project / "specs" / "README.md").write_text("# How specs work\n", encoding="utf-8")
+        assert dc.assess(project, CONFIRMED)["can_declare"] is True
+
+    def test_the_totals_report_the_unreadable_count(self, tmp_path):
+        result = dc.assess(self._with_unreadable(tmp_path), CONFIRMED)
+        assert result["totals"]["unreadable"] == 1

@@ -74,6 +74,13 @@ def validate_team(roster: dict, schema: dict) -> list[str]:
             handle = person.get("handle")
             if not _nonempty_str(handle):
                 errors.append(f"{ctx}.handle: missing or empty")
+            elif any(c in handle for c in "\r\n"):
+                # Not a style rule, and deliberately narrower than a full format check so no
+                # real handle is rejected: a handle is written into a spec's frontmatter, which
+                # is read a line at a time, so a handle spanning two lines becomes a second
+                # FIELD rather than a long name. A roster travels inside a repository, so this
+                # is the boundary where it has to be caught.
+                errors.append(f"{ctx}.handle: contains a line break; a handle is one line")
             elif handle in seen_handles:
                 errors.append(f"{ctx}: duplicate handle '{handle}' (first seen at people[{seen_handles[handle]}])")
             else:

@@ -41,6 +41,8 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_spec as cs
 import risk_model as rm
@@ -67,6 +69,35 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
     return text[:end], text[end:]
 
 
+def _yaml_scalar(value: str) -> str:
+    """Quote a value the way YAML says to, rather than by wrapping it in `"` and hoping.
+
+    Hand-quoting is how a reason containing a quote character produced a file that no longer
+    parsed as what its author wrote. This asks the serializer instead.
+
+    Always quoted, even where YAML would allow a bare scalar: the shipped spec template writes
+    `deferred_reason: ""`, so a real reason keeps the shape of the empty one it replaces, and a
+    bare scalar that happens to read as a number, a date or `no` would come back as that type
+    rather than as the sentence somebody typed.
+
+    WHICH quote is chosen per value, and that is not fussiness. The plugin's own frontmatter
+    reader (`check_spec.parse_frontmatter`) strips the surrounding quotes but does not process
+    escapes, so whichever character the serializer had to escape shows up as a backslash in
+    every place the reason is later displayed. Single-quoted YAML has no backslash escapes at
+    all, so it is the faithful choice for the common case — somebody quoting a client, or
+    pasting a Windows path. Double quotes are used only when the value itself contains a single
+    quote, where single-quoting would be the lossy one. A value containing both is written
+    correctly and displays one escape; there is no style that avoids that, and correct YAML is
+    the half worth keeping.
+    """
+    style = '"' if ("'" in value and '"' not in value) else "'"
+    rendered = yaml.safe_dump(
+        value, default_flow_style=True, allow_unicode=True, default_style=style).strip()
+    if rendered.endswith("..."):
+        rendered = rendered[:-3].strip()
+    return rendered
+
+
 def set_frontmatter_field(text: str, field: str, value: str, add_if_missing: bool = False) -> str:
     """Replace one frontmatter field, leaving every other byte alone.
 
@@ -77,6 +108,17 @@ def set_frontmatter_field(text: str, field: str, value: str, add_if_missing: boo
     want" is not a reason to stop them. Fields that MUST already exist (status, risk) keep the
     refusal, because their absence means the frontmatter is genuinely malformed.
     """
+    # One field is one line. A value carrying a line break would not be "a long value" — the
+    # frontmatter parser is line-based and last-key-wins, so the second line lands as a SEPARATE
+    # FIELD. That is how a deferral reason typed into a text box silently rewrites `risk` and
+    # `status`, walking straight around the authorisation rule this module exists to enforce.
+    # Refused rather than escaped: a reason with a newline in it is a person misusing a
+    # one-line field, and telling them so is better than quietly reshaping what they wrote.
+    if any(c in str(value) for c in "\r\n"):
+        raise TransitionError(
+            f"A `{field}` value cannot contain a line break — one field is one line, and a "
+            f"second line would be read as a different field entirely.", "bad_value")
+
     fm_block, rest = _split_frontmatter(text)
     pattern = rf"^{re.escape(field)}:.*$"
     if not re.search(pattern, fm_block, flags=re.MULTILINE):
@@ -86,7 +128,11 @@ def set_frontmatter_field(text: str, field: str, value: str, add_if_missing: boo
         # added later anyway.
         eol = "\r\n" if "\r\n" in fm_block else "\n"
         return fm_block.rstrip("\r\n") + eol + f"{field}: {value}" + rest
-    return re.sub(pattern, f"{field}: {value}", fm_block, count=1, flags=re.MULTILINE) + rest
+    # A LAMBDA replacement, not a template string: re.sub expands `\n`, `\1` and friends inside
+    # a replacement template, so a literal backslash in a value would become something else
+    # entirely (and `\` at the end raises). A callable returns the string as written.
+    return re.sub(pattern, lambda _m: f"{field}: {value}", fm_block, count=1,
+                  flags=re.MULTILINE) + rest
 
 
 def mark_ready(spec_path: Path, roster_path: Path | None = None) -> dict:
@@ -129,6 +175,14 @@ def defer(spec_path: Path, reason: str) -> dict:
     the backlog a worse record than no record.
     """
     reason = (reason or "").strip()
+    # Checked on what the PERSON typed, before the serializer gets it. The serializer would
+    # escape a line break into a visible `\n` rather than let it through, so this is not the
+    # safety guard — `set_frontmatter_field` is. It is here so the answer is "a reason is one
+    # line, say it in one" instead of a reason that silently comes back looking mangled.
+    if any(c in reason for c in "\r\n"):
+        raise TransitionError(
+            "A reason is one line. Yours has a line break in it — say it in a single sentence "
+            "so it reads the same everywhere it is shown.", "reason_multiline")
     if not reason:
         raise TransitionError(
             "Deferring a spec needs a reason in your own words. A deferred spec with no reason "
@@ -154,7 +208,8 @@ def defer(spec_path: Path, reason: str) -> dict:
                 "message": "Already deferred. Nothing changed."}
 
     updated = set_frontmatter_field(text, "status", "deferred")
-    updated = set_frontmatter_field(updated, "deferred_reason", f'"{reason}"', add_if_missing=True)
+    updated = set_frontmatter_field(updated, "deferred_reason", _yaml_scalar(reason),
+                                    add_if_missing=True)
     spec_path.write_text(updated, encoding="utf-8")
 
     return {"ok": True, "changed": True, "status": "deferred", "reason": reason,
@@ -235,7 +290,7 @@ def resolve_roster(args) -> Path | None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="The two spec transitions a person makes by hand")
+    parser = argparse.ArgumentParser(description="The three spec transitions a person makes by hand")
     parser.add_argument("--spec", required=True, help="Path to specs/NNNN-name.md")
     parser.add_argument("--state", help="Path to .sdlc/state.yaml (enables the roster cross-check)")
     parser.add_argument("--json", action="store_true", help="Emit the outcome as JSON")

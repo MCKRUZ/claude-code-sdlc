@@ -186,7 +186,7 @@ def _set_status_merged(text: str) -> str:
 def read_committed_status(repo_root, base_branch: str, spec_rel_path: str) -> str | None:
     """The `status` field as actually committed on the default branch — never the caller's
     local checkout, which may be sitting anywhere and would make this check meaningless."""
-    run_git(["fetch", "origin", base_branch], cwd=repo_root)
+    run_git(["fetch", "origin", "--", base_branch], cwd=repo_root)
     try:
         content = run_git(["show", f"FETCH_HEAD:{spec_rel_path}"], cwd=repo_root)
     except HandoffError:
@@ -347,10 +347,30 @@ def fetch_all_pull_requests(repo_root, limit: int = 1000) -> dict[str, dict]:
     return by_branch
 
 
+def _safe_spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None) -> dict:
+    """One row, and never more than one row's worth of damage.
+
+    The board is the screen somebody opens to find out where the work is. One spec that cannot
+    be read is a fact about that spec; it must not become a blank screen that says nothing about
+    any of the others.
+    """
+    try:
+        return _spec_row(spec_path, repo_root, by_branch)
+    except Exception as e:  # noqa: BLE001
+        return {"path": spec_path.name, "error": f"could not be read: {type(e).__name__}: {e}"}
+
+
 def _spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None) -> dict:
     """One board row. Everything except `pull_request` comes from the file itself, so a row
     is complete and useful before the code host has answered — or when it never does."""
-    text = spec_path.read_text(encoding="utf-8")
+    # errors="replace", matching track_specs.scan_specs, which reads the same files. Without it
+    # a single byte that is not valid UTF-8 raises out of the whole board build, and the screen
+    # shows nothing at all rather than one row saying which file is the problem. One unreadable
+    # spec should cost one row.
+    try:
+        text = spec_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as e:
+        return {"path": spec_path.name, "error": f"could not be read: {e}"}
     fm, _ = cs.parse_frontmatter(text)
     if not fm:
         return {"path": spec_path.name, "error": "no parseable frontmatter"}
@@ -439,7 +459,7 @@ def report_all(repo_root: Path) -> dict:
     return {
         "code_host_available": by_branch is not None,
         "error": error,
-        "specs": [_spec_row(p, repo_root, by_branch) for p in spec_paths],
+        "specs": [_safe_spec_row(p, repo_root, by_branch) for p in spec_paths],
     }
 
 

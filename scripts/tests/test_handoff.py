@@ -259,3 +259,43 @@ class TestRefusalKind:
     def test_it_is_still_an_ordinary_exception(self):
         with pytest.raises(h.HandoffError):
             raise h.HandoffError("x", "not_ready")
+
+
+class TestAHandleCannotBecomeAnotherField:
+    """The same defect as spec_transition's, in the path that starts the work.
+
+    The handle went into a regex replacement TEMPLATE, and the frontmatter reader is line-based
+    and last-key-wins — so a handle spanning two lines rewrites whichever fields the template
+    declares above `developer:`. `risk` is one of them. A tier silently downgraded at hand-off
+    time is the whole checking ladder shortening with nobody's name against it.
+
+    Reachable without an attacker: handles come from `.sdlc/team.yaml`, which ships inside a
+    repository, and the hand-off dialog lists whatever that file contains.
+    """
+
+    # A HIGH fixture on purpose: the interesting direction is a DOWNGRADE, and asserting
+    # against a spec that was already LOW would prove nothing at all.
+    HIGH_SPEC = READY_SPEC.replace("risk: LOW", "risk: HIGH")
+
+    def test_a_handle_with_a_line_break_is_refused(self):
+        with pytest.raises(h.HandoffError) as e:
+            h.set_status_and_developer(self.HIGH_SPEC, '@sam-k\nrisk: LOW\nchecker: "@sam-k"')
+        assert "line break" in str(e.value)
+
+    def test_a_handle_with_a_carriage_return_is_refused(self):
+        with pytest.raises(h.HandoffError):
+            h.set_status_and_developer(self.HIGH_SPEC, "@sam-k\rrisk: LOW")
+
+    def test_a_backslash_n_typed_as_two_characters_stays_two_characters(self):
+        # The original defect needed no real newline: re.sub expands `\` + `n` inside a
+        # replacement template.
+        assert "risk: HIGH" in self.HIGH_SPEC
+        out = h.set_status_and_developer(self.HIGH_SPEC, r"@sam-k\nrisk: LOW")
+        fm, _ = h.cs.parse_frontmatter(out)
+        assert fm["risk"] == "HIGH"
+        assert fm["status"] == "in-flight"
+
+    def test_an_ordinary_handle_is_unaffected(self):
+        out = h.set_status_and_developer(READY_SPEC, "@sam-k")
+        fm, _ = h.cs.parse_frontmatter(out)
+        assert fm["developer"] == "@sam-k" and fm["status"] == "in-flight"
