@@ -56,7 +56,7 @@ unexplained case impossible.
 - [x] Each team lead confirms their own team's list; the declaration is refused until every team with a
       spec in the list has confirmed.
 - [ ] The person declaring is recorded by name in the hand-over document and in the commit.
-- [ ] The hand-over document is produced by the plugin's own generator, with the deferred items and
+- [x] The hand-over document is produced by the plugin's own generator, with the deferred items and
       reasons included, and the screen shows which of its sections are complete before declaring.
 - [ ] Declaring moves the project to the next stage in its own state file, through the plugin's command,
       and nothing else changes.
@@ -65,17 +65,32 @@ unexplained case impossible.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Five of eleven ticked — still the fewest of any Studio spec, and the note below is longer than
+Six of eleven ticked — still the fewest of any Studio spec, and the note below is longer than
 usual because the gap is real rather than a matter of verification. The DECIDING half of this
-flow is built and tested; most of the RECORDING half is not.
+flow is built and tested; half of the RECORDING half now is too.
 
-**Updated 2026-09-25, later:** the first and most consequential of the four gaps below is now
-closed. Deferring commits, so the deferral and its reason reach everybody rather than only the
-machine that made the decision — proven against a real git remote by reading the spec back out
-of a FRESH CLONE (`test/deferReachesTheRepo.test.ts`, 6 cases), because reading the working copy
-only ever proved the half that already worked. A refused deferral commits nothing, and
-deferring an already-deferred spec makes no empty commit. If the write succeeds and the save
-fails, that is reported as a failure naming which half happened — not as a success.
+**Updated 2026-09-25, later:** the first TWO of the four gaps below are now closed, and every
+assertion is made against a real git remote by reading the file back out of a FRESH CLONE
+(`test/deferReachesTheRepo.test.ts`, 13 cases) — reading the working copy only ever proved the
+half that already worked.
+
+Deferring commits, so the deferral and its reason reach everybody rather than only the machine
+that made the decision. A refused deferral commits nothing; deferring an already-deferred spec
+makes no empty commit; and a write that succeeds while the save fails is reported as a failure
+naming which half happened, not as a success.
+
+The hand-over document is produced and saved after a declaration, through the plugin's own
+generator. That gap's description was wrong about the cause: the generator already assembled
+the deferred items and reasons, and checking before building found it — the missing half was
+entirely Studio's, which never asked for it.
+
+**A real bug came out of this, and it was not about either.** Producing the document, being
+told it was saved, and then not finding it in the clone exposed that a pull recorded any file
+that exists locally but not on the remote as the shared baseline — and `save()` pulls before
+working out what changed. So NOTHING Studio created could ever reach the repository, in any
+screen. Every existing test edits a file that was already there, which takes a different path,
+which is why it had gone unseen. Fixed in the sync layer with its own regression test, plus a
+control proving a file present on both sides is still treated as in step.
 
 **Proven** (`scripts/tests/test_declare_complete.py`, 24 cases, plus three window tests): the
 declaration is refused while any spec is neither merged nor deferred, naming each one and who
@@ -91,10 +106,12 @@ explains itself when pressed, and a suggested deferral reason is offered but nev
 
 1. ~~**Deferring does not commit.**~~ **DONE** — see the update above. It was the most
    important of the four, and it is the one now closed.
-2. **The hand-over document is not produced.** `generate_handoff_report.py` exists and already
-   assembles the phase reports, gate results and metrics history. What it does not yet receive
-   is the deferred items and their reasons, which is the one part this spec owns — and the part
-   somebody will actually look for when they ask why an expected thing is not there.
+2. ~~**The hand-over document is not produced.**~~ **DONE** — and this note was wrong about
+   why. `generate_handoff_report.py` already assembled the deferred items and their reasons;
+   checking before building found it. The missing half was entirely on Studio's side, which
+   never asked the generator for anything. It is now produced and saved after a declaration,
+   it refuses to overwrite a report somebody has edited (offered as a choice, never forced),
+   and the screen states which of the three outcomes happened rather than only the good one.
 3. **Declaring does not advance the phase.** Deliberate so far: `advance_phase.py` is protected
    core and already owns that transition with its own gate checks and sign-off recording, so
    `declare_complete.py` answers whether Build MAY be declared and stops. Wiring the screen to
@@ -114,8 +131,8 @@ finish first" look identical to the plugin — which is why the refusal names bo
 **Why this matters more than the count suggests:** a declaration that is not recorded anywhere
 is a conversation, not a declaration. Items 1 and 4 are what make it a fact about the project
 rather than a state of somebody's window — item 1 is now done, so a DEFERRAL is a fact about
-the project. The declaration itself still is not, which is what item 4 (and, through it, item 3)
-remains for.
+the project, and item 2 means the hand-over document is too. The declaration ITSELF still is
+not, which is what item 4 (and, through it, item 3) remains for.
 
 ## Risk Tier
 
