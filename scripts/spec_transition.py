@@ -1,4 +1,4 @@
-"""The two spec transitions a person makes by hand, each carrying its own rule (spec 0011).
+"""The spec transitions a person makes by hand, each carrying its own rule (specs 0011, 0014).
 
 Both of these change a spec's frontmatter, which nothing outside `handoff.py` could do — so
 without this, an application wanting to offer either would have to edit the file itself, and
@@ -19,6 +19,13 @@ path with no rule attached, and it would quietly become how everything gets chan
           downgrade, and this does not invent one: the rule is that a downgrade is
           attributable, not that it is permitted only to certain people. Making it a matter
           of record is what this system can honestly enforce.
+
+  defer   Requires a reason, in the person's own words, and refuses a token one — "later" and
+          "n/a" pass a non-empty check while answering nothing. A deferred spec with no real
+          reason cannot be told apart from one somebody forgot, and the difference matters
+          most when a stakeholder asks why something they expected is not there. A merged spec
+          cannot be deferred: it was built, and recording otherwise makes the backlog a worse
+          record than none.
 
 Writes the file in place and nothing else — no commit, no branch, no push. Saving belongs to
 whoever called this, which for Studio is spec 0009's save.
@@ -60,11 +67,25 @@ def _split_frontmatter(text: str) -> tuple[str, str]:
     return text[:end], text[end:]
 
 
-def set_frontmatter_field(text: str, field: str, value: str) -> str:
+def set_frontmatter_field(text: str, field: str, value: str, add_if_missing: bool = False) -> str:
+    """Replace one frontmatter field, leaving every other byte alone.
+
+    `add_if_missing` exists for a real case rather than a hypothetical one: a spec written
+    before a field was added to the template, or written by hand, simply does not have it.
+    Refusing to defer such a spec would be the tool being brittle about its own schema — the
+    person is trying to record why something was not built, and "your file predates a field I
+    want" is not a reason to stop them. Fields that MUST already exist (status, risk) keep the
+    refusal, because their absence means the frontmatter is genuinely malformed.
+    """
     fm_block, rest = _split_frontmatter(text)
     pattern = rf"^{re.escape(field)}:.*$"
     if not re.search(pattern, fm_block, flags=re.MULTILINE):
-        raise TransitionError(f"Spec frontmatter has no `{field}` field", "malformed")
+        if not add_if_missing:
+            raise TransitionError(f"Spec frontmatter has no `{field}` field", "malformed")
+        # Appended to the end of the block, which is where a reader looks for a field that was
+        # added later anyway.
+        eol = "\r\n" if "\r\n" in fm_block else "\n"
+        return fm_block.rstrip("\r\n") + eol + f"{field}: {value}" + rest
     return re.sub(pattern, f"{field}: {value}", fm_block, count=1, flags=re.MULTILINE) + rest
 
 
@@ -93,6 +114,52 @@ def mark_ready(spec_path: Path, roster_path: Path | None = None) -> dict:
     spec_path.write_text(set_frontmatter_field(text, "status", "ready"), encoding="utf-8")
     return {"ok": True, "changed": True, "status": "ready",
             "message": "Marked ready.", "advisory_count": len(readiness["advisory"])}
+
+
+def defer(spec_path: Path, reason: str) -> dict:
+    """Set `status: deferred` with a reason, for a spec Build is ending without.
+
+    The reason is the whole point, and it is required. A deferred spec with no reason is
+    indistinguishable from one somebody forgot about — and the difference matters most later,
+    when a stakeholder asks why something they expected is not there. `check_spec.py` already
+    treats a missing reason as a blocking failure; refusing here means the file never reaches
+    that state rather than being written and then reported as broken.
+
+    A merged spec cannot be deferred: it is already built, and recording otherwise would make
+    the backlog a worse record than no record.
+    """
+    reason = (reason or "").strip()
+    if not reason:
+        raise TransitionError(
+            "Deferring a spec needs a reason in your own words. A deferred spec with no reason "
+            "cannot be told apart from one somebody forgot, and the difference matters when "
+            "someone asks why this was not built.", "reason_required")
+    if len(reason) < 10:
+        # Not a style rule. "later", "n/a" and "no time" all pass a non-empty check and none of
+        # them answers the question a reader will actually have.
+        raise TransitionError(
+            f"'{reason}' is too short to be a reason. Say what made this not worth building "
+            f"now, so the answer survives without you in the room.", "reason_too_short")
+
+    text = spec_path.read_text(encoding="utf-8")
+    fm, _ = cs.parse_frontmatter(text)
+    current = (fm.get("status") or "").strip() if fm else ""
+
+    if current == "merged":
+        raise TransitionError(
+            "This spec is already merged — it was built. Deferring it would make the backlog a "
+            "worse record than none.", "already_merged")
+    if current == "deferred":
+        return {"ok": True, "changed": False, "status": "deferred",
+                "message": "Already deferred. Nothing changed."}
+
+    updated = set_frontmatter_field(text, "status", "deferred")
+    updated = set_frontmatter_field(updated, "deferred_reason", f'"{reason}"', add_if_missing=True)
+    spec_path.write_text(updated, encoding="utf-8")
+
+    return {"ok": True, "changed": True, "status": "deferred", "reason": reason,
+            "message": f"Deferred: {reason}",
+            "note": "A deferred spec no longer counts towards its team's work in progress."}
 
 
 def _tier_rank(tier: str) -> int:
@@ -181,6 +248,10 @@ def main():
     risk.add_argument("--authorised-by", default=None, metavar="NAME",
                       help="Required to LOWER a tier; written into the spec beside the reasoning")
 
+    deferred = sub.add_parser("defer", help="Defer a spec Build is ending without — needs a reason")
+    deferred.add_argument("--reason", required=True,
+                          help="Why this was not built, in your own words — it outlives you being asked")
+
     args = parser.parse_args()
     spec_path = Path(args.spec)
 
@@ -189,6 +260,8 @@ def main():
             raise TransitionError(f"Spec not found: {spec_path}", "not_found")
         if args.action == "ready":
             result = mark_ready(spec_path, resolve_roster(args))
+        elif args.action == "defer":
+            result = defer(spec_path, args.reason)
         else:
             result = set_risk(spec_path, args.tier, args.authorised_by)
     except TransitionError as e:

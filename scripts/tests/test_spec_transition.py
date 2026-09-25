@@ -181,3 +181,81 @@ class TestFrontmatterSafety:
         with pytest.raises(st.TransitionError) as e:
             st.set_risk(spec, "LOW", "Matt K")
         assert e.value.kind == "malformed"
+
+
+class TestDefer:
+    """Deferring a spec Build is ending without (spec 0014).
+
+    The reason is the whole point. A deferred spec with no reason cannot be told apart from one
+    somebody forgot about, and the difference matters most later — when a stakeholder asks why
+    something they expected is not there and the only answer available is a shrug.
+    """
+
+    def test_a_real_reason_is_written_to_the_spec(self, tmp_path):
+        spec = _spec(tmp_path)
+        result = st.defer(spec, "the upstream API it needs is not live until Q2")
+        text = spec.read_text(encoding="utf-8")
+        assert result["ok"] and result["changed"]
+        assert "status: deferred" in text
+        assert 'deferred_reason: "the upstream API it needs is not live until Q2"' in text
+
+    def test_no_reason_is_refused_and_the_spec_is_untouched(self, tmp_path):
+        spec = _spec(tmp_path)
+        before = spec.read_text(encoding="utf-8")
+        for empty in ("", "   ", None):
+            with pytest.raises(st.TransitionError) as e:
+                st.defer(spec, empty)
+            assert e.value.kind == "reason_required"
+        assert spec.read_text(encoding="utf-8") == before
+
+    def test_a_TOKEN_reason_is_refused(self, tmp_path):
+        # Not a style rule. "later", "n/a" and "no time" all pass a non-empty check and none of
+        # them answers the question a reader will actually have.
+        for token in ("later", "n/a", "no time", "TBD"):
+            with pytest.raises(st.TransitionError) as e:
+                st.defer(_spec(tmp_path), token)
+            assert e.value.kind == "reason_too_short", token
+
+    def test_a_merged_spec_cannot_be_deferred(self, tmp_path):
+        # It was built. Recording otherwise makes the backlog a worse record than none.
+        spec = _spec(tmp_path, READY_SPEC.replace("status: draft", "status: merged"))
+        with pytest.raises(st.TransitionError) as e:
+            st.defer(spec, "we changed our minds about this one entirely")
+        assert e.value.kind == "already_merged"
+
+    def test_an_in_flight_spec_CAN_be_deferred(self, tmp_path):
+        # Spec 0014 says every spec that is not merged is either finished first or deferred —
+        # work already in progress is exactly the interesting case.
+        spec = _spec(tmp_path, READY_SPEC.replace("status: draft", "status: in-flight"))
+        assert st.defer(spec, "the team was pulled onto the incident and this can wait")["ok"]
+
+    def test_deferring_twice_changes_nothing_the_second_time(self, tmp_path):
+        spec = _spec(tmp_path)
+        st.defer(spec, "the upstream API it needs is not live until Q2")
+        again = st.defer(spec, "a different reason entirely, also long enough")
+        assert again["ok"] and again["changed"] is False
+
+    def test_the_result_says_it_leaves_work_in_progress(self, tmp_path):
+        # True by construction — the tracker counts only in-flight — but a person making this
+        # choice deserves to be told, since it is the practical consequence.
+        result = st.defer(_spec(tmp_path), "the upstream API it needs is not live until Q2")
+        assert "work in progress" in result["note"]
+
+    def test_a_spec_with_NO_deferred_reason_field_still_defers(self, tmp_path):
+        # A real case, not a hypothetical: a spec written before the field existed, or written
+        # by hand, simply lacks it. Refusing would be the tool being brittle about its own
+        # schema while somebody is trying to record why something was not built.
+        assert "deferred_reason" not in READY_SPEC
+        spec = _spec(tmp_path)
+        st.defer(spec, "the upstream API it needs is not live until Q2")
+        text = spec.read_text(encoding="utf-8")
+        assert "status: deferred" in text
+        assert 'deferred_reason: "the upstream API it needs is not live until Q2"' in text
+
+    def test_a_MALFORMED_frontmatter_is_still_refused(self, tmp_path):
+        # Adding a missing optional field is tolerance; inventing a whole frontmatter block is
+        # not. status must already be there, or the file is genuinely malformed.
+        spec = _spec(tmp_path, "# Just a heading\n")
+        with pytest.raises(st.TransitionError) as e:
+            st.defer(spec, "a reason long enough to pass the length check")
+        assert e.value.kind == "malformed"
