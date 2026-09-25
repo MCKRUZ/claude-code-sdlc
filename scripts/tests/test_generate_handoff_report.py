@@ -243,3 +243,80 @@ class TestMain:
         text = out_path.read_text(encoding="utf-8")
         assert "Standalone draft" in text
         assert repo.name in text  # project name falls back to repo dir name
+
+
+class TestDeclaredBy:
+    """Who declared Build finished, on the hand-over document (spec 0014).
+
+    This is the line a reader looks at first, so the rule is that it can never disagree with
+    the project's own state file. The report is usually drafted at the MOMENT of declaring,
+    before the stage has moved and recorded anything — so the caller offers the name it is
+    about to record, and the record supersedes it the instant one exists.
+
+    Preferring the offer would let a delivered document name somebody the project does not.
+    """
+
+    def _state(self, signed=None, completed=None):
+        gate_results = {}
+        if signed is not None:
+            gate_results["signed_off_by"] = signed
+        return {"phases": {"build": {"gate_results": gate_results, "completed_at": completed}}}
+
+    def test_the_recorded_name_is_used(self):
+        line = gh.declared_by(self._state(signed="Priya N"), None)
+        assert "Priya N" in line
+
+    def test_the_recorded_name_BEATS_the_offered_one(self):
+        # The case that matters: a document naming somebody the project does not would be a
+        # false record of who took responsibility, which is the whole point of the line.
+        line = gh.declared_by(self._state(signed="Priya N"), "Matt K")
+        assert "Priya N" in line
+        assert "Matt K" not in line
+
+    def test_the_recorded_date_is_shown_with_the_name(self):
+        line = gh.declared_by(self._state(signed="Priya N", completed="2026-09-25T09:00:00+00:00"), None)
+        assert "2026-09-25" in line
+
+    def test_a_recorded_name_with_no_date_does_not_invent_one(self):
+        line = gh.declared_by(self._state(signed="Priya N"), None)
+        assert "Priya N" in line
+        assert " on " not in line
+
+    def test_an_offered_name_is_marked_as_not_yet_recorded(self):
+        # Honest about which it is. A reader must be able to tell "the project says so" from
+        # "the tool was told so and the project has not caught up".
+        line = gh.declared_by(self._state(), "Matt K")
+        assert "Matt K" in line
+        assert "not yet recorded" in line
+
+    def test_neither_available_reads_as_a_slot_to_fill(self):
+        # Never a blank signature line: a document that admits it does not know is better than
+        # one that looks signed by nobody.
+        assert "[Fill:" in gh.declared_by({}, None)
+
+    @pytest.mark.parametrize("empty", ["", "   ", None])
+    def test_an_empty_offered_name_is_not_a_name(self, empty):
+        assert "[Fill:" in gh.declared_by({}, empty)
+
+    @pytest.mark.parametrize("bad", ["", "   ", None, 0, [], {"name": "Priya"}])
+    def test_anything_that_is_not_a_real_recorded_name_falls_through(self, bad):
+        # Falls through to the offered name rather than rendering an empty signature.
+        line = gh.declared_by(self._state(signed=bad), "Matt K")
+        assert "Matt K" in line
+
+    def test_gate_results_that_is_not_a_mapping_does_not_crash(self):
+        state = {"phases": {"build": {"gate_results": ["not", "a", "mapping"]}}}
+        assert "Matt K" in gh.declared_by(state, "Matt K")
+
+    def test_a_project_with_no_build_phase_at_all_does_not_crash(self):
+        assert "[Fill:" in gh.declared_by({"phases": {"0": {}}}, None)
+
+    def test_the_line_reaches_the_report(self, tmp_path):
+        repo = make_repo(tmp_path)
+        report = gh.build_report(
+            project_name="p", window=("2026-01-01", "2026-09-25"), sources_present=True,
+            phase_index="", record="", metrics="", backlog="", deferred="none",
+            declaration=gh.declared_by({}, "Matt K"), generated_at="now",
+        )
+        assert "Matt K" in report
+        assert report.index("Matt K") < report.index("## Outcomes")
