@@ -100,7 +100,38 @@ def parse_gate_table(text: str) -> list[dict]:
 
 def _installed_workflow_files(repo_root: Path) -> list[str]:
     d = repo_root / INSTALLED_WORKFLOWS
-    return sorted(f.name for f in d.glob("*.yml")) if d.is_dir() else []
+    if not d.is_dir():
+        return []
+    # Both spellings. The code host runs `.yaml` exactly as it runs `.yml`, so globbing only
+    # one made a real pipeline invisible to this report in both directions at once: absent from
+    # what is installed, and absent from what is unexpected.
+    return sorted(f.name for f in d.iterdir()
+                  if f.is_file() and f.suffix in (".yml", ".yaml"))
+
+
+def _disagreement(gate: dict, playbook: list[dict]) -> dict:
+    """Where this project's description of a gate differs from the playbook's.
+
+    Reported, never resolved. A project may legitimately have adapted a gate, and deciding
+    which copy is right is not this script's to make — but a reader needs to know that the two
+    documents do not say the same thing, because only one of them is the standard.
+    """
+    if not playbook:
+        return {}
+    match = next((p for p in playbook if p["gate"].lower() == gate["gate"].lower()), None)
+    if match is None:
+        return {"differs": "the playbook does not describe this gate at all"}
+
+    differences = [
+        f"{field}: this project says '{gate.get(field)}', the playbook says '{match.get(field)}'"
+        for field in ("file", "fires_on", "blocks")
+        if (gate.get(field) or "").strip().lower() != (match.get(field) or "").strip().lower()
+    ]
+    if gate.get("optional") != match.get("optional"):
+        differences.append(
+            f"optional: this project says {gate.get('optional')}, "
+            f"the playbook says {match.get('optional')}")
+    return {"differs": "; ".join(differences)} if differences else {}
 
 
 def inventory(repo_root: Path) -> dict:
@@ -118,6 +149,17 @@ def inventory(repo_root: Path) -> dict:
                 "error": "The rails guide could not be found, so there is nothing describing "
                          "what each gate does. This is not the same as having no gates."}
 
+    # The playbook's own copy is read as well, whenever the project supplied its own. This
+    # report is what somebody looks at to answer "is this project protected", and reading only
+    # the project's copy answers a different question — "does this project SAY it is protected".
+    # A repository supplies both halves of that comparison, so on its own it cannot be evidence.
+    # Nothing is overruled here: a project may legitimately differ, and the difference is
+    # reported rather than resolved, because which one is right is not this script's to decide.
+    playbook_described = (
+        parse_gate_table(PLAYBOOK_GUIDE.read_text(encoding="utf-8"))
+        if guide_source == INSTALLED_GUIDE and PLAYBOOK_GUIDE.exists() else []
+    )
+
     described = parse_gate_table(guide_text)
     if not described:
         return {"ok": False, "guide_source": guide_source, "gates": [], "unexpected": [],
@@ -126,13 +168,13 @@ def inventory(repo_root: Path) -> dict:
                          f"described. This is not the same as having no gates."}
 
     installed_files = _installed_workflow_files(repo_root)
-    described_files = {g["file"] for g in described if g["file"].endswith(".yml")}
+    described_files = {g["file"] for g in described if g["file"].endswith((".yml", ".yaml"))}
 
     gates = []
     for g in described:
         # A gate whose file is not a pipeline (a local hook, say) is reported as described but
         # not verifiable from here, rather than silently called missing.
-        if not g["file"].endswith(".yml"):
+        if not g["file"].endswith((".yml", ".yaml")):
             gates.append({**g, "state": "not_a_pipeline",
                           "detail": "not a pipeline file — cannot be confirmed from the "
                                     "repository alone"})
@@ -140,7 +182,8 @@ def inventory(repo_root: Path) -> dict:
         present = g["file"] in installed_files
         gates.append({**g, "state": "installed" if present else "missing",
                       "detail": g["file"] if present
-                                else f"{g['file']} is not in {INSTALLED_WORKFLOWS}"})
+                                else f"{g['file']} is not in {INSTALLED_WORKFLOWS}",
+                      **_disagreement(g, playbook_described)})
 
     unexpected = [
         {"file": name,
@@ -153,19 +196,50 @@ def inventory(repo_root: Path) -> dict:
         for rel, gate in BYPASS_LEDGERS.items()
     ]
 
+    # The case that matters most, and the one reading only the project's copy could never
+    # surface: a gate the standard expects, absent from this project's own list entirely. Such
+    # a gate is not "missing" in the list above, because the list above is built from the
+    # project's description — a gate dropped from that description simply stops being asked
+    # about, and the report comes back clean.
+    described_names = {g["gate"].lower() for g in described}
+    dropped = [
+        {"gate": p["gate"], "file": p["file"], "blocks": p["blocks"],
+         "detail": "the playbook expects this gate; this project's own guide does not list it, "
+                   "so nothing above checks for it"}
+        for p in playbook_described
+        if p["gate"].lower() not in described_names and not p.get("optional")
+    ]
+
     return {"ok": True, "guide_source": guide_source, "gates": gates,
-            "unexpected": unexpected, "bypass_ledgers": ledgers, "error": None}
+            "unexpected": unexpected, "not_in_project_guide": dropped,
+            "compared_with_playbook": bool(playbook_described),
+            "bypass_ledgers": ledgers, "error": None}
 
 
 def format_report(result: dict) -> str:
     if not result["ok"]:
         return f"Error: {result['error']}"
 
-    lines = [f"Gates described in {result['guide_source']}:"]
+    source = result["guide_source"]
+    if source == INSTALLED_GUIDE:
+        # Said plainly, because it is the difference between what this report can and cannot
+        # be evidence of. A project supplies both its gate list and the files it names.
+        source = f"{source} — this project's OWN copy, not the playbook's"
+    lines = [f"Gates described in {source}:"]
     for g in result["gates"]:
         mark = {"installed": "  ", "missing": "  MISSING ", "not_a_pipeline": "  (local) "}[g["state"]]
         lines.append(f"{mark} {g['gate']:<22} {g['blocks']}")
         lines.append(f"           fires on: {g['fires_on']}")
+        if g.get("differs"):
+            lines.append(f"           DIFFERS FROM THE PLAYBOOK — {g['differs']}")
+
+    if result.get("not_in_project_guide"):
+        lines.append("")
+        lines.append("The playbook expects these gates; this project's guide does not list them,")
+        lines.append("so nothing above checked for them:")
+        for d in result["not_in_project_guide"]:
+            lines.append(f"   {d['gate']:<22} {d['blocks']}")
+
     if result["unexpected"]:
         lines.append("")
         lines.append("This project also has pipelines the guide does not describe:")
