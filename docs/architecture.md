@@ -350,7 +350,7 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |-- profiles/                              Company/stack configurations
 |   |-- _schema.yaml                       Profile validation schema (RFC 2119)
 |   |-- microsoft-enterprise/
-|   |   |-- profile.yaml                   C#/.NET 8 + Angular 17 + Azure + SOC 2
+|   |   |-- profile.yaml                   C#/.NET 10 + Angular 22 + Azure + SOC 2
 |   |   |-- claude-md-template.md          CLAUDE.md template for target projects
 |   |   +-- switchboard-rules.json         Agent routing rules for this profile
 |   |-- ado-enterprise/

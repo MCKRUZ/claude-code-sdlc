@@ -7,12 +7,12 @@ company:
 stack:
   backend:
     language: csharp
-    framework: dotnet-8
+    framework: dotnet-10
     orm: ef-core
     testing: xunit
   frontend:
     language: typescript
-    framework: angular-17
+    framework: angular-22
     state: ngrx
     e2e: playwright
   database:

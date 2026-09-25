@@ -65,7 +65,7 @@ For long-running phases (especially the Build loop), session continuity is maint
 ## Profiles
 
 Profiles configure the plugin for your company/team:
-- `microsoft-enterprise` — C#/.NET 8 + Angular 17 + Azure + SOC 2 compliance
+- `microsoft-enterprise` — C#/.NET 10 + Angular 22 + Azure + SOC 2 compliance
 - `ado-enterprise` — microsoft-enterprise's stack on Azure Repos + Azure Pipelines. The
   harness install is platform-aware (no GitHub payload lands in the repo; rails
   governance content installs to `.azuredevops/rails/` instead), and `/sdlc-doctor` +
