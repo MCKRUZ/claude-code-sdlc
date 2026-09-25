@@ -63,8 +63,8 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:getDeclarationStatus', projectPath, confirmedTeams),
   declareComplete: (projectPath, declaredBy, confirmedTeams) =>
     ipcRenderer.invoke('studio:declareComplete', projectPath, declaredBy, confirmedTeams),
-  deferSpec: (projectPath, specPath, reason) =>
-    ipcRenderer.invoke('studio:deferSpec', projectPath, specPath, reason),
+  deferSpec: (projectPath, specPath, reason, actor) =>
+    ipcRenderer.invoke('studio:deferSpec', projectPath, specPath, reason, actor),
   exportDocument: (suggestedName, contents) =>
     ipcRenderer.invoke('studio:exportDocument', suggestedName, contents),
   setRosterPerson: (projectPath, handle, fields) =>

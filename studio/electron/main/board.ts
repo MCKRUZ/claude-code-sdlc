@@ -14,6 +14,7 @@
 
 import { runPluginScript } from './project'
 import { resolveProjectDocument } from './projectPaths'
+import { save } from './sync'
 import type {
   Board, BoardRow, DeclarationResult, DeclarationStatus, SpecReadiness, SpecStatus,
   SpecTransitionResult,
@@ -302,6 +303,7 @@ export async function deferSpec(
   pluginScriptsDir: string,
   specPath: string,
   reason: string,
+  actor?: string,
 ): Promise<SpecTransitionResult> {
   let fullSpecPath: string
   try {
@@ -313,19 +315,61 @@ export async function deferSpec(
   const entry = await runPluginScript(pluginScriptsDir, 'spec_transition.py', [
     '--spec', fullSpecPath, '--json', 'defer', '--reason', reason,
   ])
+
+  let parsed: { ok?: boolean; changed?: boolean; message?: string; refusal?: { kind?: string; message?: string } }
   try {
-    const parsed = JSON.parse(entry.stdout)
-    if (parsed.ok !== true) {
-      return { ok: false, refusal: {
-        kind: String(parsed.refusal?.kind ?? 'other'),
-        message: String(parsed.refusal?.message ?? 'The deferral was refused.'),
-      } }
-    }
-    return { ok: true, changed: parsed.changed === true, message: String(parsed.message ?? '') }
+    parsed = JSON.parse(entry.stdout)
   } catch {
     return { ok: false, refusal: {
       kind: 'other',
       message: entry.stderr.trim() || 'The deferral command gave no readable answer.',
     } }
+  }
+
+  if (parsed.ok !== true) {
+    return { ok: false, refusal: {
+      kind: String(parsed.refusal?.kind ?? 'other'),
+      message: String(parsed.refusal?.message ?? 'The deferral was refused.'),
+    } }
+  }
+
+  const changed = parsed.changed === true
+  const message = String(parsed.message ?? '')
+  if (!changed) {
+    // Already deferred. Nothing was written, so there is nothing to save — and saving anyway
+    // would put an empty commit on the record for a button press that changed nothing.
+    return { ok: true, changed: false, message }
+  }
+
+  // The deferral is not real until it reaches the repository. Until this call the status and
+  // reason lived in one person's working copy: it looked done on their screen and nothing had
+  // happened for anybody else — and a deferral is precisely the thing somebody ELSE goes
+  // looking for later, when they ask why an expected feature is not there.
+  const saved = await save(projectPath, pluginScriptsDir, `Deferred: ${reason}`, {
+    onlyPath: specPath,
+    actor,
+  })
+  if (!saved.ok) {
+    // Reported rather than swallowed, and deliberately not called a success. The file on this
+    // machine HAS changed, so saying so is the honest answer — the half that failed is the half
+    // that makes it true for everyone else, and the person needs to know which half they have.
+    return {
+      ok: false,
+      changed: true,
+      message,
+      refusal: {
+        kind: 'not_saved',
+        message: `The spec was marked deferred on this machine, but saving it to the `
+          + `repository failed, so nobody else can see it yet: `
+          + `${saved.error ?? 'the save gave no reason'}`,
+      },
+    }
+  }
+
+  return {
+    ok: true,
+    changed: true,
+    message,
+    note: 'Saved to the repository, so the deferral and its reason are on the record.',
   }
 }

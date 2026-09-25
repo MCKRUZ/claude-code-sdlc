@@ -380,10 +380,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle(
     'studio:deferSpec',
-    async (_event, projectPath: string, specPath: string, reason: string) => {
+    async (_event, projectPath: string, specPath: string, reason: string, actor?: string) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
-      return deferSpec(projectPath, scriptsDir, specPath, reason)
+      return deferSpec(projectPath, scriptsDir, specPath, reason, actor)
     },
   )
 

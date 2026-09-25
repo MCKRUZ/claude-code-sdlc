@@ -432,6 +432,9 @@ export interface SpecTransitionResult {
   ok: boolean
   changed?: boolean
   message?: string
+  /** What the change means beyond what it did — notably whether it reached the repository, so
+   * a person is never left thinking a change everybody can see is one only they can. */
+  note?: string
   refusal?: { kind: string; message: string }
 }
 
@@ -730,7 +733,8 @@ export interface StudioApi {
   declareComplete(projectPath: string, declaredBy: string, confirmedTeams: Record<string, string>):
     Promise<DeclarationResult>
   /** Defer one spec with a reason. The plugin refuses an empty or token reason. */
-  deferSpec(projectPath: string, specPath: string, reason: string): Promise<SpecTransitionResult>
+  deferSpec(projectPath: string, specPath: string, reason: string, actor?: string):
+    Promise<SpecTransitionResult>
   /** Save a document the person has already seen.
    *
    * Takes the TEXT rather than fetching anything, deliberately: spec 0013 asks an export to

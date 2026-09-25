@@ -119,6 +119,7 @@ export function FeatureCompleteScreen({
                         <DeferControl
                           projectPath={projectPath}
                           specName={spec.name}
+                          actor={actor}
                           onDeferred={load}
                           onRefused={setRefusal}
                         />
@@ -177,10 +178,11 @@ export function FeatureCompleteScreen({
 /** Deferring one spec. The suggestion is offered, never pre-filled — a default reason gets
  * accepted unread, which turns a record of why into a record of the tool's wording. */
 function DeferControl({
-  projectPath, specName, onDeferred, onRefused,
+  projectPath, specName, actor, onDeferred, onRefused,
 }: {
   projectPath: string
   specName: string
+  actor: string
   onDeferred: () => void
   onRefused: (message: string) => void
 }) {
@@ -193,7 +195,7 @@ function DeferControl({
   const submit = async () => {
     setBusy(true)
     const result = await window.studio.deferSpec(
-      projectPath, `specs/${specName}.md`, reason,
+      projectPath, `specs/${specName}.md`, reason, actor,
     )
     setBusy(false)
     if (!result.ok) {
