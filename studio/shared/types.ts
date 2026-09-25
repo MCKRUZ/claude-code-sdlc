@@ -583,6 +583,29 @@ export interface GateInventory {
   error: string | null
 }
 
+/** One document Foundation was meant to hand to Build.
+ *
+ * `sections` is read from the file itself, not from a list in the application — spec 0013 asks
+ * for exactly that, because a written-in list looks right the day it is written and stops
+ * matching the moment a template changes.
+ *
+ * A document that does not exist is still listed, with a note. A Build that opened without a
+ * risk-tier map is a real situation, and a quietly shorter list would hide it. */
+export interface FoundationDocument {
+  name: string
+  path: string
+  exists: boolean
+  sections: string[]
+  note: string | null
+}
+
+export interface FoundationSummary {
+  ok: boolean
+  error: string | null
+  stage: { id: string; display: string; description: string } | null
+  documents: FoundationDocument[]
+}
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
@@ -652,6 +675,8 @@ export interface StudioApi {
   getScorecard(projectPath: string, windowDays: number): Promise<Scorecard | null>
   /** Every gate a change must pass, against what this project actually has. */
   getGateInventory(projectPath: string): Promise<GateInventory>
+  /** What Foundation handed to Build, read from those documents. */
+  getFoundationSummary(projectPath: string): Promise<FoundationSummary>
   /** Save a document the person has already seen.
    *
    * Takes the TEXT rather than fetching anything, deliberately: spec 0013 asks an export to

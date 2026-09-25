@@ -57,6 +57,8 @@ const studio: StudioApi = {
   getScorecard: (projectPath, windowDays) =>
     ipcRenderer.invoke('studio:getScorecard', projectPath, windowDays),
   getGateInventory: (projectPath) => ipcRenderer.invoke('studio:getGateInventory', projectPath),
+  getFoundationSummary: (projectPath) =>
+    ipcRenderer.invoke('studio:getFoundationSummary', projectPath),
   exportDocument: (suggestedName, contents) =>
     ipcRenderer.invoke('studio:exportDocument', suggestedName, contents),
   setRosterPerson: (projectPath, handle, fields) =>

@@ -7,8 +7,8 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
 import type {
-  ConnectionReport, FileSyncState, GateInventory, ProjectSettings, ProjectSyncState,
-  RecentProject, Scorecard, SettingChangeResult, Settings,
+  ConnectionReport, FileSyncState, FoundationSummary, GateInventory, ProjectSettings,
+  ProjectSyncState, RecentProject, Scorecard, SettingChangeResult, Settings,
 } from '../../shared/types'
 
 export type { FileSyncState, ProjectSyncState, RecentProject, Settings }
@@ -299,6 +299,29 @@ export async function getGateInventory(
       bypass_ledgers: [],
       // Never "this project has no gates" — that is a different and much more alarming claim.
       error: entry.stderr.trim() || 'The gate inventory could not be read.',
+    }
+  }
+}
+
+/** What Foundation handed to Build. Every item is read from the documents themselves, so this
+ * screen cannot describe a Foundation that no longer matches the templates. */
+export async function getFoundationSummary(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<FoundationSummary> {
+  const entry = await runPluginScript(pluginScriptsDir, 'foundation_summary.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as FoundationSummary
+  } catch {
+    // Never an empty document list — that would read as "Foundation delivered nothing", which
+    // is a claim about the project rather than about this failing to read.
+    return {
+      ok: false,
+      error: entry.stderr.trim() || 'What Foundation delivered could not be read.',
+      stage: null,
+      documents: [],
     }
   }
 }

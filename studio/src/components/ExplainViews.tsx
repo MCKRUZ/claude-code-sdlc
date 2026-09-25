@@ -1,25 +1,28 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { GateInventory, Scorecard } from '../../shared/types'
+import type { FoundationSummary, GateInventory, Scorecard } from '../../shared/types'
 import { buildScorecardExport, hasNothingRecorded } from '../../shared/scorecardExport'
 
-/** Two read-only screens (spec 0013): how Build is going, and every check a change must pass.
+/** Three read-only screens (spec 0013): what Build inherited, how Build is going, and every
+ * check a change must pass.
  *
  * Nothing here writes anything, and nothing here computes anything. Every scorecard number is
- * the plugin's, and every gate description is the rails guide's — Studio doing its own
- * arithmetic on delivery measures is the failure this spec names first, because a number
- * nobody can trace is worse than no number in a steering meeting.
+ * the plugin's, every gate description is the rails guide's, and what Foundation delivered is
+ * read from those documents — Studio doing its own arithmetic on delivery measures is the
+ * failure this spec names first, because a number nobody can trace is worse than no number in
+ * a steering meeting.
  *
  * The rule that shapes most of the code below: NO DATA IS NOT ZERO. "Nobody has merged
  * anything yet" and "everything merged was rejected" are opposite situations, and a zero shows
  * them identically. Every measure says which it is, and what would produce data.
  */
 export function ExplainViews({ projectPath }: { projectPath: string }) {
-  const [view, setView] = useState<'scorecard' | 'gates'>('scorecard')
+  const [view, setView] = useState<'foundation' | 'scorecard' | 'gates'>('foundation')
 
   return (
     <div className="space-y-5">
       <div className="flex gap-1">
-        {([['scorecard', 'How Build is going'], ['gates', 'Checks and gates']] as const).map(
+        {([['foundation', 'What Build inherited'], ['scorecard', 'How Build is going'],
+          ['gates', 'Checks and gates']] as const).map(
           ([value, label]) => (
             <button
               key={value}
@@ -35,9 +38,11 @@ export function ExplainViews({ projectPath }: { projectPath: string }) {
         )}
       </div>
 
-      {view === 'scorecard'
-        ? <ScorecardView projectPath={projectPath} />
-        : <GatesView projectPath={projectPath} />}
+      {view === 'foundation'
+        ? <FoundationView projectPath={projectPath} />
+        : view === 'scorecard'
+          ? <ScorecardView projectPath={projectPath} />
+          : <GatesView projectPath={projectPath} />}
     </div>
   )
 }
@@ -398,6 +403,107 @@ function GateList({
         ))}
       </ul>
       {note && <p className="mt-2 text-xs text-slate-500">{note}</p>}
+    </div>
+  )
+}
+
+/** What Foundation handed to Build (spec 0013).
+ *
+ * Every item is read from the documents themselves — the spec asks for that explicitly, and
+ * the reason is worth keeping in mind while reading this: a list written into the application
+ * would look right the day somebody wrote it and stop matching the moment a template changed,
+ * leaving a confident summary of something no longer true.
+ *
+ * A document Foundation did not produce is SHOWN, saying so. A Build that opened without a
+ * risk-tier map is a real situation, and a quietly shorter list hides exactly that.
+ */
+function FoundationView({ projectPath }: { projectPath: string }) {
+  const [summary, setSummary] = useState<FoundationSummary | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setSummary(await window.studio.getFoundationSummary(projectPath))
+    setLoading(false)
+  }, [projectPath])
+
+  useEffect(() => { load() }, [load])
+
+  if (loading && !summary) return <p className="text-sm text-slate-400">Reading what Foundation delivered…</p>
+  if (!summary) return null
+
+  if (!summary.ok) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        {/* Never an empty list — that would read as "Foundation delivered nothing", a claim
+            about the project rather than about this failing to read. */}
+        <p className="font-medium">What Foundation delivered could not be read.</p>
+        <p className="mt-0.5 text-xs">{summary.error}</p>
+      </div>
+    )
+  }
+
+  const delivered = summary.documents.filter((d) => d.exists)
+  const absent = summary.documents.filter((d) => !d.exists)
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-base font-semibold text-slate-900">What Build inherited</h2>
+        {summary.stage?.description && (
+          <p className="mt-0.5 text-sm text-slate-500">{summary.stage.description}</p>
+        )}
+        <p className="mt-1 text-xs text-slate-400">
+          Read from the documents themselves, so this cannot describe a Foundation that no
+          longer matches them.
+        </p>
+      </div>
+
+      {delivered.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            Delivered
+          </h3>
+          <ul className="divide-y divide-slate-200">
+            {delivered.map((doc) => (
+              <li key={doc.path} className="py-2">
+                <p className="text-sm font-medium text-slate-900">{doc.name}</p>
+                {/* Where it lives, because a person reading this will want to open it. */}
+                <p className="font-mono text-xs text-slate-400">{doc.path}</p>
+                {doc.sections.length > 0 ? (
+                  <p className="mt-1 text-xs text-slate-600">{doc.sections.join(' · ')}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-400">
+                    No sections yet — the document exists but has not been filled in.
+                  </p>
+                )}
+                {doc.note && <p className="mt-0.5 text-xs text-amber-700">{doc.note}</p>}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {absent.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            Not delivered
+          </h3>
+          <ul className="space-y-2">
+            {absent.map((doc) => (
+              <li key={doc.path} className="text-sm">
+                <span className="font-medium text-amber-900">{doc.name}</span>
+                <span className="mt-0.5 block font-mono text-xs text-amber-800">{doc.path}</span>
+                {doc.note && <span className="block text-xs text-amber-800">{doc.note}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-amber-800">
+            Build can run without these. What they would have told you is simply not written
+            down anywhere, which is worth knowing before anyone needs it.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

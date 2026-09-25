@@ -197,8 +197,26 @@ test.describe('[spec 0011] the Build board in the real window', () => {
    * for the first.
    */
   test.describe('[spec 0013] the explainer screens', () => {
-    test('a measure with nothing behind it reads no data, never zero', async () => {
+    test('what Build inherited is read from the documents, and names each location', async () => {
       await page.getByRole('button', { name: 'How it is going', exact: true }).click()
+      await expect(page.getByRole('heading', { name: 'What Build inherited' })).toBeVisible({ timeout: 60_000 })
+      // Read from the documents, which is the spec's own requirement — a list written into
+      // the app would look right until a template changed.
+      await expect(page.getByText(/Read from the documents themselves/)).toBeVisible()
+    })
+
+    test('a document Foundation did not produce is SHOWN, not quietly omitted', async () => {
+      // This fixture has no Foundation documents at all. A shorter list would hide exactly
+      // the thing worth noticing: Build opened without them.
+      await expect(page.getByRole('heading', { name: 'Not delivered' })).toBeVisible()
+      await expect(page.getByText(/risk-tier-map\.md/).first()).toBeVisible()
+      await expect(page.getByText(/not written down anywhere/)).toBeVisible()
+    })
+
+    test('a measure with nothing behind it reads no data, never zero', async () => {
+      // Its own tab now — this area opens on Foundation, and a test that passed only because
+      // of a default is one that breaks when the default moves.
+      await page.getByRole('button', { name: 'How Build is going' }).click()
       await expect(page.getByRole('heading', { name: 'How Build is going' })).toBeVisible({ timeout: 60_000 })
 
       // "Nobody has merged anything yet" and "everything merged was rejected" are opposite

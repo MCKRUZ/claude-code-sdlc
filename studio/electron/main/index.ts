@@ -15,8 +15,9 @@ import { confirmRestore, diffVersions, getVersionText, listVersions, previewRest
 import { getStageReadiness } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
-  getConnectionReport, getGateInventory, getLastSeenCommit, getProjectSettings, getScorecard,
-  setLastSeenCommit, setRosterPerson, setStageApproval, setTeamLimit,
+  getConnectionReport, getFoundationSummary, getGateInventory, getLastSeenCommit,
+  getProjectSettings, getScorecard, setLastSeenCommit, setRosterPerson, setStageApproval,
+  setTeamLimit,
 } from './settings'
 import { runGitTolerant } from './git'
 import { getBoard, getSpecReadiness, getSpecStatus, transitionSpec } from './board'
@@ -261,6 +262,17 @@ function registerIpcHandlers() {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) return null
     return getScorecard(projectPath, scriptsDir, windowDays)
+  })
+
+  ipcMain.handle('studio:getFoundationSummary', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return {
+        ok: false, stage: null, documents: [],
+        error: 'claude-code-sdlc plugin scripts not found',
+      }
+    }
+    return getFoundationSummary(projectPath, scriptsDir)
   })
 
   ipcMain.handle('studio:getGateInventory', async (_event, projectPath: string) => {
