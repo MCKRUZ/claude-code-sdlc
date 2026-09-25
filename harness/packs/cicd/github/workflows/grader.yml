@@ -114,6 +114,11 @@ jobs:
         continue-on-error: true     # fail-soft: never red on missing key / API hiccup
         uses: anthropics/claude-code-action@v1
         with:
+          # Either credential signs the gate in. The subscription token is listed first
+          # because it is the one that costs nothing per pull request; a repo that has
+          # set only the API key is unaffected, since an unset secret is empty and the
+          # action ignores it. Set one with: uv run scripts/gate_auth.py set <mode>
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
