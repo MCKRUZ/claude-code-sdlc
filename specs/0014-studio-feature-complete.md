@@ -50,7 +50,7 @@ unexplained case impossible.
       together, with its team, state and risk level.
 - [ ] Each one must be set to finish first or deferred; deferring requires a reason in the person's own
       words, and a suggested reason may be offered but never saved unedited by default.
-- [ ] Deferring writes the deferred status and the reason to the spec file, through the plugin, as a commit.
+- [x] Deferring writes the deferred status and the reason to the spec file, through the plugin, as a commit.
 - [x] The declaration is refused while any spec is undecided, and says how many are left.
 - [x] The declaration is refused while any spec is set to finish first, naming them and who is building each.
 - [x] Each team lead confirms their own team's list; the declaration is refused until every team with a
@@ -65,9 +65,17 @@ unexplained case impossible.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Four of eleven ticked — the fewest of any Studio spec, and the note below is longer than usual
-because the gap is real rather than a matter of verification. The DECIDING half of this flow is
-built and tested; the RECORDING half is not.
+Five of eleven ticked — still the fewest of any Studio spec, and the note below is longer than
+usual because the gap is real rather than a matter of verification. The DECIDING half of this
+flow is built and tested; most of the RECORDING half is not.
+
+**Updated 2026-09-25, later:** the first and most consequential of the four gaps below is now
+closed. Deferring commits, so the deferral and its reason reach everybody rather than only the
+machine that made the decision — proven against a real git remote by reading the spec back out
+of a FRESH CLONE (`test/deferReachesTheRepo.test.ts`, 6 cases), because reading the working copy
+only ever proved the half that already worked. A refused deferral commits nothing, and
+deferring an already-deferred spec makes no empty commit. If the write succeeds and the save
+fails, that is reported as a failure naming which half happened — not as a success.
 
 **Proven** (`scripts/tests/test_declare_complete.py`, 24 cases, plus three window tests): the
 declaration is refused while any spec is neither merged nor deferred, naming each one and who
@@ -81,11 +89,8 @@ explains itself when pressed, and a suggested deferral reason is offered but nev
 
 **NOT BUILT — the recording half:**
 
-1. **Deferring does not commit.** The status and reason are written to the spec file through
-   the plugin, correctly — but nothing then saves that to the repository. On one machine it
-   looks done; to everyone else nothing happened. The save path exists (spec 0009) and is
-   already used by the settings screen; this simply is not wired to it yet. **The most
-   important of these four.**
+1. ~~**Deferring does not commit.**~~ **DONE** — see the update above. It was the most
+   important of the four, and it is the one now closed.
 2. **The hand-over document is not produced.** `generate_handoff_report.py` exists and already
    assembles the phase reports, gate results and metrics history. What it does not yet receive
    is the deferred items and their reasons, which is the one part this spec owns — and the part
@@ -108,7 +113,9 @@ finish first" look identical to the plugin — which is why the refusal names bo
 
 **Why this matters more than the count suggests:** a declaration that is not recorded anywhere
 is a conversation, not a declaration. Items 1 and 4 are what make it a fact about the project
-rather than a state of somebody's window.
+rather than a state of somebody's window — item 1 is now done, so a DEFERRAL is a fact about
+the project. The declaration itself still is not, which is what item 4 (and, through it, item 3)
+remains for.
 
 ## Risk Tier
 
