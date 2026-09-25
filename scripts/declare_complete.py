@@ -75,6 +75,38 @@ def _specs(repo_root: Path) -> tuple[list[dict], list[str], bool]:
     return specs, unreadable, True
 
 
+# What an unfinished spec's existing state already says about whether somebody has DECIDED to
+# finish it. Derived rather than declared: adding a status to the spec vocabulary would make
+# every reader in the system — the board, the work-in-progress limits, the reports — decide what
+# the new value means, and two of the three answers are already unambiguous in what is recorded.
+#
+#   being_finished  someone is building it right now. That IS "finish this first", stated by the
+#                   work being underway rather than by a label.
+#   not_committed   a draft. Nobody has taken it on, and nothing says anybody intends to.
+#   needs_a_call    ready, but not started. This is the genuinely ambiguous one, and the reason
+#                   the distinction was worth drawing at all: "ready" means the spec cleared the
+#                   Definition of Ready and is BUILDABLE. It does not mean anybody has decided to
+#                   build it before Build ends. Only a person can say which.
+INTENT_BEING_FINISHED = "being_finished"
+INTENT_NEEDS_A_CALL = "needs_a_call"
+INTENT_NOT_COMMITTED = "not_committed"
+
+INTENT_LABEL = {
+    INTENT_BEING_FINISHED: "being finished now",
+    INTENT_NEEDS_A_CALL: "ready but not started — needs a decision",
+    INTENT_NOT_COMMITTED: "still a draft — nobody has taken it on",
+}
+
+
+def _intent(spec: dict) -> str:
+    status = (spec.get("status") or "").strip().lower()
+    if status == "in-flight":
+        return INTENT_BEING_FINISHED
+    if status == "ready":
+        return INTENT_NEEDS_A_CALL
+    return INTENT_NOT_COMMITTED
+
+
 def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> dict:
     """Everything standing between this project and a declaration.
 
@@ -87,7 +119,7 @@ def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> di
     unfinished = [
         {"spec": s.get("id", "????"), "name": s.get("name", ""), "status": s.get("status", ""),
          "team": s.get("team", ""), "developer": s.get("developer", "") or None,
-         "risk": s.get("risk", "")}
+         "risk": s.get("risk", ""), "intent": _intent(s)}
         for s in specs if (s.get("status") or "").strip() not in DECIDED
     ]
 
@@ -142,12 +174,19 @@ def assess(repo_root: Path, confirmed_teams: dict[str, str] | None = None) -> di
             "specs": [{"spec": "????", "name": f, "status": "unreadable"} for f in unreadable],
         })
     if unfinished:
+        # Counted by what each spec's state already says, so a person sees which ones actually
+        # want their attention. One undifferentiated number told somebody who had already been
+        # through the whole list exactly as much as it told somebody who had never opened it.
+        by_intent = {k: [s for s in unfinished if s["intent"] == k] for k in INTENT_LABEL}
+        parts = [f"{len(v)} {INTENT_LABEL[k]}" for k, v in by_intent.items() if v]
         blockers.append({
             "kind": "unfinished_specs",
             "count": len(unfinished),
-            "message": f"{len(unfinished)} spec(s) are neither merged nor deferred. Each one is "
-                       f"work somebody still intends to do — finish it, or defer it with a reason.",
+            "message": f"{len(unfinished)} spec(s) are neither merged nor deferred — "
+                       f"{'; '.join(parts)}. Each one has to be finished or deferred with a "
+                       f"reason before Build can end.",
             "specs": unfinished,
+            "by_intent": {k: len(v) for k, v in by_intent.items() if v},
         })
     if deferred_without_reason:
         blockers.append({

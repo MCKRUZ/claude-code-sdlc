@@ -244,3 +244,70 @@ class TestItNeverDeclaresOverAThingItCouldNotRead:
     def test_the_totals_report_the_unreadable_count(self, tmp_path):
         result = dc.assess(self._with_unreadable(tmp_path), CONFIRMED)
         assert result["totals"]["unreadable"] == 1
+
+
+class TestWhatEachUnfinishedSpecAlreadySays:
+    """Telling "I have decided to finish this" from "I have not looked at it" (spec 0014).
+
+    One undifferentiated count told somebody who had already been through the whole list
+    exactly as much as it told somebody who had never opened it. The distinction is DERIVED
+    from what each spec already records rather than declared with a new status: adding one
+    would make every reader in the system decide what the new value means, and two of the three
+    answers are already unambiguous.
+
+    The third is the reason this was worth drawing at all. "Ready" means the spec cleared the
+    Definition of Ready and is BUILDABLE. It does not mean anybody decided to build it before
+    Build ends, and only a person can say which.
+    """
+
+    def test_in_flight_means_somebody_is_finishing_it(self, tmp_path):
+        specs = [("in-flight", "claims", "@sam-k", "")]
+        result = dc.assess(_project(tmp_path, specs), {"claims": "@x"})
+        assert result["unfinished"][0]["intent"] == dc.INTENT_BEING_FINISHED
+
+    def test_ready_but_not_started_needs_a_person_to_decide(self, tmp_path):
+        # The one genuinely ambiguous case, and the whole reason for the distinction.
+        specs = [("ready", "claims", "", "")]
+        result = dc.assess(_project(tmp_path, specs), {"claims": "@x"})
+        assert result["unfinished"][0]["intent"] == dc.INTENT_NEEDS_A_CALL
+
+    def test_a_draft_is_one_nobody_has_taken_on(self, tmp_path):
+        specs = [("draft", "claims", "", "")]
+        result = dc.assess(_project(tmp_path, specs), {"claims": "@x"})
+        assert result["unfinished"][0]["intent"] == dc.INTENT_NOT_COMMITTED
+
+    def test_the_refusal_SAYS_which_ones_want_attention(self, tmp_path):
+        specs = [("in-flight", "claims", "@sam-k", ""), ("ready", "claims", "", ""),
+                 ("draft", "claims", "", "")]
+        blocker = next(b for b in dc.assess(_project(tmp_path, specs), {"claims": "@x"})["blockers"]
+                       if b["kind"] == "unfinished_specs")
+        assert "1 being finished now" in blocker["message"]
+        assert "needs a decision" in blocker["message"]
+        assert blocker["by_intent"] == {
+            dc.INTENT_BEING_FINISHED: 1, dc.INTENT_NEEDS_A_CALL: 1, dc.INTENT_NOT_COMMITTED: 1}
+
+    def test_a_group_with_nothing_in_it_is_not_mentioned(self, tmp_path):
+        # "0 still a draft" is noise on a list somebody is working through.
+        specs = [("in-flight", "claims", "@sam-k", "")]
+        blocker = next(b for b in dc.assess(_project(tmp_path, specs), {"claims": "@x"})["blockers"]
+                       if b["kind"] == "unfinished_specs")
+        assert "draft" not in blocker["message"]
+        assert blocker["by_intent"] == {dc.INTENT_BEING_FINISHED: 1}
+
+    def test_the_total_still_counts_every_one_of_them(self, tmp_path):
+        # The grouping is about legibility. It must not quietly change what blocks a
+        # declaration: every unfinished spec still does, whatever group it falls in.
+        specs = [("in-flight", "claims", "@sam-k", ""), ("ready", "claims", "", ""),
+                 ("draft", "claims", "", "")]
+        result = dc.assess(_project(tmp_path, specs), {"claims": "@x"})
+        blocker = next(b for b in result["blockers"] if b["kind"] == "unfinished_specs")
+        assert blocker["count"] == 3
+        assert sum(blocker["by_intent"].values()) == 3
+        assert result["can_declare"] is False
+
+    def test_an_unknown_status_is_treated_as_not_committed(self, tmp_path):
+        # Never as "being finished". A status nobody recognises is not evidence that somebody
+        # is working on it, and guessing the generous answer is how a spec goes unnoticed.
+        specs = [("something-invented", "claims", "@sam-k", "")]
+        result = dc.assess(_project(tmp_path, specs), {"claims": "@x"})
+        assert result["unfinished"][0]["intent"] == dc.INTENT_NOT_COMMITTED
