@@ -118,3 +118,18 @@ jobs:
           # explicitly rather than spending two minutes timing out into the same answer.
           STUDIO_SKIP_LIVE_MODEL: '1'
         run: xvfb-run -a npx playwright test
+
+      # Playwright writes a snapshot of the page it was looking at when an assertion failed,
+      # and that snapshot is the whole diagnosis. It goes to a file, not to the log, so
+      # without this a red run says only which line failed — which is how CI debugging turns
+      # into guessing at a machine you cannot see.
+      - name: Keep the evidence from a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-window-failure
+          path: |
+            studio/test-results/
+            studio/test/screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
