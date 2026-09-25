@@ -38,10 +38,11 @@ function fakePluginCheckout(at: string): string {
   return at
 }
 
-/** A `test/` directory whose sibling checkout does not exist, so nothing is found by accident. */
+/** A `test/` directory whose parent repository is not a usable plugin, so nothing is found by
+ * accident. Mirrors the real `<plugin>/studio/test` shape, two levels below the candidate. */
 function isolatedTestDir(): string {
   const d = tempDir('plugin-root-')
-  const testDir = join(d, 'sdlc-studio', 'test')
+  const testDir = join(d, 'studio', 'test')
   mkdirSync(testDir, { recursive: true })
   return testDir
 }
@@ -105,33 +106,29 @@ describe('what counts as a usable checkout', () => {
     expect(found.python).toContain('.venv')
   })
 
-  it('an unusable environment hint does not stop a usable sibling being found', () => {
-    // The hint is a hint, not an override. Pointing it at the wrong place should not make a
-    // perfectly good checkout one directory away invisible.
-    const base = tempDir('plugin-sibling-')
-    const testDir = join(base, 'sdlc-studio', 'test')
+  it('an unusable environment hint does not stop the containing repository being found', () => {
+    // The hint is a hint, not an override. Pointing it somewhere useless should not make the
+    // perfectly good plugin this folder actually lives in invisible.
+    const base = fakePluginCheckout(tempDir('plugin-parent-'))
+    const testDir = join(base, 'studio', 'test')
     mkdirSync(testDir, { recursive: true })
-    fakePluginCheckout(join(base, 'claude-code-sdlc'))
     process.env.SDLC_PLUGIN_ROOT = join(base, 'nowhere-at-all')
 
-    expect(locatePlugin(testDir).root).toBe(join(base, 'claude-code-sdlc'))
+    expect(locatePlugin(testDir).root).toBe(base)
   })
 })
 
-describe('worktrees of the sibling checkout', () => {
-  it('are searched, because that is where the plugin is usually developed', () => {
-    // The actual cause of the silent skip: the main checkout sat on a branch without the
-    // scripts, while the branch under test had them in a worktree one level down.
-    const base = tempDir('plugin-worktree-')
-    const testDir = join(base, 'sdlc-studio', 'test')
+describe('the plugin this folder lives in', () => {
+  it('is the repository two levels up, needing nothing configured', () => {
+    // Studio ships inside the plugin, so the parent IS the plugin — including when the work is
+    // happening in a git worktree, whose own copy of this folder has its own correct parent.
+    // That replaced a search for a sibling checkout plus a scan of its worktrees, which was
+    // the machinery that used to pick the wrong plugin (or none) and let the suite go quiet.
+    const base = fakePluginCheckout(tempDir('plugin-parent-only-'))
+    const testDir = join(base, 'studio', 'test')
     mkdirSync(testDir, { recursive: true })
 
-    const sibling = join(base, 'claude-code-sdlc')
-    mkdirSync(join(sibling, 'scripts'), { recursive: true })   // present but unusable
-    const worktree = join(sibling, '.claude', 'worktrees', 'some-branch')
-    fakePluginCheckout(worktree)
-
-    expect(locatePlugin(testDir).root).toBe(worktree)
+    expect(locatePlugin(testDir).root).toBe(base)
   })
 
   it('the real repository is found with no environment variable at all', () => {

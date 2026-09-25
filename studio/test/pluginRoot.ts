@@ -14,13 +14,18 @@
  * point at the right place, and a person who genuinely wants the Studio-only tests says so out
  * loud with STUDIO_SKIP_PLUGIN_TESTS=1. Silence is no longer one of the options.
  *
- * The search deliberately includes git worktrees of the sibling checkout. The plugin is
- * developed on branches in worktrees, and the main checkout regularly does not yet have the
- * scripts a Studio branch is written against — which is exactly why the tests were skipping
- * while a perfectly good plugin sat one directory away.
+ * WHERE IT LOOKS. Studio lives in `studio/` inside the plugin's own repository, so the plugin
+ * is simply the directory this folder sits in. That one fact replaced an earlier search that
+ * hunted for a sibling checkout and then scanned its git worktrees: when Studio ships inside
+ * the repository, a worktree carries its own copy of this folder, so the parent directory is
+ * already the right plugin for whichever branch the tests are running on. Nothing to search.
+ *
+ * What CAN still be missing is the Python environment under `scripts/.venv` — a fresh clone
+ * has no such thing. That is the case these tests now fail loudly on, which is correct: the
+ * environment is buildable, and a run that quietly proved nothing is worse than a red one.
  */
 
-import { existsSync, readdirSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 /** A file every usable plugin checkout has, and older ones do not — so a checkout on a branch
@@ -39,21 +44,13 @@ function isUsable(root: string): boolean {
 
 function candidates(testDir: string): string[] {
   const out: string[] = []
+  // An explicit override still wins, which is what makes it possible to run this suite
+  // against a different checkout than the one it happens to live in.
   if (process.env.SDLC_PLUGIN_ROOT) out.push(process.env.SDLC_PLUGIN_ROOT)
 
-  const sibling = resolve(testDir, '..', '..', 'claude-code-sdlc')
-  out.push(sibling)
-
-  // Worktrees of the sibling checkout. The plugin is developed on branches, and the main
-  // checkout often does not yet carry the scripts a Studio branch is written against.
-  const worktrees = join(sibling, '.claude', 'worktrees')
-  if (existsSync(worktrees)) {
-    try {
-      for (const e of readdirSync(worktrees, { withFileTypes: true })) {
-        if (e.isDirectory()) out.push(join(worktrees, e.name))
-      }
-    } catch { /* unreadable is simply no candidate */ }
-  }
+  // `studio/test` → `studio` → the plugin repository. Studio is a folder inside the plugin,
+  // so its parent is the plugin, on whatever branch or worktree this copy belongs to.
+  out.push(resolve(testDir, '..', '..'))
   return out
 }
 

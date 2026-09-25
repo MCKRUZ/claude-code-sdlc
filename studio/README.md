@@ -1,6 +1,7 @@
 # SDLC Studio
 
-A desktop shell for the [claude-code-sdlc](../claude-code-sdlc) plugin. Studio is an **optional
+A desktop shell for the [claude-code-sdlc](../) plugin, which is the repository this folder
+lives in — so the plugin Studio drives is always the one beside it. Studio is an **optional
 add-on** — the plugin is fully usable on its own; Studio just gives it a visual front end for
 people who want one. Studio never reimplements plugin logic: every piece of project state it
 shows, and every change it makes, goes through the plugin's own scripts, run the same way a
@@ -11,10 +12,19 @@ Scaffolded from [electron-vite-react](https://github.com/electron-vite/electron-
 
 ## Quick Start
 
+Studio is a Node project inside a Python plugin repository, so everything below runs from
+this folder, not the repository root.
+
 ```sh
+cd studio
 npm install
 npm run dev
 ```
+
+The integration tests additionally need the plugin's Python environment — `uv run --project
+scripts pytest scripts/tests -q` from the repository root builds it. Without it those tests
+fail loudly rather than skipping, on purpose; run only the rest with
+`STUDIO_SKIP_PLUGIN_TESTS=1`.
 
 ## Available Scripts
 

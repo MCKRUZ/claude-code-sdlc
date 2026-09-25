@@ -22,9 +22,10 @@ uv run scripts/check_spec.py --spec specs/0001-spec-people-fields.md
 | 0006 | A spec can report where it is, read from its pull request | MEDIUM |
 | 0007 | Templates get a shape, so an app can render and write documents without losing anything | HIGH |
 
-**SDLC Studio desktop app.** These build in the Studio application repository, not this one.
-Until that repository exists they live here so the order and the dependencies stay visible;
-move them when it does.
+**SDLC Studio desktop app.** These build the application in `studio/`, in this repository.
+They were originally written expecting Studio to get a repository of its own; it was folded
+in here instead, so the specs stay where they are and the order and dependencies below stay
+visible alongside the plugin work they depend on.
 
 | Spec | What it does | Risk |
 |---|---|---|
