@@ -15,6 +15,7 @@ A Claude Code plugin that orchestrates the full SDLC lifecycle using company-con
 - `templates/` — Artifact templates copied to target projects
 - `scripts/` — Python automation (uv runtime)
 - `hooks/` — PowerShell hooks for session/phase context injection
+- `studio/` — SDLC Studio, an **optional** Electron desktop front end (Node/TypeScript, its own `package.json` and test suite). The plugin is fully usable without it, and nothing outside this folder depends on it. Studio never reimplements plugin logic — it runs the scripts above the same way a person would. Its tests locate the plugin as their parent directory, so they always exercise the checkout they ship in. See `studio/README.md`.
 
 ## Conventions
 - Profile YAML validated against `profiles/_schema.yaml`
