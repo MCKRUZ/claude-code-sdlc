@@ -55,6 +55,31 @@ VAGUE_RE = re.compile(r"(?<![\w-])(" + "|".join(re.escape(w) for w in VAGUE_WORD
 CONCRETE_RE = re.compile(r"(\d|`[^`]+`|\"[^\"]+\"|'[^']+'|\{|=>|==|<=|>=|->|/\w)")
 
 
+def _strip_comment(line: str) -> str:
+    """Drop a trailing `# comment`, and ONLY a real one.
+
+    This used to cut every line at its first `#` regardless. The templates rely on comments
+    being stripped, so the behaviour is needed — but applied that bluntly it silently ate part
+    of any value containing a hash. A deferral reason mentioning a ticket ("blocked on #4521 —
+    the vendor never shipped it") lost everything from the hash onward, in the one place this
+    system promises to keep what somebody wrote, and lost it without saying so.
+
+    A `#` opens a comment only when it is outside quotes AND preceded by whitespace or starts
+    the line, which is what YAML itself specifies. An unterminated quote keeps the rest of the
+    line as value: a malformed line is a thing to read oddly, not a reason to discard text.
+    """
+    quote = ""
+    for i, ch in enumerate(line):
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'":
+            quote = ch
+        elif ch == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
 def parse_frontmatter(text: str) -> tuple[dict, str]:
     """Return (frontmatter_dict, body). Empty dict if no parseable frontmatter block."""
     if not text.startswith("---"):
@@ -66,7 +91,7 @@ def parse_frontmatter(text: str) -> tuple[dict, str]:
     body = text[end + 4:]
     fm: dict[str, str] = {}
     for line in block.splitlines():
-        line = line.split("#", 1)[0].rstrip() if "#" in line else line
+        line = _strip_comment(line).rstrip() if "#" in line else line
         if ":" in line:
             key, _, val = line.partition(":")
             fm[key.strip()] = val.strip().strip('"').strip("'").strip()

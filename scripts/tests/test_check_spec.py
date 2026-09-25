@@ -2,6 +2,8 @@
 
 import pytest
 
+import check_spec as cs
+
 from check_spec import (
     check_spec_text,
     extract_section,
@@ -339,3 +341,52 @@ class TestMetricsLogging:
         entry = json.loads(log.read_text().strip())
         assert entry["spec"] == "0001-x.md"
         assert entry["ready"] is True
+
+
+class TestCommentStripping:
+    """A `#` in a value is not a comment (protected-core fix).
+
+    Every line used to be cut at its first `#`. The templates rely on comments being stripped,
+    so the behaviour is needed — but applied that bluntly it silently ate part of any value
+    containing a hash. A deferral reason mentioning a ticket lost everything from the hash
+    onward, in the one place this system promises to keep what somebody wrote, and lost it
+    without saying so.
+    """
+
+    def _fm(self, line: str) -> dict:
+        fm, _ = cs.parse_frontmatter(f'---\n{line}\n---\n\n# body\n')
+        return fm
+
+    def test_a_real_trailing_comment_is_still_stripped(self):
+        # The behaviour the shipped templates depend on — every one of them annotates its
+        # frontmatter this way.
+        assert self._fm('status: draft      # draft | ready | in-flight | merged') == {
+            "status": "draft"}
+
+    def test_a_hash_inside_a_quoted_value_SURVIVES(self):
+        assert self._fm('deferred_reason: "blocked on #4521 — the vendor never shipped it"')[
+            "deferred_reason"] == "blocked on #4521 — the vendor never shipped it"
+
+    def test_a_hash_with_no_space_before_it_is_not_a_comment(self):
+        # YAML's own rule: a comment needs whitespace in front of the hash.
+        assert self._fm("branch: feature#4521")["branch"] == "feature#4521"
+
+    def test_a_quoted_value_keeps_its_comment_stripped_after_it(self):
+        assert self._fm('name: "a #tagged thing"   # and a real comment')["name"] == (
+            "a #tagged thing")
+
+    def test_single_quotes_protect_a_hash_too(self):
+        assert self._fm("name: 'issue #7'")["name"] == "issue #7"
+
+    def test_a_whole_line_comment_yields_nothing(self):
+        assert self._fm("# just a comment") == {}
+
+    def test_an_unterminated_quote_keeps_the_text_rather_than_discarding_it(self):
+        # A malformed line is a thing to read oddly, not a reason to throw text away.
+        assert "#4521" in self._fm('reason: "blocked on #4521')["reason"]
+
+    def test_a_line_with_no_hash_is_untouched(self):
+        assert self._fm("owner: \"@MCKRUZ\"")["owner"] == "@MCKRUZ"
+
+    def test_the_helper_leaves_an_ordinary_line_alone(self):
+        assert cs._strip_comment("status: draft") == "status: draft"
