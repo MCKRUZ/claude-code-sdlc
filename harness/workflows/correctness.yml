@@ -117,6 +117,19 @@ jobs:
           # beats a document. Do not remove it without a control that says you can.
           github_token: ${{ secrets.GITHUB_TOKEN }}
           prompt: |
+            STEP 1 — DO THIS FIRST, BEFORE READING ANYTHING ELSE.
+            Write this exact two-line content to ${{ runner.temp }}/correctness-verdict.txt:
+
+            CORRECTNESS_VERDICT: BLOCK
+            reason: PROVISIONAL - the review did not run to completion
+
+            This is a fail-safe. If you run out of turns or error out later, that
+            provisional block is what the gate sees, and it is the correct answer.
+            Do not skip it and do not leave it until the end. Overwrite it with your
+            real verdict when the review finishes; never leave the word PROVISIONAL
+            in a real one.
+
+            STEP 2 — Review.
             You are running as the correctness-reviewer for PR #${{ github.event.pull_request.number }}.
             Read the rubric at .github/profile/rubrics/correctness.md and follow it exactly.
             The changed-line anchor set is at ${{ steps.detect.outputs.anchors_file }} —
@@ -127,7 +140,7 @@ jobs:
             "CORRECTNESS_VERDICT: PASS" or "CORRECTNESS_VERDICT: BLOCK").
           claude_args: |
             --model opus
-            --max-turns 25
+            --max-turns 80
             --allowedTools Bash,Read,Grep,Glob,Write
 
       - name: Enforce verdict (block on high-confidence defect)
