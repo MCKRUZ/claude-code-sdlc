@@ -1,0 +1,404 @@
+// App-level settings: recent projects and any manual tool-path overrides. This is the ONE
+// exception to "nothing outside the project folder is read or written" (spec 0008's own
+// acceptance check names it explicitly) — stored under Electron's userData directory,
+// never inside a project.
+
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
+import { runPluginScript } from './project'
+import { dirname, join } from 'node:path'
+import type {
+  GateAuthResult, GateAuthStatus,
+  ConnectionReport, FileSyncState, FoundationSummary, GateInventory, ProjectSettings,
+  ProjectSyncState, RecentProject, Scorecard, SettingChangeResult, Settings,
+} from '../../shared/types'
+
+export type { FileSyncState, ProjectSyncState, RecentProject, Settings }
+
+const DEFAULT_SETTINGS: Settings = { recentProjects: [] }
+const MAX_RECENT = 10
+
+let settingsPath: string | null = null
+
+export function initSettingsPath(userDataDir: string): void {
+  settingsPath = join(userDataDir, 'settings.json')
+  initObjectsDir(userDataDir)
+}
+
+export function loadSettings(): Settings {
+  if (!settingsPath || !existsSync(settingsPath)) return { ...DEFAULT_SETTINGS }
+  try {
+    const parsed = JSON.parse(readFileSync(settingsPath, 'utf-8'))
+    return { ...DEFAULT_SETTINGS, ...parsed }
+  } catch {
+    return { ...DEFAULT_SETTINGS }
+  }
+}
+
+export function saveSettings(settings: Settings): void {
+  if (!settingsPath) throw new Error('initSettingsPath() was not called')
+  mkdirSync(dirname(settingsPath), { recursive: true })
+  writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+}
+
+export function recordRecentProject(projectPath: string, name: string): Settings {
+  const settings = loadSettings()
+  const withoutThis = settings.recentProjects.filter((p) => p.path !== projectPath)
+  const updated: Settings = {
+    ...settings,
+    recentProjects: [
+      { path: projectPath, name, lastOpenedAt: new Date().toISOString() },
+      ...withoutThis,
+    ].slice(0, MAX_RECENT),
+  }
+  saveSettings(updated)
+  return updated
+}
+
+// --- Per-project sync state (spec 0009) --------------------------------------------------
+// The ancestor-hash bookkeeping pull() needs lives only here, in Studio's own settings —
+// never in the repository. See sync.ts for how it's used.
+
+export function getProjectSyncState(projectPath: string): ProjectSyncState {
+  const settings = loadSettings()
+  return settings.projectSyncState?.[projectPath] ?? { lastPulledAt: null, files: {} }
+}
+
+export function saveProjectSyncState(projectPath: string, state: ProjectSyncState): void {
+  const settings = loadSettings()
+  saveSettings({
+    ...settings,
+    projectSyncState: { ...settings.projectSyncState, [projectPath]: state },
+  })
+}
+
+/** What this person had already seen in `relPath` when they last looked, or null if never.
+ * Deliberately separate from the ancestor bookkeeping: the ancestor is about what the two
+ * SIDES agree on, this is about what one PERSON has read. */
+export function getLastSeenCommit(projectPath: string, relPath: string): string | null {
+  return getProjectSyncState(projectPath).lastSeenCommits?.[relPath] ?? null
+}
+
+export function setLastSeenCommit(projectPath: string, relPath: string, commit: string): void {
+  const state = getProjectSyncState(projectPath)
+  saveProjectSyncState(projectPath, {
+    ...state,
+    lastSeenCommits: { ...state.lastSeenCommits, [relPath]: commit },
+  })
+}
+
+// --- Ancestor content store (spec 0009) --------------------------------------------------
+// A 3-way merge needs the ANCESTOR'S ACTUAL BYTES, not just a hash — and git's own object
+// store isn't a reliable place to fetch them back from (unreachable objects are eventually
+// gc'd). This is a small, content-addressed local store, sharded the same way the plugin's
+// own .sdlc/versions/objects/<xx>/<16hex> store is (references/artifact-versioning.md) — same
+// proven pattern, same reasoning: content Studio itself put there for its own bookkeeping,
+// never anything the person didn't already have in their repository. Write-if-absent, so a
+// hash collision with existing content is a safe no-op, matching the plugin's own object store.
+
+let objectsDir: string | null = null
+
+function initObjectsDir(userDataDir: string): void {
+  objectsDir = join(userDataDir, 'sync-objects')
+}
+
+function objectPath(hash: string): string {
+  if (!objectsDir) throw new Error('initSettingsPath() was not called')
+  const hex = hash.replace(/^sha256:/, '')
+  return join(objectsDir, hex.slice(0, 2), hex)
+}
+
+export function storeAncestorBlob(hash: string, bytes: Buffer): void {
+  const path = objectPath(hash)
+  if (existsSync(path)) return
+  mkdirSync(dirname(path), { recursive: true })
+  writeFileSync(path, bytes)
+}
+
+export function readAncestorBlob(hash: string): Buffer | null {
+  const path = objectPath(hash)
+  return existsSync(path) ? readFileSync(path) : null
+}
+
+
+// --- Project settings (spec 0012) --------------------------------------------------------
+//
+// Note what this does NOT do: it reads. Changing a setting writes to the file that owns it,
+// which is a separate act with its own rules — and then reaches the repository through spec
+// 0009's save like every other change, so a settings change is a commit with a person and a
+// reason on it, not a silent mutation.
+
+/** Every project setting, composed by the plugin, with the file each came from. */
+export async function getProjectSettings(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<ProjectSettings> {
+  const empty = (error: string): ProjectSettings => ({
+    ok: false,
+    roster: { file: '.sdlc/team.yaml', present: false, errors: [error], teams: [], people: [] },
+    wip_limits: { file: '', present: false, errors: [], teams: [] },
+    approval: { file: '.sdlc/approval-settings.yaml', present: false, errors: [], stages: [] },
+    fixed_rules: [],
+  })
+
+  const entry = await runPluginScript(pluginScriptsDir, 'project_settings.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as ProjectSettings
+  } catch {
+    return empty(entry.stderr.trim() || 'Could not read this project’s settings.')
+  }
+}
+
+/** Change one setting through the plugin's own command, which validates before it writes.
+ *
+ * Studio adds no rule here — the plugin refuses a handle that is not a handle, a team the
+ * roster does not know, an approver nobody could route an approval to, and any change that
+ * would leave the roster invalid. The window asks, and reports the answer.
+ *
+ * Writes the file only. Committing is spec 0009's save, which is what makes a settings change
+ * an ordinary commit with a person and a reason on it. Keeping the two apart is deliberate: a
+ * change that wrote AND committed would give nobody the chance to look at what they did
+ * before it left their machine.
+ */
+async function runSetSetting(
+  projectPath: string,
+  pluginScriptsDir: string,
+  args: string[],
+): Promise<SettingChangeResult> {
+  const entry = await runPluginScript(pluginScriptsDir, 'set_setting.py', [
+    '--repo', projectPath, '--json', ...args,
+  ])
+  try {
+    const parsed = JSON.parse(entry.stdout)
+    if (parsed.ok !== true) {
+      return {
+        ok: false,
+        refusal: {
+          kind: String(parsed.refusal?.kind ?? 'other'),
+          message: String(parsed.refusal?.message ?? 'That change was refused.'),
+        },
+      }
+    }
+    return {
+      ok: true,
+      changed: parsed.changed === true,
+      message: String(parsed.message ?? ''),
+      note: parsed.note ? String(parsed.note) : undefined,
+      file: parsed.file ? String(parsed.file) : undefined,
+    }
+  } catch {
+    // The command validates before it writes, so an unreadable answer means nothing changed.
+    return {
+      ok: false,
+      refusal: {
+        kind: 'other',
+        message: entry.stderr.trim() || 'The settings command gave no readable answer.',
+      },
+    }
+  }
+}
+
+export function setRosterPerson(
+  projectPath: string,
+  pluginScriptsDir: string,
+  handle: string,
+  fields: { name?: string; team?: string; roles?: string[]; signsOff?: string[] },
+): Promise<SettingChangeResult> {
+  const args = ['person', handle]
+  if (fields.name !== undefined) args.push('--name', fields.name)
+  if (fields.team !== undefined) args.push('--team', fields.team)
+  if (fields.roles?.length) args.push('--roles', ...fields.roles)
+  if (fields.signsOff?.length) args.push('--signs-off', ...fields.signsOff)
+  return runSetSetting(projectPath, pluginScriptsDir, args)
+}
+
+export function setTeamLimit(
+  projectPath: string, pluginScriptsDir: string, team: string, limit: number,
+): Promise<SettingChangeResult> {
+  return runSetSetting(projectPath, pluginScriptsDir, ['limit', team, String(limit)])
+}
+
+export function setStageApproval(
+  projectPath: string, pluginScriptsDir: string, stage: string,
+  required: boolean, approver?: string,
+): Promise<SettingChangeResult> {
+  const args = ['approval', stage, required ? '--on' : '--off']
+  if (approver?.trim()) args.push('--approver', approver.trim())
+  return runSetSetting(projectPath, pluginScriptsDir, args)
+}
+
+/** Whether this project is wired up, as the plugin reports it.
+ *
+ * Studio judges none of it. In particular it does not decide which checks a project ought to
+ * have — that list comes from the playbook's own pipeline definitions, so the screen and the
+ * pipelines cannot disagree about what is expected. */
+export async function getConnectionReport(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<ConnectionReport> {
+  const entry = await runPluginScript(pluginScriptsDir, 'connection_report.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as ConnectionReport
+  } catch {
+    // An unreadable answer is reported as one unknown check rather than an empty list: an
+    // empty list would read as "nothing to check here", which is a different claim.
+    return {
+      ok: false,
+      checks: [{
+        check: 'report',
+        question: 'Is this project wired up?',
+        state: 'unknown',
+        detail: entry.stderr.trim() || 'The connection report could not be read.',
+      }],
+      not_universally_expected: {},
+    }
+  }
+}
+
+/** The steering scorecard, straight from the plugin.
+ *
+ * Returns null rather than a zeroed shape when it cannot be read: an all-zero scorecard is a
+ * claim about the project ("nothing is happening") and this would be a claim about the tool
+ * ("I could not look"). Showing the first when the second is true is how a screen lies
+ * quietly, and a steering meeting is exactly where that costs something.
+ */
+export async function getScorecard(
+  projectPath: string,
+  pluginScriptsDir: string,
+  windowDays: number,
+): Promise<Scorecard | null> {
+  const entry = await runPluginScript(pluginScriptsDir, 'scorecard.py', [
+    'report', '--repo', projectPath, '--window-days', String(windowDays), '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as Scorecard
+  } catch {
+    return null
+  }
+}
+
+/** Every gate a change must pass. The descriptions come from the rails guide, so Studio and
+ * the pipelines cannot disagree about what a gate does. */
+export async function getGateInventory(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<GateInventory> {
+  const entry = await runPluginScript(pluginScriptsDir, 'gate_inventory.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as GateInventory
+  } catch {
+    return {
+      ok: false,
+      guide_source: null,
+      gates: [],
+      unexpected: [],
+      bypass_ledgers: [],
+      // Never "this project has no gates" — that is a different and much more alarming claim.
+      error: entry.stderr.trim() || 'The gate inventory could not be read.',
+    }
+  }
+}
+
+/** What Foundation handed to Build. Every item is read from the documents themselves, so this
+ * screen cannot describe a Foundation that no longer matches the templates. */
+export async function getFoundationSummary(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<FoundationSummary> {
+  const entry = await runPluginScript(pluginScriptsDir, 'foundation_summary.py', [
+    '--repo', projectPath, '--json',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as FoundationSummary
+  } catch {
+    // Never an empty document list — that would read as "Foundation delivered nothing", which
+    // is a claim about the project rather than about this failing to read.
+    return {
+      ok: false,
+      error: entry.stderr.trim() || 'What Foundation delivered could not be read.',
+      stage: null,
+      documents: [],
+    }
+  }
+}
+
+// --- How the review gates sign in to Claude ------------------------------------------------
+
+/** Read, set or remove the credential the code host's review gates use.
+ *
+ * Studio owns none of this. The plugin's `gate_auth.py` validates the credential, talks to the
+ * code host, and reads the write back — so a person who configures it by hand and a person who
+ * uses this screen are held to the same rules, and neither route can quietly diverge.
+ *
+ * The credential goes to the script on STANDARD INPUT, never as an argument. Studio records
+ * every command it runs, including arguments, to a console a person can open; standard input is
+ * recorded nowhere. It is also never returned, never stored in settings, and never written to
+ * disk — the code host keeps it, encrypted, and one copy is enough.
+ */
+export async function getGateAuth(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<GateAuthStatus> {
+  const entry = await runPluginScript(pluginScriptsDir, 'gate_auth.py', [
+    '--repo', projectPath, '--json', 'status',
+  ])
+  try {
+    return JSON.parse(entry.stdout) as GateAuthStatus
+  } catch {
+    // Never "configured" on an unreadable answer. Reporting a gate as able to sign in when
+    // that could not be determined is the direction that gets somebody hurt: they merge
+    // believing they were reviewed.
+    return {
+      ok: false,
+      repo: null,
+      configured: [],
+      gates_can_sign_in: false,
+      detail: entry.stderr.trim() || 'Whether the gates can sign in could not be determined.',
+    }
+  }
+}
+
+export async function setGateAuth(
+  projectPath: string,
+  pluginScriptsDir: string,
+  mode: 'subscription' | 'api-key',
+  credential: string,
+): Promise<GateAuthResult> {
+  const entry = await runPluginScript(
+    pluginScriptsDir, 'gate_auth.py',
+    ['--repo', projectPath, '--json', 'set', mode],
+    credential,
+  )
+  return parseGateAuthResult(entry.stdout, entry.stderr, 'The credential was not set.')
+}
+
+export async function clearGateAuth(
+  projectPath: string,
+  pluginScriptsDir: string,
+  mode: 'subscription' | 'api-key',
+): Promise<GateAuthResult> {
+  const entry = await runPluginScript(pluginScriptsDir, 'gate_auth.py', [
+    '--repo', projectPath, '--json', 'clear', mode,
+  ])
+  return parseGateAuthResult(entry.stdout, entry.stderr, 'The credential was not removed.')
+}
+
+function parseGateAuthResult(stdout: string, stderr: string, fallback: string): GateAuthResult {
+  try {
+    const parsed = JSON.parse(stdout)
+    if (parsed.ok !== true) {
+      return { ok: false, refusal: {
+        kind: String(parsed.refusal?.kind ?? 'other'),
+        message: String(parsed.refusal?.message ?? fallback),
+      } }
+    }
+    return parsed as GateAuthResult
+  } catch {
+    return { ok: false, refusal: { kind: 'other', message: stderr.trim() || fallback } }
+  }
+}
