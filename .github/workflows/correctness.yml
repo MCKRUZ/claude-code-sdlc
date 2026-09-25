@@ -78,7 +78,14 @@ jobs:
           # uses. If it is empty, no compilable source changed and review is not
           # required. <<SOURCE_PATHS>> — adapt 'src/' to your repo's source root(s).
           ANCHORS_FILE="${RUNNER_TEMP}/correctness-anchors.txt"
-          if ! scripts/rails/diff-anchors.sh --base "$BASE_REF" -- 'scripts/' 'harness/' > "$ANCHORS_FILE"; then
+          # studio/ carries the desktop application's TypeScript. It was added after this
+          # scope was written, and for one pull request the result was a green
+          # correctness-review that had declined to look at 85 new source files in five
+          # seconds. Listing the source directories rather than 'studio/' keeps the lock
+          # file and build config out of a line-by-line correctness review.
+          if ! scripts/rails/diff-anchors.sh --base "$BASE_REF" -- \
+                'scripts/' 'harness/' \
+                'studio/electron/' 'studio/src/' 'studio/shared/' 'studio/test/' > "$ANCHORS_FILE"; then
             echo "::error::Correctness review could not compute the changed-line scope (diff-anchors.sh failed). Failing closed."
             exit 1
           fi

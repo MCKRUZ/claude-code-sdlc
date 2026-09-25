@@ -73,7 +73,13 @@ jobs:
           # auth/identity/security surfaces, data migrations, IaC, and the pipeline
           # itself (.github/) — a defect in the rails ships in every later change.
           # keep in sync with CODEOWNERS + settings.json ask-list
-          GATED_RE='(^\.github/|^\.claude/settings\.json|^\.claude/hooks/|^scripts/rails/|^scripts/gate_auth\.py|^scripts/check_gates\.py|^scripts/check_spec\.py|^scripts/advance_phase\.py|^scripts/phase_model\.py|^scripts/install_harness\.py|^scripts/ci_tokens\.py|^harness/)'
+          # studio/electron/ is Studio's PRIVILEGED half: the Electron main process, which
+          # reads and writes the repository, spawns git, gh and the plugin's scripts, and
+          # carries the gate credential through to the code host. The renderer under
+          # studio/src/ is deliberately NOT gated — it is sandboxed and cannot reach any of
+          # that, and gating it would fire this review on nearly every Studio change, which
+          # is how a security gate becomes background noise.
+          GATED_RE='(^\.github/|^\.claude/settings\.json|^\.claude/hooks/|^scripts/rails/|^scripts/gate_auth\.py|^scripts/check_gates\.py|^scripts/check_spec\.py|^scripts/advance_phase\.py|^scripts/phase_model\.py|^scripts/install_harness\.py|^scripts/ci_tokens\.py|^harness/|^studio/electron/)'
           if echo "$CHANGED" | grep -Eq "$GATED_RE"; then
             GATED=true
           else
