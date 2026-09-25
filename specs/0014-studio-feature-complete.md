@@ -55,7 +55,7 @@ unexplained case impossible.
 - [x] The declaration is refused while any spec is set to finish first, naming them and who is building each.
 - [x] Each team lead confirms their own team's list; the declaration is refused until every team with a
       spec in the list has confirmed.
-- [ ] The person declaring is recorded by name in the hand-over document and in the commit.
+- [x] The person declaring is recorded by name in the hand-over document and in the commit.
 - [x] The hand-over document is produced by the plugin's own generator, with the deferred items and
       reasons included, and the screen shows which of its sections are complete before declaring.
 - [x] Declaring moves the project to the next stage in its own state file, through the plugin's command,
@@ -65,7 +65,7 @@ unexplained case impossible.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Nine of eleven ticked. The DECIDING half of this flow was always built and tested; the
+Ten of eleven ticked. The DECIDING half of this flow was always built and tested; the
 RECORDING half now is too, which was the whole of what this note used to be about.
 
 **Updated 2026-09-25, later:** all four gaps below are now closed or nearly so, and every
@@ -138,13 +138,21 @@ down rather than their own request reflected back. Both are keyed on the stage t
 completed rather than on Build by name: it is Build here, so naming it would have been right by
 coincidence and wrong anywhere else — a test advancing a different stage is what surfaced that.
 
-**Still open — two checks, each needing a decision rather than more building:**
+**The declaring name now reaches the hand-over document too.** The project's own RECORD always
+beats the name Studio offers: the document is drafted at the moment of declaring, before the
+stage has moved and recorded anything, so Studio supplies the name it is about to record and the
+record supersedes it the instant one exists. Preferring the offer would let a delivered document
+name somebody the project does not. The document says WHICH of the two it is showing, and prints
+a fill-this-in slot when neither exists — a hand-over that admits it does not know beats one that
+looks signed by nobody.
 
-- The declaring person's name reaches the COMMIT but not the hand-over document itself —
-  `generate_handoff_report.py` has no flag for it, and inventing one in Studio would put the
-  name somewhere the plugin does not know about.
-- The unmerged list is still not GROUPED, and the choice is still modelled as defer-or-leave
-  rather than an explicit finish-first-or-defer.
+**Still open — one check, and it is a decision rather than more building:**
+
+- The choice is modelled as defer-or-leave rather than an explicit finish-first-or-defer, so
+  "I have decided to finish this" and "I have not thought about it" are indistinguishable to the
+  plugin — which is why the refusal names both together. Closing it means adding a status to the
+  spec vocabulary that every other part of the system reads, so it is a decision about how the
+  process represents intent rather than a screen detail.
 
 **Grouping: done.** The unmerged list is gathered by TEAM, which is the grouping this check is
 actually about — each lead confirms their own team's list, so a lead working down a flat list of
