@@ -130,7 +130,13 @@ jobs:
           # Claude GitHub App instead. GitHub does not trigger workflows on commits made
           # with the default token, so a gate that pushed with it would go unnoticed by
           # every gate after it. Pass a CUSTOM app's token here if a policy requires one.
+          # The leading @claude is a WORKAROUND, not decoration. The action's v1 input
+          # parsing does not read `prompt`, so it falls back to its conversational mode
+          # and waits to be mentioned — with no mention it exits 0 in under two seconds
+          # having done nothing, and only this gate's own verdict check notices. Remove
+          # the mention only once the action reads `prompt` in automation mode.
           prompt: |
+            @claude
             You are running as the grader for PR #${{ github.event.pull_request.number }}.
             Read the grading rubric at .github/profile/rubrics/grader.md and follow it exactly.
 
