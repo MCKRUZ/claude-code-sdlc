@@ -162,3 +162,54 @@ export function teamLoad(
     }
   })
 }
+
+/** The specs blocking a declaration, gathered by the team that owns them (spec 0014).
+ *
+ * Grouped by TEAM specifically, because that is how the decisions are actually made: each lead
+ * confirms their own team's list, so a lead working down a flat list of everybody's specs has
+ * to keep re-finding which ones are theirs. A run of related specs almost always belongs to one
+ * team, which is what makes this the grouping the spec asks for rather than an arbitrary one.
+ *
+ * Two orderings, both deliberate: teams by name so the list does not reshuffle between reads,
+ * and specs by id within a team so a sequence stays in the order somebody wrote it.
+ *
+ * A spec with no team is gathered under UNASSIGNED rather than dropped or blended into a real
+ * team — it has no lead, so nobody can confirm it, and that is a different problem needing a
+ * different fix. Making it look like ordinary work would hide the one thing wrong with it.
+ */
+export const UNASSIGNED = 'unassigned'
+
+export interface DeclarationSpec {
+  spec: string
+  name: string
+  status: string
+  team?: string
+  developer?: string | null
+  risk?: string
+}
+
+export function groupSpecsByTeam<T extends DeclarationSpec>(
+  specs: T[],
+): Array<{ team: string; hasLead: boolean; specs: T[] }> {
+  const byTeam = new Map<string, T[]>()
+  for (const spec of specs) {
+    const team = (spec.team ?? '').trim() || UNASSIGNED
+    const existing = byTeam.get(team)
+    if (existing) existing.push(spec)
+    else byTeam.set(team, [spec])
+  }
+
+  return [...byTeam.keys()]
+    .sort((a, b) => {
+      // Unassigned last: it is the exception, and burying real teams beneath it would make the
+      // ordinary case read as the unusual one.
+      if (a === UNASSIGNED) return 1
+      if (b === UNASSIGNED) return -1
+      return a.localeCompare(b)
+    })
+    .map((team) => ({
+      team,
+      hasLead: team !== UNASSIGNED,
+      specs: [...byTeam.get(team)!].sort((a, b) => a.spec.localeCompare(b.spec)),
+    }))
+}

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { groupSpecsByTeam } from '../../shared/boardModel'
 import type {
   AdvanceResult, DeclarationStatus, HandoffReportResult, ProjectStage,
 } from '../../shared/types'
@@ -161,27 +162,45 @@ export function FeatureCompleteScreen({
                   names the items is a to-do list rather than a wall. */}
               <p className="text-sm font-medium text-amber-900">{blocker.message}</p>
               {blocker.specs && blocker.specs.length > 0 && (
-                <ul className="mt-2 space-y-2">
-                  {blocker.specs.map((spec) => (
-                    <li key={spec.spec} className="text-sm">
-                      <span className="font-mono text-xs text-amber-800">{spec.spec}</span>{' '}
-                      <span className="text-amber-900">{spec.name}</span>
-                      <span className="ml-2 text-xs text-amber-800">
-                        {spec.status}
-                        {spec.developer ? ` · ${spec.developer}` : ' · nobody assigned'}
-                      </span>
-                      {blocker.kind === 'unfinished_specs' && (
-                        <DeferControl
-                          projectPath={projectPath}
-                          specName={spec.name}
-                          actor={actor}
-                          onDeferred={load}
-                          onRefused={setRefusal}
-                        />
-                      )}
-                    </li>
+                // Gathered by team, because that is how the decisions get made: each lead
+                // confirms their OWN team's list, and a lead working down a flat list of
+                // everybody's specs has to keep re-finding which ones are theirs.
+                <div className="mt-2 space-y-3">
+                  {groupSpecsByTeam(blocker.specs).map((group) => (
+                    <div key={group.team}>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                        {group.hasLead
+                          ? <>{group.team} · {group.specs.length}</>
+                          : <>No team · {group.specs.length} · nobody can confirm these</>}
+                      </p>
+                      <ul className="mt-1 space-y-2">
+                        {group.specs.map((spec) => (
+                          <li key={spec.spec} className="text-sm">
+                            <span className="font-mono text-xs text-amber-800">{spec.spec}</span>{' '}
+                            <span className="text-amber-900">{spec.name}</span>
+                            <span className="ml-2 text-xs text-amber-800">
+                              {spec.status}
+                              {/* Risk is shown because spec 0014 asks for it, and because it is
+                                  what makes "finish it or defer it" a different question for
+                                  different specs. */}
+                              {spec.risk ? ` · ${spec.risk} risk` : ''}
+                              {spec.developer ? ` · ${spec.developer}` : ' · nobody assigned'}
+                            </span>
+                            {blocker.kind === 'unfinished_specs' && (
+                              <DeferControl
+                                projectPath={projectPath}
+                                specName={spec.name}
+                                actor={actor}
+                                onDeferred={load}
+                                onRefused={setRefusal}
+                              />
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
               {blocker.teams && blocker.teams.length > 0 && (
                 <ul className="mt-2 space-y-2">

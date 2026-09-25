@@ -9,7 +9,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardRow } from '../shared/types'
 import {
-  daysWaiting, filterBoard, groupBoard, isOverdue, needsMe, rolesFor, samePerson, teamLoad,
+  daysWaiting, filterBoard, groupBoard, groupSpecsByTeam, isOverdue, needsMe, rolesFor,
+  samePerson, teamLoad, UNASSIGNED,
 } from '../shared/boardModel'
 
 const NOW = new Date('2026-09-24T12:00:00Z')
@@ -201,5 +202,82 @@ describe('teamLoad', () => {
     // A project that has not adopted per-team limits must not be measured against one.
     const load = teamLoad(rows, null)
     expect(load.every((t) => t.limit === null && !t.atLimit && !t.overLimit)).toBe(true)
+  })
+})
+
+describe('gathering the specs that block a declaration', () => {
+  /** Spec 0014 asks for the unmerged list "grouped so a run of related ones can be handled
+   * together". Grouped by TEAM, because that is how the decisions are actually made: each lead
+   * confirms their own team's list, so a lead working down a flat list of everybody's specs
+   * keeps having to re-find which ones are theirs.
+   */
+
+  const specs = [
+    { spec: '0003', name: 'c', status: 'draft', team: 'platform', risk: 'LOW' },
+    { spec: '0001', name: 'a', status: 'in-flight', team: 'claims', risk: 'HIGH' },
+    { spec: '0002', name: 'b', status: 'ready', team: 'claims', risk: 'MEDIUM' },
+  ]
+
+  it('puts a team\'s specs together', () => {
+    const groups = groupSpecsByTeam(specs)
+    expect(groups.map((g) => g.team)).toEqual(['claims', 'platform'])
+    expect(groups[0].specs.map((s) => s.spec)).toEqual(['0001', '0002'])
+  })
+
+  it('keeps a team\'s specs in the order somebody numbered them', () => {
+    // A sequence of related specs is usually a sequence of numbers, and shuffling it is how a
+    // run that was meant to be read in order stops being one.
+    const groups = groupSpecsByTeam([specs[1], specs[0], specs[2]])
+    expect(groups[0].specs.map((s) => s.spec)).toEqual(['0001', '0002'])
+  })
+
+  it('orders teams the same way every time', () => {
+    // The list reshuffling between reads would make a lead lose their place halfway through
+    // deciding, which is the moment it matters most.
+    const once = groupSpecsByTeam(specs).map((g) => g.team)
+    const again = groupSpecsByTeam([...specs].reverse()).map((g) => g.team)
+    expect(once).toEqual(again)
+  })
+
+  it('gathers specs with NO team separately, and says nobody can confirm them', () => {
+    // Not dropped, and not blended into a real team: a spec with no team has no lead, so no
+    // confirmation can ever arrive for it. Making it look like ordinary work would hide the
+    // one thing that is wrong with it.
+    const groups = groupSpecsByTeam([...specs, { spec: '0004', name: 'd', status: 'draft' }])
+    const orphans = groups.find((g) => g.team === UNASSIGNED)!
+    expect(orphans.specs.map((s) => s.spec)).toEqual(['0004'])
+    expect(orphans.hasLead).toBe(false)
+  })
+
+  it('puts the no-team group last', () => {
+    const groups = groupSpecsByTeam([{ spec: '0004', name: 'd', status: 'draft' }, ...specs])
+    expect(groups[groups.length - 1].team).toBe(UNASSIGNED)
+  })
+
+  it('treats an empty or whitespace team as no team', () => {
+    const groups = groupSpecsByTeam([
+      { spec: '0001', name: 'a', status: 'draft', team: '' },
+      { spec: '0002', name: 'b', status: 'draft', team: '   ' },
+    ])
+    expect(groups).toHaveLength(1)
+    expect(groups[0].team).toBe(UNASSIGNED)
+  })
+
+  it('loses nothing', () => {
+    // The assertion that matters most: this is the list somebody decides a whole phase from,
+    // so a spec quietly missing from it is a promise nobody ever accounts for.
+    const many = [...specs, { spec: '0004', name: 'd', status: 'draft' }]
+    const gathered = groupSpecsByTeam(many).flatMap((g) => g.specs.map((s) => s.spec))
+    expect(gathered.sort()).toEqual(['0001', '0002', '0003', '0004'])
+  })
+
+  it('does not mutate what it was given', () => {
+    const original = [...specs]
+    groupSpecsByTeam(specs)
+    expect(specs).toEqual(original)
+  })
+
+  it('an empty list gathers into nothing, not into an empty team', () => {
+    expect(groupSpecsByTeam([])).toEqual([])
   })
 })
