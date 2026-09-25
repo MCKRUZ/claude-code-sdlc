@@ -46,7 +46,7 @@ unexplained case impossible.
 
 ## Acceptance Checks
 
-- [ ] The screen lists every spec that is not merged, grouped so a run of related ones can be handled
+- [x] The screen lists every spec that is not merged, grouped so a run of related ones can be handled
       together, with its team, state and risk level.
 - [ ] Each one must be set to finish first or deferred; deferring requires a reason in the person's own
       words, and a suggested reason may be offered but never saved unedited by default.
@@ -65,7 +65,7 @@ unexplained case impossible.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Seven of eleven ticked. The DECIDING half of this flow was always built and tested; the
+Eight of eleven ticked. The DECIDING half of this flow was always built and tested; the
 RECORDING half now is too, which was the whole of what this note used to be about.
 
 **Updated 2026-09-25, later:** all four gaps below are now closed or nearly so, and every
@@ -119,25 +119,42 @@ explains itself when pressed, and a suggested deferral reason is offered but nev
    explicitly named act rather than something the declaration does on the way past. Studio
    still decides nothing: when the stage's gates refuse, the plugin's own output is shown
    whole, because somebody who has to fix a gate needs to know which one.
-4. ~~**The declaration is not persisted.**~~ **MOSTLY DONE, via (3).** The state file now
-   carries who signed and when, so the declaration is a fact about the project — proven by
-   cloning fresh and reading the name back. What remains is smaller than it was: the screen
-   does not yet show the RECORDED time (it shows the session's own), and it reads its
-   read-only state from this session rather than from the state file, so reopening Studio on
-   a declared project does not yet present it as declared.
+4. ~~**The declaration is not persisted.**~~ **DONE, via (3).** The state file carries who
+   signed and when, so the declaration is a fact about the project — proven by cloning fresh
+   and reading the name back. The screen now reads that record rather than the session, so
+   reopening Studio on a project declared months ago states who signed it and when instead of
+   offering to declare it again. Two things it refuses to invent: a time that was never
+   recorded reads as "not recorded" rather than today, and a missing name says so, because
+   rendering an empty one puts a blank signature line in front of somebody, which reads as
+   signed. (That last one needed `generate_status.py` to report the signer, since the only
+   alternative was Studio parsing `state.yaml` itself — a second reader of that file is a
+   second thing to keep in step with the first.)
 
-**Still open, and now the only things left:**
+**Still open — three checks, and each is a real gap rather than an unverified one:**
 
+- **The screen does not state the TIME in the session that declares it.** Reopened later it
+  does, from the project's record. Straight after declaring there is no recorded time to show
+  until the stage moves, and putting the current clock there would be inventing the one fact
+  this screen exists to protect. Closing it honestly means refreshing from the record once the
+  advance has happened.
 - The declaring person's name reaches the COMMIT but not the hand-over document itself —
   `generate_handoff_report.py` has no flag for it, and inventing one in Studio would put the
   name somewhere the plugin does not know about.
 - The unmerged list is still not GROUPED, and the choice is still modelled as defer-or-leave
   rather than an explicit finish-first-or-defer.
 
-**Partly built:** the unmerged list shows each spec's team, state, risk and developer, but is
-not GROUPED so a run of related specs can be handled together. And the choice is modelled as
-defer-or-leave rather than an explicit finish-first-or-defer, so "undecided" and "chosen to
-finish first" look identical to the plugin — which is why the refusal names both together.
+**Grouping: done.** The unmerged list is gathered by TEAM, which is the grouping this check is
+actually about — each lead confirms their own team's list, so a lead working down a flat list of
+everybody's specs keeps having to re-find which ones are theirs. Teams are ordered the same way
+every read and specs keep their numbering within a team, because a list that reshuffles between
+reads loses somebody's place at the moment it matters most. A spec with no team is gathered
+separately and labelled as one nobody can confirm, rather than blended in where that would be
+the one thing about it nobody notices. Risk is now shown alongside team and state.
+
+**Still partly built:** the choice is modelled as defer-or-leave rather than an explicit
+finish-first-or-defer, so "undecided" and "chosen to finish first" look identical to the plugin
+— which is why the refusal names both together. Closing that means a new spec status, which is
+a plugin change rather than a screen one.
 
 **Why this matters more than the count suggests:** a declaration that is not recorded anywhere
 is a conversation, not a declaration. Items 1 and 4 are what make it a fact about the project
