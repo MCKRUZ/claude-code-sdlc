@@ -1,8 +1,9 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { extractUnits, readShapeFromBytes, writeShapeUpdates } from '../electron/main/sectionMerge'
+import { requirePlugin } from './pluginRoot'
 
 // Regression test for a real, serious bug: document_shape_cli.py deliberately emits UTF-8
 // BYTE offsets (needed for its own write round-trip), but JS strings index by UTF-16 code
@@ -12,11 +13,18 @@ import { extractUnits, readShapeFromBytes, writeShapeUpdates } from '../electron
 // "## Overview" into " Overview". readShapeFromBytes/writeShapeUpdates must convert at the
 // boundary so nothing downstream ever has to think about byte-vs-string-index again.
 
-const PLUGIN_SCRIPTS = String.raw`C:\Users\kruz7\OneDrive\Documents\Code Repos\MCKRUZ\claude-code-sdlc\.claude\worktrees\plugin-frontend-design-9d0552\scripts`
-const SHAPE_PATH = join(PLUGIN_SCRIPTS, '..', 'templates', 'phases', '01-requirements', 'requirements.shape.yaml')
+// Located once, in one place, and LOUD when it cannot be found. This file used to name a
+// single developer's worktree outright, which meant it quietly skipped on every other machine
+// while still reporting success — the exact failure test/pluginRoot.ts exists to end.
+const PLUGIN = requirePlugin(__dirname)
+
+const PLUGIN_SCRIPTS = PLUGIN.scriptsDir
+const SHAPE_PATH = PLUGIN.root
+  ? join(PLUGIN.root, 'templates', 'phases', '01-requirements', 'requirements.shape.yaml')
+  : ''
 
 describe('byte-offset / string-index conversion (real subprocess, real multi-byte content)', () => {
-  it.skipIf(!existsSync(PLUGIN_SCRIPTS))(
+  it.skipIf(!PLUGIN.available)(
     'a heading positioned after an em dash is extracted intact, not truncated',
     async () => {
       const text = [
@@ -71,7 +79,7 @@ describe('byte-offset / string-index conversion (real subprocess, real multi-byt
     },
   )
 
-  it.skipIf(!existsSync(PLUGIN_SCRIPTS))(
+  it.skipIf(!PLUGIN.available)(
     'a write using a span computed after a multi-byte character lands on the correct text',
     async () => {
       const text = [
