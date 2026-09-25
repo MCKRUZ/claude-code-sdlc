@@ -48,7 +48,7 @@ unexplained case impossible.
 
 - [x] The screen lists every spec that is not merged, grouped so a run of related ones can be handled
       together, with its team, state and risk level.
-- [ ] Each one must be set to finish first or deferred; deferring requires a reason in the person's own
+- [x] Each one must be set to finish first or deferred; deferring requires a reason in the person's own
       words, and a suggested reason may be offered but never saved unedited by default.
 - [x] Deferring writes the deferred status and the reason to the spec file, through the plugin, as a commit.
 - [x] The declaration is refused while any spec is undecided, and says how many are left.
@@ -65,8 +65,12 @@ unexplained case impossible.
 
 ### What is proven, and what is still missing (2026-09-25)
 
-Ten of eleven ticked. The DECIDING half of this flow was always built and tested; the
-RECORDING half now is too, which was the whole of what this note used to be about.
+Eleven of eleven ticked — but read the note on the last one before trusting that number. It was
+met by a different route than its wording implies, and the difference is written down rather
+than buried under a tick.
+
+The DECIDING half of this flow was always built and tested; the RECORDING half now is too, which
+was the whole of what this note used to be about.
 
 **Updated 2026-09-25, later:** all four gaps below are now closed or nearly so, and every
 assertion is made against a real git remote by reading the file back out of a FRESH CLONE
@@ -146,13 +150,29 @@ name somebody the project does not. The document says WHICH of the two it is sho
 a fill-this-in slot when neither exists — a hand-over that admits it does not know beats one that
 looks signed by nobody.
 
-**Still open — one check, and it is a decision rather than more building:**
+**The last check, and how it was closed — read this before accepting the tick.**
 
-- The choice is modelled as defer-or-leave rather than an explicit finish-first-or-defer, so
-  "I have decided to finish this" and "I have not thought about it" are indistinguishable to the
-  plugin — which is why the refusal names both together. Closing it means adding a status to the
-  spec vocabulary that every other part of the system reads, so it is a decision about how the
-  process represents intent rather than a screen detail.
+"Each one must be SET to finish first or deferred" is met in substance, by a different route
+than its wording implies, and the difference is worth stating rather than burying.
+
+There is still no explicit "mark this one to finish first" action. Instead the intent is DERIVED
+from what each spec already records: in progress with a developer IS being finished first, stated
+by the work being underway; a draft is one nobody has taken on; and ready-but-not-started is the
+genuinely ambiguous case, singled out as needing a person's decision. The refusal now reads "3
+being finished now; 2 ready but not started — needs a decision; 5 still drafts" instead of one
+undifferentiated number, and the ones wanting attention are badged on the screen.
+
+Why that rather than a new status: adding one would make every reader in the system — the board,
+the work-in-progress limits, the reports, the hand-over document — decide what the new value
+means, and two of the three answers were already unambiguous in what is recorded. A status only
+one screen consults is the kind that drifts.
+
+What is genuinely NOT there: nothing forces a person to touch each spec one at a time. The
+declaration is still refused until every spec is merged or deferred, so nothing can be left
+unexplained — but somebody who never opened the list and somebody who triaged it carefully both
+arrive at the same refusal, just now with a legible breakdown of what is in it. If an explicit
+act of triage per spec is wanted, that is the new status, and it remains a decision about how the
+process represents intent rather than a screen detail.
 
 **Grouping: done.** The unmerged list is gathered by TEAM, which is the grouping this check is
 actually about — each lead confirms their own team's list, so a lead working down a flat list of
