@@ -114,6 +114,21 @@ def generate_dashboard(state: dict, sdlc_dir: Path) -> str:
     return "\n".join(lines)
 
 
+def _signed_off_by(phase_data: dict):
+    """The name advance_phase.py recorded for this stage, or None.
+
+    It writes the name as a scalar INSIDE `gate_results`, beside the gate entries, which is why
+    this looks there rather than at a top-level key. Anything that is not a non-empty string is
+    reported as None: "not recorded" and "recorded as nobody" would look identical otherwise,
+    and only one of them is true.
+    """
+    gate_results = phase_data.get("gate_results")
+    if not isinstance(gate_results, dict):
+        return None
+    name = gate_results.get("signed_off_by")
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
 def status_json(state: dict, sdlc_dir: Path) -> dict:
     """Structured project/stage state for Studio's header + stage navigation. `stage_state`
     is exactly the three values Studio's frame needs: 'current', 'signed_off' (status was
@@ -147,6 +162,14 @@ def status_json(state: dict, sdlc_dir: Path) -> dict:
             "artifact_count": count_artifacts(artifacts_dir, p["slug"]),
             "entered_at": phase_data.get("entered_at"),
             "completed_at": phase_data.get("completed_at"),
+            # Who signed this stage off, as advance_phase.py recorded it. Additive, and null
+            # whenever nothing was recorded — a stage advanced before sign-offs existed, or
+            # advanced without a name, reads as "not recorded" rather than as nobody.
+            #
+            # It is here because a screen showing "signed off" without the name can only get it
+            # by parsing state.yaml itself, and a second reader of that file is a second thing
+            # to keep in step with this one.
+            "signed_off_by": _signed_off_by(phase_data),
         })
 
     return {
