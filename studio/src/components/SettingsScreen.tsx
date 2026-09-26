@@ -263,7 +263,6 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
           <ul className="space-y-2">
             {settings.wip_limits.teams.map((t) => {
               const alarm = scorecard?.team_alarms?.[t.team]
-              const sounding = alarm?.review_over_alarm === true || alarm?.security_over_alarm === true
               return (
                 <li key={t.team} className="flex items-baseline justify-between gap-3 text-sm">
                   <span className="text-slate-900">{t.team}</span>
@@ -284,10 +283,20 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
                     {t.at_limit && !t.over_limit && <span className="ml-2 font-semibold text-amber-700">at limit</span>}
                     {/* Spec 0012: "a team whose alarm is sounding is named on this screen".
                         The comparison itself is the plugin's (scorecard.py's
-                        build_team_alarms_payload) — never recomputed here from the two medians. */}
-                    {sounding && (
+                        build_team_alarms_payload) — never recomputed here from the two medians.
+                        The two alarms are shown SEPARATELY, each with its own figure — they come
+                        from disjoint event pools (review_waits vs. sec_waits) and a team can be
+                        over one without the other. Caught by correctness review after an earlier
+                        version of this collapsed both into one line under the review label,
+                        which could name the wrong alarm entirely. */}
+                    {alarm?.review_over_alarm === true && (
                       <span className="ml-2 font-semibold text-red-700">
                         review-wait alarm sounding ({scorecard!.review_wait_median_hours?.toFixed(0)}h)
+                      </span>
+                    )}
+                    {alarm?.security_over_alarm === true && (
+                      <span className="ml-2 font-semibold text-red-700">
+                        security-review-wait alarm sounding ({scorecard!.security_review_wait_median_hours?.toFixed(0)}h)
                       </span>
                     )}
                   </span>
