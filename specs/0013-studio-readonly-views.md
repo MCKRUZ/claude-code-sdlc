@@ -54,8 +54,18 @@ risk, and they are the main answer to "why is this taking so long" being answere
 - [x] A measure with no recorded events reads "no data", never zero, and says what would produce data.
 - [x] Velocity, story points, pull-request counts and lines of code appear nowhere, and the screen states
       that they are not measured and why.
-- [ ] Waiting times are shown against the project's own alarm thresholds, and a measure over its
+- [x] Waiting times are shown against the project's own alarm thresholds, and a measure over its
       threshold is marked.
+      <!-- Fixed and ticked 2026-09-26. Was recorded as unbuilt on 2026-09-25 ("the scorecard
+           screen does not compare against them"). scorecard.py's JSON output already carried
+           each team's threshold but never the comparison itself — added
+           build_team_alarms_payload() (review_over_alarm/security_over_alarm, None for "no
+           data", never guessed as False), unit-tested in test_scorecard.py's
+           TestTeamAlarmsPayload. ExplainViews.tsx renders a "Review-wait alarms by team"
+           section, one line per team, marking OVER ALARM in red. Proven end to end:
+           test/e2e/board.spec.ts, "[spec 0013] review-wait alarms by team, in the real window"
+           — a real cadence-plan.md and a real recorded review-wait event, and the running app
+           shows the team, its actual 12h threshold from the fixture, and OVER ALARM. -->
 - [x] Security-review waiting time is shown on its own line, never folded into the general figure.
 - [x] Each bug that got through names the check that should have caught it and the proposed fix, ready
       for the weekly retro.
@@ -105,12 +115,13 @@ person pointed in a save dialog, and writes nothing to the repository or the cod
 
 **NOT BUILT — missing features, not merely unverified:**
 
-1. **Waiting times against the project's own alarm thresholds, with an over-threshold measure
-   marked.** The thresholds are read (they ride along in the cadence plan's table and reach
-   the settings screen) but the scorecard screen does not compare against them. The comparison
-   is small; what it needs is the live waiting time, which shares a root cause with spec 0011's
-   "how long it has waited" — real elapsed time needs a per-pull-request fetch the bulk call
-   deliberately does not make.
+1. ~~Waiting times against the project's own alarm thresholds, with an over-threshold measure
+   marked.~~ **FIXED 2026-09-26 — see the ticked checkbox above.** The premise here was wrong:
+   the comparison didn't need a NEW per-pull-request fetch at all — spec_status.py's
+   compute_waiting_on() was already making one (to build the "requested 3 days ago" sentence)
+   and discarding the number. Fixed at that source, and the scorecard's own project-wide
+   median-vs-threshold comparison (which needs no per-PR fetch at all) is now exposed in JSON
+   and rendered here.
 2. **Filtering the scorecard to one team.** The plugin's scorecard reports across the whole
    project; a per-team figure needs the scorecard itself to accept a team, which is a plugin
    change rather than a screen one. Deliberately not faked by filtering in the app — that

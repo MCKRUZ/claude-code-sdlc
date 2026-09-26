@@ -28,6 +28,8 @@ interface RawPullRequest {
   updated_at: string | null
   waiting_on: string
   waiting_on_handle: string | null
+  wait_hours?: number
+  over_alarm?: boolean
 }
 
 interface RawRow {
@@ -70,6 +72,8 @@ function toRow(raw: RawRow): BoardRow {
           updatedAt: raw.pull_request.updated_at,
           waitingOn: raw.pull_request.waiting_on,
           waitingOnHandle: raw.pull_request.waiting_on_handle,
+          ...(raw.pull_request.wait_hours !== undefined ? { waitHours: raw.pull_request.wait_hours } : {}),
+          ...(raw.pull_request.over_alarm !== undefined ? { overAlarm: raw.pull_request.over_alarm } : {}),
         }
       : null,
     ...(raw.error ? { error: raw.error } : {}),

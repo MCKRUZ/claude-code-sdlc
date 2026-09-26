@@ -203,6 +203,24 @@ describe('teamLoad', () => {
     const load = teamLoad(rows, null)
     expect(load.every((t) => t.limit === null && !t.atLimit && !t.overLimit)).toBe(true)
   })
+
+  it('surfaces the longest real wait among a team\'s specs, and whether any is over alarm', () => {
+    const waiting = [
+      row({ team: 'core', pullRequest: pr({ waitHours: 10, overAlarm: false }) }),
+      row({ team: 'core', pullRequest: pr({ waitHours: 30, overAlarm: true }) }),
+      row({ team: 'claims', pullRequest: pr({ waitHours: 2, overAlarm: false }) }),
+    ]
+    const load = teamLoad(waiting, null)
+    expect(load.find((t) => t.team === 'core')).toMatchObject({ longestWaitHours: 30, anyOverAlarm: true })
+    expect(load.find((t) => t.team === 'claims')).toMatchObject({ longestWaitHours: 2, anyOverAlarm: false })
+  })
+
+  it('a team with nothing currently waiting on a reviewer gets null, not zero', () => {
+    // No pending review anywhere in this team's rows — must read as "nothing to time", not
+    // as "waiting 0 hours", which would misreport as perfectly healthy rather than unmeasured.
+    const load = teamLoad(rows, null)
+    expect(load.find((t) => t.team === 'core')).toMatchObject({ longestWaitHours: null, anyOverAlarm: false })
+  })
 })
 
 describe('gathering the specs that block a declaration', () => {

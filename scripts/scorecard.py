@@ -185,6 +185,31 @@ def _alarm_status(wait: float | None, threshold: int) -> str:
     return "OVER ALARM" if wait > threshold else "under alarm"
 
 
+def _is_over_alarm(wait: float | None, threshold: int) -> bool | None:
+    """The structured twin of _alarm_status, for JSON consumers (Studio) that need a boolean
+    to render rather than parse English out of. None means "no data" — never guessed as False,
+    which would misreport a team with no measured wait as safely under its threshold."""
+    return None if wait is None else wait > threshold
+
+
+def build_team_alarms_payload(sc: dict, limits: dict[str, dict]) -> dict:
+    """The JSON twin of format_team_alarms: per-team thresholds AND the comparison result,
+    structured for a caller (Studio) that renders rather than parses English."""
+    review_wait = sc["review_wait_median_hours"]
+    sec_wait = sc["security_review_wait_median_hours"]
+    return {
+        team: {
+            "review_alarm_hours": entry["review_alarm_hours"],
+            "review_alarm_hours_default": entry["review_alarm_hours_default"],
+            "security_alarm_hours": entry["security_alarm_hours"],
+            "security_alarm_hours_default": entry["security_alarm_hours_default"],
+            "review_over_alarm": _is_over_alarm(review_wait, entry["review_alarm_hours"]),
+            "security_over_alarm": _is_over_alarm(sec_wait, entry["security_alarm_hours"]),
+        }
+        for team, entry in limits.items()
+    }
+
+
 def format_team_alarms(sc: dict, limits: dict[str, dict]) -> list[str]:
     """Per-team review-wait alarm lines, read from cadence-plan.md's `## WIP Limits` block.
 
@@ -319,15 +344,7 @@ def main():
     if args.json:
         payload = dict(sc)
         if limits:
-            payload["team_alarms"] = {
-                team: {
-                    "review_alarm_hours": entry["review_alarm_hours"],
-                    "review_alarm_hours_default": entry["review_alarm_hours_default"],
-                    "security_alarm_hours": entry["security_alarm_hours"],
-                    "security_alarm_hours_default": entry["security_alarm_hours_default"],
-                }
-                for team, entry in limits.items()
-            }
+            payload["team_alarms"] = build_team_alarms_payload(sc, limits)
         print(json.dumps(payload, indent=2))
     else:
         print(format_report(sc, args.window_days, limits))

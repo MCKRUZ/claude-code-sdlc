@@ -393,3 +393,87 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     })
   })
 })
+
+/** Spec 0013's own fixture (above) has no cadence-plan.md and no recorded events, which is
+ * the right setup for proving "no data" — but the wrong one for proving the alarm banner
+ * itself, which needs both to exist. A separate app instance, because the shared 200-spec
+ * fixture above is deliberately event-less and must stay that way for those tests to mean
+ * anything. */
+test.describe('[spec 0013] review-wait alarms by team, in the real window', () => {
+  test.skip(!PLUGIN_ROOT || !existsSync(VENV_PYTHON), 'needs a plugin checkout beside this repo')
+
+  let alarmApp: ElectronApplication
+  let alarmPage: Page
+  let alarmWorkspace = ''
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000)
+    alarmWorkspace = mkdtempSync(join(tmpdir(), 'studio-e2e-alarms-'))
+    const project = join(alarmWorkspace, 'project')
+
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'init_project.py'),
+      '--profile', join(PLUGIN_ROOT!, 'profiles', 'microsoft-enterprise', 'profile.yaml'),
+      '--target', project,
+    ], { cwd: SCRIPTS_DIR })
+
+    mkdirSync(join(project, '.sdlc', 'artifacts', '03-foundation'), { recursive: true })
+    writeFileSync(join(project, '.sdlc', 'artifacts', '03-foundation', 'cadence-plan.md'), `# Cadence Plan
+
+## WIP Limits
+
+| team | wip_limit | review_alarm_hours | security_alarm_hours |
+|------|-----------|---------------------|-----------------------|
+| claims | 3 | 12 | 24 |
+
+## Hardening passes
+- none
+`, 'utf-8')
+
+    // A real event, recorded the way a real project's history would populate it — not
+    // hand-crafted JSONL that could drift from what record_event() actually writes.
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'scorecard.py'), 'record', '--repo', project,
+      '--type', 'review_wait', '--field', 'wait_hours=30',
+    ], { cwd: SCRIPTS_DIR })
+
+    const userData = join(alarmWorkspace, 'userData')
+    mkdirSync(userData, { recursive: true })
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({
+      recentProjects: [{ path: project, name: 'alarm project', lastOpenedAt: new Date().toISOString() }],
+      pluginScriptsPathOverride: SCRIPTS_DIR,
+    }, null, 2))
+
+    alarmApp = await electron.launch({
+      args: ['.', '--no-sandbox', `--user-data-dir=${userData}`],
+      cwd: root,
+      env: { ...process.env, NODE_ENV: 'development' },
+    })
+    alarmPage = await alarmApp.firstWindow()
+    await expect(alarmPage.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
+    await alarmPage.getByText('alarm project').click()
+    await expect(alarmPage.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
+  })
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000)
+    await alarmPage?.screenshot({ path: 'test/screenshots/spec-0013-alarms.png' }).catch(() => {})
+    await alarmApp?.close().catch(() => {})
+    try {
+      if (alarmWorkspace) rmSync(alarmWorkspace, { recursive: true, force: true })
+    } catch {
+      // A leftover temp directory is untidy, not a failure worth reddening a green run.
+    }
+  })
+
+  test('a team over its review-wait alarm is named, with the real threshold', async () => {
+    await alarmPage.getByRole('button', { name: 'How it is going', exact: true }).click()
+    await alarmPage.getByRole('button', { name: 'How Build is going' }).click()
+    await expect(alarmPage.getByRole('heading', { name: 'Review-wait alarms by team' }))
+      .toBeVisible({ timeout: 60_000 })
+    await expect(alarmPage.getByText('claims')).toBeVisible()
+    // The real threshold from the fixture's cadence-plan.md, not a guessed or default one.
+    await expect(alarmPage.getByText(/review vs 12h/)).toBeVisible()
+    await expect(alarmPage.getByText(/OVER ALARM/)).toBeVisible()
+  })
+})

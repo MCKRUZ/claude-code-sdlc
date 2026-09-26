@@ -581,6 +581,20 @@ export interface Scorecard {
     time_to_recover_median_hours: number | null
   }
   totals: { merges: number; reverts: number; bounces: number }
+  /** Each team's own alarm thresholds from cadence-plan.md, and whether the project-wide
+   * median waits above compare over or under them — absent entirely on a project with no
+   * cadence-plan.md, since there is nothing to compare against. The comparison itself comes
+   * from the plugin (spec 0013: "the app performs no arithmetic"), never computed here from
+   * review_wait_median_hours directly. `null` on either `_over_alarm` field means "no wait
+   * data to compare" — never guessed as false. */
+  team_alarms?: Record<string, {
+    review_alarm_hours: number
+    review_alarm_hours_default: boolean
+    security_alarm_hours: number
+    security_alarm_hours_default: boolean
+    review_over_alarm: boolean | null
+    security_over_alarm: boolean | null
+  }>
 }
 
 /** One gate, as the rails guide describes it and as this project actually has it. */
@@ -926,6 +940,12 @@ export interface BoardPullRequest {
   updatedAt: string | null
   waitingOn: string
   waitingOnHandle: string | null
+  /** Real hours since review was (re-)requested, and whether that is over the row's own
+   * team's alarm threshold from cadence-plan.md — both absent when nobody is currently
+   * named as reviewer, since there is nothing to time (spec 0011/0012's shared gap: this
+   * used to be computed, humanized into waitingOn, and then thrown away). */
+  waitHours?: number
+  overAlarm?: boolean
 }
 
 /** One row. Everything but `pullRequest` comes from the spec file itself, so a row is

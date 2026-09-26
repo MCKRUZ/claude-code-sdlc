@@ -91,7 +91,7 @@ export function BuildBoard({
             <div
               key={t.team}
               className={`rounded-xl border px-3 py-2 text-xs ${
-                t.overLimit ? 'border-red-300 bg-red-50 text-red-900'
+                t.overLimit || t.anyOverAlarm ? 'border-red-300 bg-red-50 text-red-900'
                   : t.atLimit ? 'border-amber-300 bg-amber-50 text-amber-900'
                   : 'border-slate-200 bg-white text-slate-700'
               }`}
@@ -103,6 +103,11 @@ export function BuildBoard({
               {t.overLimit && <span className="ml-2 font-semibold">over limit</span>}
               {t.atLimit && !t.overLimit && <span className="ml-2 font-semibold">at limit</span>}
               {t.limit === null && <span className="ml-2 text-slate-400">no limit set</span>}
+              {t.longestWaitHours !== null && (
+                <span className={`ml-2 ${t.anyOverAlarm ? 'font-semibold' : ''}`}>
+                  waiting {t.longestWaitHours.toFixed(0)}h{t.anyOverAlarm && ' — OVER ALARM'}
+                </span>
+              )}
             </div>
           ))}
         </div>
