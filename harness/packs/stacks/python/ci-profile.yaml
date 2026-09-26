@@ -172,10 +172,17 @@ dependency_scan:
   # Emitting no rows is still fine; emitting no rows because nothing was scanned is not, and
   # the two are no longer the same event. Exits non-zero in that case, which is exactly what
   # the workflow's guard is waiting for.
+  # THE OUTER ( ) IS LOAD-BEARING, NOT STYLE. The consuming workflow splices this in
+  # TEXTUALLY as `if ! <command> > findings.tsv 2> scan.err; then <scan failed> fi`. A
+  # multi-statement list spliced there binds the negation and both redirects to fragments of
+  # itself, and the gate INVERTS: an empty scan reports clean, a healthy scan reports failure.
+  # That is not hypothetical — it is what the first version of this fix did, and both review
+  # gates caught it. A subshell makes the whole thing one command with one exit status and one
+  # stdout, which is the contract every command in this file is written to.
   command: >-
-    D="${RUNNER_TEMP:-/tmp}/dep-scan-python.json"; { uv run --frozen pip-audit --format json > "$D" || true; };
+    ( D="${RUNNER_TEMP:-/tmp}/dep-scan-python.json"; { uv run --frozen pip-audit --format json > "$D" || true; };
     { jq -e '[.dependencies[]?] | length > 0' "$D" >/dev/null 2>&1 || { echo "pip-audit examined no packages, so a clean result here would mean the scan did not run rather than that the project is clean. Check that uv is installed and pip-audit is in the dev dependency group." >&2; false; }; }
-    && jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' "$D" | sort -u
+    && jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' "$D" | sort -u )
   # -> <<CI_DEPENDENCY_BLOCK_SEVERITIES>>. See above: the tool supplies no severity, so the single
   # token it does emit is the one that blocks. Do NOT "fix" this to High/Critical — that would make
   # the gate match nothing and pass forever.
