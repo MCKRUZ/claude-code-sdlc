@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
 import { GateAuthPanel } from './GateAuthPanel'
 import type {
-  ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, SettingsSection,
+  ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, Scorecard, SettingsSection,
 } from '../../shared/types'
+
+/** A fixed rolling window for the alarm comparison below — this screen is about configuration,
+ * not a report a person tunes the window on, so one steady figure beats an extra control. */
+const ALARM_WINDOW_DAYS = 14
 
 /** The project's settings (spec 0012) — read-only in this first cut, and honest about it.
  *
@@ -24,6 +28,9 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
   const [settings, setSettings] = useState<ProjectSettings | null>(null)
   const [connection, setConnection] = useState<ConnectionInfo | null>(null)
   const [report, setReport] = useState<ConnectionReport | null>(null)
+  /** For the review-wait alarm next to each team's limit below — the same figure spec 0013's
+   * read-only scorecard shows, reused here rather than a second computation of "over alarm". */
+  const [scorecard, setScorecard] = useState<Scorecard | null>(null)
   const [loading, setLoading] = useState(true)
   /** Nothing on this screen changes anything until edit mode is on, and the controls are
    * ABSENT rather than disabled outside it — the same rule spec 0010's document editor
@@ -39,14 +46,16 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, c, r] = await Promise.all([
+    const [s, c, r, sc] = await Promise.all([
       window.studio.getProjectSettings(projectPath),
       window.studio.getConnectionInfo(projectPath),
       window.studio.getConnectionReport(projectPath),
+      window.studio.getScorecard(projectPath, ALARM_WINDOW_DAYS),
     ])
     setSettings(s)
     setConnection(c)
     setReport(r)
+    setScorecard(sc)
     setLoading(false)
   }, [projectPath])
 
@@ -252,27 +261,39 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
       <Section title="Build limits" file={settings.wip_limits.file} section={settings.wip_limits}>
         {settings.wip_limits.teams.length > 0 && (
           <ul className="space-y-2">
-            {settings.wip_limits.teams.map((t) => (
-              <li key={t.team} className="flex items-baseline justify-between gap-3 text-sm">
-                <span className="text-slate-900">{t.team}</span>
-                {editing && (
-                  <LimitEditor
-                    current={t.wip_limit}
-                    busy={busy}
-                    onSet={(value) => change(() => window.studio.setTeamLimit(projectPath, t.team, value))}
-                  />
-                )}
-                <span>
-                  {/* The limit and what is actually in flight, always together. One without
-                      the other invites the reader to supply the missing half from memory. */}
-                  <span className={t.over_limit ? "text-red-700" : t.at_limit ? "text-amber-700" : "text-slate-600"}>
-                    {t.in_flight} in flight / {t.wip_limit}
+            {settings.wip_limits.teams.map((t) => {
+              const alarm = scorecard?.team_alarms?.[t.team]
+              const sounding = alarm?.review_over_alarm === true || alarm?.security_over_alarm === true
+              return (
+                <li key={t.team} className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-slate-900">{t.team}</span>
+                  {editing && (
+                    <LimitEditor
+                      current={t.wip_limit}
+                      busy={busy}
+                      onSet={(value) => change(() => window.studio.setTeamLimit(projectPath, t.team, value))}
+                    />
+                  )}
+                  <span>
+                    {/* The limit and what is actually in flight, always together. One without
+                        the other invites the reader to supply the missing half from memory. */}
+                    <span className={t.over_limit ? "text-red-700" : t.at_limit ? "text-amber-700" : "text-slate-600"}>
+                      {t.in_flight} in flight / {t.wip_limit}
+                    </span>
+                    {t.over_limit && <span className="ml-2 font-semibold text-red-700">over limit</span>}
+                    {t.at_limit && !t.over_limit && <span className="ml-2 font-semibold text-amber-700">at limit</span>}
+                    {/* Spec 0012: "a team whose alarm is sounding is named on this screen".
+                        The comparison itself is the plugin's (scorecard.py's
+                        build_team_alarms_payload) — never recomputed here from the two medians. */}
+                    {sounding && (
+                      <span className="ml-2 font-semibold text-red-700">
+                        review-wait alarm sounding ({scorecard!.review_wait_median_hours?.toFixed(0)}h)
+                      </span>
+                    )}
                   </span>
-                  {t.over_limit && <span className="ml-2 font-semibold text-red-700">over limit</span>}
-                  {t.at_limit && !t.over_limit && <span className="ml-2 font-semibold text-amber-700">at limit</span>}
-                </span>
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </Section>

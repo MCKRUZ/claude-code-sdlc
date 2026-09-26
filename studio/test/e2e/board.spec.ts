@@ -476,4 +476,12 @@ test.describe('[spec 0013] review-wait alarms by team, in the real window', () =
     await expect(alarmPage.getByText(/review vs 12h/)).toBeVisible()
     await expect(alarmPage.getByText(/OVER ALARM/)).toBeVisible()
   })
+
+  test('the same alarm is named on the settings screen, next to the team it belongs to', async () => {
+    // Spec 0012's check, closed with the same data this describe block already proved on the
+    // scorecard screen — no second computation, just a second screen reading it.
+    await alarmPage.getByRole('button', { name: 'Settings', exact: true }).click()
+    await expect(alarmPage.getByText('claims')).toBeVisible({ timeout: 60_000 })
+    await expect(alarmPage.getByText(/review-wait alarm sounding/)).toBeVisible()
+  })
 })
