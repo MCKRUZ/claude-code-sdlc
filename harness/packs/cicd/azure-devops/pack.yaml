@@ -88,6 +88,16 @@ consumes:
 #                      fallback is the fragile path (anonymous rate limits — hence its `githubToken`
 #                      input), so prefer a version the image already caches. 3.13 is cached on
 #                      ubuntu-24.04 today. Only SELF-HOSTED agents are pre-installed-only.
+# KNOWN GAP, python only — recorded rather than left to be rediscovered. Every command in
+# packs/stacks/python/ci-profile.yaml is a `uv` command, and UsePythonVersion installs Python
+# WITHOUT uv, so a Python project on Azure DevOps has no uv on PATH. The github pack solved
+# this by mapping python to setup-uv (which pins the interpreter through UV_PYTHON); there is
+# no equivalent single task here, so the fix is a script step in the setup-toolchain template
+# rather than a mapping change, and it has not been made.
+#
+# Until it is: most of those commands fail loudly on first use, which is survivable. The
+# dependency scan no longer fails quietly — the python profile's command now checks that it
+# examined something — so the dangerous half of this gap is closed even here.
 toolchain_map:
   dotnet: { action: "UseDotNet@2",        input: "version" }
   node:   { action: "UseNode@1",          input: "version" }

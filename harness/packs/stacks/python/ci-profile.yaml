@@ -162,8 +162,20 @@ eval_gate:
 dependency_scan:
   enabled: true
   # -> <<CI_DEPENDENCY_SCAN_CMD>>
+  # THE `|| true` HERE USED TO SWALLOW EVERYTHING, INCLUDING NOT RUNNING AT ALL. It exists so
+  # that FINDING an advisory does not fail the step — but it made a missing pip-audit, a
+  # missing uv, or an unresolvable project indistinguishable from "no advisories", and the
+  # workflow's own "status is UNKNOWN" guard could never fire. In this kit's reference repo
+  # that scan reported clean over ZERO packages every week until 2026-09-25.
+  #
+  # So the report is now checked for having examined anything before its contents are trusted.
+  # Emitting no rows is still fine; emitting no rows because nothing was scanned is not, and
+  # the two are no longer the same event. Exits non-zero in that case, which is exactly what
+  # the workflow's guard is waiting for.
   command: >-
-    (uv run --frozen pip-audit --format json || true) | jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' | sort -u
+    D="${RUNNER_TEMP:-/tmp}/dep-scan-python.json"; { uv run --frozen pip-audit --format json > "$D" || true; };
+    { jq -e '[.dependencies[]?] | length > 0' "$D" >/dev/null 2>&1 || { echo "pip-audit examined no packages, so a clean result here would mean the scan did not run rather than that the project is clean. Check that uv is installed and pip-audit is in the dev dependency group." >&2; false; }; }
+    && jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' "$D" | sort -u
   # -> <<CI_DEPENDENCY_BLOCK_SEVERITIES>>. See above: the tool supplies no severity, so the single
   # token it does emit is the one that blocks. Do NOT "fix" this to High/Critical — that would make
   # the gate match nothing and pass forever.
