@@ -88,11 +88,27 @@ jobs:
           # Contracted to exit 0 whether or not it finds anything — findings are DATA. At
           # least one supported tool (.NET) exits 0 on a High advisory while another (npm)
           # exits non-zero, so never infer the result from the status; read the output.
-          if ! (uv run --frozen pip-audit --format json || true) | jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' | sort -u > "${RUNNER_TEMP}/findings.tsv" 2> "${RUNNER_TEMP}/scan.err"; then
+          # The added `tee` keeps the seam's command exactly as it was while saving the raw
+          # report, which is what makes the "how many did you examine" check below possible.
+          if ! (uv run --frozen pip-audit --format json || true) | tee "${RUNNER_TEMP}/pip-audit.json" | jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' | sort -u > "${RUNNER_TEMP}/findings.tsv" 2> "${RUNNER_TEMP}/scan.err"; then
             echo "::error title=Dependency scan failed::The scan did not complete, so this repo's vulnerability status is UNKNOWN — which is not the same as clean. Fix the scan."
             sed -n '1,40p' "${RUNNER_TEMP}/scan.err" || true
             exit 1
           fi
+
+          # HOW MANY PACKAGES WERE ACTUALLY LOOKED AT — the same guard the Studio step below
+          # carries, and it belongs here for exactly the same reason. The grader caught this
+          # asymmetry: hardening one of two ecosystems against "0 advisories might mean we
+          # scanned nothing" leaves the identical blind spot on the other half, which is the
+          # very thing this workflow was changed to close. A pip-audit that silently resolves
+          # to no packages would otherwise print a clean 0 and sail through.
+          PY_AUDITED="$(jq -r '[.dependencies[]?] | length' "${RUNNER_TEMP}/pip-audit.json" 2>/dev/null || echo 0)"
+          if [ "${PY_AUDITED:-0}" -eq 0 ]; then
+            echo "::error title=Python dependency scan examined nothing::pip-audit reported 0 dependencies, so a clean result here means the scan did not run, not that the plugin is clean."
+            exit 1
+          fi
+          echo "Plugin: ${PY_AUDITED} Python dependencies examined."
+
           sort -u -o "${RUNNER_TEMP}/findings.tsv" "${RUNNER_TEMP}/findings.tsv"
           COUNT="$(wc -l < "${RUNNER_TEMP}/findings.tsv" | tr -d ' ')"
           echo "Advisories across Python dependencies: ${COUNT}"
@@ -174,7 +190,12 @@ jobs:
             echo
             echo "These are **pre-existing** — the \`dependency-gate\` check blocks anything a change newly introduces, so nothing here was added by a recent PR. That is why this is an issue and not a red build."
             echo
-            echo "| Severity | Package | Version | Advisory |"
+            # The third column means two different things depending on which ecosystem the row
+            # came from — the installed version for a Python package, the AFFECTED RANGE for a
+            # Node one, because npm's report gives a range rather than what is installed. One
+            # header reading "Version" over both quietly invited a reader to act on the wrong
+            # number, so it says which is which.
+            echo "| Severity | Package | Version installed / affected range | Advisory |"
             echo "| --- | --- | --- | --- |"
             while IFS=$'\t' read -r sev pkg ver url; do
               echo "| ${sev} | \`${pkg}\` | ${ver} | ${url} |"
