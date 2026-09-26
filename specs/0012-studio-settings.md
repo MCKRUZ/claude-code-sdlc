@@ -50,8 +50,13 @@ every change to them shows up in history like any other change.
 - [x] Connection checks report, each with a plain-language result: signed in, can read, can open pull
       requests, whether the default branch is protected, which checks exist, and any check the playbook
       expects that is missing.
-- [x] Each person in the roster shows their code-host handle, team, the roles they may hold and the
+- [ ] Each person in the roster shows their code-host handle, team, the roles they may hold and the
       stages they sign off, and is saved to the project's roster file from plugin spec 0001.
+      <!-- Un-ticked 2026-09-26. This was ticked on half the claim: the WRITE side is genuinely
+           proven (test_set_setting.py). The DISPLAY side — SettingsScreen.tsx actually rendering
+           handle/team/roles/signs_off per row — is real code but has zero test coverage anywhere
+           in the suite; nothing asserts on roster-row text, in either the unit or e2e suite. A
+           rendering bug here would currently ship unnoticed. -->
 - [ ] Adding a person offers only people who already have access to the repository; Studio never invites
       anyone or changes anyone's repository permissions.
 - [x] The rules that cannot be changed in Studio are stated as such: nobody checks their own work,
@@ -63,18 +68,32 @@ every change to them shows up in history like any other change.
      because the latter is a rule this system has no honest way to enforce. A settings screen
      stating an unenforced rule as a fact is worse than not listing it: it tells someone they are
      protected by something that is not there. -->
-- [x] Build rules show each team's limit with its number of specs in progress, and saving a limit writes
+- [ ] Build rules show each team's limit with its number of specs in progress, and saving a limit writes
       it to the project's cadence plan, where it shows in that document's history.
+      <!-- Un-ticked 2026-09-26. Same split as the roster check above: the write path is proven
+           (test_set_setting.py), but SettingsScreen.tsx's own "{in_flight} in flight / {wip_limit}"
+           display has no test anywhere in Settings' e2e coverage. The suite's only "in flight"
+           text match tests the separate Build BOARD screen's team cards, not this one. -->
 - [ ] A team whose alarm is sounding is named on this screen, with its current waiting time.
-- [x] Change approval can be switched on or off, scoped to chosen stages, and states plainly what happens
+- [ ] Change approval can be switched on or off, scoped to chosen stages, and states plainly what happens
       to a draft while it waits.
+      <!-- Un-ticked 2026-09-26. Built — the toggle, the stage list, the setStageApproval call and
+           the explanatory text all exist in SettingsScreen.tsx — but untested at every layer: no
+           test anywhere touches the toggle interaction, stage scoping, or the explanatory text.
+           Weaker than the two checks above, which at least had a proven write half. -->
 - [x] Every setting screen states which file the setting is stored in.
 - [ ] Changing any setting produces a commit like any other change, with who changed it and why.
 - [ ] A setting the current person lacks permission to change is shown but not editable, with the reason.
 
-### What is proven, and what is still missing (2026-09-24)
+### What is proven, and what is still missing (2026-09-24, corrected 2026-09-26)
 
-Five of eleven ticked. A ticked box means a test asserts it.
+Two of eleven ticked, not five. Re-auditing this write-up on 2026-09-26 (the same pass that
+covered specs 0008-0011) found three of the original five ticks — the roster, Build-rules, and
+change-approval checks — were ticked on the strength of a real, tested WRITE path while the
+matching DISPLAY code had never been tested at all. A wrong number on a settings screen is not a
+hypothetical here: it is the same class of bug this spec exists to make legible. All three are
+un-ticked above with their own notes; only the connection-checks and fixed-rules checks hold up
+as originally written. A ticked box means a test asserts it.
 
 **Proven in the real window** (`test/e2e/board.spec.ts`): every section names the file its
 setting is stored in, including when that file does not exist yet; an unconfigured setting
@@ -82,11 +101,13 @@ reads as "not set up" and never as an error; and each fixed rule names where it 
 enforced. That last test also asserts the claim this spec was AMENDED to remove — "only a team
 lead lowers a risk level" — cannot reappear on screen, since it is enforced nowhere.
 
-**Proven by test** (`scripts/tests/test_set_setting.py`, 17 cases): a roster, limit or approval
-change is validated before it is written; a refusal leaves the file byte-for-byte as it was;
-and — the regression that file exists for — every comment and every untouched line survives a
-write. The first version of the roster editor parsed the file and dumped it back, which passed
-validation and destroyed all nine comments its author had written.
+**Proven by test** (`scripts/tests/test_set_setting.py`, 22 cases as of 2026-09-26, was 17): a
+roster, limit or approval change is validated before it is written; a refusal leaves the file
+byte-for-byte as it was; and — the regression that file exists for — every comment and every
+untouched line survives a write. The first version of the roster editor parsed the file and
+dumped it back, which passed validation and destroyed all nine comments its author had written.
+This proves the WRITE half of the roster, Build-rules and approval checks above — none of it
+proves what actually renders on screen, which is why those three are un-ticked now.
 
 **NOT BUILT — missing features, not merely unverified:**
 
@@ -99,10 +120,16 @@ validation and destroyed all nine comments its author had written.
    dependency scan, grader and security review ship to clients and do not run on the plugin
    itself. Reported to Matt rather than fixed — installing them changes what every pull
    request must pass.
-2. **Choosing a person from those who already have repository access.** Adding someone is a
-   typed handle today. The second half of that check IS satisfied and by construction —
-   nothing in Studio invites anyone or changes any permission — but offering only people who
-   already have access needs the code host's collaborator list.
+2. **Choosing a person from those who already have repository access.** Corrected 2026-09-26:
+   the original note here was wrong, not just optimistic. Adding someone is not "a typed handle
+   today" — there is no add-person control AT ALL. `SettingsScreen.tsx`'s "People and teams"
+   section is entirely read-only: no input, no button, no code path that writes a new person.
+   The screen's own caption text — "Adding someone here records that they may hold a role..." —
+   describes a feature that does not exist, which is worse than the feature simply being
+   missing: it promises a control nobody can find. The second half of the check (never inviting
+   anyone or changing a permission) is still satisfied by construction, since there is no write
+   path of any kind yet. Offering only people who already have access still needs the code
+   host's collaborator list, on top of building the control itself.
 3. **Naming a team whose review-wait alarm is sounding, with its current waiting time.** The
    alarm thresholds are read and passed through; the elapsed time is not computed. Same root
    cause as spec 0011's "how long it has waited": real waiting time needs a per-pull-request
