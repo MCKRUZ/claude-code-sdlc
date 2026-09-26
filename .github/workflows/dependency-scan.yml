@@ -78,6 +78,13 @@ jobs:
         with:
           node-version: '22'
 
+      # THE ACTUAL REASON THIS SCAN NEVER SCANNED. Its command has always begun with `uv`,
+      # and this workflow never installed uv — only Python. So the very first word failed
+      # with "command not found", the `|| true` swallowed it, and an empty report was read as
+      # a clean one. ci.yml installs uv in every job that needs it; this workflow was simply
+      # never given the same line.
+      - uses: astral-sh/setup-uv@v8.3.2
+
       # Renamed from "Scan every dependency", which it never was — it is the Python half, and
       # calling it "every" is how the gap stayed invisible.
       - name: Scan Python dependencies
@@ -88,11 +95,46 @@ jobs:
           # Contracted to exit 0 whether or not it finds anything — findings are DATA. At
           # least one supported tool (.NET) exits 0 on a High advisory while another (npm)
           # exits non-zero, so never infer the result from the status; read the output.
-          if ! (uv run --frozen pip-audit --format json || true) | jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' | sort -u > "${RUNNER_TEMP}/findings.tsv" 2> "${RUNNER_TEMP}/scan.err"; then
-            echo "::error title=Dependency scan failed::The scan did not complete, so this repo's vulnerability status is UNKNOWN — which is not the same as clean. Fix the scan."
-            sed -n '1,40p' "${RUNNER_TEMP}/scan.err" || true
+          # THIS COMMAND USED TO BE `(uv run --frozen pip-audit ... || true) | jq ...` AND IT
+          # SCANNED NOTHING, EVER. pip-audit is not a declared dependency of this project, so
+          # `uv run pip-audit` failed with "program not found"; the `|| true` turned that into
+          # empty output; empty output is indistinguishable from "no advisories"; and the job
+          # reported clean. It was added to stop a FINDING failing the step and it silenced
+          # total failure alongside. The guard below is what exposed it — on its first run.
+          #
+          # Two changes make it real. `uvx` fetches pip-audit rather than assuming it is
+          # installed, and the thing audited is the project's own LOCKED dependency set,
+          # exported explicitly. `--no-emit-project` matters: the export otherwise lists the
+          # local package itself as an editable install, which pip-audit tries to build and
+          # fails on.
+          uv export --project scripts --frozen --format requirements-txt --no-hashes \
+            --no-emit-project -o "${RUNNER_TEMP}/pip-requirements.txt"
+
+          # Non-zero here can mean "found advisories", so the status is not the answer — the
+          # same rule the Studio step states. Only a missing or unusable report is a failure.
+          if ! uvx pip-audit --format json --requirement "${RUNNER_TEMP}/pip-requirements.txt" \
+               > "${RUNNER_TEMP}/pip-audit.json" 2> "${RUNNER_TEMP}/scan.err"; then
+            if ! jq -e 'has("dependencies")' "${RUNNER_TEMP}/pip-audit.json" >/dev/null 2>&1; then
+              echo "::error title=Dependency scan failed::The scan did not complete, so this repo's vulnerability status is UNKNOWN — which is not the same as clean. Fix the scan."
+              sed -n '1,40p' "${RUNNER_TEMP}/scan.err" || true
+              exit 1
+            fi
+          fi
+
+          # HOW MANY PACKAGES WERE ACTUALLY LOOKED AT — the same guard the Studio step below
+          # carries, and it belongs here for exactly the same reason. The grader caught the
+          # asymmetry of hardening one ecosystem and not the other; this guard then caught a
+          # scan that had never examined a single package.
+          PY_AUDITED="$(jq -r '[.dependencies[]?] | length' "${RUNNER_TEMP}/pip-audit.json" 2>/dev/null || echo 0)"
+          if [ "${PY_AUDITED:-0}" -eq 0 ]; then
+            echo "::error title=Python dependency scan examined nothing::pip-audit reported 0 dependencies, so a clean result here means the scan did not run, not that the plugin is clean."
             exit 1
           fi
+          echo "Plugin: ${PY_AUDITED} Python dependencies examined."
+
+          jq -r '.dependencies[]? | . as $d | ($d.vulns[]? | ["unknown", $d.name, $d.version, ("https://osv.dev/vulnerability/" + .id)] | @tsv)' \
+            "${RUNNER_TEMP}/pip-audit.json" | sort -u > "${RUNNER_TEMP}/findings.tsv"
+
           sort -u -o "${RUNNER_TEMP}/findings.tsv" "${RUNNER_TEMP}/findings.tsv"
           COUNT="$(wc -l < "${RUNNER_TEMP}/findings.tsv" | tr -d ' ')"
           echo "Advisories across Python dependencies: ${COUNT}"
@@ -174,7 +216,12 @@ jobs:
             echo
             echo "These are **pre-existing** — the \`dependency-gate\` check blocks anything a change newly introduces, so nothing here was added by a recent PR. That is why this is an issue and not a red build."
             echo
-            echo "| Severity | Package | Version | Advisory |"
+            # The third column means two different things depending on which ecosystem the row
+            # came from — the installed version for a Python package, the AFFECTED RANGE for a
+            # Node one, because npm's report gives a range rather than what is installed. One
+            # header reading "Version" over both quietly invited a reader to act on the wrong
+            # number, so it says which is which.
+            echo "| Severity | Package | Version installed / affected range | Advisory |"
             echo "| --- | --- | --- | --- |"
             while IFS=$'\t' read -r sev pkg ver url; do
               echo "| ${sev} | \`${pkg}\` | ${ver} | ${url} |"
