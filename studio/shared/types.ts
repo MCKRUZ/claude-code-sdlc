@@ -58,6 +58,12 @@ export interface ProjectSyncState {
    * poller will only ever merge a pull request whose head branch equals this. Without it the
    * poller was choosing by a name search, which anyone can match. */
   pendingPrBranch?: string | null
+  /** Who opened the draft above, and which files it covers. Set together with
+   * pendingPrBranch, cleared together with it (merged, landed directly, or found closed
+   * without merging). Spec 0010: while a draft waits for approval, only the person who
+   * opened it may change it — everyone else is refused with a clear reason. */
+  pendingDraftOwner?: string | null
+  pendingDraftFiles?: string[]
 }
 
 export interface Settings {

@@ -604,6 +604,18 @@ export interface SaveOptions {
   actor?: string
 }
 
+/** Whether a save must be refused because a draft opened by someone else is still waiting on
+ * approval. Fails closed: an actor Studio cannot identify is never treated as the owner, so an
+ * unidentified caller is refused rather than let through. A pending draft with no recorded
+ * owner (state written before this existed) blocks nobody — there is nothing to compare against. */
+export function blocksSave(
+  pendingOwner: string | null | undefined,
+  actor: string | null | undefined,
+): boolean {
+  if (!pendingOwner) return false
+  return !actor || actor !== pendingOwner
+}
+
 export async function save(
   projectPath: string,
   pluginScriptsDir: string,
@@ -613,6 +625,17 @@ export async function save(
   emitSyncState({ kind: 'saving' })
 
   const before = getProjectSyncState(projectPath)
+
+  if (before.pendingPrBranch && blocksSave(before.pendingDraftOwner, options.actor)) {
+    const owner = before.pendingDraftOwner || 'someone else'
+    const files = before.pendingDraftFiles?.length ? ` (covering ${before.pendingDraftFiles.join(', ')})` : ''
+    return {
+      ok: false,
+      entries: [],
+      error: `A draft opened by ${owner} is still waiting for approval${files} — only they can change it until it is resolved.`,
+    }
+  }
+
   const alreadyClashed = Object.entries(before.files).filter(([, s]) => s.pendingClashSections?.length)
   if (alreadyClashed.length > 0) {
     emitSyncState({ kind: 'clashes', count: alreadyClashed.length })
@@ -684,6 +707,12 @@ export async function save(
         storeAncestorBlob(hash, bytes)
         state.files[relPath] = { ancestorHash: hash }
       }
+      // Landed straight on the shared branch — any earlier draft this Studio was tracking is
+      // superseded (this only reaches here when it was the owner's own save going through, per
+      // the block above), so there is nothing left pending.
+      state.pendingPrBranch = null
+      state.pendingDraftOwner = null
+      state.pendingDraftFiles = undefined
       saveProjectSyncState(projectPath, state)
       emitSyncState({ kind: 'idle', lastPulledAt: state.lastPulledAt })
       return { ok: true, outcome: 'pushed_directly', entries: [directPush] }
@@ -722,6 +751,10 @@ export async function save(
     // Remember exactly which branch this was, so the merge poller can recognise its OWN
     // pull request rather than whichever one a name search happens to return first.
     state.pendingPrBranch = branchName
+    // ...and who opened it, so a later save from anyone else is refused rather than
+    // silently opening a competing draft the poller would then have no way to track.
+    state.pendingDraftOwner = options.actor ?? null
+    state.pendingDraftFiles = changedFiles
     saveProjectSyncState(projectPath, state)
 
     emitSyncState(
@@ -799,7 +832,20 @@ export async function pollAndMergeOpenPullRequest(
   }
 
   const pr = prs.find((candidate) => isOursToMerge(candidate, pushedBranch, account, repoOwner))
-  if (!pr) return { merged: false }
+  if (!pr) {
+    // The list call above succeeded but found nothing open under our name for this branch —
+    // it was merged or closed outside Studio. Forgetting it here is what stops a draft closed
+    // without merging from permanently refusing every future save (see blocksSave): otherwise
+    // nothing would ever clear pendingDraftOwner again.
+    const after = getProjectSyncState(projectPath)
+    if (after.pendingPrBranch === pushedBranch) {
+      after.pendingPrBranch = null
+      after.pendingDraftOwner = null
+      after.pendingDraftFiles = undefined
+      saveProjectSyncState(projectPath, after)
+    }
+    return { merged: false }
+  }
 
   const checks = pr.statusCheckRollup ?? []
   const checksGreen = checks.length === 0
@@ -831,6 +877,8 @@ export async function pollAndMergeOpenPullRequest(
     const out = await runGh(['pr', 'merge', String(pr.number), '--merge'], projectPath)
     const after = getProjectSyncState(projectPath)
     after.pendingPrBranch = null // merged — this Studio has nothing outstanding again
+    after.pendingDraftOwner = null
+    after.pendingDraftFiles = undefined
     saveProjectSyncState(projectPath, after)
     emitSyncState({ kind: 'idle', lastPulledAt: after.lastPulledAt })
     return { merged: true, prUrl: out.trim() }

@@ -85,11 +85,18 @@ trustworthy — only Edit changes anything, and anything the app does not unders
            Proven by studio/test/e2e/documents.spec.ts, verified to FAIL with the rendering
            removed rather than assumed to cover it. -->
 
-<!-- STILL OPEN, and the only acceptance check on this spec that is: the pending-draft edit
-     lock below. The plan argued it is satisfied structurally, because a draft awaiting approval
-     is a branch and a pull request and therefore only its author can push to it. That may be
-     true and nothing asserts it — there is no code anywhere in Studio that mentions a draft's
-     owner, and no test. It stays unticked until something proves it. -->
+<!-- STILL OPEN (2026-09-26), and the only acceptance check on this spec that is. Half of it is
+     now built and proven: Studio refuses a second save attempted by anyone but the person who
+     opened a still-pending draft, with a clear reason naming them — see
+     electron/main/sync.ts's blocksSave() and test/approvalPath.test.ts's "only the owner may
+     change a pending draft". That closes the case of one person, one installation, saving
+     twice. It does NOT close the case the check's wording ("everyone else") actually means: a
+     colleague on their OWN installation of Studio has no way to even know your draft exists,
+     because which draft is pending is recorded only in Studio's local settings on the machine
+     that opened it, never in the repository (spec 0009's decision 4). Closing that needs a live
+     question to GitHub at save time — "is there already an open, unmerged change to this
+     document from someone else?" — not another local flag. That is real, separately-scoped
+     work, not a quick add-on, so this stays unticked rather than ticked on the half that's done. -->
 
 - [x] Round trip: opening a document and saving it with no edits produces a byte-identical file.
 
@@ -129,9 +136,16 @@ gate). With no approval step the change lands on the shared branch with who and 
 with the push refused the shared branch does not move at all and the work is parked on its own
 branch. Only opening the pull request itself still needs GitHub.
 
-**NOT proven: that only the draft's author may change it while it waits.** That is a property
-of a second person on a second machine, and no local fixture can stand in for one. Unticked,
-and it should stay unticked until two real accounts have been through it.
+**Half-proven: that only the draft's author may change it while it waits (2026-09-26).** The
+part this fixture CAN prove turned out to be provable after all: "who opened the draft" is a
+name Studio already stores locally the moment a pull request is pushed, so `test/approvalPath.
+test.ts` seeds that state directly, then calls the real save() as a different actor and watches
+it refuse — before it ever touches the network — while the actual owner's save still lands
+(`blocksSave`, unit-tested separately in `test/draftOwnership.test.ts`). What remains NOT proven,
+because it is not yet built: a colleague's OWN installation of Studio has no local record of your
+pending draft at all, so today it would not refuse them. Closing that needs a live check against
+GitHub at save time, not another local fixture. Unticked, and it should stay unticked until that
+live check exists.
 
 **The round-trip against real client documents** that this spec's Checking Plan requires has not
 been run; the 28 templates are the plugin's own fixtures.

@@ -16,9 +16,12 @@
  * the client's point of view: the push is simply rejected. That is also the app's own stated
  * gate — "the real gate is whether a direct push gets rejected", never a guess about settings.
  *
- * What this still cannot prove: that only the draft's author may change it while it waits.
- * That is a property of a second person on a second machine, and no local fixture can stand
- * in for one. It stays unticked, and saying so is better than a test that pretends.
+ * A later pass found the last sentence above was wrong in one respect: "who opened it" is just
+ * a name Studio stores locally the moment a draft's pull request is created, so the REFUSAL is
+ * provable here without a second machine — seed the same persisted state a real save would
+ * have left, then call save() for real as a different actor and watch it refuse before it ever
+ * touches the network. What still needs GitHub is the pull request itself, which is why the
+ * seed is written directly rather than produced by driving a whole save through this fixture.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -26,7 +29,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { getLastSeenCommit, initSettingsPath, setLastSeenCommit } from '../electron/main/settings'
+import {
+  getLastSeenCommit, getProjectSyncState, initSettingsPath, saveProjectSyncState, setLastSeenCommit,
+} from '../electron/main/settings'
 import { pull, save } from '../electron/main/sync'
 import { getDocumentChanges, openDocument, setField } from '../electron/main/documents'
 import { listVersions } from '../electron/main/history'
@@ -170,6 +175,49 @@ describe.skipIf(!available)('saving a document through a real remote', () => {
       unprotect()
     }
   }, 120_000)
+
+  // "While a draft waits for approval, only the person who created it can change it —
+  // everyone else is refused, with a clear reason." A pending draft is a parked branch plus
+  // whoever's name Studio recorded when it pushed it — both already sitting in this project's
+  // persisted sync state, so the refusal (and the owner's own save still landing) can be
+  // proven directly, with no second machine and no GitHub involved.
+  describe('only the owner may change a pending draft', () => {
+    it('refuses someone else, and still lets the owner save', async () => {
+      const beforeRemote = git(['rev-parse', 'main'], origin)
+
+      const state = getProjectSyncState(project)
+      state.pendingPrBranch = 'studio/seeded-pending'
+      state.pendingDraftOwner = 'priya'
+      state.pendingDraftFiles = [REQUIREMENTS]
+      saveProjectSyncState(project, state)
+
+      await editSomething('A STRANGER TRYING TO SNEAK IN A CHANGE')
+      const refused = await save(project, SCRIPTS_DIR, 'not my draft to change', {
+        actor: 'matt', onlyPath: REQUIREMENTS,
+      })
+      expect(refused.ok).toBe(false)
+      expect(refused.error).toContain('priya')
+      expect(refused.error).toContain('still waiting for approval')
+
+      // Refused before it ever touched the network — the remote hasn't moved, and Studio's
+      // own record of the pending draft is untouched.
+      expect(git(['rev-parse', 'main'], origin)).toBe(beforeRemote)
+      expect(getProjectSyncState(project).pendingPrBranch).toBe('studio/seeded-pending')
+
+      // The owner naming themselves is a different story — their own save goes through (this
+      // single-checkout fixture has one shared working copy, so it is priya's save that lands
+      // whatever text is on disk right now — the gate is about WHO may publish, not a claim
+      // that the bytes themselves are re-authored).
+      const owners = await save(project, SCRIPTS_DIR, 'the actual owner finishing their draft', {
+        actor: 'priya', onlyPath: REQUIREMENTS,
+      })
+      expect(owners.ok, owners.error).toBe(true)
+      expect(git(['show', `main:${REQUIREMENTS}`], origin)).toContain('A STRANGER TRYING TO SNEAK IN A CHANGE')
+
+      // And landing it resolves the draft — nothing is left pending to block the next save.
+      expect(getProjectSyncState(project).pendingPrBranch).toBeFalsy()
+    }, 120_000)
+  })
 
   // "Changes made since the person last opened it are marked, with who made each one and
   // why." This needed a repository with history and a second author — both of which the
