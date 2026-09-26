@@ -77,17 +77,21 @@ confusing the person who owns a change with the person building it is what makes
            studio/test exercises SpecReadinessPanel, getSpecReadiness or markSpecReady at all — no
            unit test, no window test. Left unticked because "looks right" is exactly the standard
            this project exists to reject; it needs a real test before it is claimed. -->
-- [ ] The risk level is proposed with its reason and confirmed by a person; nobody but a team lead can
-      lower one, and anyone can raise one.
-      <!-- STILL OPEN, and this one is a DECISION not a defect — audited 2026-09-26.
-           scripts/spec_transition.py's own comment states its actual rule: "LOWERING one requires
-           --authorised-by ... There is no list of who may authorise a [lowering]." The plugin
-           deliberately enforces NAMED ACCOUNTABILITY (anyone, but recorded against them) rather
-           than a ROLE CHECK (only a team lead). That is a real, considered design in the plugin —
-           not a bug — but it means this acceptance check as WORDED does not match what was built.
-           Needs Matt: either revise the check to say what the plugin actually does, or treat
-           "team lead only" as a genuine feature request (which would need a team-lead field on
-           the roster and a check against it, plugin-side). Not decided here. -->
+- [x] The risk level is proposed with its reason and confirmed by a person; anyone can raise one, and
+      lowering one is refused until a name is given, recorded against whoever decided it.
+      <!-- Wording reconciled and ticked 2026-09-26. This check used to say "nobody but a team lead
+           can lower one" — a rule that exists NOWHERE in the plugin (spec_transition.py's own
+           comment: "There is no list of who may authorise a [lowering]"). That mismatch was
+           flagged here on first audit as needing Matt's decision, but this spec's OWN Decision
+           List (below) had already resolved the identical question on 2026-09-24, delegated to
+           Claude: named accountability, not a role check — because a rule enforced only in the
+           app is one anyone editing the file directly walks straight around. The check's wording
+           was simply stale against a decision already made; revised here to match it, not to make
+           a new call. Now proven end-to-end in the real window
+           (test/e2e/board.spec.ts, "raising a risk tier is free; lowering one is refused without a
+           name, and recorded with one"): raising takes effect immediately with no name required;
+           lowering without one is refused in the plugin's own words, which is what makes the name
+           field appear at all; naming someone lets it through. -->
 - [ ] Every open decision names the person answering it and when it is due; a spec with an unanswered
       decision cannot be handed off.
       <!-- STILL OPEN — audited 2026-09-26. electron/main/handoff.ts has no reference to the
@@ -227,3 +231,6 @@ was actually measured, not assumed, and that no rule about who may approve is en
   name in the record does that honestly. **Revisit** by putting it in the plugin's readiness
   check if a downgrade ever turns out to have been slipped through; that needs a decision about
   where tier history lives, which is a bigger conversation than one screen.
+  **2026-09-26:** the acceptance check above still said "team lead only" after this was decided
+  — a stale-wording bug, not a live disagreement. Reconciled: the check now describes named
+  accountability, matching this decision, and is ticked against a real test.
