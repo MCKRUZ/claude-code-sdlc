@@ -191,6 +191,34 @@ function ScorecardView({ projectPath }: { projectPath: string }) {
         />
       </div>
 
+      {/* Spec 0013: "waiting times are shown against the project's own alarm thresholds, and
+          a measure over its threshold is marked." The comparison itself is the plugin's
+          (team_alarms), never computed here from the two medians above. */}
+      {card.team_alarms && Object.keys(card.team_alarms).length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
+            Review-wait alarms by team
+          </h3>
+          <div className="space-y-1 text-sm">
+            {Object.entries(card.team_alarms).sort(([a], [b]) => a.localeCompare(b)).map(([team, a]) => (
+              <div key={team} className="flex items-center gap-2">
+                <span className="w-24 shrink-0 font-medium text-slate-700">{team}</span>
+                <span className={a.review_over_alarm ? 'font-semibold text-red-700' : 'text-slate-500'}>
+                  review vs {a.review_alarm_hours}h{a.review_alarm_hours_default && ' (default)'}
+                  {a.review_over_alarm === true && ' — OVER ALARM'}
+                  {a.review_over_alarm === null && ' — no data'}
+                </span>
+                <span className={a.security_over_alarm ? 'font-semibold text-red-700' : 'text-slate-500'}>
+                  security vs {a.security_alarm_hours}h{a.security_alarm_hours_default && ' (default)'}
+                  {a.security_over_alarm === true && ' — OVER ALARM'}
+                  {a.security_over_alarm === null && ' — no data'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
           Delivery

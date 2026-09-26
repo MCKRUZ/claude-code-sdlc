@@ -60,12 +60,27 @@ confusing the person who owns a change with the person building it is what makes
       team and person without losing the current filters.
 - [ ] Each team's card shows specs in progress against that team's limit and how long its checks are
       waiting, and is marked when it is at its limit or its alarm is sounding.
-      <!-- STILL OPEN — audited 2026-09-26. teamLoad() in shared/boardModel.ts shows in-flight
-           count against the WIP limit (at-limit / over-limit), unit-tested. What is missing is
-           the SECOND half: no per-team wait-time measure, and no separate review-wait "alarm"
-           distinct from the WIP-limit marker — spec 0003's per-team review-wait alarm
-           (cadence-plan.md's ## WIP Limits) is not surfaced on this card at all. Real gap, not
-           a display oversight. -->
+      <!-- Half built and tested, still not fully proven — 2026-09-26. The root cause found in
+           the first audit was wrong in one respect: the real per-PR wait time was NOT
+           uncomputed — spec_status.py's compute_waiting_on() was already fetching it (to build
+           the "requested 3 days ago" sentence) and then discarding the number. Fixed at the
+           source: _pending_reviewer_wait() now shares that one fetch between the sentence and a
+           real wait_hours/over_alarm figure compared against cadence-plan.md's per-team
+           threshold (no extra code-host cost — see scripts/tests/test_spec_status.py's
+           TestReportAllWaitHours, including a test proving it is one fetch, not two). teamLoad()
+           now surfaces each team's longest real wait and whether any of it is over alarm,
+           unit-tested (test/boardModel.test.ts). The board's OWN rendering of this is wired
+           (BuildBoard.tsx) but not e2e-proven: doing so needs a real, open pull request with a
+           named reviewer, which — unlike spec 0010's approval fixtures — cannot be faked with a
+           local bare git remote; it needs a live code host. Left open for that reason, not
+           because the feature is unbuilt.
+
+           The SAME underlying number is now proven on a different, real screen: spec 0013's
+           read-only scorecard shows a team over its review-wait alarm with the real threshold,
+           end to end in the real window (test/e2e/board.spec.ts, "[spec 0013] review-wait
+           alarms by team"). That does not close this check — this one is specifically about
+           the BOARD's own team card, not the scorecard — but it is the same plumbing fix,
+           reused, and the reason this is now "half-tested" rather than "a real gap". -->
 - [x] A board of 200 specs across 4 teams opens in under two seconds on a normal laptop, and switching
       role views does not re-read the repository.
 - [ ] A spec cannot be marked ready until every readiness item passes, each stated in plain language

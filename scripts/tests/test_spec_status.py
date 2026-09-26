@@ -6,10 +6,16 @@ the verdict-block parser, the waiting-on logic, and orchestration, with every `g
 monkeypatched.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 import spec_status as ss
 from github_import import GitHubImportError
+
+
+def _hours_ago(hours: float) -> str:
+    return (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
 GRADER_COMMENT = """\
 # Grader verdict
@@ -403,6 +409,115 @@ class TestReportAll:
         (tmp_path / "specs" / "README.md").write_text("# specs\n", encoding="utf-8")
         monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
         assert len(ss.report_all(tmp_path)["specs"]) == 1
+
+
+class TestReportAllWaitHours:
+    """The real, numeric side of "waiting_on" (spec 0011/0012/0013's shared missing piece):
+    how many hours old a pending review request actually is, and whether that is over the
+    team's own alarm threshold from cadence-plan.md. This reuses the SAME fetch_pr_events call
+    compute_waiting_on's sentence was already making — the point of these tests is proving
+    that reuse actually happens, not just that the number comes out right."""
+
+    def _open_pr_awaiting_review(self, **overrides):
+        base = {
+            "number": 7, "url": "https://x/7", "state": "OPEN",
+            "headRefName": "spec/0042-duplicate-claim",
+            "mergedAt": None, "updatedAt": "2026-09-20T10:00:00Z", "isDraft": False,
+            "statusCheckRollup": CHECKS_WITH_SECURITY,
+            "reviews": [], "reviewRequests": [{"login": "priya-n"}], "labels": [],
+        }
+        return {**base, **overrides}
+
+    def test_over_alarm_when_the_real_wait_exceeds_the_teams_threshold(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)  # team: "claims"
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [self._open_pr_awaiting_review()])
+        monkeypatch.setattr(
+            ss, "fetch_pr_events",
+            lambda repo, n: [{"event": "review_requested", "created_at": _hours_ago(100)}],
+        )
+        monkeypatch.setattr(
+            ss.cadence_plan, "load_limits",
+            lambda repo: ({"claims": {"review_alarm_hours": 24, "security_alarm_hours": 48}}, []),
+        )
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert pr["wait_hours"] == pytest.approx(100, abs=0.1)
+        assert pr["over_alarm"] is True
+        # The sentence and the number must describe the same wait, not two different fetches.
+        assert "@priya-n" in pr["waiting_on"] and "ago" in pr["waiting_on"]
+
+    def test_under_alarm_when_the_wait_is_within_threshold(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [self._open_pr_awaiting_review()])
+        monkeypatch.setattr(
+            ss, "fetch_pr_events",
+            lambda repo, n: [{"event": "review_requested", "created_at": _hours_ago(1)}],
+        )
+        monkeypatch.setattr(
+            ss.cadence_plan, "load_limits",
+            lambda repo: ({"claims": {"review_alarm_hours": 24, "security_alarm_hours": 48}}, []),
+        )
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert pr["over_alarm"] is False
+
+    def test_a_high_risk_pr_is_compared_to_the_security_threshold_not_the_review_one(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [
+            self._open_pr_awaiting_review(labels=[{"name": "risk:high"}])
+        ])
+        monkeypatch.setattr(
+            ss, "fetch_pr_events",
+            lambda repo, n: [{"event": "review_requested", "created_at": _hours_ago(30)}],
+        )
+        # 30h is over the review threshold but under the (higher) security one.
+        monkeypatch.setattr(
+            ss.cadence_plan, "load_limits",
+            lambda repo: ({"claims": {"review_alarm_hours": 24, "security_alarm_hours": 48}}, []),
+        )
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert pr["over_alarm"] is False
+
+    def test_falls_back_to_built_in_defaults_with_no_cadence_plan(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [self._open_pr_awaiting_review()])
+        monkeypatch.setattr(
+            ss, "fetch_pr_events",
+            lambda repo, n: [{"event": "review_requested", "created_at": _hours_ago(30)}],
+        )
+        # A real project with no cadence-plan.md: load_limits' own documented behaviour.
+        monkeypatch.setattr(ss.cadence_plan, "load_limits", lambda repo: ({}, []))
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert ss.cadence_plan.DEFAULT_REVIEW_ALARM_HOURS == 24
+        assert pr["over_alarm"] is True  # 30h > the built-in 24h default
+
+    def test_no_pending_reviewer_never_fetches_events_at_all(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [
+            self._open_pr_awaiting_review(reviewRequests=[])
+        ])
+        monkeypatch.setattr(ss, "fetch_pr_events", lambda repo, n: pytest.fail("fetched events with no pending reviewer"))
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert "wait_hours" not in pr
+
+    def test_one_fetch_serves_both_the_sentence_and_the_number(self, tmp_path, monkeypatch):
+        """The bug this whole feature nearly introduced: computing the wait a second, separate
+        way and paying for a second fetch_pr_events call per pending-review row."""
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [self._open_pr_awaiting_review()])
+        calls = []
+
+        def counting_fetch(repo, n):
+            calls.append(n)
+            return [{"event": "review_requested", "created_at": _hours_ago(10)}]
+        monkeypatch.setattr(ss, "fetch_pr_events", counting_fetch)
+        monkeypatch.setattr(
+            ss.cadence_plan, "load_limits",
+            lambda repo: ({"claims": {"review_alarm_hours": 24, "security_alarm_hours": 48}}, []),
+        )
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert calls == [7]  # exactly one call, for PR #7
+        # 10 hours ago humanizes to "today" (_humanize_age works in whole days) — the point
+        # here is that BOTH this sentence and wait_hours below came from the one call above.
+        assert "wait_hours" in pr and "today" in pr["waiting_on"]
 
 
 class TestWaitingOnHandle:

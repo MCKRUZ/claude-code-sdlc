@@ -8,6 +8,7 @@ from github_import import GitHubImportError
 from scorecard import (
     FORBIDDEN_TYPES,
     append_events,
+    build_team_alarms_payload,
     compute_scorecard,
     format_report,
     format_team_alarms,
@@ -234,6 +235,45 @@ class TestTeamAlarms:
         without_limits = format_report(sc, window_days=None, limits=None)
         assert "Review-wait alarms by team" in with_limits
         assert "Review-wait alarms by team" not in without_limits
+
+
+class TestTeamAlarmsPayload:
+    """The JSON twin of TestTeamAlarms above — Studio (spec 0013) reads a boolean here rather
+    than comparing review_wait_median_hours to a threshold itself, which the app is not
+    supposed to do arithmetic on (spec 0013's own acceptance check)."""
+
+    LIMITS = TestTeamAlarms.LIMITS
+
+    def test_over_alarm_is_true(self):
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 30}])
+        payload = build_team_alarms_payload(sc, self.LIMITS)
+        assert payload["claims"]["review_over_alarm"] is True
+
+    def test_under_alarm_is_false(self):
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 2}])
+        payload = build_team_alarms_payload(sc, self.LIMITS)
+        assert payload["claims"]["review_over_alarm"] is False
+
+    def test_no_data_is_none_not_false(self):
+        # "No data" must never read as "safely under the alarm" — that is a different claim.
+        sc = compute_scorecard([])
+        payload = build_team_alarms_payload(sc, self.LIMITS)
+        assert payload["claims"]["review_over_alarm"] is None
+
+    def test_security_wait_compared_to_security_threshold_not_the_review_one(self):
+        sc = compute_scorecard([{"type": "review_wait", "wait_hours": 60, "security": True}])
+        payload = build_team_alarms_payload(sc, self.LIMITS)
+        # A security-flagged wait never touches review_wait_median_hours at all (see
+        # compute_scorecard's own split), so review_over_alarm has nothing to compare — only
+        # security_over_alarm should have an answer here.
+        assert payload["claims"]["security_over_alarm"] is True  # 60h > the 48h threshold
+        assert payload["claims"]["review_over_alarm"] is None
+
+    def test_thresholds_still_carried_alongside_the_comparison(self):
+        sc = compute_scorecard([])
+        payload = build_team_alarms_payload(sc, self.LIMITS)
+        assert payload["claims"]["review_alarm_hours"] == 12
+        assert payload["claims"]["review_alarm_hours_default"] is False
 
 
 class TestResolveMetricsDir:

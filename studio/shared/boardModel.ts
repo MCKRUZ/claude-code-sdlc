@@ -142,23 +142,34 @@ export function groupBoard(rows: BoardRow[], by: BoardGrouping): Array<{ key: st
     })
 }
 
-/** How many of a team's specs are in flight, against its limit. Returns null for a team with
- * no declared limit rather than inventing one — a project that has not adopted per-team
- * limits should see no limit, not a made-up default it will be measured against. */
+/** How many of a team's specs are in flight, against its limit, and how long its longest-
+ * waiting review has actually been sitting. Returns null for a team with no declared limit
+ * rather than inventing one — a project that has not adopted per-team limits should see no
+ * limit, not a made-up default it will be measured against. Same for `longestWaitHours`: null
+ * means nothing of this team's is currently waiting on a named reviewer, not "zero hours". */
 export function teamLoad(
   rows: BoardRow[],
   limits: Record<string, { in_flight: number; wip_limit: number }> | null,
-): Array<{ team: string; inFlight: number; limit: number | null; atLimit: boolean; overLimit: boolean }> {
+): Array<{
+  team: string; inFlight: number; limit: number | null; atLimit: boolean; overLimit: boolean
+  longestWaitHours: number | null; anyOverAlarm: boolean
+}> {
   const teams = [...new Set(rows.map((r) => r.team).filter(Boolean))].sort()
   return teams.map((team) => {
-    const inFlight = rows.filter((r) => r.team === team && r.status === 'in-flight').length
+    const teamRows = rows.filter((r) => r.team === team)
+    const inFlight = teamRows.filter((r) => r.status === 'in-flight').length
     const limit = limits?.[team]?.wip_limit ?? null
+    const waits = teamRows
+      .map((r) => r.pullRequest?.waitHours)
+      .filter((h): h is number => h !== undefined)
     return {
       team,
       inFlight,
       limit,
       atLimit: limit !== null && inFlight === limit,
       overLimit: limit !== null && inFlight > limit,
+      longestWaitHours: waits.length > 0 ? Math.max(...waits) : null,
+      anyOverAlarm: teamRows.some((r) => r.pullRequest?.overAlarm === true),
     }
   })
 }

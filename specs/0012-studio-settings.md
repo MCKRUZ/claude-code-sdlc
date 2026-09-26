@@ -75,6 +75,12 @@ every change to them shows up in history like any other change.
            display has no test anywhere in Settings' e2e coverage. The suite's only "in flight"
            text match tests the separate Build BOARD screen's team cards, not this one. -->
 - [ ] A team whose alarm is sounding is named on this screen, with its current waiting time.
+      <!-- Still open, 2026-09-26 — but the reason changed. The root cause (no real wait-time
+           figure existed anywhere) is fixed: scorecard.py now exposes a real, tested per-team
+           over-alarm comparison (build_team_alarms_payload, shared/types.ts's
+           Scorecard.team_alarms) and it is already wired into spec 0013's read-only scorecard
+           screen. This settings screen just doesn't call getScorecard() at all yet — a smaller,
+           separately-scoped wiring task now that the data exists, not a missing feature. -->
 - [ ] Change approval can be switched on or off, scoped to chosen stages, and states plainly what happens
       to a draft while it waits.
       <!-- Un-ticked 2026-09-26. Built — the toggle, the stage list, the setStageApproval call and
@@ -140,10 +146,12 @@ proves what actually renders on screen, which is why those three are un-ticked n
    anyone or changing a permission) is still satisfied by construction, since there is no write
    path of any kind yet. Offering only people who already have access still needs the code
    host's collaborator list, on top of building the control itself.
-3. **Naming a team whose review-wait alarm is sounding, with its current waiting time.** The
-   alarm thresholds are read and passed through; the elapsed time is not computed. Same root
-   cause as spec 0011's "how long it has waited": real waiting time needs a per-pull-request
-   fetch the bulk call deliberately does not make.
+3. **Naming a team whose review-wait alarm is sounding, with its current waiting time.**
+   Updated 2026-09-26: the premise here was wrong — the elapsed time did not need a NEW
+   per-pull-request fetch; spec_status.py's compute_waiting_on() was already making one and
+   discarding the number (fixed at the source). What's still missing here is smaller: this
+   screen doesn't call getScorecard() at all, which is where the now-real per-team alarm
+   comparison lives (see spec 0013, where it's wired and proven).
 4. ~~A setting shown but not editable because this person may not change it.~~ **RESOLVED
    2026-09-26 — see Decision List.** Amended and ticked above: the recommendation below was
    adopted rather than left open. No in-app permission model was built; the code host's own

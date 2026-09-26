@@ -20,8 +20,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import cadence_plan
 import check_spec as cs
-from github_import import GitHubImportError, fetch_pr_events, gh_json, run_gh
+from github_import import GitHubImportError, _hours_between, _is_security_pr, fetch_pr_events, gh_json, run_gh
 from handoff import HandoffError, run_git, branch_name_for, resolve_base_branch
 
 VERDICT_HEADING = "Acceptance Check Verdicts"
@@ -121,7 +122,34 @@ def _reviewer_handle(entry: dict) -> str:
     return entry.get("login") or entry.get("name") or "someone"
 
 
-def compute_waiting_on(repo_root, pr: dict, verdicts: list[dict] | None, verdict_error: str | None) -> str:
+def _pending_reviewer_wait(repo_root, pr: dict) -> tuple[str, str | None]:
+    """The named reviewer a still-open PR is waiting on, and the ISO timestamp of when review
+    was last (re-)requested (None if that couldn't be read). Only called when the PR actually
+    has a pending reviewer.
+
+    Pulled out as its own function so compute_waiting_on (which humanizes this into a sentence)
+    and _spec_row (which compares the raw hours to a team's alarm threshold) share the ONE
+    fetch_pr_events call this needs, rather than each fetching it separately — that fetch was
+    already being paid for every pending-review row before either of them existed; the mistake
+    worth avoiding here is paying it twice."""
+    pending_reviewers = pr.get("reviewRequests") or []
+    who = _reviewer_handle(pending_reviewers[0])
+    try:
+        events = fetch_pr_events(str(repo_root), pr["number"])
+        requested = sorted(e["created_at"] for e in events if e.get("event") == "review_requested")
+    except GitHubImportError:
+        return who, None
+    return who, (requested[-1] if requested else None)
+
+
+def compute_waiting_on(
+    repo_root, pr: dict, verdicts: list[dict] | None, verdict_error: str | None,
+    pending_wait: tuple[str, str | None] | None = None,
+) -> str:
+    """`pending_wait` lets a caller that already ran _pending_reviewer_wait (bulk mode, so it
+    can also compare the hours to an alarm threshold) hand the result in rather than have this
+    function fetch it again. report_status's single-spec path leaves it None, unchanged from
+    before this parameter existed."""
     if pr["state"] == "MERGED":
         return "merged"
     if pr["state"] == "CLOSED":
@@ -157,13 +185,8 @@ def compute_waiting_on(repo_root, pr: dict, verdicts: list[dict] | None, verdict
 
     pending_reviewers = pr.get("reviewRequests") or []
     if pending_reviewers:
-        who = _reviewer_handle(pending_reviewers[0])
-        try:
-            events = fetch_pr_events(str(repo_root), pr["number"])
-            requested = sorted(e["created_at"] for e in events if e.get("event") == "review_requested")
-            age = f" {_humanize_age(requested[-1])}" if requested else ""
-        except GitHubImportError:
-            age = ""
+        who, requested_at = pending_wait if pending_wait is not None else _pending_reviewer_wait(repo_root, pr)
+        age = f" {_humanize_age(requested_at)}" if requested_at else ""
         return f"waiting for a non-author approval; requested from @{who}{age}"
     return "waiting for a non-author approval"
 
@@ -329,7 +352,7 @@ def report_status(repo_root: Path, spec_path: Path) -> dict:
 
 PR_LIST_FIELDS = (
     "number,url,state,mergedAt,updatedAt,isDraft,headRefName,"
-    "statusCheckRollup,reviews,reviewRequests"
+    "statusCheckRollup,reviews,reviewRequests,labels"
 )
 
 
@@ -347,7 +370,10 @@ def fetch_all_pull_requests(repo_root, limit: int = 1000) -> dict[str, dict]:
     return by_branch
 
 
-def _safe_spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None) -> dict:
+def _safe_spec_row(
+    spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None,
+    limits: dict[str, dict] | None = None,
+) -> dict:
     """One row, and never more than one row's worth of damage.
 
     The board is the screen somebody opens to find out where the work is. One spec that cannot
@@ -355,12 +381,15 @@ def _safe_spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] 
     any of the others.
     """
     try:
-        return _spec_row(spec_path, repo_root, by_branch)
+        return _spec_row(spec_path, repo_root, by_branch, limits)
     except Exception as e:  # noqa: BLE001
         return {"path": spec_path.name, "error": f"could not be read: {type(e).__name__}: {e}"}
 
 
-def _spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None) -> dict:
+def _spec_row(
+    spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None,
+    limits: dict[str, dict] | None = None,
+) -> dict:
     """One board row. Everything except `pull_request` comes from the file itself, so a row
     is complete and useful before the code host has answered — or when it never does."""
     # errors="replace", matching track_specs.scan_specs, which reads the same files. Without it
@@ -401,6 +430,13 @@ def _spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | Non
     if pr is None:
         return row
 
+    # Fetched at most once per row, regardless of which of the two things below need it —
+    # compute_waiting_on's own internal fetch would otherwise duplicate exactly this call for
+    # every row with a pending reviewer.
+    pending_reviewers = pr.get("reviewRequests") or []
+    has_pending_reviewer = pr["state"] == "OPEN" and not pr.get("isDraft") and pending_reviewers
+    pending_wait = _pending_reviewer_wait(repo_root, pr) if has_pending_reviewer else None
+
     row["pull_request"] = {
         "number": pr["number"],
         "url": pr["url"],
@@ -408,9 +444,28 @@ def _spec_row(spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | Non
         "merged_at": pr.get("mergedAt"),
         "updated_at": pr.get("updatedAt"),
         # verdicts/verdict_error are None here on purpose — see this section's header.
-        "waiting_on": compute_waiting_on(repo_root, pr, None, None),
+        "waiting_on": compute_waiting_on(repo_root, pr, None, None, pending_wait=pending_wait),
         "waiting_on_handle": waiting_on_handle(pr),
     }
+
+    # The real, numeric side of the same fetch above: how many hours old is the request, and
+    # is that over this spec's OWN team's alarm threshold from cadence-plan.md. Spec 0011's
+    # board, spec 0012's settings screen and spec 0013's scorecard all asked for this and none
+    # of them had it, because none of them had anywhere to get a real number from — it turns
+    # out one already existed, just discarded after being turned into a sentence.
+    if pending_wait and pending_wait[1]:
+        entry = (limits or {}).get(row["team"]) or {
+            "review_alarm_hours": cadence_plan.DEFAULT_REVIEW_ALARM_HOURS,
+            "security_alarm_hours": cadence_plan.DEFAULT_SECURITY_ALARM_HOURS,
+        }
+        threshold = (
+            entry["security_alarm_hours"] if _is_security_pr(pr.get("labels", []))
+            else entry["review_alarm_hours"]
+        )
+        wait_hours = _hours_between(pending_wait[1], datetime.now(timezone.utc).isoformat())
+        row["pull_request"]["wait_hours"] = round(wait_hours, 2)
+        row["pull_request"]["over_alarm"] = wait_hours > threshold
+
     return row
 
 
@@ -456,10 +511,14 @@ def report_all(repo_root: Path) -> dict:
     except GitHubImportError as e:
         error = str(e)
 
+    # No cadence-plan.md just means every team compares against the built-in defaults —
+    # load_limits already returns ({}, []) for that case, so nothing here needs to branch on it.
+    limits, _errors = cadence_plan.load_limits(repo_root)
+
     return {
         "code_host_available": by_branch is not None,
         "error": error,
-        "specs": [_safe_spec_row(p, repo_root, by_branch) for p in spec_paths],
+        "specs": [_safe_spec_row(p, repo_root, by_branch, limits) for p in spec_paths],
     }
 
 
@@ -474,9 +533,12 @@ def format_all_report(result: dict) -> str:
             continue
         pr = row["pull_request"]
         where = pr["waiting_on"] if pr else (row["status"] or "no status")
+        alarm = ""
+        if pr and "wait_hours" in pr:
+            alarm = f"  [{pr['wait_hours']:.1f}h{' — OVER ALARM' if pr['over_alarm'] else ''}]"
         lines.append(
             f"  {row['spec']}  {row['risk']:<6} {row['status']:<9} "
-            f"{row['owner'] or '-':<12} {row['developer'] or '-':<12} {where}"
+            f"{row['owner'] or '-':<12} {row['developer'] or '-':<12} {where}{alarm}"
         )
     return "\n".join(lines)
 
