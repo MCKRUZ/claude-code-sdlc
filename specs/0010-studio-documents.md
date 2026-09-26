@@ -76,8 +76,21 @@ trustworthy — only Edit changes anything, and anything the app does not unders
      intake script has no test coverage) and needs its own security pass for parsing untrusted
      binary files. Bundling it here would hold the document editor behind repairs that block
      nobody today. This spec is complete as amended, not as originally written. -->
-- [ ] The readiness check shows what is missing before the stage can be signed off, in plain language,
+- [x] The readiness check shows what is missing before the stage can be signed off, in plain language,
       each item linking to the field it refers to.
+      <!-- Ticked 2026-09-26. The pipeline had been built and unit-tested all along — the plugin
+           reports each gap, the main process joins it to the exact field — and the stage home
+           rendered only a COUNT and dropped the list, so none of it was ever visible. Now shown
+           item by item, each one opening its document and marking the section it is about.
+           Proven by studio/test/e2e/documents.spec.ts, verified to FAIL with the rendering
+           removed rather than assumed to cover it. -->
+
+<!-- STILL OPEN, and the only acceptance check on this spec that is: the pending-draft edit
+     lock below. The plan argued it is satisfied structurally, because a draft awaiting approval
+     is a branch and a pull request and therefore only its author can push to it. That may be
+     true and nothing asserts it — there is no code anywhere in Studio that mentions a draft's
+     owner, and no test. It stays unticked until something proves it. -->
+
 - [x] Round trip: opening a document and saving it with no edits produces a byte-identical file.
 
 ### What is proven, and what is not (2026-09-24)

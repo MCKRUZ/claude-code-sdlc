@@ -255,6 +255,17 @@ export interface StageDocument {
   ready: boolean
 }
 
+/** Where a readiness item wants the reader taken. The finding already carries this; what was
+ * missing was anything to carry it TO — the stage home rendered a count and dropped the list,
+ * so the join from "what is missing" to "the field it refers to" existed and was never seen. */
+export interface DocumentFocus {
+  /** The section as the plugin reported it — matched loosely, since a repeating instance is
+   * reported by its trailing part rather than the whole heading. */
+  section: string
+  /** null when the shape declares the field but the document does not carry it at all. */
+  field: string | null
+}
+
 export interface ReadinessFinding {
   path: string
   section: string

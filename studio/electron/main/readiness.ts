@@ -12,6 +12,7 @@
 // satisfy that while hiding exactly the fields most in need of attention.
 
 import { runPluginScript } from './project'
+import { matchesSection } from '../../shared/sections'
 import { openDocument } from './documents'
 import type { ReadinessFinding, StageDocument, StageReadiness } from '../../shared/types'
 
@@ -50,14 +51,12 @@ function emptyReadiness(error: string): StageReadiness {
   }
 }
 
-/** The plugin reports `section` as the document's own heading text, and for a repeating block
- * as "<heading> > <instance heading>". Studio addresses sections by key, so match on whichever
- * of those the document actually offers. */
-export function matchesSection(sectionKey: string, heading: string, reported: string): boolean {
-  if (reported === sectionKey || reported === heading) return true
-  const instance = reported.split('>').pop()?.trim()
-  return instance !== undefined && instance === heading
-}
+// Moved to shared/sections.ts so the renderer can use the SAME rule when it takes a reader to
+// the field a readiness item names. Re-exported because this was its home and its callers and
+// tests already know it by this name; the rule itself now exists once. Imported as well as
+// re-exported, since `export { x } from` alone would not bring it into this module's scope —
+// and this module uses it, below.
+export { matchesSection }
 
 async function locate(
   projectPath: string,

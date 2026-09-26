@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import type {
-  DocumentChange, DocumentField, DocumentSection, OpenDocumentResult,
+  DocumentChange, DocumentField, DocumentFocus, DocumentSection, OpenDocumentResult,
 } from '../../shared/types'
+import { matchesSection } from '../../shared/sections'
 import { FieldEditor } from './FieldEditor'
 
 /** Reading and editing one document.
@@ -14,15 +15,23 @@ export function DocumentView({
   projectPath,
   relPath,
   actor,
+  focus,
   onBack,
   onShowHistory,
 }: {
   projectPath: string
   relPath: string
   actor: string
+  /** Set when the reader arrived from a readiness item rather than the document list: the
+   * section and field that item was about, so they land on it instead of hunting for it. */
+  focus?: DocumentFocus
   onBack: () => void
   onShowHistory: () => void
 }) {
+  /** The section the reader was sent to, resolved once the document is open. Held as the
+   * section KEY rather than the plugin's reported name, because that is what the rendered
+   * cards are addressed by. */
+  const [focusedKey, setFocusedKey] = useState<string | null>(null)
   const [doc, setDoc] = useState<OpenDocumentResult | null>(null)
   const [changes, setChanges] = useState<DocumentChange[]>([])
   const [editing, setEditing] = useState(false)
@@ -40,6 +49,24 @@ export function DocumentView({
   }, [projectPath, relPath])
 
   useEffect(() => { load() }, [load])
+
+  // Resolve the readiness item's section to a rendered card, once there is a document to look
+  // in. Matched with the SAME rule the main process used to attach the finding to a field
+  // (shared/sections.ts) — two different rules here would send the reader to the wrong place
+  // and look like a broken link rather than a disagreement.
+  useEffect(() => {
+    if (!focus || !doc?.ok) { setFocusedKey(null); return }
+    const hit = doc.sections.find((s) => matchesSection(s.key, s.heading, focus.section))
+    setFocusedKey(hit?.key ?? null)
+  }, [focus, doc])
+
+  // Scrolled after the card exists, not when the focus arrives — the element is not in the
+  // document until the section it belongs to has rendered.
+  useEffect(() => {
+    if (!focusedKey) return
+    document.querySelector(`[data-section-key="${CSS.escape(focusedKey)}"]`)
+      ?.scrollIntoView({ block: 'center' })
+  }, [focusedKey])
 
   // Listing what changed never marks it seen — that is a separate, explicit act, so merely
   // opening a document can't quietly erase the "here's what moved" signal.
@@ -206,6 +233,8 @@ export function DocumentView({
             projectPath={projectPath}
             relPath={relPath}
             actor={actor}
+            highlighted={section.key === focusedKey}
+            highlightField={section.key === focusedKey ? focus?.field ?? null : null}
             onSaveField={saveField}
           />
         ))}
@@ -238,6 +267,8 @@ function SectionCard({
   projectPath,
   relPath,
   actor,
+  highlighted = false,
+  highlightField = null,
   onSaveField,
 }: {
   section: DocumentSection
@@ -246,11 +277,15 @@ function SectionCard({
   projectPath: string
   relPath: string
   actor: string
+  /** This is the section a readiness item pointed at, so it is marked and scrolled to. */
+  highlighted?: boolean
+  /** The field within it, when the item named one. */
+  highlightField?: string | null
   onSaveField: (section: DocumentSection, label: string, value: string) => Promise<void>
 }) {
   if (section.kind === 'free_text') {
     return (
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+      <div data-section-key={section.key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         {/* Free text is shown exactly as written and never edited field-by-field — the shape
             library does not model it, so Studio must not pretend it does. */}
         <pre className="whitespace-pre-wrap font-sans text-sm text-slate-600">{section.text.trim()}</pre>
@@ -261,8 +296,20 @@ function SectionCard({
   const fields = Object.entries(section.fields)
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
+    <div
+      data-section-key={section.key}
+      data-highlighted={highlighted ? 'true' : undefined}
+      className={`rounded-xl border bg-white p-4 ${
+        highlighted ? 'border-brand-500 ring-2 ring-brand-200' : 'border-slate-200'}`}
+    >
       <h3 className="text-sm font-semibold text-slate-900">{section.heading}</h3>
+      {highlighted && (
+        <p className="mt-1 text-xs text-brand-700">
+          {highlightField
+            ? `You were sent here to fill in ${highlightField}.`
+            : 'You were sent here from what is missing on the stage.'}
+        </p>
+      )}
       <dl className="mt-3 space-y-3">
         {fields.map(([label, field]) => (
           <FieldRow
