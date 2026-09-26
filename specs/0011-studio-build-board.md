@@ -75,12 +75,14 @@ confusing the person who owns a change with the person building it is what makes
            local bare git remote; it needs a live code host. Left open for that reason, not
            because the feature is unbuilt.
 
-           The SAME underlying number is now proven on a different, real screen: spec 0013's
-           read-only scorecard shows a team over its review-wait alarm with the real threshold,
-           end to end in the real window (test/e2e/board.spec.ts, "[spec 0013] review-wait
-           alarms by team"). That does not close this check — this one is specifically about
-           the BOARD's own team card, not the scorecard — but it is the same plumbing fix,
-           reused, and the reason this is now "half-tested" rather than "a real gap". -->
+           The SAME underlying number is now proven on two different, real screens: spec 0013's
+           read-only scorecard and spec 0012's settings screen each show a team over its
+           review-wait alarm with the real threshold, end to end in the real window
+           (test/e2e/board.spec.ts, "[spec 0013] review-wait alarms by team, in the real
+           window"). That does not close this check — this one is specifically about the
+           BOARD's own team card, not either of those two — but it is the same plumbing fix,
+           reused twice over, and the reason this is now "half-tested" rather than "a real
+           gap". -->
 - [x] A board of 200 specs across 4 teams opens in under two seconds on a normal laptop, and switching
       role views does not re-read the repository.
 - [ ] A spec cannot be marked ready until every readiness item passes, each stated in plain language

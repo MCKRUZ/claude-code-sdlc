@@ -74,13 +74,15 @@ every change to them shows up in history like any other change.
            (test_set_setting.py), but SettingsScreen.tsx's own "{in_flight} in flight / {wip_limit}"
            display has no test anywhere in Settings' e2e coverage. The suite's only "in flight"
            text match tests the separate Build BOARD screen's team cards, not this one. -->
-- [ ] A team whose alarm is sounding is named on this screen, with its current waiting time.
-      <!-- Still open, 2026-09-26 — but the reason changed. The root cause (no real wait-time
-           figure existed anywhere) is fixed: scorecard.py now exposes a real, tested per-team
-           over-alarm comparison (build_team_alarms_payload, shared/types.ts's
-           Scorecard.team_alarms) and it is already wired into spec 0013's read-only scorecard
-           screen. This settings screen just doesn't call getScorecard() at all yet — a smaller,
-           separately-scoped wiring task now that the data exists, not a missing feature. -->
+- [x] A team whose alarm is sounding is named on this screen, with its current waiting time.
+      <!-- Fixed and ticked 2026-09-26. SettingsScreen.tsx now also calls getScorecard() (a
+           14-day rolling window, fixed rather than tunable here — this is a configuration
+           screen, not a report) and shows "review-wait alarm sounding (Nh)" next to the
+           relevant team's Build limit, reading scorecard.py's own team_alarms comparison —
+           never recomputed here. Proven in the real window: test/e2e/board.spec.ts, "the same
+           alarm is named on the settings screen, next to the team it belongs to" — same real
+           cadence-plan.md and recorded event this describe block already proved on the
+           scorecard screen, now also checked here. -->
 - [ ] Change approval can be switched on or off, scoped to chosen stages, and states plainly what happens
       to a draft while it waits.
       <!-- Un-ticked 2026-09-26. Built — the toggle, the stage list, the setStageApproval call and
@@ -101,15 +103,19 @@ every change to them shows up in history like any other change.
            signed in, and the actual gate — who can push a change to the file — is the code host's
            branch protection and collaborator list, already exercised by spec 0009's save path. -->
 
-### What is proven, and what is still missing (2026-09-24, corrected 2026-09-26)
+### What is proven, and what is still missing (2026-09-24, corrected and extended 2026-09-26)
 
-Two of eleven ticked, not five. Re-auditing this write-up on 2026-09-26 (the same pass that
-covered specs 0008-0011) found three of the original five ticks — the roster, Build-rules, and
-change-approval checks — were ticked on the strength of a real, tested WRITE path while the
-matching DISPLAY code had never been tested at all. A wrong number on a settings screen is not a
-hypothetical here: it is the same class of bug this spec exists to make legible. All three are
-un-ticked above with their own notes; only the connection-checks and fixed-rules checks hold up
-as originally written. A ticked box means a test asserts it.
+Four of eleven ticked now, having dropped to two of eleven mid-session before climbing back.
+Re-auditing this write-up on 2026-09-26 (the same pass that covered specs 0008-0011) first found
+three of the original five ticks — the roster, Build-rules, and change-approval checks — were
+ticked on the strength of a real, tested WRITE path while the matching DISPLAY code had never
+been tested at all. A wrong number on a settings screen is not a hypothetical here: it is the
+same class of bug this spec exists to make legible. Two of those three stayed un-ticked (roster,
+change-approval — no test exists for either display yet). The third, "a team whose alarm is
+sounding", turned out to have a real fix available the same day: the permission-model check was
+separately resolved (see Decision List), and the alarm check was newly built and proven once
+spec 0013's audit found the underlying wait-time figure had been computed all along and simply
+discarded. A ticked box means a test asserts it.
 
 **Proven in the real window** (`test/e2e/board.spec.ts`): every section names the file its
 setting is stored in, including when that file does not exist yet; an unconfigured setting
@@ -146,12 +152,12 @@ proves what actually renders on screen, which is why those three are un-ticked n
    anyone or changing a permission) is still satisfied by construction, since there is no write
    path of any kind yet. Offering only people who already have access still needs the code
    host's collaborator list, on top of building the control itself.
-3. **Naming a team whose review-wait alarm is sounding, with its current waiting time.**
-   Updated 2026-09-26: the premise here was wrong — the elapsed time did not need a NEW
-   per-pull-request fetch; spec_status.py's compute_waiting_on() was already making one and
-   discarding the number (fixed at the source). What's still missing here is smaller: this
-   screen doesn't call getScorecard() at all, which is where the now-real per-team alarm
-   comparison lives (see spec 0013, where it's wired and proven).
+3. ~~Naming a team whose review-wait alarm is sounding, with its current waiting time.~~
+   **FIXED 2026-09-26 — see the ticked checkbox above.** The premise here was wrong twice
+   over: the elapsed time did not need a new per-pull-request fetch (spec_status.py's
+   compute_waiting_on() was already making one and discarding the number), and once
+   scorecard.py exposed the comparison, wiring it into this screen was a small addition, not
+   a missing feature.
 4. ~~A setting shown but not editable because this person may not change it.~~ **RESOLVED
    2026-09-26 — see Decision List.** Amended and ticked above: the recommendation below was
    adopted rather than left open. No in-app permission model was built; the code host's own

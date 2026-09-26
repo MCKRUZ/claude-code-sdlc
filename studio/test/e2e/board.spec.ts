@@ -476,4 +476,97 @@ test.describe('[spec 0013] review-wait alarms by team, in the real window', () =
     await expect(alarmPage.getByText(/review vs 12h/)).toBeVisible()
     await expect(alarmPage.getByText(/OVER ALARM/)).toBeVisible()
   })
+
+  test('the same alarm is named on the settings screen, next to the team it belongs to', async () => {
+    // Spec 0012's check, closed with the same data this describe block already proved on the
+    // scorecard screen — no second computation, just a second screen reading it.
+    await alarmPage.getByRole('button', { name: 'Settings', exact: true }).click()
+    await expect(alarmPage.getByText('claims')).toBeVisible({ timeout: 60_000 })
+    await expect(alarmPage.getByText(/review-wait alarm sounding/)).toBeVisible()
+    // This fixture recorded no security-wait event at all — the security alarm must stay
+    // silent rather than borrow the review alarm's state (correctness review's own finding:
+    // an earlier version collapsed both into one flag and one label).
+    await expect(alarmPage.getByText(/security-review-wait alarm sounding/)).toHaveCount(0)
+  })
+})
+
+/** The exact defect correctness review found: a team can be over its SECURITY alarm with no
+ * review-wait data at all (review_wait_median_hours is null, not zero). The describe block
+ * above never exercises this — it only ever records a plain review-wait event — so this is a
+ * separate fixture, not an extra assertion bolted onto that one. */
+test.describe('[spec 0012] a team over only its security alarm, in the real window', () => {
+  test.skip(!PLUGIN_ROOT || !existsSync(VENV_PYTHON), 'needs a plugin checkout beside this repo')
+
+  let secApp: ElectronApplication
+  let secPage: Page
+  let secWorkspace = ''
+
+  test.beforeAll(async () => {
+    test.setTimeout(120_000)
+    secWorkspace = mkdtempSync(join(tmpdir(), 'studio-e2e-secalarm-'))
+    const project = join(secWorkspace, 'project')
+
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'init_project.py'),
+      '--profile', join(PLUGIN_ROOT!, 'profiles', 'microsoft-enterprise', 'profile.yaml'),
+      '--target', project,
+    ], { cwd: SCRIPTS_DIR })
+
+    mkdirSync(join(project, '.sdlc', 'artifacts', '03-foundation'), { recursive: true })
+    writeFileSync(join(project, '.sdlc', 'artifacts', '03-foundation', 'cadence-plan.md'), `# Cadence Plan
+
+## WIP Limits
+
+| team | wip_limit | review_alarm_hours | security_alarm_hours |
+|------|-----------|---------------------|-----------------------|
+| platform | 2 | 24 | 24 |
+
+## Hardening passes
+- none
+`, 'utf-8')
+
+    // Only a SECURITY wait, never a plain one — review_wait_median_hours stays null (no data),
+    // which is exactly the state the earlier, buggy label rendering mishandled.
+    execFileSync(VENV_PYTHON, [
+      join(SCRIPTS_DIR, 'scorecard.py'), 'record', '--repo', project,
+      '--type', 'review_wait', '--field', 'wait_hours=100', '--field', 'security=true',
+    ], { cwd: SCRIPTS_DIR })
+
+    const userData = join(secWorkspace, 'userData')
+    mkdirSync(userData, { recursive: true })
+    writeFileSync(join(userData, 'settings.json'), JSON.stringify({
+      recentProjects: [{ path: project, name: 'security alarm project', lastOpenedAt: new Date().toISOString() }],
+      pluginScriptsPathOverride: SCRIPTS_DIR,
+    }, null, 2))
+
+    secApp = await electron.launch({
+      args: ['.', '--no-sandbox', `--user-data-dir=${userData}`],
+      cwd: root,
+      env: { ...process.env, NODE_ENV: 'development' },
+    })
+    secPage = await secApp.firstWindow()
+    await expect(secPage.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
+    await secPage.getByText('security alarm project').click()
+    await expect(secPage.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
+  })
+
+  test.afterAll(async () => {
+    test.setTimeout(60_000)
+    await secApp?.close().catch(() => {})
+    try {
+      if (secWorkspace) rmSync(secWorkspace, { recursive: true, force: true })
+    } catch {
+      // A leftover temp directory is untidy, not a failure worth reddening a green run.
+    }
+  })
+
+  test('names the security alarm with its own figure, and never borrows the review label', async () => {
+    await secPage.getByRole('button', { name: 'Settings', exact: true }).click()
+    await expect(secPage.getByText('platform')).toBeVisible({ timeout: 60_000 })
+    await expect(secPage.getByText(/security-review-wait alarm sounding \(100h\)/)).toBeVisible()
+    // The exact defect: with no review-wait data at all, the old code showed
+    // "review-wait alarm sounding (h)" — a blank figure under the wrong label. Excludes the
+    // security line itself, which legitimately contains "review-wait" as a substring.
+    await expect(secPage.getByText(/(?<!security-)review-wait alarm sounding/)).toHaveCount(0)
+  })
 })
