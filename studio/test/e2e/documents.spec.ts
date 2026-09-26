@@ -121,6 +121,33 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
   })
 
+  test('the stage says what is missing, and each item goes to the field it is about', async () => {
+    // Spec 0010's readiness acceptance check, which was correctly unticked: the plugin
+    // reported the findings, the main process joined each one to the exact field it refers to,
+    // that join was unit-tested — and the stage home rendered a COUNT and dropped the list. A
+    // number tells a person there is work; it does not tell them where, which is the entire
+    // job of a readiness check. The fixture has exactly one real gap: FR-002 has no
+    // Dependencies field.
+    await expect(page.getByRole('heading', { name: 'What is missing' })).toBeVisible()
+    const item = page.getByRole('button', { name: /Dependencies in .*FR-002/ })
+    await expect(item).toBeVisible()
+    // The REASON, not just the location — an item a person cannot act on is a label.
+    await expect(page.getByText(/absent or empty/)).toBeVisible()
+
+    await item.click()
+
+    // It opened the right document AND marked the section the item was about, rather than
+    // dropping the reader at the top to hunt for it.
+    await expect(page.getByRole('heading', { name: /requirements\.md/i })).toBeVisible({ timeout: 30_000 })
+    const marked = page.locator('[data-highlighted="true"]')
+    await expect(marked).toHaveCount(1)
+    await expect(marked).toContainText('FR-002')
+    await expect(marked).toContainText(/sent here to fill in Dependencies/)
+
+    await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
+  })
+
   test('the stage home lists the document and what it is for', async () => {
     await expect(page.getByRole('button', { name: /^requirements\.md/ })).toBeEnabled()
     // A document that does not exist yet says so rather than looking broken or clickable.

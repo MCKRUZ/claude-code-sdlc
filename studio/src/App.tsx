@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { BoardRow, ClashChoice, ConsoleEntry, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
+import type { BoardRow, ClashChoice, ConsoleEntry, DocumentFocus, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
 import { ToolingIssues } from './components/ToolingIssues'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
@@ -31,6 +31,9 @@ function App() {
   const [error, setError] = useState<string | null>(null)
   /** Which document is open within the project screen, or null for the stage home. */
   const [openDoc, setOpenDoc] = useState<string | null>(null)
+  /** Which field the reader asked to be taken to, when they arrived from a readiness item
+   * rather than from the document list. Undefined for an ordinary open. */
+  const [openDocFocus, setOpenDocFocus] = useState<DocumentFocus | undefined>(undefined)
   const [showHistory, setShowHistory] = useState(false)
   /** Who is using Studio, for attributing saves, restores and drafts. Taken from the
    * signed-in code-host account, which is the same identity the team roster and approvals
@@ -249,6 +252,7 @@ function App() {
             projectPath={projectPath}
             relPath={openDoc}
             actor={actor}
+            focus={openDocFocus}
             onBack={() => setOpenDoc(null)}
             onShowHistory={() => setShowHistory(true)}
           />
@@ -256,8 +260,9 @@ function App() {
           <StageHome
             projectPath={projectPath}
             stageId={status.current_phase.id}
-            onOpenDocument={(relPath) => {
+            onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
+              setOpenDocFocus(focus)
               setOpenDoc(relPath)
             }}
           />
