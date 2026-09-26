@@ -76,7 +76,9 @@ async function verifyBinary(
     resolved.command, [...resolved.prefixArgs, versionFlag], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS },
   )
   if (!entry.ok) {
-    return { error: entry.stderr || `exited with code ${entry.exitCode}` }
+    // Some tools print their real error to stdout, not stderr — fall back to it before
+    // resorting to the bare exit code, which explains nothing about what actually went wrong.
+    return { error: entry.stderr || entry.stdout || `exited with code ${entry.exitCode}` }
   }
   return { version: entry.stdout.trim().split('\n')[0], resolved }
 }

@@ -4,7 +4,7 @@
 // construction rather than by convention: there is nowhere else in the app that can spawn
 // a process. The renderer never gets direct process-spawning access at all (see preload).
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { performance } from 'node:perf_hooks'
 import type { ConsoleEntry } from '../../shared/types'
 
@@ -186,7 +186,21 @@ export function runCommand(
     }
 
     const env = opts?.env ? { ...process.env, ...opts.env } : undefined
-    const child = spawn(command, args, { cwd, windowsHide: true, env })
+
+    // spawn() usually reports a bad command through the 'error' event below, asynchronously —
+    // but not always. Node's CVE-2024-27980 fix makes an invalid combination (a Windows .cmd
+    // shim spawned without shell:true, which tooling.ts's resolved-binary path can produce)
+    // throw EINVAL SYNCHRONOUSLY instead. Caught here rather than left to propagate, because
+    // this function's whole contract — the one thing that makes "nothing runs that does not
+    // appear in the console" true — is that it never throws. Found by this session's own
+    // correctness review on the PR that removed tooling.ts's old, now-redundant try/catch.
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawn(command, args, { cwd, windowsHide: true, env })
+    } catch (err) {
+      finish(null, err instanceof Error ? err.message : String(err))
+      return
+    }
 
     if (opts?.timeoutMs) {
       timeoutHandle = setTimeout(() => {
