@@ -47,23 +47,53 @@ confusing the person who owns a change with the person building it is what makes
 ## Acceptance Checks
 
 - [x] The board opens on what needs the signed-in person, in any role, across every team.
-- [ ] Each row shows the spec's number, what it does, its owner, its developer, its risk level, where it
+- [x] Each row shows the spec's number, what it does, its owner, its developer, its risk level, where it
       is, who it is waiting on, and how long it has waited.
-- [ ] The signed-in person's own name is marked wherever it appears, and a wait of two days or more is
+      <!-- Ticked 2026-09-26. Built in src/components/BuildBoard.tsx's SpecRow: number, title,
+           owner/developer/checker, risk, waitingOn-or-status, and "last moved Nd ago". -->
+- [x] The signed-in person's own name is marked wherever it appears, and a wait of two days or more is
       marked as overdue.
+      <!-- Ticked 2026-09-26. samePerson() renders "you" in place of a matching handle; isOverdue()
+           uses a 2-day threshold, both in shared/boardModel.ts and both unit-tested in
+           test/boardModel.test.ts. -->
 - [x] Search, and filters for team, risk and status, narrow the list; grouping switches between epic,
       team and person without losing the current filters.
 - [ ] Each team's card shows specs in progress against that team's limit and how long its checks are
       waiting, and is marked when it is at its limit or its alarm is sounding.
+      <!-- STILL OPEN — audited 2026-09-26. teamLoad() in shared/boardModel.ts shows in-flight
+           count against the WIP limit (at-limit / over-limit), unit-tested. What is missing is
+           the SECOND half: no per-team wait-time measure, and no separate review-wait "alarm"
+           distinct from the WIP-limit marker — spec 0003's per-team review-wait alarm
+           (cadence-plan.md's ## WIP Limits) is not surfaced on this card at all. Real gap, not
+           a display oversight. -->
 - [x] A board of 200 specs across 4 teams opens in under two seconds on a normal laptop, and switching
       role views does not re-read the repository.
 - [ ] A spec cannot be marked ready until every readiness item passes, each stated in plain language
       with what is missing.
-- [x] An acceptance check that could be read two ways is flagged, with the reason, before the spec is ready.
+      <!-- STILL OPEN — audited 2026-09-26. The refusal path exists: markSpecReady calls the
+           plugin's spec_transition.py "ready" command, which refuses unless the spec actually is
+           ready, and SpecReadinessPanel.tsx lists every blocking item in plain language before the
+           button is pressed. This LOOKS built and behaves correctly by inspection, but nothing in
+           studio/test exercises SpecReadinessPanel, getSpecReadiness or markSpecReady at all — no
+           unit test, no window test. Left unticked because "looks right" is exactly the standard
+           this project exists to reject; it needs a real test before it is claimed. -->
 - [ ] The risk level is proposed with its reason and confirmed by a person; nobody but a team lead can
       lower one, and anyone can raise one.
+      <!-- STILL OPEN, and this one is a DECISION not a defect — audited 2026-09-26.
+           scripts/spec_transition.py's own comment states its actual rule: "LOWERING one requires
+           --authorised-by ... There is no list of who may authorise a [lowering]." The plugin
+           deliberately enforces NAMED ACCOUNTABILITY (anyone, but recorded against them) rather
+           than a ROLE CHECK (only a team lead). That is a real, considered design in the plugin —
+           not a bug — but it means this acceptance check as WORDED does not match what was built.
+           Needs Matt: either revise the check to say what the plugin actually does, or treat
+           "team lead only" as a genuine feature request (which would need a team-lead field on
+           the roster and a check against it, plugin-side). Not decided here. -->
 - [ ] Every open decision names the person answering it and when it is due; a spec with an unanswered
       decision cannot be handed off.
+      <!-- STILL OPEN — audited 2026-09-26. electron/main/handoff.ts has no reference to the
+           decision log at all; nothing gates a hand-off on an open decision-log item. Genuine gap,
+           not yet built. -->
+- [x] An acceptance check that could be read two ways is flagged, with the reason, before the spec is ready.
 - [x] Handing off names the owner, developer and checker, refuses a developer who is also the checker,
       refuses when the team is at its limit unless a reason is given, and then does the hand-off through
       the plugin's own command.
