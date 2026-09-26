@@ -80,14 +80,24 @@ security-review wait keeps its own line; the refused activity measures are state
 WITH the reason; the gates screen names which guide describes them; and a gate the playbook
 ships but this project does not run is shown as not protecting anything.
 
-**Proven by test.** `test/scorecardExport.test.ts` (17 cases) covers the export's honesty
-rather than its formatting — a missing rate never renders as 0% or 0.0h, a real count of zero
-still renders as a number, a bug nobody analysed says "not recorded" rather than inventing a
-check, and the document shares its row list with the screen so the two cannot describe the same
-measure differently. `scripts/tests/test_gate_inventory.py` (14) and
-`test_foundation_summary.py` (11) cover the read side, including the distinction that matters
-most in both: "there are no gates" and "the guide could not be read" are different claims, as
-are "Foundation delivered nothing" and "this could not be read".
+**Proven by test.** `test/scorecardExport.test.ts` (21 cases as of 2026-09-26, was 17) covers
+the export's honesty rather than its formatting — a missing rate never renders as 0% or 0.0h, a
+real count of zero still renders as a number, a bug nobody analysed says "not recorded" rather
+than inventing a check, and the document shares its row list with the screen so the two cannot
+describe the same measure differently. `scripts/tests/test_gate_inventory.py` (24 as of
+2026-09-26, was 14) and `test_foundation_summary.py` (11) cover the read side, including the
+distinction that matters most in both: "there are no gates" and "the guide could not be read"
+are different claims, as are "Foundation delivered nothing" and "this could not be read".
+
+**Re-audited independently, 2026-09-26, as part of the session-wide pass across specs 0008-0011:
+all ten ticks and all four unticked checks hold up unchanged.** No stale checkmarks found here —
+this spec's write-up was accurate before this pass and still is, aside from the two test counts
+above having grown since it was last written. One nuance worth recording: check 8 ("filter to
+one team") is correctly unticked — no team selector exists in `ExplainViews.tsx` and
+`getScorecard()` takes no team argument — but `scorecardExport.test.ts` already has a `team`
+option on the formatter and asserts it prints "team claims"/"every team" correctly. That's
+scaffolding for the export layer only, not evidence the feature exists anywhere upstream; it
+just means building the filter later starts from a formatter that already knows how to label one.
 
 **Nothing writes.** Every one of these screens is read-only by construction — no write path
 exists in the three components. The one exception is the export, which writes only where a
