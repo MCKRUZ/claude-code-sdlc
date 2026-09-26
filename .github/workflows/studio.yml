@@ -4,8 +4,16 @@ name: Studio
 # Node/TypeScript application inside a Python plugin repository — and until it was folded in
 # here its 233 tests ran on exactly one laptop and nowhere else.
 #
-#   studio  — both TypeScript projects typecheck, then the full vitest suite. BLOCKS once
-#             added to the required checks; see the note on path filters below.
+#   studio  — both TypeScript projects typecheck, then the full vitest suite, on Linux,
+#             Windows and macOS. BLOCKS once added to the required checks; see the note on
+#             path filters below.
+#
+# ── WHY ONLY THIS JOB IS A CROSS-PLATFORM MATRIX ────────────────────────────
+# The `ui` job below opens a real Electron window, which on headless Linux needs xvfb; on
+# Windows and macOS GitHub's runners can open a real window natively, but proving that needs
+# its own OS-conditional steps (no xvfb-run, no Playwright system-library install) and is a
+# separate, larger piece of work than this one. Left Linux-only deliberately, not by oversight
+# — see spec 0008's acceptance-check notes.
 #
 # ── NO PATH FILTER, DELIBERATELY ─────────────────────────────────────────────
 # The obvious optimisation is `paths: [studio/**]` so this only runs when Studio changes.
@@ -34,11 +42,25 @@ concurrency:
 
 jobs:
   studio:
-    name: studio (typecheck + tests)
-    runs-on: ubuntu-latest
+    # Spec 0008's own acceptance check ("runs on Windows and macOS from the same source") had
+    # nothing checking it — every job here ran on ubuntu-latest only, despite real
+    # process.platform branches in the main process for both. Caught in this spec's audit
+    # (2026-09-26). The matrix name below becomes part of the reported check name, which is
+    # why this job's required-status-check registration changed alongside it — a rename here
+    # without that would leave every future PR waiting on a check name that no longer exists.
+    name: studio (typecheck + tests, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: studio
+        # Explicit rather than the platform default (pwsh on Windows) so the POSIX syntax
+        # below (test -x, ||, [ ]) is one script shared across all three runners, not three.
+        # GitHub-hosted Windows runners ship Git Bash for exactly this.
+        shell: bash
     steps:
       - uses: actions/checkout@v7
 
@@ -60,11 +82,15 @@ jobs:
         working-directory: .
         # Cheap, and it turns the most likely failure into a named one. Without this the
         # first symptom is nine test files throwing at import time, which reads like a
-        # Studio fault rather than a missing interpreter.
+        # Studio fault rather than a missing interpreter. Two candidate paths because uv lays
+        # the venv out differently on Windows (Scripts/python.exe) than on macOS/Linux
+        # (bin/python) — the same split test/pluginRoot.ts's own venvPython() already makes.
         run: |
-          test -x scripts/.venv/bin/python \
-            || { echo "::error::scripts/.venv/bin/python is missing, so Studio's integration tests cannot run. uv sync did not put the environment where studio/test/pluginRoot.ts looks."; exit 1; }
-          scripts/.venv/bin/python --version
+          PYTHON=scripts/.venv/bin/python
+          [ -x "$PYTHON" ] || PYTHON=scripts/.venv/Scripts/python.exe
+          test -x "$PYTHON" \
+            || { echo "::error::scripts/.venv's python is missing, so Studio's integration tests cannot run. uv sync did not put the environment where studio/test/pluginRoot.ts looks."; exit 1; }
+          "$PYTHON" --version
 
       - run: npm ci
 

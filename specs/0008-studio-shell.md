@@ -67,15 +67,17 @@ is needed.
            actual conversation isn't wired up yet — this check is honestly about presence and
            labelling, not a working chat, and it reads that way, but it's easy to mistake "ticked"
            for "the chat works" later if this isn't kept in mind. -->
-- [ ] Every command Studio runs appears in the console with its exact command line, its output and how
+- [x] Every command Studio runs appears in the console with its exact command line, its output and how
       long it took. Nothing runs that does not appear there.
-      <!-- GENUINE, CONFIRMED GAP, not just untested (2026-09-26). commandRunner.ts's runCommand()
-           is a real, single logging choke point and everything routed through it is captured
-           correctly. But electron/main/tooling.ts calls execFile/execFileAsync directly for every
-           startup tool-detection command (claude --version, uv --version, git --version, gh
-           --version) — those run and never reach the console log at all. The check's own words
-           ("nothing runs that does not appear there") are violated today, provably, every time
-           Studio starts up. -->
+      <!-- Fixed and ticked (2026-09-26). Was a genuine, confirmed gap: tooling.ts's startup
+           detection (claude/uv/git/gh --version) called execFile directly, bypassing runCommand's
+           logging entirely — proven wrong every time Studio started, not just unverified. Now
+           routes through runCommand like everything else, with a 5s timeoutMs added to
+           runCommand itself (a probe with a broken PATH entry must fail fast, not hang the app
+           before a project is even open — ordinary git/gh calls keep no ceiling). Proven by
+           test/toolingConsoleLog.test.ts (a real detectGit() call reaches the log) and
+           test/commandRunnerTimeout.test.ts (a hanging command is killed and recorded, not left
+           to hang; a fast command is recorded exactly once). -->
 - [ ] The console has a plain view that says what happened in a sentence, and a technical view with the
       raw command and output. No command is hidden from either.
       <!-- Built, not proven (2026-09-26). No test references the console component anywhere. -->
@@ -100,12 +102,16 @@ is needed.
            project folder today — the wording needs revising to match the real, intentional design,
            not the design changing to match the wording. -->
 - [ ] The application runs on Windows and macOS from the same source.
-      <!-- Genuine gap, and a sharp one (2026-09-26). The code is genuinely cross-platform-aware —
-           real process.platform branches for win32/darwin in index.ts, project.ts and tooling.ts —
-           but .github/workflows/studio.yml runs both Studio CI jobs on ubuntu-latest only. Neither
-           platform this check actually names is ever built or tested in CI — including Windows,
-           despite the win32-specific code and despite Windows being where Studio is actually being
-           built and used today. -->
+      <!-- Half fixed (2026-09-26). The `studio` CI job (typecheck + the full vitest suite) is now
+           a real matrix across ubuntu-latest, windows-latest and macos-latest — the required-check
+           registration was updated alongside it, since the matrix changes the reported check names.
+           That proves the code actually builds and its logic is correct on both named platforms,
+           not just Linux. What's still NOT proven: the `ui` job, which opens a real Electron window,
+           stays Linux-only — cross-platform headless GUI automation (no xvfb-run, no Playwright
+           system-library install, different steps per OS) is a separate, larger piece of work, left
+           as a deliberate, documented scope boundary rather than silently expanded into today's fix.
+           Unticked until that's built too — this check is about the application, not just its
+           build. -->
 
 ## Risk Tier
 
