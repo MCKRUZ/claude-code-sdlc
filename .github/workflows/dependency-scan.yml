@@ -78,6 +78,13 @@ jobs:
         with:
           node-version: '22'
 
+      # THE ACTUAL REASON THIS SCAN NEVER SCANNED. Its command has always begun with `uv`,
+      # and this workflow never installed uv — only Python. So the very first word failed
+      # with "command not found", the `|| true` swallowed it, and an empty report was read as
+      # a clean one. ci.yml installs uv in every job that needs it; this workflow was simply
+      # never given the same line.
+      - uses: astral-sh/setup-uv@v8.3.2
+
       # Renamed from "Scan every dependency", which it never was — it is the Python half, and
       # calling it "every" is how the gap stayed invisible.
       - name: Scan Python dependencies
