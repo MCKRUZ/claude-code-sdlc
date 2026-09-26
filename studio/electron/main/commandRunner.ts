@@ -4,7 +4,7 @@
 // construction rather than by convention: there is nowhere else in the app that can spawn
 // a process. The renderer never gets direct process-spawning access at all (see preload).
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { performance } from 'node:perf_hooks'
 import type { ConsoleEntry } from '../../shared/types'
 
@@ -108,6 +108,11 @@ export interface RunCommandOptions {
    * Stdin is always closed even when this is omitted, so a command that happens to read
    * stdin can never hang Studio waiting for input that will never come. */
   input?: string
+  /** Kills the child and records a timeout failure after this many milliseconds. Only for
+   * probes that must never hang the app (a broken PATH entry with no such command) —
+   * ordinary git/gh/plugin-script calls have no ceiling here, since a slow clash resolution
+   * or npm audit taking a while is normal, not a hang. */
+  timeoutMs?: number
 }
 
 /** Runs `command args` in `cwd`, records the full result to the console log (always —
@@ -127,8 +132,16 @@ export function runCommand(
   return new Promise((resolve) => {
     let stdout = ''
     let stderr = ''
+    let settled = false
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined
 
     const finish = (exitCode: number | null, extraStderr?: string) => {
+      // A timeout kill() triggers 'close' too — without this guard that would record and
+      // notify twice for one actual command.
+      if (settled) return
+      settled = true
+      if (timeoutHandle) clearTimeout(timeoutHandle)
+
       const fullStdout = redact(stdout)
       const fullStderr = redact(extraStderr ? `${stderr}\n${extraStderr}`.trim() : stderr)
       const base = {
@@ -173,7 +186,28 @@ export function runCommand(
     }
 
     const env = opts?.env ? { ...process.env, ...opts.env } : undefined
-    const child = spawn(command, args, { cwd, windowsHide: true, env })
+
+    // spawn() usually reports a bad command through the 'error' event below, asynchronously —
+    // but not always. Node's CVE-2024-27980 fix makes an invalid combination (a Windows .cmd
+    // shim spawned without shell:true, which tooling.ts's resolved-binary path can produce)
+    // throw EINVAL SYNCHRONOUSLY instead. Caught here rather than left to propagate, because
+    // this function's whole contract — the one thing that makes "nothing runs that does not
+    // appear in the console" true — is that it never throws. Found by this session's own
+    // correctness review on the PR that removed tooling.ts's old, now-redundant try/catch.
+    let child: ChildProcessWithoutNullStreams
+    try {
+      child = spawn(command, args, { cwd, windowsHide: true, env })
+    } catch (err) {
+      finish(null, err instanceof Error ? err.message : String(err))
+      return
+    }
+
+    if (opts?.timeoutMs) {
+      timeoutHandle = setTimeout(() => {
+        child.kill()
+        finish(null, `Timed out after ${opts.timeoutMs}ms with no response.`)
+      }, opts.timeoutMs)
+    }
 
     child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
     child.stderr.on('data', (chunk) => { stderr += chunk.toString() })

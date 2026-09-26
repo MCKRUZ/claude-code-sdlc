@@ -5,17 +5,22 @@
 // right thing when detection or verification fails. Settings then remembers whatever the
 // person confirmed, so this only runs again if that override stops working.
 
-import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { promisify } from 'node:util'
+import { runCommand } from './commandRunner'
 import type { ToolStatus, ToolingReport } from '../../shared/types'
 
 export type { ToolStatus, ToolingReport }
 
-const execFileAsync = promisify(execFile)
+// Every probe below goes through runCommand — the same console-logging choke point
+// everything else in Studio uses — rather than calling execFile directly. It used to call
+// execFile directly, which meant Studio's own startup tool-detection was invisible in the
+// console log spec 0008 promises captures every command; caught in this spec's audit
+// (2026-09-26). A 5s ceiling on every probe here (unlike ordinary git/gh calls, which have
+// none) guards against a broken PATH entry hanging the app before a project is even open.
+const PROBE_TIMEOUT_MS = 5000
 
 /** How to actually invoke a resolved binary — usually just the binary itself, but on
  * Windows a .cmd/.bat wrapper (common for the GitHub CLI, and some package-manager
@@ -28,12 +33,8 @@ export interface ResolvedBinary {
 }
 
 async function verifyDirect(command: string, versionFlag = '--version'): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync(command, [versionFlag], { timeout: 5000, windowsHide: true })
-    return stdout.trim().split('\n')[0]
-  } catch {
-    return null
-  }
+  const entry = await runCommand(command, [versionFlag], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS })
+  return entry.ok ? entry.stdout.trim().split('\n')[0] : null
 }
 
 /** Resolves the real, fully-qualified path of `command` via `where` (Windows) or `which`
@@ -41,13 +42,10 @@ async function verifyDirect(command: string, versionFlag = '--version'): Promise
  * shell:true either. Returns null if the command isn't on PATH at all. */
 async function resolveOnPath(command: string): Promise<string | null> {
   const finder = process.platform === 'win32' ? 'where' : 'which'
-  try {
-    const { stdout } = await execFileAsync(finder, [command], { timeout: 5000, windowsHide: true })
-    const first = stdout.trim().split('\n')[0]?.trim()
-    return first || null
-  } catch {
-    return null
-  }
+  const entry = await runCommand(finder, [command], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS })
+  if (!entry.ok) return null
+  const first = entry.stdout.trim().split('\n')[0]?.trim()
+  return first || null
 }
 
 /** Verifies `command` by actually running it, trying a direct invocation first (the common
@@ -74,14 +72,15 @@ async function verifyBinary(
     ? { command: 'cmd.exe', prefixArgs: ['/c', resolvedPath] }
     : { command: resolvedPath, prefixArgs: [] }
 
-  try {
-    const { stdout } = await execFileAsync(
-      resolved.command, [...resolved.prefixArgs, versionFlag], { timeout: 5000, windowsHide: true },
-    )
-    return { version: stdout.trim().split('\n')[0], resolved }
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : String(err) }
+  const entry = await runCommand(
+    resolved.command, [...resolved.prefixArgs, versionFlag], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS },
+  )
+  if (!entry.ok) {
+    // Some tools print their real error to stdout, not stderr — fall back to it before
+    // resorting to the bare exit code, which explains nothing about what actually went wrong.
+    return { error: entry.stderr || entry.stdout || `exited with code ${entry.exitCode}` }
   }
+  return { version: entry.stdout.trim().split('\n')[0], resolved }
 }
 
 async function detect(overridePath: string | undefined, command: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
