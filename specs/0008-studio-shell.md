@@ -50,20 +50,62 @@ is needed.
 
 - [ ] Choosing a folder that contains a project opens it; choosing one that does not offers to set a
       project up there instead.
+      <!-- Split (2026-09-26). "Opens it" is proven: test/e2e/documents.spec.ts's "opens the project
+           from the welcome screen" drives a real open through the real window. "Offers to set up" —
+           hasSdlcProject()/previewSetup() (electron/main/project.ts) and SetupFlow.tsx — is built,
+           but nothing anywhere in the suite touches it. -->
 - [ ] The header shows the project name, the playbook it was created from, and the current stage.
+      <!-- Built, not proven (2026-09-26). No test references Header.tsx anywhere. -->
 - [ ] Stage navigation lists every stage with its state — signed off, current, or later — and the
       current stage is the one the project's own state file reports.
+      <!-- Built, not proven (2026-09-26). No test references the stage-nav component anywhere. -->
 - [ ] The chat panel is present on every screen, and states which part of the project it can see.
+      <!-- Built, not proven, and worth reading carefully (2026-09-26). The literal wording holds
+           structurally: Frame.tsx renders ChatPanel unconditionally and wraps every project-area
+           screen, and ChatPanel's own text states what it can see ("Can see: <project>,
+           <stage>"). No test asserts either half. Separately: ChatPanel's own comment says the
+           actual conversation isn't wired up yet — this check is honestly about presence and
+           labelling, not a working chat, and it reads that way, but it's easy to mistake "ticked"
+           for "the chat works" later if this isn't kept in mind. -->
 - [ ] Every command Studio runs appears in the console with its exact command line, its output and how
       long it took. Nothing runs that does not appear there.
+      <!-- GENUINE, CONFIRMED GAP, not just untested (2026-09-26). commandRunner.ts's runCommand()
+           is a real, single logging choke point and everything routed through it is captured
+           correctly. But electron/main/tooling.ts calls execFile/execFileAsync directly for every
+           startup tool-detection command (claude --version, uv --version, git --version, gh
+           --version) — those run and never reach the console log at all. The check's own words
+           ("nothing runs that does not appear there") are violated today, provably, every time
+           Studio starts up. -->
 - [ ] The console has a plain view that says what happened in a sentence, and a technical view with the
       raw command and output. No command is hidden from either.
+      <!-- Built, not proven (2026-09-26). No test references the console component anywhere. -->
 - [ ] A command that fails shows its error in the console and a plain-language explanation on screen,
       and leaves the project unchanged.
+      <!-- Built, not proven (2026-09-26). runCommand() returns a failed ConsoleEntry rather than
+           throwing or partially applying, which supports "leaves the project unchanged" by design —
+           but nothing tests either half, including the on-screen explanation. -->
 - [ ] Setting up a new project runs the plugin's own setup and shows exactly what it will create before
       it creates anything.
+      <!-- Built, not proven (2026-09-26). runSetup()/previewSetup() (project.ts) call the plugin's
+           real init_project.py — no reimplementation found — but no test drives the
+           preview-before-create flow. -->
 - [ ] Nothing outside the project folder is read or written, except the list of recent projects.
+      <!-- Half proven, half a genuine wording mismatch (2026-09-26). Containment for anything
+           inside the project is solidly proven — test/projectPaths.test.ts refuses path traversal
+           and a real symlink escape. But Settings (shared/types.ts) also stores five tool-path
+           overrides and all of spec 0009's per-project sync bookkeeping in Electron's own userData,
+           outside any project folder — a deliberate, necessary choice (sync state is explicitly kept
+           out of the repository), not a bug. The named exception in this check ("except the list of
+           recent projects") is narrower than what is actually and correctly stored outside the
+           project folder today — the wording needs revising to match the real, intentional design,
+           not the design changing to match the wording. -->
 - [ ] The application runs on Windows and macOS from the same source.
+      <!-- Genuine gap, and a sharp one (2026-09-26). The code is genuinely cross-platform-aware —
+           real process.platform branches for win32/darwin in index.ts, project.ts and tooling.ts —
+           but .github/workflows/studio.yml runs both Studio CI jobs on ubuntu-latest only. Neither
+           platform this check actually names is ever built or tested in CI — including Windows,
+           despite the win32-specific code and despite Windows being where Studio is actually being
+           built and used today. -->
 
 ## Risk Tier
 
