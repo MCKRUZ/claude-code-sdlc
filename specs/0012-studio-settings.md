@@ -83,7 +83,17 @@ every change to them shows up in history like any other change.
            Weaker than the two checks above, which at least had a proven write half. -->
 - [x] Every setting screen states which file the setting is stored in.
 - [ ] Changing any setting produces a commit like any other change, with who changed it and why.
-- [ ] A setting the current person lacks permission to change is shown but not editable, with the reason.
+- [x] Every setting is shown to whoever opens it; who may actually change the file it lives in is
+      controlled by the repository and the code host, not by a permission model inside Studio.
+      <!-- Amended and ticked 2026-09-26, resolved by delegated decision — see Decision List.
+           Previously worded "shown but not editable, with the reason", which describes a
+           permission model that does not exist anywhere in this system (same shape as spec
+           0011's risk-tier finding). Building one in Studio would be enforced only in the app,
+           which anyone editing the file directly walks straight around — exactly the pattern
+           this spec was already amended once to avoid (see the risk-rule check above). True by
+           construction: nothing in SettingsScreen.tsx hides or disables a control based on who is
+           signed in, and the actual gate — who can push a change to the file — is the code host's
+           branch protection and collaborator list, already exercised by spec 0009's save path. -->
 
 ### What is proven, and what is still missing (2026-09-24, corrected 2026-09-26)
 
@@ -134,15 +144,10 @@ proves what actually renders on screen, which is why those three are un-ticked n
    alarm thresholds are read and passed through; the elapsed time is not computed. Same root
    cause as spec 0011's "how long it has waited": real waiting time needs a per-pull-request
    fetch the bulk call deliberately does not make.
-4. **A setting shown but not editable because this person may not change it — WITH THE SAME
-   PROBLEM AS SPEC 0011's RISK RULE.** There is no permission model for settings anywhere in
-   this system, so there is nothing to read to decide who may change what. Building it in
-   Studio would be a permission rule enforced only in the app, which anyone editing the file
-   directly steps around — the pattern this spec was already amended once to avoid. Making it
-   real means deciding where setting permissions live, which is a decision rather than a task.
-   **Recommendation:** drop this check. The files are in the repository and the code host
-   already decides who may change them; a second permission model in the app would be
-   theatre. Left for Matt.
+4. ~~A setting shown but not editable because this person may not change it.~~ **RESOLVED
+   2026-09-26 — see Decision List.** Amended and ticked above: the recommendation below was
+   adopted rather than left open. No in-app permission model was built; the code host's own
+   access control is the real gate, same as it already is for every other write Studio makes.
 
 **Partly proven:** a settings change committing with who and why is built and the save path is
 tested elsewhere, but not yet driven end-to-end through the window against a real remote. And
@@ -175,3 +180,17 @@ anywhere but a project file, and that Studio cannot change anyone's repository p
   A rule a project can switch off is not a rule, and the playbook is the thing being sold. The
   cost is accepted: a client wanting an exception has to change the playbook, which is the right
   place for that argument to happen rather than a settings screen nobody reviews.
+- **Should Studio build its own permission model to decide who may change a given setting?**
+  Raised while auditing: this spec's own acceptance check described a rule that exists nowhere
+  in the system — the same shape as spec 0011's risk-tier finding. Delegated by Matt on
+  2026-09-26 ("do what you think is right") and decided by Claude — recorded as a delegated
+  decision rather than as Matt's own, so a later reader knows whose judgement this was.
+  **No.** The files these settings live in are already in the repository, and the code host
+  already decides who may push a change to them — building a second permission model inside
+  Studio would be enforced only in the app, which anyone editing the file directly walks
+  straight around, and would drift from the code host's real rules the moment the two disagree.
+  The acceptance check is amended to describe this — every setting shown, editability gated by
+  the repository, not by Studio — rather than dropped outright, since the underlying question
+  ("can this person actually change this?") is still worth the screen answering honestly.
+  **Revisit** only if Studio ever needs a reason to know identity beyond attribution (it does
+  not today) — that would be a bigger change than this screen.

@@ -179,6 +179,47 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     await expect(page.locator('input')).toHaveCount(0)
   })
 
+  /** The risk-tier control (spec 0011's own acceptance check, and its Decision List): raising
+   * is free, but lowering a tier is refused unless a name is given, and that name is what gets
+   * written to the spec. This was built correctly but had never been driven through the real
+   * window — "looks right by reading the code" is exactly the standard this project exists to
+   * reject, so this proves it rather than trusting the earlier read. Spec 124 is a DRAFT at
+   * MEDIUM (124 % 4 === 0, 124 % 3 === 1) — draft/ready specs are the only ones whose status
+   * view renders the readiness panel at all. */
+  test('raising a risk tier is free; lowering one is refused without a name, and recorded with one', async () => {
+    // The previous test left the app on a spec's status view (it never navigates back) —
+    // "Everything" belongs to the board list, not the status view.
+    await page.getByRole('button', { name: '← Back to the board' }).click()
+    await page.getByRole('button', { name: 'Everything' }).click()
+    await page.getByPlaceholder('Search').fill('synthetic board row 124')
+    await expect(page.getByText('1 shown')).toBeVisible()
+    await page.locator('li button').first().click()
+    await expect(page.getByText(/Owns it/)).toBeVisible({ timeout: 30_000 })
+
+    const highButton = page.getByRole('button', { name: 'HIGH', exact: true })
+    const lowButton = page.getByRole('button', { name: 'LOW', exact: true })
+
+    // Raising needs nothing — no name field appears, and it takes effect immediately.
+    await highButton.click()
+    await expect(page.getByLabel(/Who authorised lowering this tier/)).toHaveCount(0)
+    await expect(highButton).toHaveClass(/bg-slate-900/, { timeout: 10_000 })
+
+    // Lowering (now from HIGH) without a name is refused, in the plugin's own words, and the
+    // name field only appears BECAUSE of that specific refusal.
+    await lowButton.click()
+    const authorisedByInput = page.getByLabel(/Who authorised lowering this tier/)
+    await expect(authorisedByInput).toBeVisible({ timeout: 10_000 })
+    // The plugin's own refusal reason, not Studio's — the field only exists because of it.
+    await expect(page.getByText(/needs a name/i)).toBeVisible()
+    await expect(lowButton).not.toHaveClass(/bg-slate-900/)
+
+    // Naming someone lets it through, and the field disappears again once it has.
+    await authorisedByInput.fill('Matt K')
+    await lowButton.click()
+    await expect(lowButton).toHaveClass(/bg-slate-900/, { timeout: 10_000 })
+    await expect(page.getByLabel(/Who authorised lowering this tier/)).toHaveCount(0)
+  })
+
 
   /** The settings screen (spec 0012), in the real window.
    *
