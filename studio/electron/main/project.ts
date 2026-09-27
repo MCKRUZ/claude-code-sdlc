@@ -20,6 +20,28 @@ function venvPythonPath(pluginScriptsDir: string): string {
     : join(pluginScriptsDir, '.venv', 'bin', 'python')
 }
 
+/** argparse's own failure shape: a "usage:" line, then "<script>.py: error: ...". Reached in
+ * practice when the installed plugin is older (or newer) than what Studio was built against —
+ * a real project on this very machine hit this calling generate_status.py --json against a
+ * plugin version that predates the flag. Detected once, here, rather than guessed at
+ * differently by the ten-odd call sites that each build their own error text from
+ * entry.stderr — a stale plugin is the single most likely explanation for THIS shape of
+ * failure specifically, and a raw argparse dump is not something a person should have to
+ * decode themselves to learn that. */
+const ARGPARSE_MISMATCH = /^usage:[\s\S]*?error: (unrecognized arguments|the following arguments are required|invalid choice)/m
+
+export function explainIfVersionMismatch(entry: ConsoleEntry, scriptName: string): ConsoleEntry {
+  if (entry.ok || !ARGPARSE_MISMATCH.test(entry.stderr)) return entry
+  return {
+    ...entry,
+    stderr: `The installed claude-code-sdlc plugin doesn't match what Studio expects — `
+      + `${scriptName} rejected an option Studio needs. This project's plugin may be older or `
+      + `newer than the one Studio was built against. Point Studio at a different plugin `
+      + `checkout in Settings, or update the installed plugin, then try again.\n\n`
+      + `What the script actually said:\n${entry.stderr}`,
+  }
+}
+
 /** Runs a plugin script inside the PLUGIN's own scripts directory (its dependencies live
  * there, via scripts/pyproject.toml) — not the project directory.
  *
@@ -44,11 +66,10 @@ export async function runPluginScript(
   const venvPython = venvPythonPath(pluginScriptsDir)
   const script = scriptPath(pluginScriptsDir, scriptName)
   const opts = input === undefined ? undefined : { input }
-  if (existsSync(venvPython)) {
-    return runCommand(venvPython, [script, ...args], pluginScriptsDir, opts)
-  }
-  return runCommand(
-    'uv', ['run', '--project', pluginScriptsDir, script, ...args], pluginScriptsDir, opts)
+  const entry = existsSync(venvPython)
+    ? await runCommand(venvPython, [script, ...args], pluginScriptsDir, opts)
+    : await runCommand('uv', ['run', '--project', pluginScriptsDir, script, ...args], pluginScriptsDir, opts)
+  return explainIfVersionMismatch(entry, scriptName)
 }
 
 export function hasSdlcProject(projectPath: string): boolean {

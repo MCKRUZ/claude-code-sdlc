@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.2 — 2026-09-26
+
+The version had not been bumped since 1.5.1 despite substantial work landing on `master` in the
+interim (SDLC Studio, the optional desktop add-on in `studio/`, in particular) — so an installed
+copy had no way to know it was behind, and `claude plugin update` reported "already at the
+latest" against a marketplace entry that genuinely was. Caught in person: Studio, run from an
+installed copy still on 1.5.1, called `generate_status.py --json` and got a raw argparse
+rejection back, because 1.5.1's copy of that script predates the `--json` flag.
+
+- **Studio no longer shows a raw argparse dump for this.** `runPluginScript()` (the one
+  chokepoint every plugin-script call goes through) now recognises argparse's own failure shape
+  — a `usage:` line followed by `error: unrecognized arguments` or similar — and leads with a
+  plain-language explanation that a plugin-version mismatch is the likely cause, while still
+  showing the raw detail underneath for anyone who wants it.
+- **This entry, and the version bump that comes with it,** is what actually fixes the reported
+  symptom for anyone already on 1.5.1: nothing to install by hand, just `claude plugin update`.
+
 ## 1.5.1 — 2026-08-28
 
 The discipline seats shipped in July as commands and agents (`/sdlc-feature`, `/sdlc-rules`,
