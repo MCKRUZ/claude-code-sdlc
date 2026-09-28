@@ -19,6 +19,11 @@
 - **Studio: the stage list only highlights a stage while its documents are showing.** It kept the
   last stage clicked ringed on the Build board and Settings, which read as "these are that
   stage's things".
+- **Studio: opening a project now shows a blocking "Opening…" overlay with a running clock.**
+  Opening reads the project through the plugin and can take seconds; with nothing on screen it
+  looked as if the click had done nothing, so people clicked again. Picking a folder or clicking
+  a recent project now covers the window, names the project and counts the seconds, and takes the
+  keyboard as well as the pointer, until the open finishes or fails.
 
 ## 1.6.1 — 2026-09-28
 

@@ -114,11 +114,34 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   })
 
   test('opens the project from the welcome screen', async () => {
+    // Opening reads the project through the plugin and can take seconds, so a blocking overlay
+    // with a running clock must appear the moment the project is clicked. It can be gone again
+    // in well under a polling interval, so it is recorded by an observer installed BEFORE the
+    // click rather than waited for afterwards.
+    await page.evaluate(() => {
+      const seen = { appeared: false, coversWindow: false, sawSeconds: false }
+      ;(window as unknown as { __opening: typeof seen }).__opening = seen
+      new MutationObserver(() => {
+        const el = document.querySelector('[data-testid="opening-overlay"]')
+        if (!el) return
+        seen.appeared = true
+        const r = el.getBoundingClientRect()
+        seen.coversWindow = r.width >= window.innerWidth - 1 && r.height >= window.innerHeight - 1
+        seen.sawSeconds = /\d+s/.test(el.textContent ?? '')
+      }).observe(document.body, { childList: true, subtree: true, characterData: true })
+    })
     await page.getByText('e2e project').click()
     // The stage home's HEADING specifically. A bare text match became ambiguous once a
     // Documents navigation tab existed, which is the kind of breakage a loose locator
     // invites — it was only ever unique by accident.
     await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
+
+    const seen = await page.evaluate(() => (window as unknown as { __opening: Record<string, boolean> }).__opening)
+    expect(seen.appeared, 'the opening overlay never appeared').toBe(true)
+    expect(seen.coversWindow, 'the overlay did not cover the whole window').toBe(true)
+    expect(seen.sawSeconds, 'the overlay showed no running time').toBe(true)
+    // And it is gone once the project is open — it must never strand the person behind it.
+    await expect(page.getByTestId('opening-overlay')).toHaveCount(0)
   })
 
   test('the stage says what is missing, and each item goes to the field it is about', async () => {
