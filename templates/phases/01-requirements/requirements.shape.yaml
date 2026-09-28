@@ -63,3 +63,37 @@ sections:
         type: text
         required: false
         guidance: Other requirements this one depends on, if any
+
+  - heading: Requirement Traceability
+    fields:
+      - label: Requirement Traceability
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per FR-NNN tracing its description, priority, source persona, user story, source document, and status
+
+  - heading: Prioritization Rationale
+    fields:
+      - label: P0 criteria
+        anchor: inline
+        type: text
+        required: false
+        guidance: What makes a requirement P0 for this project
+      - label: P1 criteria
+        anchor: inline
+        type: text
+        required: false
+        guidance: What makes a requirement P1
+      - label: P2 criteria
+        anchor: inline
+        type: text
+        required: false
+        guidance: What makes a requirement P2, and how we will decide if it makes the cut
+
+  - heading: Requirements Review Notes
+    fields:
+      - label: Requirements Review Notes
+        anchor: section
+        type: table
+        required: false
+        guidance: Each reviewer, the date, what they flagged, and how it was addressed

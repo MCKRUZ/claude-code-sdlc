@@ -28,3 +28,38 @@ sections:
         type: longtext
         required: true
         guidance: Symptoms, numbered diagnosis steps with actual commands, and resolution branches for each likely root cause
+
+  - heading: Common Operations
+    fields:
+      - label: Restart the Service
+        subheading: Restart the Service
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The restart command, how long to wait, and the health check that confirms it came back
+      - label: Scale Up/Down
+        subheading: Scale Up/Down
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Commands to scale to N instances and to verify the new instance count
+      - label: Run Database Migration
+        subheading: Run Database Migration
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Commands to check pending migrations, apply them, and verify they applied
+      - label: Roll Back a Deployment
+        subheading: Roll Back a Deployment
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Decision criteria for rolling back, the revert and verify commands, and what to do after rollback
+
+  - heading: Escalation Path
+    fields:
+      - label: Escalation Path
+        anchor: section
+        type: table
+        required: false
+        guidance: Who to contact for each severity, how to reach them, and the expected response time

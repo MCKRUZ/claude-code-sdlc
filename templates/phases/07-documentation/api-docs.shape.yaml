@@ -30,3 +30,11 @@ sections:
         type: table
         required: true
         guidance: Every error code the API returns, with HTTP status, description, and resolution guidance
+
+  - heading: Changelog (from Phase 2 API Contracts)
+    fields:
+      - label: Changelog
+        anchor: section
+        type: table
+        required: false
+        guidance: Each change from the Phase 2 API contracts, whether it is breaking, the endpoint or schema affected, and why it changed

@@ -18,6 +18,22 @@ Non-functional requirements define *how* the system must behave, not what it doe
 
 ---
 
+## Reliability & Availability
+
+| NFR ID | Requirement | Threshold | Measurement Method | Priority | Measurement Basis |
+|--------|-------------|-----------|-------------------|---------|------------------|
+| NFR-R01 | Uptime SLA | 99.9% per month | Monitoring dashboard | P0 | Contractual: customer SLA |
+
+---
+
+## Scalability
+
+| NFR ID | Requirement | Threshold | Notes |
+|--------|-------------|-----------|-------|
+| NFR-S01 | Concurrent users | Must support 500 concurrent adjusters | Sized for month-end filing peak |
+
+---
+
 ## Security
 <!-- REQUIRED: All P0 security NFRs (NFR-SEC01 through NFR-SEC06) must have the authentication method, authorization model, and encryption standard specified -->
 
@@ -29,6 +45,22 @@ Non-functional requirements define *how* the system must behave, not what it doe
 | NFR-SEC04 | Data at rest | AES-256 | P0 |
 | NFR-SEC05 | OWASP compliance | Top 10 reviewed before release | P0 |
 | NFR-SEC06 | Secrets management | Azure Key Vault | P0 |
+
+---
+
+## Maintainability
+
+| NFR ID | Requirement | Threshold |
+|--------|-------------|-----------|
+| NFR-M01 | Test coverage | >= 80% line coverage, >= 95% on the dedup path |
+
+---
+
+## Compliance
+
+| NFR ID | Regulation / Standard | Specific Requirement | Verification |
+|--------|-----------------------|---------------------|-------------|
+| NFR-C01 | SOC 2 | Access to claim records is logged and reviewable | Audit |
 
 ---
 

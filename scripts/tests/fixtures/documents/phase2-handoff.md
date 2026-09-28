@@ -4,7 +4,7 @@
 ## Requirements Summary
 <!-- REQUIRED: Total requirement counts (functional and non-functional), P0 epic count, completion date, and name of approver -->
 
-**Total requirements:** 12 functional, 9 non-functional
+**Total requirements:** 12 functional, 12 non-functional
 **P0 epics:** 2
 **Date completed:** 2026-09-23
 **Approved by:** Priya N.
@@ -63,7 +63,7 @@
 | Artifact | Status | Notes |
 |----------|--------|-------|
 | `requirements.md` | ✅ Complete | 12 functional requirements |
-| `non-functional-requirements.md` | ✅ Complete | 9 NFRs across 6 categories |
+| `non-functional-requirements.md` | ✅ Complete | 12 NFRs across 6 categories |
 | `epics.md` | ✅ Complete | 2 P0, 1 P1, 1 P2 epics |
 
 ---

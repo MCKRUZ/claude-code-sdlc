@@ -45,3 +45,35 @@ sections:
         type: longtext
         required: true
         guidance: At least 2 architectural questions (AQ-01, AQ-02+), each traced to the FR/NFR that raises it
+
+  - heading: Open Items from Requirements
+    fields:
+      - label: Open Items from Requirements
+        anchor: section
+        type: table
+        required: false
+        guidance: Each unresolved item with a description, whether it blocks Design, and how, by whom, and by when it will be resolved
+
+  - heading: Known Risks Entering Design
+    fields:
+      - label: Known Risks Entering Design
+        anchor: section
+        type: table
+        required: false
+        guidance: Each risk with likelihood (H / M / L), impact (H / M / L), and mitigation
+
+  - heading: Artifacts Produced in Requirements
+    fields:
+      - label: Artifacts Produced in Requirements
+        anchor: section
+        type: table
+        required: false
+        guidance: Each artifact produced in Requirements, its status, and notes such as counts
+
+  - heading: Exit Gate Status
+    fields:
+      - label: Exit Gate Status
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The exit-gate checklist, ticked as each condition is met, ending with who approved and when

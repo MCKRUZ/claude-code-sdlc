@@ -19,6 +19,21 @@ sections:
         required: true
         guidance: At least 3 personas, including one technical and one business stakeholder, all four columns filled in
 
+  - heading: Current State
+    fields:
+      - label: Process Flow (As-Is)
+        subheading: Process Flow (As-Is)
+        anchor: section
+        type: longtext
+        required: false
+        guidance: ASCII or text diagram of how things work today, without the proposed solution
+      - label: Current State Metrics
+        subheading: Current State Metrics
+        anchor: section
+        type: table
+        required: false
+        guidance: At least 3 measurable current-state data points, each with its source and why it matters
+
   - heading: Root Cause Analysis — Five Whys
     fields:
       - label: Five Whys Analysis
@@ -31,3 +46,29 @@ sections:
         type: text
         required: true
         guidance: One clear sentence summarizing the fundamental issue this project addresses
+
+  - heading: Problem Scope
+    fields:
+      - label: In scope
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: What this initiative will address
+      - label: Out of scope
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: What this initiative will NOT address (and why)
+      - label: Adjacent problems we know exist but are deferring
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: Known neighboring problems this initiative is deliberately leaving for later
+
+  - heading: Opportunity Statement
+    fields:
+      - label: Opportunity Statement
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Completing this project will allow [persona] to [do X] instead of [current painful thing], resulting in [measurable outcome]

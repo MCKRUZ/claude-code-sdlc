@@ -142,13 +142,166 @@ class TestReadDocumentFlatSections:
         assert "Renamed Section" in result["warnings"][0]
         assert result["blocks"] == [{"kind": "free_text", "start": 0, "end": len(CRLF_DOC), "text": CRLF_DOC}]
 
-    def test_extra_undeclared_headings_are_just_free_text(self):
+    def test_extra_undeclared_headings_do_not_break_the_match(self):
         shape = {"sections": [{"heading": "Overview", "fields": []}]}
         result = ds.read_document(CRLF_DOC, shape)
         assert result["matched"] is True
         _assert_tiles(CRLF_DOC, result)
         kinds = [b["kind"] for b in result["blocks"]]
-        assert kinds.count("free_text") >= 1  # "## Notes ..." tail is free text
+        assert kinds.count("free_text") >= 1  # the title above the first section
+
+
+class TestOptionalSectionsMayBeAbsent:
+    """A section whose every field is optional may be missing from a document — a person
+    trimmed it, or the document predates the section. That must not throw the whole document
+    back to raw text; only a missing REQUIRED section does."""
+
+    OPTIONAL = {"heading": "Notes", "fields": [
+        {"label": "Body", "anchor": "section", "type": "longtext", "required": False},
+    ]}
+    REQUIRED_OVERVIEW = {"heading": "Overview", "fields": [
+        {"label": "Project", "anchor": "inline", "type": "text", "required": True},
+    ]}
+    DOC_WITHOUT_NOTES = "# Title\r\n\r\n## Overview\r\n\r\n**Project:** Acme\r\n"
+
+    def test_absent_optional_section_still_matches(self):
+        shape = {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]}
+        result = ds.read_document(self.DOC_WITHOUT_NOTES, shape)
+        assert result["matched"] is True
+        assert result["warnings"] == []
+        _assert_tiles(self.DOC_WITHOUT_NOTES, result)
+
+    def test_absent_optional_section_produces_no_block(self):
+        shape = {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]}
+        result = ds.read_document(self.DOC_WITHOUT_NOTES, shape)
+        assert [b.get("heading") for b in result["blocks"] if b["kind"] == "section"] == ["Overview"]
+
+    def test_absent_required_section_still_falls_back_to_free_text(self):
+        doc = "# Title\r\n\r\n## Notes\r\n\r\nhi\r\n"
+        shape = {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]}
+        result = ds.read_document(doc, shape)
+        assert result["matched"] is False
+        assert "Overview" in result["warnings"][0]
+        assert result["blocks"] == [{"kind": "free_text", "start": 0, "end": len(doc), "text": doc}]
+
+    def test_section_with_one_required_field_is_required(self):
+        mixed = {"heading": "Notes", "fields": [
+            {"label": "Body", "anchor": "section", "type": "longtext", "required": False},
+            {"label": "Owner", "anchor": "inline", "type": "text", "required": True},
+        ]}
+        result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, mixed]})
+        assert result["matched"] is False
+
+    def test_section_declaring_no_fields_is_treated_as_required(self):
+        # Nothing says it is optional, so the original strict behaviour stands.
+        bare = {"heading": "Notes", "fields": []}
+        result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, bare]})
+        assert result["matched"] is False
+
+    def test_absent_optional_pattern_section_is_skipped(self):
+        optional_pattern = {"heading_pattern": r"^v\d+\.\d+", "fields": [
+            {"label": "Summary", "anchor": "section", "type": "longtext", "required": False},
+        ]}
+        result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, optional_pattern]})
+        assert result["matched"] is True
+
+    def test_present_optional_section_is_still_read_as_a_field(self):
+        doc = self.DOC_WITHOUT_NOTES + "\r\n## Notes\r\n\r\nKept.\r\n"
+        result = ds.read_document(doc, {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]})
+        notes = next(b for b in result["blocks"] if b.get("heading") == "Notes")
+        assert notes["fields"]["Body"]["value"] == "Kept.\r\n"
+        assert "custom" not in notes
+
+
+class TestSectionsThePersonAdded:
+    """A `## ` section no shape declares is the person's own addition. It is shown as an
+    editable section of its own instead of as raw text, and its bytes are addressed exactly
+    like any other field's, so an edit touches only them."""
+
+    SHAPE = {"sections": [{"heading": "Overview", "fields": [
+        {"label": "Project", "anchor": "inline", "type": "text", "required": True},
+    ]}]}
+    DOC = (
+        "# Title\r\n\r\n"
+        "## Overview\r\n\r\n**Project:** Acme\r\n\r\n"
+        "## Stakeholder Quotes\r\n\r\n> We lose a day a week.\r\n\r\n"
+        "### Source\r\n\r\nInterview, 2026-09-01.\r\n"
+    )
+
+    def _custom(self, result):
+        return [b for b in result["blocks"] if b.get("custom")]
+
+    def test_an_undeclared_section_becomes_a_custom_section_block(self):
+        custom = self._custom(ds.read_document(self.DOC, self.SHAPE))
+        assert [b["heading"] for b in custom] == ["Stakeholder Quotes"]
+        assert custom[0]["kind"] == "section"
+
+    def test_custom_section_carries_one_whole_body_field(self):
+        block = self._custom(ds.read_document(self.DOC, self.SHAPE))[0]
+        assert list(block["fields"]) == ["Content"]
+        f = block["fields"]["Content"]
+        assert f["type"] == "longtext"
+        assert f["anchor"] == "section"
+        assert f["required"] is False
+        assert f["empty"] is False
+
+    def test_custom_field_value_runs_to_the_end_and_keeps_subsections(self):
+        f = self._custom(ds.read_document(self.DOC, self.SHAPE))[0]["fields"]["Content"]
+        assert f["value"] == (
+            "> We lose a day a week.\r\n\r\n### Source\r\n\r\nInterview, 2026-09-01.\r\n"
+        )
+
+    def test_custom_blocks_tile_and_sit_in_document_order(self):
+        result = ds.read_document(self.DOC, self.SHAPE)
+        _assert_tiles(self.DOC, result)
+        starts = [b["start"] for b in result["blocks"]]
+        assert starts == sorted(starts)
+
+    def test_custom_section_between_two_declared_ones_keeps_its_place(self):
+        doc = (
+            "## Overview\n\n**Project:** A\n\n"
+            "## Mine\n\nmy text\n\n"
+            "## Notes\n\nn\n"
+        )
+        shape = {"sections": [
+            {"heading": "Overview", "fields": [
+                {"label": "Project", "anchor": "inline", "type": "text", "required": True}]},
+            {"heading": "Notes", "fields": [
+                {"label": "Body", "anchor": "section", "type": "longtext", "required": True}]},
+        ]}
+        result = ds.read_document(doc, shape)
+        assert [b.get("heading") for b in result["blocks"] if b["kind"] == "section"] == [
+            "Overview", "Mine", "Notes"]
+        _assert_tiles(doc, result)
+
+    def test_editing_a_custom_field_touches_only_its_own_bytes(self):
+        f = self._custom(ds.read_document(self.DOC, self.SHAPE))[0]["fields"]["Content"]
+        edited = ds.write_document(self.DOC, [(f["start"], f["end"], "Rewritten.\r\n")])
+        assert edited == self.DOC[: f["start"]] + "Rewritten.\r\n" + self.DOC[f["end"]:]
+        assert "**Project:** Acme" in edited
+
+    def test_empty_custom_section_reads_as_empty(self):
+        doc = "## Overview\n\n**Project:** A\n\n## Blank\n"
+        f = self._custom(ds.read_document(doc, self.SHAPE))[0]["fields"]["Content"]
+        assert f["empty"] is True
+
+    def test_no_custom_blocks_when_every_heading_is_declared(self):
+        doc = "## Overview\n\n**Project:** A\n"
+        assert self._custom(ds.read_document(doc, self.SHAPE)) == []
+
+    def test_a_mismatched_document_still_falls_back_with_no_custom_blocks(self):
+        shape = {"sections": [{"heading": "Renamed Section", "fields": []}]}
+        result = ds.read_document(self.DOC, shape)
+        assert result["matched"] is False
+        assert self._custom(result) == []
+
+    def test_a_repeating_sections_subheadings_are_not_custom_sections(self):
+        doc = "## Requirements\n\n### FR-001: a\n\n**Priority:** P0\n"
+        shape = {"sections": [{
+            "heading": "Requirements", "repeats": True, "numbering": {"pattern": "FR-%03d"},
+            "fields": [{"label": "Priority", "anchor": "inline", "type": "text", "required": True}],
+        }]}
+        assert self._custom(ds.read_document(doc, shape)) == []
 
 
 class TestReadDocumentLabeledBlockAndSectionAnchors:

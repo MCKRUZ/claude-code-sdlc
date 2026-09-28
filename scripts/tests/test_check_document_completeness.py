@@ -46,6 +46,19 @@ class TestCheckDocument:
         findings = cdc.check_document(DELETED_SECTION, SHAPE)
         assert any(f["reason"] == "section not found" for f in findings)
 
+    def test_deleted_optional_section_is_not_reported(self):
+        """A trimmed optional section is the person's choice, not a gap — and must not turn
+        the whole document into a 'section not found' finding."""
+        assert cdc.check_document(FILLED.split("## Rationale")[0], SHAPE) == []
+
+    def test_a_section_the_person_added_is_not_reported(self):
+        text = FILLED + "\r\n## Stakeholder Quotes\r\n\r\nWe lose a day a week.\r\n"
+        assert cdc.check_document(text, SHAPE) == []
+
+    def test_an_empty_section_the_person_added_is_not_reported(self):
+        text = FILLED + "\r\n## Parking Lot\r\n"
+        assert cdc.check_document(text, SHAPE) == []
+
 
 class TestFormatFindings:
     def test_no_findings(self):

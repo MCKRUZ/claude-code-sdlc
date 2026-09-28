@@ -43,3 +43,50 @@ sections:
         type: table
         required: true
         guidance: All 4 roles (deployment lead, database owner, infrastructure, business stakeholder) with real contact info and availability hours
+
+  - heading: Current System State
+    fields:
+      - label: System status
+        anchor: inline
+        type: text
+        required: false
+        guidance: Healthy, Degraded, or other
+      - label: How to verify
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: The health check command and its expected output
+      - label: Running instances
+        anchor: inline
+        type: text
+        required: false
+        guidance: Number of running instances
+      - label: Version in production
+        anchor: inline
+        type: text
+        required: false
+        guidance: How to check the version running in production
+
+  - heading: Known Issues in Production
+    fields:
+      - label: Known Issues in Production
+        anchor: section
+        type: table
+        required: false
+        guidance: Each open issue with severity, impact, workaround, and fix timeline
+
+  - heading: Artifacts Produced in Deployment
+    fields:
+      - label: Artifacts Produced in Deployment
+        anchor: section
+        type: table
+        required: false
+        guidance: Each deployment artifact with its status and notes
+
+  - heading: Exit Gate Status
+    fields:
+      - label: Exit Gate Status
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Exit-gate checklist for the deployment phase, ending with who approved and when

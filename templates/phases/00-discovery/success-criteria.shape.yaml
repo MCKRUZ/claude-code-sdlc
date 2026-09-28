@@ -21,3 +21,29 @@ sections:
         type: checklist
         required: true
         guidance: At least 3 binary, specific pass/fail requirements that are absolute blockers for release
+
+  - heading: Time to Value
+    fields:
+      - label: Target delivery
+        anchor: inline
+        type: text
+        required: false
+        guidance: Phase at which stakeholders will first see value
+      - label: Full value realized
+        anchor: inline
+        type: text
+        required: false
+        guidance: When all success dimensions can be measured
+      - label: Review checkpoint
+        anchor: inline
+        type: text
+        required: false
+        guidance: Date or milestone at which we will assess against these criteria
+
+  - heading: Success Owner
+    fields:
+      - label: Success Owner
+        anchor: section
+        type: table
+        required: false
+        guidance: For each dimension, who owns measuring it and who reviews the results

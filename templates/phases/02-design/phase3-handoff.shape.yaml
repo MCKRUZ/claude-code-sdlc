@@ -48,3 +48,39 @@ sections:
         type: longtext
         required: true
         guidance: Every section listed with its components, dependencies, and complexity estimate so Planning can assign sprints
+
+  - heading: Decisions Locked in Design
+    fields:
+      - label: Decisions Locked in Design
+        anchor: section
+        type: table
+        required: false
+        guidance: Each decision made in Design, what was decided, the ADR that records it, and why
+  - heading: Technical Risks for Planning to Address
+    fields:
+      - label: Technical Risks for Planning to Address
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Risks with a mitigation strategy, plus the recommended spikes worth doing before committing to estimates
+  - heading: Open Design Questions
+    fields:
+      - label: Open Design Questions
+        anchor: section
+        type: table
+        required: false
+        guidance: Questions not resolved in Design - what depends on each answer, who resolves it, and when
+  - heading: Artifacts Produced in Design
+    fields:
+      - label: Artifacts Produced in Design
+        anchor: section
+        type: table
+        required: false
+        guidance: Each artifact Design produced, its status, and a note on what it covers
+  - heading: Exit Gate Status
+    fields:
+      - label: Exit Gate Status
+        anchor: section
+        type: checklist
+        required: false
+        guidance: The Design exit-gate checklist, ending with the approver and approval date

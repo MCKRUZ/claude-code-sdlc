@@ -14,3 +14,18 @@ sections:
         type: table
         required: true
         guidance: Every ADR created in this phase, listed with its status
+
+  - heading: Superseded ADRs
+    fields:
+      - label: Superseded ADRs
+        anchor: section
+        type: table
+        required: false
+        guidance: ADRs that a later decision has replaced, with what replaced them
+  - heading: Proposed (Under Review)
+    fields:
+      - label: Proposed (Under Review)
+        anchor: section
+        type: table
+        required: false
+        guidance: ADRs still under review, with who proposed them

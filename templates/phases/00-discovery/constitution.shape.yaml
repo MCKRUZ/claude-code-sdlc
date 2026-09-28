@@ -40,3 +40,19 @@ sections:
         type: table
         required: true
         guidance: Who owns phase transitions, architecture decisions, scope changes, compliance overrides
+
+  - heading: Amendment Process
+    fields:
+      - label: Amendment Process
+        anchor: section
+        type: longtext
+        required: false
+        guidance: How this living document may be changed - documented rationale, review by the decision authority, recorded in state history
+
+  - heading: Version History
+    fields:
+      - label: Version History
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per version with its date, author, and change summary

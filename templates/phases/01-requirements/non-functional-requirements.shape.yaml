@@ -6,6 +6,14 @@ description: "How well the system must behave — speed, availability, security 
 # modeled as one anchor: section field for its enclosing "## " heading.
 
 sections:
+  - heading: Overview
+    fields:
+      - label: Overview
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What non-functional requirements are and that they bind implementation as tightly as functional ones
+
   - heading: Performance
     fields:
       - label: Performance
@@ -14,6 +22,22 @@ sections:
         required: true
         guidance: "NFR-P01 and NFR-P02 filled in with specific numeric thresholds, a measurement method, and a Measurement Basis (Measured / Industry standard / Contractual / aspirational)"
 
+  - heading: Reliability & Availability
+    fields:
+      - label: Reliability & Availability
+        anchor: section
+        type: table
+        required: false
+        guidance: Uptime SLA, RTO, RPO, and MTBF - each with a threshold, measurement method, priority, and measurement basis
+
+  - heading: Scalability
+    fields:
+      - label: Scalability
+        anchor: section
+        type: table
+        required: false
+        guidance: Horizontal scale, data volume, and concurrent-user targets with thresholds
+
   - heading: Security
     fields:
       - label: Security
@@ -21,6 +45,22 @@ sections:
         type: table
         required: true
         guidance: All P0 security NFRs (NFR-SEC01 through NFR-SEC06) with authentication method, authorization model, and encryption standard specified
+
+  - heading: Maintainability
+    fields:
+      - label: Maintainability
+        anchor: section
+        type: table
+        required: false
+        guidance: Test coverage, file and function size, build time, and new-developer setup thresholds
+
+  - heading: Compliance
+    fields:
+      - label: Compliance
+        anchor: section
+        type: table
+        required: false
+        guidance: Each regulation or standard that applies, the specific control, and how it is verified
 
   - heading: NFR Acceptance Test Plan
     fields:
