@@ -291,6 +291,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
           <StageHome
             projectPath={projectPath}
             stageId={viewedStageId}
+            actor={actor}
             onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
               setOpenDocFocus(focus)

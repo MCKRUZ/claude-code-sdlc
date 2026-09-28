@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DocumentFocus, ReadinessFinding, StageReadiness } from '../../shared/types'
+import type { DocumentFocus, ReadinessFinding, SignOffQuestion, StageReadiness } from '../../shared/types'
+import { SignOffQuestions } from './SignOffQuestions'
 
 /** One readiness item, in the words a person would use. The plugin reports a path, a section
  * and a field; a reader wants a sentence. Kept out of the component so the phrasing is one
@@ -21,14 +22,19 @@ function describe(finding: ReadinessFinding): string {
 export function StageHome({
   projectPath,
   stageId,
+  actor,
   onOpenDocument,
 }: {
   projectPath: string
   stageId?: string
+  /** Who a confirmation is recorded under; empty when nobody is signed in. */
+  actor: string
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null)
   const [loading, setLoading] = useState(true)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -37,6 +43,16 @@ export function StageHome({
   }, [projectPath, stageId])
 
   useEffect(() => { refresh() }, [refresh])
+
+  const toggle = async (question: SignOffQuestion, confirmed: boolean) => {
+    if (!readiness) return
+    setBusyId(question.id)
+    setConfirmError(null)
+    const result = await window.studio.setJudgementConfirmation(projectPath, readiness.stageId, question.id, confirmed, actor)
+    if (!result.ok) setConfirmError(result.error ?? 'The confirmation was not recorded.')
+    await refresh()
+    setBusyId(null)
+  }
 
   if (loading && !readiness) {
     return <p className="text-sm text-slate-400">Checking this stage…</p>
@@ -121,19 +137,14 @@ export function StageHome({
         </div>
       )}
 
-      {readiness.judgementConditions.length > 0 && (
-        <div>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-            Questions for whoever signs this off
-          </h3>
-          {/* These are deliberately not checkboxes. No check can answer them, and rendering
-              them as something tickable would suggest the app had verified them. */}
-          <ul className="space-y-2 rounded-xl border border-slate-200 bg-white p-4">
-            {readiness.judgementConditions.map((c) => (
-              <li key={c} className="text-sm text-slate-700">— {c}</li>
-            ))}
-          </ul>
-        </div>
+      {readiness.judgement.length > 0 && (
+        <SignOffQuestions
+          questions={readiness.judgement}
+          actor={actor}
+          busyId={busyId}
+          error={confirmError}
+          onToggle={toggle}
+        />
       )}
 
       <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">

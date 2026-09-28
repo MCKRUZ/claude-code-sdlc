@@ -14,7 +14,7 @@
 import { runPluginScript } from './project'
 import { matchesSection } from '../../shared/sections'
 import { openDocument } from './documents'
-import type { ReadinessFinding, StageDocument, StageReadiness } from '../../shared/types'
+import type { ReadinessFinding, SignOffQuestion, StageDocument, StageReadiness } from '../../shared/types'
 
 interface RawFinding {
   section: string
@@ -40,6 +40,8 @@ interface RawReadiness {
   sign_off: { status: string; completed_at: string | null; signed_off_by: string | null }
   artifacts: RawArtifact[]
   judgement_conditions: string[]
+  /** Absent from a plugin that predates sign-off confirmations. */
+  judgement?: SignOffQuestion[]
   blocking_count: number
   ready: boolean
 }
@@ -47,7 +49,7 @@ interface RawReadiness {
 function emptyReadiness(error: string): StageReadiness {
   return {
     ok: false, stageId: '', display: '', isCurrent: false,
-    documents: [], findings: [], judgementConditions: [],
+    documents: [], findings: [], judgement: [],
     signOff: { status: 'unknown', signedOffBy: null, completedAt: null },
     ready: false, error,
   }
@@ -81,6 +83,38 @@ async function locate(
       ? { ...finding, start: field.start, end: field.end }
       : { ...finding, start: section.start, end: section.end }
   })
+}
+
+/** The questions from a plugin that predates confirmations: shown as they always were, but with no
+ * id, so nothing can be ticked against a record that plugin cannot keep. */
+function unconfirmable(texts: string[]): SignOffQuestion[] {
+  return texts.map((text) => ({
+    id: '', text, hint: { status: 'judgement', detail: 'Needs your judgement.' }, confirmation: null,
+  }))
+}
+
+/** Record (or withdraw) one person's confirmation of one sign-off question, through the plugin —
+ * which owns the record, and refuses a missing name or a question that is not this stage's. */
+export async function setJudgementConfirmation(
+  projectPath: string,
+  pluginScriptsDir: string,
+  stageId: string,
+  questionId: string,
+  confirmed: boolean,
+  actor: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const entry = await runPluginScript(pluginScriptsDir, 'sign_off_confirmations.py', [
+    confirmed ? 'confirm' : 'withdraw',
+    '--repo', projectPath,
+    '--phase', stageId,
+    '--question-id', questionId,
+    '--actor', actor,
+  ])
+  if (!entry.ok) {
+    // The script prints its refusal ("Error: a confirmation needs a named person") on stdout.
+    return { ok: false, error: (entry.stdout.trim() || entry.stderr.trim() || 'The confirmation was not recorded.') }
+  }
+  return { ok: true }
 }
 
 export async function getStageReadiness(
@@ -126,7 +160,7 @@ export async function getStageReadiness(
     isCurrent: raw.stage.is_current,
     documents,
     findings,
-    judgementConditions: raw.judgement_conditions,
+    judgement: raw.judgement ?? unconfirmable(raw.judgement_conditions),
     signOff: {
       status: raw.sign_off.status,
       signedOffBy: raw.sign_off.signed_off_by,

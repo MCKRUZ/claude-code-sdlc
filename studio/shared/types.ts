@@ -303,6 +303,20 @@ export interface ReadinessFinding {
   end?: number
 }
 
+/** What the plugin can say about a sign-off question. A pre-check, never a verdict: `looks_met`
+ * means what a check can see is in order and the person still confirms; `judgement` means nothing
+ * here can check it. */
+export type HintStatus = 'looks_met' | 'not_yet' | 'judgement'
+
+export interface SignOffQuestion {
+  /** What a confirmation is recorded against. Empty when the installed plugin predates
+   * confirmations, in which case the question is shown but cannot be ticked. */
+  id: string
+  text: string
+  hint: { status: HintStatus; detail: string }
+  confirmation: { actor: string; ts: string } | null
+}
+
 export interface StageReadiness {
   ok: boolean
   stageId: string
@@ -311,8 +325,9 @@ export interface StageReadiness {
   isCurrent: boolean
   documents: StageDocument[]
   findings: ReadinessFinding[]
-  /** Exit-gate conditions no check can answer — questions for whoever signs off. */
-  judgementConditions: string[]
+  /** The exit-gate questions no file check can answer, for whoever signs off — each with what
+   * the software could see about it and who, if anyone, has already confirmed it. */
+  judgement: SignOffQuestion[]
   signOff: {
     status: string
     signedOffBy: string | null
@@ -829,6 +844,10 @@ export interface StudioApi {
 
   // --- Documents (spec 0010) ---
   getStageReadiness(projectPath: string, stageId?: string): Promise<StageReadiness>
+  /** Record (or withdraw) one person's confirmation of one sign-off question. */
+  setJudgementConfirmation(
+    projectPath: string, stageId: string, questionId: string, confirmed: boolean, actor: string,
+  ): Promise<{ ok: boolean; error?: string }>
   openDocument(projectPath: string, relPath: string): Promise<OpenDocumentResult>
   /** Changes by other people since this person last opened the document. Marking it seen is a
    * separate, explicit call so merely listing changes never clears them. */

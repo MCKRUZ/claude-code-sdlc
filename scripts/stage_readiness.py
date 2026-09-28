@@ -36,7 +36,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_document_completeness as cdc  # noqa: E402
 import document_shape as ds  # noqa: E402
 import phase_model as pm  # noqa: E402
+import sign_off_confirmations as soc  # noqa: E402
 import yaml  # noqa: E402
+from confirmation_hints import hint_for  # noqa: E402
+from sign_off_confirmations import judgement_questions as judgement_conditions  # noqa: E402,F401
 
 TEMPLATES_ROOT = Path(__file__).resolve().parent.parent / "templates"
 
@@ -96,20 +99,6 @@ def signoff_state(state: dict, phase_id: str) -> dict:
     }
 
 
-def judgement_conditions(phase_def: dict) -> list[str]:
-    """The exit-gate conditions that are questions for a person rather than file checks — the
-    registry deliberately carries both, and these are the ones a readiness view should put in
-    front of whoever is about to sign."""
-    conditions = ((phase_def.get("exit_gate") or {}).get("conditions")) or []
-    out = []
-    for c in conditions:
-        if isinstance(c, str):
-            out.append(c)
-        elif isinstance(c, dict) and c.get("check") and not c.get("artifact"):
-            out.append(str(c["check"]))
-    return out
-
-
 def _assess_folder(art, full: Path, rel: str) -> dict:
     """A folder artifact (the registry writes `adrs/` with a trailing slash). It has no single
     document to read through a shape, so it is not shaped and nothing opens it as a file;
@@ -159,6 +148,16 @@ def assess_artifacts(repo_root: Path, phase_def: dict, project_type: str | None)
     return results
 
 
+def judgement_items(repo_root: Path, phase_id: str, state: dict) -> list[dict]:
+    """Each sign-off question as a person answers it: an id to confirm against, what the software
+    can say about it (a pre-check, never a verdict), and who has already confirmed it."""
+    confirmed = soc.current_confirmations(repo_root, phase_id)
+    return [
+        {"id": qid, "text": text, "hint": hint_for(text, repo_root, state), "confirmation": confirmed.get(qid)}
+        for qid, text in soc.questions(phase_id)
+    ]
+
+
 def assess(repo_root: Path, phase_id: str | None) -> dict:
     state = load_state(repo_root)
     current = pm.normalize_id(state.get("current_phase", 0)) if state else "0"
@@ -170,6 +169,8 @@ def assess(repo_root: Path, phase_id: str | None) -> dict:
 
     artifacts = assess_artifacts(repo_root, phase_def, (state.get("project_type") if state else None))
     blocking = [a for a in artifacts if not a["ready"]]
+    stage_id = pm.normalize_id(phase_def["id"])
+    judgement = judgement_items(repo_root, stage_id, state)
 
     return {
         "stage": {
@@ -182,6 +183,8 @@ def assess(repo_root: Path, phase_id: str | None) -> dict:
         "sign_off": signoff_state(state, pm.normalize_id(phase_def["id"])),
         "artifacts": artifacts,
         "judgement_conditions": judgement_conditions(phase_def),
+        "judgement": judgement,
+        "confirmed_count": sum(1 for i in judgement if i["confirmation"]),
         "blocking_count": len(blocking),
         "ready": not blocking,
     }
@@ -215,11 +218,15 @@ def format_report(result: dict) -> str:
         if not a.get("shaped"):
             lines.append(f"{detail_indent}(no shape — only its presence could be checked)")
 
-    judgement = result["judgement_conditions"]
+    judgement = result["judgement"]
     if judgement:
-        lines += ["", "  Questions for whoever signs this off (no check can answer these)"]
-        for c in judgement:
-            lines.append(f"    - {c}")
+        lines += ["", "  Questions for whoever signs this off (a person confirms each; hints only pre-check)"]
+        for item in judgement:
+            c = item["confirmation"]
+            lines.append(f"    {'[x]' if c else '[ ]'} {item['text']}")
+            lines.append(f"          {item['hint']['detail']}")
+            if c:
+                lines.append(f"          Confirmed by {c['actor']} at {c['ts']}")
 
     so = result["sign_off"]
     lines += ["", f"  Sign-off: {so['status']}" + (f" by {so['signed_off_by']}" if so.get("signed_off_by") else "")]

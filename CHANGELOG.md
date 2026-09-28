@@ -2,6 +2,21 @@
 
 ## 1.6.2 — 2026-09-28
 
+- **Sign-off questions can now be ticked, with a pre-check beside each.** Every phase's exit gate
+  carries questions only a person can answer ("Scope boundaries are unambiguous"). They were a
+  plain list. Each now has a box that a named person ticks — recorded with who and when in
+  `.sdlc/metrics/confirmation-log.jsonl` (append-only, so two people ticking on two machines never
+  overwrite each other, and synced by Studio) — and, on the right, what the software could see:
+  "Looks done — 4 dimensions each state pass and fail thresholds and where they are read from.
+  Confirm you agree." / "Not yet — 2 of 3 dimensions have a named source" / "Needs your
+  judgement". A hint is a pre-check, never a verdict: "Looks done" leaves its box empty. Hints
+  exist for Phase 0's four questions and Phase 1's architectural-question and decision-log ones;
+  every other question says it needs judgement. `/sdlc-next` now reads the record and will not ask
+  for sign-off while a question is unconfirmed (`sign_off_confirmations.py`, `confirmation_hints.py`;
+  `stage_readiness.py --json` gains `judgement` and `confirmed_count`). A question reworded later
+  gets a new id, so a tick is never carried onto a question nobody read. `advance_phase.py` and
+  the phase registry are unchanged — the rule is in the command's instructions, so someone
+  running the low-level script by hand can still skip it.
 - **Fixed: 1.6.0's new shape fields could show a real document as having a gap it didn't have,
   and hide its content.** A labeled block matched its label word for word, so a document that
   wrote `**In scope (v1) — both halves of the one problem:**` where the template says

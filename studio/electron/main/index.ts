@@ -12,7 +12,7 @@ import { combineWithClaude } from './claudeAssist'
 import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save } from './sync'
 import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } from './documents'
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
-import { getStageReadiness } from './readiness'
+import { getStageReadiness, setJudgementConfirmation } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
   clearGateAuth, getConnectionReport, getFoundationSummary, getGateAuth, getGateInventory,
@@ -232,12 +232,21 @@ function registerIpcHandlers() {
     if (!scriptsDir) {
       return {
         ok: false, stageId: '', display: '', isCurrent: false, documents: [], findings: [],
-        judgementConditions: [], signOff: { status: 'unknown', signedOffBy: null, completedAt: null },
+        judgement: [], signOff: { status: 'unknown', signedOffBy: null, completedAt: null },
         ready: false, error: 'claude-code-sdlc plugin scripts not found',
       }
     }
     return getStageReadiness(projectPath, scriptsDir, stageId)
   })
+
+  ipcMain.handle(
+    'studio:setJudgementConfirmation',
+    async (_event, projectPath: string, stageId: string, questionId: string, confirmed: boolean, actor: string) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
+      return setJudgementConfirmation(projectPath, scriptsDir, stageId, questionId, confirmed, actor)
+    },
+  )
 
   const noScripts = (relPath: string) => ({
     ok: false, path: relPath, shaped: false, warnings: [], sections: [],

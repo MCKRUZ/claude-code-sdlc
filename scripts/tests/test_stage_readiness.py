@@ -231,6 +231,65 @@ class TestDoesNotWrite:
         assert state_path.read_bytes() == before
 
 
+class TestJudgementItems:
+    """The questions as a person answers them: an id to tick against, what the software can say
+    about each, and who has already confirmed it."""
+
+    def test_each_question_carries_an_id_its_words_and_a_hint(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        items = assess(repo, "0")["judgement"]
+        assert [i["text"] for i in items] == assess(repo, "0")["judgement_conditions"]
+        assert all(i["id"] and i["hint"]["status"] in {"looks_met", "not_yet", "judgement"} for i in items)
+        assert all(i["confirmation"] is None for i in items)
+
+    def test_the_project_type_hint_reads_the_projects_own_state(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        by_text = {i["text"]: i for i in assess(repo, "0")["judgement"]}
+        type_item = next(v for k, v in by_text.items() if k.startswith("project_type is recorded"))
+        state = yaml.safe_load((repo / ".sdlc" / "state.yaml").read_text(encoding="utf-8"))
+        expected = "looks_met" if state.get("project_type") else "not_yet"
+        assert type_item["hint"]["status"] == expected
+
+    def test_a_confirmation_appears_on_its_question(self, tmp_path: Path):
+        from sign_off_confirmations import confirm
+
+        repo = _project(tmp_path)
+        first = assess(repo, "0")["judgement"][0]
+        confirm(repo, "0", first["id"], "Matt K")
+        after = assess(repo, "0")
+        assert after["judgement"][0]["confirmation"]["actor"] == "Matt K"
+        assert after["judgement"][1]["confirmation"] is None
+        assert after["confirmed_count"] == 1
+
+    def test_confirming_does_not_make_the_documents_ready(self, tmp_path: Path):
+        # Ticking a question is a person's word about judgement; it says nothing about whether
+        # the documents are complete, and must not change that answer.
+        from sign_off_confirmations import confirm
+
+        repo = _project(tmp_path)
+        before = assess(repo, "0")
+        for item in before["judgement"]:
+            confirm(repo, "0", item["id"], "Matt K")
+        after = assess(repo, "0")
+        assert after["ready"] == before["ready"]
+        assert after["blocking_count"] == before["blocking_count"]
+
+    def test_the_human_report_shows_boxes_hints_and_who_ticked(self, tmp_path: Path):
+        from sign_off_confirmations import confirm
+        from stage_readiness import format_report
+
+        repo = _project(tmp_path)
+        confirm(repo, "0", assess(repo, "0")["judgement"][0]["id"], "Matt K")
+        report = format_report(assess(repo, "0"))
+        assert "[x]" in report and "[ ]" in report
+        assert "Matt K" in report
+
+    def test_reading_readiness_writes_no_confirmation_ledger(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        assess(repo, "0")
+        assert not (repo / ".sdlc" / "metrics" / "confirmation-log.jsonl").exists()
+
+
 class TestCli:
     def test_json_mode_exits_zero_and_is_parseable(self, tmp_path: Path):
         repo = _project(tmp_path)
