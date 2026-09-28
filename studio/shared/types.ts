@@ -42,9 +42,14 @@ export interface RecentProject {
  * both sides were known to agree on (spec 0009's decision 4: no scratch clone, so this lives
  * only in Studio's own settings, never in the repository itself). A file with any entry in
  * `pendingClashSections` is frozen: pull() will not advance its ancestor or write to it again
- * until every listed section is resolved. */
+ * until every listed section is resolved.
+ *
+ * `ancestorHash` is absent for a file Studio has never seen the two sides agree on: it exists
+ * here and on the remote, they differ, and nobody can say which is newer. That is a clash like
+ * any other and is saved as one; it just has no shared version to compare against, which a
+ * whole-file clash does not need. */
 export interface FileSyncState {
-  ancestorHash: string
+  ancestorHash?: string
   pendingClashSections?: string[]
 }
 

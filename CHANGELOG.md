@@ -34,6 +34,16 @@
   with no name recorded gets an outlined tick and says so. The current stage shows how many of its
   documents are complete. Build Loop reads "Specs, checks and close-out" rather than "Not
   started", since specs are built before the plugin marks the stage as reached.
+- **Studio: a sync clash the header reports can now always be resolved.** When a file existed on
+  both sides and differed, and Studio had no shared starting point for it (or it was not a
+  document the plugin reads section by section), the pull reported a whole-file clash but never
+  saved it. The header counted it ("4 sections need your input"), the clash screen, which reads
+  what was saved, found nothing and never opened, the next pull raised it again, and saving was
+  refused, so that file could not be saved from Studio at all. Every clash is now saved when it
+  is raised, resolved by choosing mine, theirs or a combination without needing a shared starting
+  version, counted in the header by what is actually waiting (including files frozen by an earlier
+  pull), and cleared automatically if the two sides come to agree. Tested against a real git
+  remote with a second clone as the teammate.
 
 ## 1.6.1 — 2026-09-28
 
