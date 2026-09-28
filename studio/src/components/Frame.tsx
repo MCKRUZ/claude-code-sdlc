@@ -14,6 +14,7 @@ export function Frame({
   consoleEntries,
   syncState,
   viewedStageId,
+  showViewedStage,
   onSelectStage,
   children,
 }: {
@@ -23,6 +24,8 @@ export function Frame({
   /** The stage whose home is currently showing, or undefined for the project's current stage —
    * used only to highlight the right row, since StageHome itself resolves the same default. */
   viewedStageId?: string
+  /** Whether a stage's documents are on screen; false on the Build board, Settings and so on. */
+  showViewedStage: boolean
   onSelectStage: (stageId: string) => void
   children: ReactNode
 }) {
@@ -32,7 +35,7 @@ export function Frame({
     <div className="flex h-screen flex-col bg-slate-50">
       <Header status={status} syncState={syncState} consoleOpen={consoleOpen} onToggleConsole={() => setConsoleOpen((v) => !v)} />
       <div className="flex min-h-0 flex-1">
-        <StageNav status={status} viewedStageId={viewedStageId} onSelect={onSelectStage} />
+        <StageNav status={status} viewedStageId={viewedStageId} showViewed={showViewedStage} onSelect={onSelectStage} />
         <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
         <ChatPanel status={status} />
       </div>

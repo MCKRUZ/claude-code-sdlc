@@ -169,6 +169,26 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('heading', { name: 'Phase 1: Requirements' })).toBeVisible({ timeout: 30_000 })
   })
 
+  test('the stage list only highlights a stage while its documents are showing', async () => {
+    // The highlight followed the last stage clicked even after the person moved to the Build
+    // board, so a project could show Phase 0 ringed above a list of specs from the whole
+    // project — reading as "these are Phase 0's things".
+    const highlighted = page.locator('nav[aria-label="Project stages"] [aria-current="page"]')
+    await page.getByRole('button', { name: /^Phase 0: Discovery/ }).click()
+    await expect(highlighted).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Build', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Needs me' })).toBeVisible({ timeout: 60_000 })
+    await expect(highlighted).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Documents', exact: true }).click()
+    await expect(highlighted).toHaveCount(1)
+
+    // Leave the file on the stage the rest of its serial tests expect.
+    await page.getByRole('button', { name: /^Phase 1: Requirements/ }).click()
+    await expect(page.getByRole('heading', { name: 'Phase 1: Requirements' })).toBeVisible({ timeout: 30_000 })
+  })
+
   test('opens a document as sections and fields, showing where it lives', async () => {
     await page.getByRole('button', { name: /^requirements\.md/ }).click()
     // Spec 0010: every field shows where the document lives, without leaving the page.

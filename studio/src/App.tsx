@@ -183,6 +183,7 @@ function App() {
         consoleEntries={consoleEntries}
         syncState={syncState}
         viewedStageId={viewedStageId}
+        showViewedStage={area === 'documents'}
         onSelectStage={(stageId) => {
           setArea('documents')
           setOpenDoc(null)

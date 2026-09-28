@@ -11,6 +11,14 @@
   Inline labels stay exact, since `**Owner email:**` is a different field from `**Owner:**`.
   Measured on a real project: 1.6.1 added two findings versus 1.5.2, both in one section, and
   this removes both.
+- **Studio: the stage list no longer says "Signed off" for a stage nobody signed.** The plugin's
+  `stage_state: 'signed_off'` only means the stage's status is `completed`; the name is reported
+  separately. A finished stage now reads "Completed" unless a name was recorded, and "Signed off"
+  (with the name on hover) when one was. On a real project two of three finished stages had no
+  name recorded and were both labelled "Signed off".
+- **Studio: the stage list only highlights a stage while its documents are showing.** It kept the
+  last stage clicked ringed on the Build board and Settings, which read as "these are that
+  stage's things".
 
 ## 1.6.1 — 2026-09-28
 
