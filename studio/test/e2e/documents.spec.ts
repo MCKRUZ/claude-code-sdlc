@@ -154,6 +154,21 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('button', { name: /^epics\.md/ })).toBeDisabled()
   })
 
+  test('clicking a finished stage in the left-hand list actually goes there', async () => {
+    // StageNav used to render each row as a plain <div> with no click handler at all, and the
+    // stage home was hard-wired to the project's CURRENT phase — so a signed-off phase like
+    // Discovery was permanently unreachable from the list, not just visually inert. Phase 0 is
+    // signed off in this fixture (current_phase was moved to "1" in beforeAll), so clicking it
+    // is the real regression case, not just "some other phase".
+    await page.getByRole('button', { name: /^Phase 0: Discovery/ }).click()
+    await expect(page.getByRole('heading', { name: 'Phase 0: Discovery' })).toBeVisible({ timeout: 30_000 })
+
+    // Back to the project's actual current stage, so the rest of this file's serial tests run
+    // against the state they expect.
+    await page.getByRole('button', { name: /^Phase 1: Requirements/ }).click()
+    await expect(page.getByRole('heading', { name: 'Phase 1: Requirements' })).toBeVisible({ timeout: 30_000 })
+  })
+
   test('opens a document as sections and fields, showing where it lives', async () => {
     await page.getByRole('button', { name: /^requirements\.md/ }).click()
     // Spec 0010: every field shows where the document lives, without leaving the page.
