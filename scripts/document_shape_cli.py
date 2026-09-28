@@ -54,7 +54,9 @@ import yaml  # noqa: E402
 #   1 — (no key) sections the shape declares; a missing required section falls back to free text
 #   2 — an optional section may be absent; an undeclared `## ` section comes back as a `custom`
 #       section with one whole-body "Content" field
-READ_CONTRACT = 2
+#   3 — a document missing a required section still comes back as sections (`matched` true), with the
+#       gap named in `warnings`; only a document in which nothing is recognized is one free-text block
+READ_CONTRACT = 3
 
 
 class CliError(Exception):

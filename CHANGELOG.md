@@ -55,6 +55,14 @@
 - **Claude is now told to keep a template's headings.** `SKILL.md` gains a "Writing Artifacts" rule:
   start from the template, keep its `##` headings exactly (extra sections are welcome), and run the
   phase's readiness check before moving on. The phase guides only pointed at a template before.
+- **A document missing a required section no longer turns to raw text.** Until now one missing
+  required heading made Studio show the whole document as plain, uneditable text. The sections that
+  are found are now shown as normal, the missing one is named in a notice above the document and in
+  the readiness list, and only a document in which no section is recognized at all is plain text.
+  Every section shown was found by its heading, so it is definitely that section; that is why the
+  original "never a partial match" rule no longer earns its cost. `read` reports this as contract 3,
+  so Studio flags an older plugin. On 70 real documents in four projects, 54 now show as sections,
+  up from 15 in 1.6.1 (token-tracker: 13 of 13).
 
 ## 1.6.1 — 2026-09-28
 

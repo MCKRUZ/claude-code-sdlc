@@ -176,13 +176,37 @@ class TestOptionalSectionsMayBeAbsent:
         result = ds.read_document(self.DOC_WITHOUT_NOTES, shape)
         assert [b.get("heading") for b in result["blocks"] if b["kind"] == "section"] == ["Overview"]
 
-    def test_absent_required_section_still_falls_back_to_free_text(self):
+    def test_absent_required_section_is_reported_but_does_not_hide_the_rest(self):
+        """A document that lacks one required section used to be thrown back to raw text as a whole.
+        Each section that IS found was found by its heading, so it is definitely that section;
+        the missing one is a finding, not a reason to hide the others."""
         doc = "# Title\r\n\r\n## Notes\r\n\r\nhi\r\n"
         shape = {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]}
         result = ds.read_document(doc, shape)
+        assert result["matched"] is True
+        assert "Overview" in result["warnings"][0]
+        notes = next(b for b in result["blocks"] if b.get("heading") == "Notes")
+        assert notes["fields"]["Body"]["value"] == "hi\r\n"
+        _assert_tiles(doc, result)
+
+    def test_a_document_with_nothing_recognizable_is_still_free_text(self):
+        doc = "# Title\r\n\r\n## Unrelated\r\n\r\nhi\r\n"
+        result = ds.read_document(doc, {"sections": [self.REQUIRED_OVERVIEW]})
         assert result["matched"] is False
         assert "Overview" in result["warnings"][0]
         assert result["blocks"] == [{"kind": "free_text", "start": 0, "end": len(doc), "text": doc}]
+
+    def test_every_missing_required_section_is_named(self):
+        two = {"sections": [self.REQUIRED_OVERVIEW, {"heading": "Risks", "fields": [
+            {"label": "Body", "anchor": "section", "type": "longtext", "required": True}]}, self.OPTIONAL]}
+        result = ds.read_document("# T\n\n## Notes\n\nx\n", two)
+        assert result["matched"] is True
+        assert [w for w in result["warnings"] if "Overview" in w] and [w for w in result["warnings"] if "Risks" in w]
+
+    def test_a_complete_document_carries_no_warnings(self):
+        doc = self.DOC_WITHOUT_NOTES  # has Overview; Notes is optional
+        result = ds.read_document(doc, {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]})
+        assert result["matched"] is True and result["warnings"] == []
 
     def test_section_with_one_required_field_is_required(self):
         mixed = {"heading": "Notes", "fields": [
@@ -190,13 +214,15 @@ class TestOptionalSectionsMayBeAbsent:
             {"label": "Owner", "anchor": "inline", "type": "text", "required": True},
         ]}
         result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, mixed]})
-        assert result["matched"] is False
+        assert result["matched"] is True  # Overview is there and is shown
+        assert any("Notes" in w for w in result["warnings"])  # Notes is required, so its absence is reported
 
     def test_section_declaring_no_fields_is_treated_as_required(self):
         # Nothing says it is optional, so the original strict behaviour stands.
         bare = {"heading": "Notes", "fields": []}
         result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, bare]})
-        assert result["matched"] is False
+        assert result["matched"] is True
+        assert any("Notes" in w for w in result["warnings"])
 
     def test_absent_optional_pattern_section_is_skipped(self):
         optional_pattern = {"heading_pattern": r"^v\d+\.\d+", "fields": [

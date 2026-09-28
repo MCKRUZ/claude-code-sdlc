@@ -46,6 +46,20 @@ class TestCheckDocument:
         findings = cdc.check_document(DELETED_SECTION, SHAPE)
         assert any(f["reason"] == "section not found" for f in findings)
 
+    def test_a_missing_required_section_is_reported_and_the_sections_that_exist_are_still_checked(self):
+        """With the document no longer thrown back to raw text for a missing section, the fields of
+        the sections that ARE there are read and checked as well — both kinds of gap show."""
+        shape = {"template": "x", "version": "1.0", "sections": [
+            {"heading": "Overview", "fields": [
+                {"label": "Body", "anchor": "section", "type": "longtext", "required": True}]},
+            {"heading": "Risks", "fields": [
+                {"label": "Body", "anchor": "section", "type": "longtext", "required": True}]},
+        ]}
+        findings = cdc.check_document("# T\n\n## Overview\n\n\n", shape)  # Overview empty, Risks missing
+        reasons = sorted(f["reason"] for f in findings)
+        assert reasons == ["absent or empty", "section not found"]
+        assert any(f["field"] == "Body" and f["section"] == "Overview" for f in findings)
+
     def test_deleted_optional_section_is_not_reported(self):
         """A trimmed optional section is the person's choice, not a gap — and must not turn
         the whole document into a 'section not found' finding."""

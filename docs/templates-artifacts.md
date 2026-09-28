@@ -101,10 +101,11 @@ what's there:
 - **`scripts/document_shape.py`** is the read/write library. It never parses a document into a
   model and regenerates it — every recognized field is a byte span into the *original* text, and
   a write replaces only that span, so a document round-trips byte-for-byte when nothing changed,
-  and a real edit changes only the bytes it targets. A document missing a **required** section
-  (someone renamed or deleted it by hand) reads as **all free text with a warning** — never a
-  partial, guessed match. A section whose fields are all optional may be absent without that
-  fallback, since a shape now covers every section of its template, not just the gate-required
+  and a real edit changes only the bytes it targets. A document in which **no** section
+  is recognized reads as **all free text with a warning**. One that merely lacks a **required**
+  section still reads as sections, with the gap reported in `warnings` and shown to the reader:
+  every section that is shown was found by its heading, so it is definitely the one it says it is.
+  A section whose fields are all optional may be absent silently, since a shape now covers every section of its template, not just the gate-required
   ones. A `## ` section the shape doesn't declare — one a person added to their own document — is
   read as an editable section of its own (`custom: true`, one whole-body "Content" field) rather
   than raw text. A section is found by its heading as the shape writes it, by an `aliases:` entry,

@@ -36,9 +36,11 @@ def check_document(doc_text: str, shape: dict) -> list[dict]:
     result = ds.read_document(doc_text, shape)
     findings = []
 
+    # A required section the document lacks. When nothing at all was recognized that is the whole
+    # story; when the document matched only in part, the sections that exist are checked below too.
+    for w in result["warnings"]:
+        findings.append({"section": w, "field": None, "reason": "section not found"})
     if not result["matched"]:
-        for w in result["warnings"]:
-            findings.append({"section": w, "field": None, "reason": "section not found"})
         return findings
 
     for block in result["blocks"]:

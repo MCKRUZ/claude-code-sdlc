@@ -17,13 +17,15 @@ survives untouched — these templates check out as CRLF on Windows, and a naive
 read/write would silently rewrite every line ending, which is not a byte-identical round
 trip even when no field changed.
 
-Match semantics (spec 0007's Decision List, amended): every REQUIRED section the shape
-declares must be found in the document with EXACT text, or the WHOLE document reads as one
-free-text block with a warning naming what didn't match — never a partial match. The
-amendment: a section whose fields are all optional (`required: false`) may be absent without
-failing the match. Shapes now cover every section of a template, not only the gate-required
-ones, so without this a person trimming any optional section would turn their whole document
-into raw text. A section that declares no fields is not treated as optional.
+Match semantics (spec 0007's Decision List, amended twice). The original rule: every heading the
+shape declares must be found, or the WHOLE document reads as free text — never a partial, guessed
+match. First amendment: a section whose fields are all optional (`required: false`) may be absent, since
+shapes now cover every section of a template, not only the gate-required ones. Second: a document
+missing a REQUIRED section still reads as sections, and the gap is reported in `warnings`; only a
+document in which NO section is recognized reads as one free-text block. The original worry was
+guessing which section was which. A section is found only by its heading (exactly, by an alias, or as
+the same words), so every section that is shown is definitely the one it says it is. A section that
+declares no fields is not treated as optional.
 
 A section is found by its heading as the shape writes it, by an alias the shape lists, or by the
 same words with numbering, case and punctuation ignored, or with a qualifier after them ("3. Deployment
@@ -387,7 +389,11 @@ def read_document(text: str, shape: dict) -> dict:
         if id(sec) not in resolved and not _section_is_optional(sec):
             warnings.append(f"section '{sec.get('heading') or sec.get('heading_pattern')}' not found")
 
-    if warnings:
+    # Only a document in which NOTHING was recognized is thrown back to free text. One that lacks a
+    # required section still comes back as sections, with the gap named in `warnings`: every section
+    # that was found was found by its heading, so it is definitely that section, and hiding all of them
+    # because another is missing helped nobody. (Contract 3 of document_shape_cli's `read`.)
+    if warnings and not resolved:
         return {
             "matched": False,
             "warnings": warnings,
@@ -455,7 +461,7 @@ def read_document(text: str, shape: dict) -> dict:
     if cursor < len(text):
         blocks.append({"kind": "free_text", "start": cursor, "end": len(text), "text": text[cursor:]})
 
-    return {"matched": True, "warnings": [], "stamp": read_stamp(text), "blocks": blocks}
+    return {"matched": True, "warnings": warnings, "stamp": read_stamp(text), "blocks": blocks}
 
 
 def write_document(text: str, updates: list[tuple[int, int, str]]) -> str:
