@@ -16,6 +16,7 @@ import { runPluginScript } from './project'
 import { isAllowlisted, isSafeInProject, resolveInProject } from './projectPaths'
 import {
   extractUnits, findShapeForPath, readShapeFromBytes, threeWayMerge, writeShapeUpdates,
+  type SectionUnit,
 } from './sectionMerge'
 import {
   getProjectSyncState, readAncestorBlob, saveProjectSyncState, storeAncestorBlob,
@@ -147,6 +148,26 @@ async function describeArrival(projectPath: string, branch: string, relPath: str
   if (!entry.ok) return { path: relPath, author: 'unknown', when: '' }
   const [author, when] = entry.stdout.trim().split('|')
   return { path: relPath, author: author || 'unknown', when: when || '' }
+}
+
+/** Whether threeWayMerge silently resolved any key the local document has no real span for.
+ * Most keys DO have one — but a key can resolve silently (ancestor and local both lack it, so
+ * "local never touched it" is trivially true) while the local document has never recognized
+ * that content at all: most often, a section a teammate's remote added that this local copy
+ * has never had. There is then no span to write into for ANY resolution of that key — not the
+ * silent merge, and not a person's own later choice either, since a per-section clash would
+ * hit the identical problem when it comes time to write their pick. Found on a real project:
+ * the write was silently skipped while the ancestor still advanced to the remote's hash, so
+ * Studio believed the two sides agreed — and the next save pushed the local file, still
+ * missing the section, straight over the remote, deleting it for everyone. The caller falls
+ * back to a whole-file clash instead, the one resolution path that never needs a span (a
+ * choice replaces the entire file) — the same fail-safe this module already uses whenever the
+ * shape can't be read at all. */
+function hasUnwritableMerge(merged: Map<string, string>, localUnitsRaw: SectionUnit[]): boolean {
+  for (const key of merged.keys()) {
+    if (!localUnitsRaw.find((u) => u.key === key)?.span) return true
+  }
+  return false
 }
 
 const WHOLE_FILE_KEY = '__whole_file__'
@@ -349,6 +370,10 @@ async function pullOneFile(
   const localUnitsRaw = extractUnits(localText, localReadRaw) // real spans, for writing only
   const { merged, clashes } = threeWayMerge(ancestorUnits, localUnitsForCompare, remoteUnits)
 
+  if (hasUnwritableMerge(merged, localUnitsRaw)) {
+    return { merged: false, clash: freezeWholeFileClash(syncState, relPath, ancestorHash, localText, remoteText) }
+  }
+
   if (clashes.length > 0) {
     syncState.files[relPath] = { ancestorHash, pendingClashSections: clashes.map((c) => c.key) }
     return { merged: false, clash: { path: relPath, sections: clashes } }
@@ -491,6 +516,15 @@ async function recomputeClashState(
   const remoteUnits = extractUnits(remoteNorm, remoteReadN)
   const localUnitsRaw = extractUnits(localText, localReadRaw)
   const result = threeWayMerge(ancestorUnits, localUnitsForCompare, remoteUnits)
+  if (hasUnwritableMerge(result.merged, localUnitsRaw)) {
+    // Same fail-safe as pullOneFile's — see hasUnwritableMerge's comment. Reached only if a
+    // key became unwritable after this file was already frozen for other section clashes.
+    return {
+      merged: new Map(), shapePath: null, localText, remoteBytes, localEol,
+      localUnitsRaw: [{ key: WHOLE_FILE_KEY, heading: filePath, text: localText }],
+      clashes: [{ key: WHOLE_FILE_KEY, heading: filePath, localText, remoteText }],
+    }
+  }
   return { merged: result.merged, clashes: result.clashes, localUnitsRaw, localEol, localText, remoteBytes, shapePath }
 }
 

@@ -22,10 +22,11 @@ import { initSettingsPath } from '../electron/main/settings'
 import { pull } from '../electron/main/sync'
 import { requirePlugin } from './pluginRoot'
 
-// The text goes in through the environment, not the arguments: arguments are recorded in the entry
-// too, and this is about the OUTPUT.
+// The text goes in through stdin, not the arguments or the environment: arguments are recorded
+// in the entry too (and this is about the OUTPUT), and a single environment variable is capped
+// well below a large test string on Linux (MAX_ARG_STRLEN, ~128KB) — a limit stdin doesn't have.
 const say = (text: string) =>
-  runCommand(process.execPath, ['-e', 'process.stdout.write(process.env.SAY)'], process.cwd(), { env: { SAY: text } })
+  runCommand(process.execPath, ['-e', 'process.stdin.pipe(process.stdout)'], process.cwd(), { input: text })
 
 describe('what a command returns', () => {
   const SECRETISH = 'permissions:\n  id-token: write\npassword: hunter2\n'
