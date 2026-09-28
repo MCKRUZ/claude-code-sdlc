@@ -12,6 +12,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+import { pluginIsBehind } from '../../shared/pluginContract'
 import { runPluginScript } from './project'
 import {
   findShapeForPath, readShapeFromBytes, writeShapeUpdates,
@@ -101,7 +102,8 @@ function buildField(label: string, raw: ShapeField | null, meta: Map<string, Sha
     value: raw.value,
     start: raw.start,
     end: raw.end,
-    type: m?.type ?? 'text',
+    // A section the person added has no shape entry, so no metadata; the library states its type.
+    type: m?.type ?? raw.type ?? 'text',
     required: raw.required,
     anchor: raw.anchor,
     empty: raw.empty,
@@ -149,6 +151,7 @@ function toSections(text: string, result: ShapeReadResult, meta: Map<string, Sha
         end: block.end,
         text: text.slice(block.start, block.end),
         fields: buildFields(block.fields, meta),
+        ...(block.custom ? { custom: true } : {}),
       })
     } else if (block.kind === 'repeating_section') {
       for (const inst of block.instances ?? []) {
@@ -217,6 +220,7 @@ export async function openDocument(
     description,
     warnings: result.warnings,
     sections: toSections(text, result, meta),
+    pluginBehind: pluginIsBehind(result.contract),
   }
 }
 

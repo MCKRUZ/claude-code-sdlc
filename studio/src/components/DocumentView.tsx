@@ -4,6 +4,11 @@ import type {
 } from '../../shared/types'
 import { matchesSection } from '../../shared/sections'
 import { FieldEditor } from './FieldEditor'
+import { MarkdownView } from './MarkdownView'
+
+/** The field types whose value is a block of markdown; the rest are single values. Mirrors the
+ * multiline set FieldEditor already uses to decide which fields get a text area. */
+const MARKDOWN_TYPES = new Set(['longtext', 'table', 'checklist'])
 
 /** Reading and editing one document.
  *
@@ -198,6 +203,20 @@ export function DocumentView({
         </div>
       )}
 
+      {doc.pluginBehind && (
+        // Not an error and not blocking: an older plugin still reads and saves every document
+        // correctly. It just cannot offer everything this Studio can, and a person seeing a
+        // section as plain text has no way to know that an update would change it.
+        <div data-testid="plugin-behind" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-medium">Your installed SDLC plugin is older than this version of Studio.</p>
+          <p className="mt-1 text-xs">
+            Everything still opens and saves correctly, but some parts of this document may show as
+            plain text instead of editable fields. To update, run <code className="font-mono">claude plugin update</code>{' '}
+            in a terminal, then reopen the document.
+          </p>
+        </div>
+      )}
+
       {!doc.shaped && doc.warnings.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-medium">This document is shown as plain text.</p>
@@ -288,7 +307,7 @@ function SectionCard({
       <div data-section-key={section.key} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         {/* Free text is shown exactly as written and never edited field-by-field — the shape
             library does not model it, so Studio must not pretend it does. */}
-        <pre className="whitespace-pre-wrap font-sans text-sm text-slate-600">{section.text.trim()}</pre>
+        <MarkdownView source={section.text} />
       </div>
     )
   }
@@ -303,6 +322,11 @@ function SectionCard({
         highlighted ? 'border-brand-500 ring-2 ring-brand-200' : 'border-slate-200'}`}
     >
       <h3 className="text-sm font-semibold text-slate-900">{section.heading}</h3>
+      {section.custom && (
+        <p className="mt-1 text-xs text-slate-500">
+          Added to this document — the template does not have this section.
+        </p>
+      )}
       {highlighted && (
         <p className="mt-1 text-xs text-brand-700">
           {highlightField
@@ -379,7 +403,11 @@ function FieldRow({
           />
         ) : field.empty ? (
           <span className="text-sm text-slate-400">Empty</span>
+        ) : MARKDOWN_TYPES.has(field.type) ? (
+          <MarkdownView source={field.value} />
         ) : (
+          // A one-line value (a name, a date, an id) is shown as written — markdown would read
+          // the underscores in `FR_001` as emphasis.
           <pre className="whitespace-pre-wrap font-sans text-sm text-slate-800">{field.value.trim()}</pre>
         )}
       </dd>
