@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.6.1 — 2026-09-28
+
+- **Studio: the stage list on the left is now navigable.** It was a set of inert rows and the
+  stage screen was hard-wired to the project's current phase, so a signed-off phase such as
+  Discovery could not be reached at all. Clicking a stage now shows that stage's documents and
+  what is missing from it; the clicked stage is highlighted, and opening a project returns to
+  its current stage. Covered by an end-to-end test that clicks a finished stage and back.
+
 ## 1.6.0 — 2026-09-28
 
 Studio showed roughly half of every real document as raw markdown: template shapes covered only

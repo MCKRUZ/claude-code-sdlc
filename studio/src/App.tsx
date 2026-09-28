@@ -29,6 +29,10 @@ function App() {
   const [syncState, setSyncState] = useState<SyncState>({ kind: 'idle', lastPulledAt: null })
   const [pendingClashes, setPendingClashes] = useState<FileClash[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  /** Which stage's home the reader is looking at, from clicking the stage list — undefined
+   * defers to the project's current stage, the same default the readiness script itself uses
+   * when called with no --phase. */
+  const [viewedStageId, setViewedStageId] = useState<string | undefined>(undefined)
   /** Which document is open within the project screen, or null for the stage home. */
   const [openDoc, setOpenDoc] = useState<string | null>(null)
   /** Which field the reader asked to be taken to, when they arrived from a readiness item
@@ -100,6 +104,7 @@ function App() {
       setOpenSpec(null)
       setHandingOff(false)
       setArea('documents')
+      setViewedStageId(undefined)
       window.studio.getConnectionInfo(projectPath).then((info) => setActor(info.account ?? ''))
       loadRecent()
     } else {
@@ -173,7 +178,18 @@ function App() {
     }
     const { projectPath, status } = screen
     return (
-      <Frame status={status} consoleEntries={consoleEntries} syncState={syncState}>
+      <Frame
+        status={status}
+        consoleEntries={consoleEntries}
+        syncState={syncState}
+        viewedStageId={viewedStageId}
+        onSelectStage={(stageId) => {
+          setArea('documents')
+          setOpenDoc(null)
+          setShowHistory(false)
+          setViewedStageId(stageId)
+        }}
+      >
         {error && (
           <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
             {error}
@@ -259,7 +275,7 @@ function App() {
         ) : (
           <StageHome
             projectPath={projectPath}
-            stageId={status.current_phase.id}
+            stageId={viewedStageId}
             onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
               setOpenDocFocus(focus)

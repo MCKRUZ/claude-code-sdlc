@@ -170,7 +170,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     // and risk as well as its title, so matching on the title alone never anchors cleanly.
     await page.getByPlaceholder('Search').fill('synthetic board row 43')
     await expect(page.getByText('1 shown')).toBeVisible()
-    await page.locator('li button').first().click()
+    await page.locator('main li button').first().click()
     await expect(page.getByText(/Owns it/)).toBeVisible({ timeout: 30_000 })
 
     // Absence, not disabled — the same standard spec 0010's edit mode is held to.
@@ -193,7 +193,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     await page.getByRole('button', { name: 'Everything' }).click()
     await page.getByPlaceholder('Search').fill('synthetic board row 124')
     await expect(page.getByText('1 shown')).toBeVisible()
-    await page.locator('li button').first().click()
+    await page.locator('main li button').first().click()
     await expect(page.getByText(/Owns it/)).toBeVisible({ timeout: 30_000 })
 
     const highButton = page.getByRole('button', { name: 'HIGH', exact: true })

@@ -12,22 +12,37 @@ const STATE_CLASSES: Record<ProjectStatus['stages'][number]['stage_state'], stri
   later: 'bg-[var(--color-stage-later-bg)] text-[var(--color-stage-later)]',
 }
 
-export function StageNav({ status }: { status: ProjectStatus }) {
+export function StageNav({
+  status,
+  viewedStageId,
+  onSelect,
+}: {
+  status: ProjectStatus
+  /** The stage whose home is currently showing, or undefined for the project's current stage. */
+  viewedStageId?: string
+  onSelect: (stageId: string) => void
+}) {
   return (
     <nav aria-label="Project stages" className="w-56 shrink-0 border-r border-slate-200 bg-white p-3">
       <ol className="space-y-1">
-        {status.stages.map((stage) => (
-          <li key={stage.id}>
-            <div
-              className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${STATE_CLASSES[stage.stage_state]}`}
-            >
-              <span>{stage.display}</span>
-              <span className="text-[10px] uppercase tracking-wide opacity-75">
-                {STATE_LABEL[stage.stage_state]}
-              </span>
-            </div>
-          </li>
-        ))}
+        {status.stages.map((stage) => {
+          const isViewed = viewedStageId ? stage.id === viewedStageId : stage.stage_state === 'current'
+          return (
+            <li key={stage.id}>
+              <button
+                type="button"
+                aria-current={isViewed ? 'page' : undefined}
+                onClick={() => onSelect(stage.id)}
+                className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:opacity-80 ${STATE_CLASSES[stage.stage_state]} ${isViewed ? 'ring-2 ring-inset ring-slate-400' : ''}`}
+              >
+                <span>{stage.display}</span>
+                <span className="text-[10px] uppercase tracking-wide opacity-75">
+                  {STATE_LABEL[stage.stage_state]}
+                </span>
+              </button>
+            </li>
+          )
+        })}
       </ol>
     </nav>
   )
