@@ -45,6 +45,9 @@ export interface ShapeField {
 
 export interface ShapeBlock {
   kind: 'free_text' | 'section' | 'repeating_section'
+  /** A `## ` section the person added that the shape does not declare — the library reads its
+   * whole body as one editable field. Absent on every section the shape declares. */
+  custom?: boolean
   start: number
   end: number
   text?: string
@@ -54,6 +57,9 @@ export interface ShapeBlock {
 }
 
 export interface ShapeReadResult {
+  /** Which `read` contract the plugin honours (see shared/pluginContract.ts). Absent on a
+   * plugin old enough to predate it. */
+  contract?: number
   matched: boolean
   warnings: string[]
   stamp: [string, string] | null

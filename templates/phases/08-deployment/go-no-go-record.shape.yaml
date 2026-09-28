@@ -44,3 +44,45 @@ sections:
         type: table
         required: true
         guidance: Every role, the named person, their answer, and any condition attached — a role not polled is recorded as "not polled", not omitted
+
+  - heading: Conditions
+    fields:
+      - label: Conditions
+        anchor: section
+        type: table
+        required: false
+        guidance: Leave empty if the decision was an unconditional go. A condition with no owner is not a condition.
+
+  - heading: Risks Accepted
+    fields:
+      - label: Risks Accepted
+        anchor: section
+        type: table
+        required: false
+        guidance: Each risk, who accepted it, why it was acceptable, and the mitigation if it lands
+
+  - heading: Rollback Position
+    fields:
+      - label: Trigger condition
+        anchor: inline
+        type: text
+        required: false
+        guidance: What would cause us to roll back
+      - label: Procedure
+        anchor: inline
+        type: text
+        required: false
+        guidance: Reference to the RUNBOOK.md section, and the rollback-rehearsal.md that proved it
+      - label: Decision owner during the window
+        anchor: inline
+        type: text
+        required: false
+        guidance: Who can call the rollback without reconvening
+
+  - heading: Notifications
+    fields:
+      - label: Notifications
+        anchor: section
+        type: table
+        required: false
+        guidance: Who is told when, over which channel, and who owns each notification

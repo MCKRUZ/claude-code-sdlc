@@ -20,3 +20,27 @@ sections:
         type: longtext
         required: true
         guidance: Trigger condition with exact query, threshold rationale, response procedure, resolution, and false-positive conditions
+
+  - heading: Alert Philosophy
+    fields:
+      - label: Alert Philosophy
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Why every alert exists and the principles used - alert on symptoms, every alert has a runbook, raise thresholds on noisy alerts
+
+  - heading: Warning Alert Details
+    fields:
+      - label: Warning Alert Details
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Warnings require investigation, not immediate response - trigger condition, investigation steps, and when to escalate
+
+  - heading: Alert Testing
+    fields:
+      - label: Alert Testing
+        anchor: section
+        type: table
+        required: false
+        guidance: For each alert, when it was last tested, the test method, and how long it took to fire

@@ -136,6 +136,79 @@ class TestAssess:
         assert result["stage"]["id"] == "1"
 
 
+def _folder(result: dict, name: str) -> dict:
+    return next(a for a in result["artifacts"] if a["name"].rstrip("/") == name)
+
+
+class TestFolderArtifacts:
+    """The registry lists some artifacts as folders (`adrs/`). This was written as if every
+    artifact were one file, so on a real project the Design stage crashed with a traceback —
+    read_text() on a directory is PermissionError on Windows — and Studio showed it in red."""
+
+    def test_a_folder_of_documents_does_not_crash_the_stage(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        adrs = repo / ".sdlc" / "artifacts" / "02-design" / "adrs"
+        adrs.mkdir(parents=True)
+        (adrs / "ADR-001.md").write_text("# ADR-001\n\n## Decision\n\nUse PostgreSQL.\n", encoding="utf-8")
+
+        entry = _folder(assess(repo, "2"), "adrs")
+        assert entry["exists"] is True
+        assert entry["ready"] is True
+        assert entry["findings"] == []
+
+    def test_a_folder_is_not_presented_as_one_document(self, tmp_path: Path):
+        """There is no single shape to read a folder through, and Studio must not offer to open
+        it as if there were — so it says what it is."""
+        repo = _project(tmp_path)
+        adrs = repo / ".sdlc" / "artifacts" / "02-design" / "adrs"
+        adrs.mkdir(parents=True)
+        (adrs / "ADR-001.md").write_text("x\n", encoding="utf-8")
+
+        entry = _folder(assess(repo, "2"), "adrs")
+        assert entry["folder"] is True
+        assert entry["shaped"] is False
+
+    def test_a_file_artifact_is_not_marked_as_a_folder(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        result = assess(repo, "2")
+        assert _folder(result, "design-doc.md")["folder"] is False
+
+    def test_an_empty_folder_is_not_ready_and_says_why(self, tmp_path: Path):
+        """The gate's own rule (check_gates.check_artifact_exists): a folder with nothing in it
+        does not count as delivered."""
+        repo = _project(tmp_path)
+        (repo / ".sdlc" / "artifacts" / "02-design" / "adrs").mkdir(parents=True)
+
+        entry = _folder(assess(repo, "2"), "adrs")
+        assert entry["exists"] is True
+        assert entry["ready"] is False
+        assert any("empty" in f["reason"] for f in entry["findings"])
+
+    def test_a_missing_folder_reads_as_not_started(self, tmp_path: Path):
+        entry = _folder(assess(_project(tmp_path), "2"), "adrs")
+        assert entry["exists"] is False
+        assert entry["folder"] is True  # known from the registry entry, not from the disk
+
+    def test_no_folder_artifact_in_any_phase_can_crash_readiness(self, tmp_path: Path):
+        """Walks the registry instead of naming `adrs`, so a folder artifact added to any phase
+        later is covered without anyone remembering this bug."""
+        import phase_model as pm
+
+        repo = _project(tmp_path)
+        checked = 0
+        for phase_id in pm.all_phase_ids():
+            phase_def = pm.get_phase(phase_id)
+            phase_dir = repo / ".sdlc" / "artifacts" / (phase_def.get("slug") or "")
+            for art in pm.required_artifacts(phase_def, None):
+                if art.name.endswith("/"):
+                    folder = art.base_dir(phase_dir, repo) / art.name
+                    folder.mkdir(parents=True, exist_ok=True)
+                    (folder / "item.md").write_text("content\n", encoding="utf-8")
+                    checked += 1
+            assess(repo, phase_id)  # must not raise
+        assert checked > 0, "the registry no longer has a folder artifact — retire this test"
+
+
 class TestDoesNotWrite:
     def test_reading_readiness_never_touches_the_gate_log(self, tmp_path: Path):
         """The whole reason this script exists rather than shelling out to check_gates.py."""

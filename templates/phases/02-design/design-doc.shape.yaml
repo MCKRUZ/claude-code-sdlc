@@ -60,3 +60,45 @@ sections:
         type: longtext
         required: true
         guidance: One sequence diagram per P0 user story, showing the full actor-to-storage flow
+
+  - heading: Component Design
+    fields:
+      - label: Component Design
+        anchor: section
+        type: longtext
+        required: false
+        guidance: One subsection per major component - responsibility, technology, deployment unit, interfaces exposed, dependencies, and key design decisions
+  - heading: Cross-Cutting Concerns
+    fields:
+      - label: Authentication & Authorization
+        subheading: Authentication & Authorization
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Auth model, the end-to-end flow, and the key authorization rules
+      - label: Error Handling
+        subheading: Error Handling
+        anchor: section
+        type: longtext
+        required: false
+        guidance: How errors propagate, what users see versus what is logged, and where retries happen
+      - label: Observability
+        subheading: Observability
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What is logged, what is measured, and the distributed tracing approach
+  - heading: Architecture Decision Records
+    fields:
+      - label: Architecture Decision Records
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The ADRs made in this phase, with title and status - full content lives in the adrs/ folder
+  - heading: Design Review Notes
+    fields:
+      - label: Design Review Notes
+        anchor: section
+        type: table
+        required: false
+        guidance: Each reviewer's concern, the date, and how it was resolved

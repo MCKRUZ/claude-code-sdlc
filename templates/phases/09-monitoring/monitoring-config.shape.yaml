@@ -25,3 +25,11 @@ sections:
         type: table
         required: true
         guidance: All 6 metrics measured from real production traffic within 48 hours of launch, with measured and review dates
+
+  - heading: Coverage Assessment
+    fields:
+      - label: Coverage Assessment
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Are all P0 features observable - each P0 story with the metrics covering it, whether it is observable, and any gap

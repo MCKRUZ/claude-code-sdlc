@@ -25,3 +25,19 @@ sections:
         type: longtext
         required: true
         guidance: Explicit rollback triggers, named decision authority, all rollback steps with commands, and the date the rollback was tested
+
+  - heading: Post-Deployment Verification
+    fields:
+      - label: Post-Deployment Verification
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Confirm P0 smoke tests, health endpoint, key metrics, alerts, and release notes after production deploy
+
+  - heading: Sign-Off
+    fields:
+      - label: Sign-Off
+        anchor: section
+        type: table
+        required: false
+        guidance: Deployment lead, stakeholder, and on-call engineer approvals with time

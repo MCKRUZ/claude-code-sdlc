@@ -10,8 +10,9 @@
 // seen" side effect on open would do it), so marking a document seen is a separate, explicit
 // call the UI makes when the person dismisses the changes banner.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
+import { pluginIsBehind } from '../../shared/pluginContract'
 import { runPluginScript } from './project'
 import {
   findShapeForPath, readShapeFromBytes, writeShapeUpdates,
@@ -101,7 +102,8 @@ function buildField(label: string, raw: ShapeField | null, meta: Map<string, Sha
     value: raw.value,
     start: raw.start,
     end: raw.end,
-    type: m?.type ?? 'text',
+    // A section the person added has no shape entry, so no metadata; the library states its type.
+    type: m?.type ?? raw.type ?? 'text',
     required: raw.required,
     anchor: raw.anchor,
     empty: raw.empty,
@@ -149,6 +151,7 @@ function toSections(text: string, result: ShapeReadResult, meta: Map<string, Sha
         end: block.end,
         text: text.slice(block.start, block.end),
         fields: buildFields(block.fields, meta),
+        ...(block.custom ? { custom: true } : {}),
       })
     } else if (block.kind === 'repeating_section') {
       for (const inst of block.instances ?? []) {
@@ -184,6 +187,15 @@ export async function openDocument(
     return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: `${relPath} does not exist` }
   }
 
+  if (statSync(full).isDirectory()) {
+    // A stage can list a folder (Design's `adrs/`). Reading it as a file throws EISDIR, which
+    // reached the person as a crash; say what it is instead.
+    return {
+      ok: false, path: relPath, shaped: false, warnings: [], sections: [],
+      error: `${relPath} is a folder of documents, not a single document, so it cannot be opened here.`,
+    }
+  }
+
   const bytes = readFileSync(full)
   const text = bytes.toString('utf-8')
   const shapePath = findShapeForPath(pluginScriptsDir, relPath, text)
@@ -217,6 +229,7 @@ export async function openDocument(
     description,
     warnings: result.warnings,
     sections: toSections(text, result, meta),
+    pluginBehind: pluginIsBehind(result.contract),
   }
 }
 

@@ -227,6 +227,9 @@ export interface DocumentSection {
   fields: Record<string, DocumentField | null>
   /** Set on a repeating instance, e.g. 3 for FR-003. */
   number?: number
+  /** True for a section the person added that the template never had. It is still editable —
+   * as one whole-body field — but is not part of what the phase gate checks. */
+  custom?: boolean
 }
 
 export interface OpenDocumentResult {
@@ -240,6 +243,10 @@ export interface OpenDocumentResult {
   warnings: string[]
   description?: string
   sections: DocumentSection[]
+  /** The installed plugin is older than this Studio expects, so parts of the document may show
+   * less than they could (for example a section the person added shown as text rather than an
+   * editable field). Nothing is broken — the fix is `claude plugin update`. */
+  pluginBehind?: boolean
   error?: string
 }
 
@@ -255,6 +262,9 @@ export interface StageDocument {
   name: string
   path: string
   exists: boolean
+  /** A folder of documents (Design's `adrs/`), not one document. It is listed and its
+   * completeness reported, but it has no single shape and cannot be opened as a document. */
+  folder: boolean
   shaped: boolean
   description?: string
   findingCount: number

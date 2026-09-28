@@ -30,3 +30,42 @@ sections:
         type: longtext
         required: true
         guidance: Why this decision over the alternatives — what criteria were used
+
+  - heading: Alternatives Considered
+    fields:
+      - label: Alternatives Considered
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Each alternative that was weighed - a description and the specific reason it was not chosen
+  - heading: Consequences
+    fields:
+      - label: Positive
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: What gets better
+      - label: Negative / Trade-offs
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: What gets harder or what debt is incurred
+      - label: Risks
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: What could go wrong with this decision
+  - heading: Implementation Notes
+    fields:
+      - label: Implementation Notes
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Optional - specific guidance for implementing this decision, or pointers to where it is implemented
+  - heading: Review Trigger
+    fields:
+      - label: Review Trigger
+        anchor: section
+        type: longtext
+        required: false
+        guidance: When this ADR should be revisited, e.g. "If X performance threshold is exceeded" or "When we add a second deployment target"

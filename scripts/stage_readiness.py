@@ -110,6 +110,21 @@ def judgement_conditions(phase_def: dict) -> list[str]:
     return out
 
 
+def _assess_folder(art, full: Path, rel: str) -> dict:
+    """A folder artifact (the registry writes `adrs/` with a trailing slash). It has no single
+    document to read through a shape, so it is not shaped and nothing opens it as a file;
+    what can honestly be said is whether it holds anything — the gate's own rule
+    (check_gates.check_artifact_exists), so the two never disagree about a folder."""
+    exists = full.is_dir()
+    findings = []
+    if exists and not any(full.iterdir()):
+        findings.append({"section": art.name, "field": None, "reason": "folder is empty"})
+    return {
+        "name": art.name, "path": rel, "exists": exists, "folder": True, "shaped": False,
+        "findings": findings, "ready": exists and not findings,
+    }
+
+
 def assess_artifacts(repo_root: Path, phase_def: dict, project_type: str | None) -> list[dict]:
     phase_dir_name = phase_def.get("slug") or ""
     phase_dir = repo_root / ".sdlc" / "artifacts" / phase_dir_name
@@ -118,7 +133,15 @@ def assess_artifacts(repo_root: Path, phase_def: dict, project_type: str | None)
     for art in pm.required_artifacts(phase_def, project_type):
         full = art.base_dir(phase_dir, repo_root) / art.name
         rel = str(full.relative_to(repo_root)).replace("\\", "/") if full.is_relative_to(repo_root) else art.name
-        entry: dict = {"name": art.name, "path": rel, "exists": full.exists(), "findings": []}
+
+        # Decided from the registry entry as well as the disk, so a folder that has not been
+        # created yet is still known to be a folder — and so a stray FILE where a folder is
+        # expected reads as absent rather than being opened as the document it is not.
+        if art.name.endswith("/") or full.is_dir():
+            results.append(_assess_folder(art, full, rel))
+            continue
+
+        entry: dict = {"name": art.name, "path": rel, "exists": full.exists(), "folder": False, "findings": []}
 
         # Resolved from the PATH, so "what is this document for" is answerable before the
         # document exists — which is exactly when someone most needs to be told.

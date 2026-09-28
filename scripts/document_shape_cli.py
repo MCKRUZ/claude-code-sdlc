@@ -46,6 +46,17 @@ import document_shape as ds  # noqa: E402
 import yaml  # noqa: E402
 
 
+# What `read` promises about its output, so a caller can tell an older plugin from a newer one
+# by capability rather than by version number (which only works if someone remembers to bump it
+# — the reason a stale install went unnoticed for months). An older plugin never emitted the key
+# at all, so its absence reads as contract 1. Bump this when `read`'s output gains behaviour a
+# caller would need to know is there:
+#   1 — (no key) sections the shape declares; a missing required section falls back to free text
+#   2 — an optional section may be absent; an undeclared `## ` section comes back as a `custom`
+#       section with one whole-body "Content" field
+READ_CONTRACT = 2
+
+
 class CliError(Exception):
     """A clean, one-line failure this CLI reports on stderr — never a raw traceback."""
 
@@ -118,6 +129,7 @@ def cmd_read(args) -> dict:
     result = ds.read_document(text, shape)
     cp_to_byte, _ = _build_offset_maps(text)
     return {
+        "contract": READ_CONTRACT,
         "matched": result["matched"],
         "warnings": result["warnings"],
         "stamp": result["stamp"],

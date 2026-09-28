@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.6.0 — 2026-09-28
+
+Studio showed roughly half of every real document as raw markdown: template shapes covered only
+the sections the phase gate requires, so every other section — real content, just not
+gate-mandatory — fell through as unstyled text. A document that drifted from its template fared
+worse: deleting any one section un-shaped the whole document.
+
+- **Every section of every shaped template is now a field.** 92 previously-unshaped `##` sections
+  across 28 shapes are declared, all `required: false`, so the phase gate and
+  `check_document_completeness.py` behave exactly as before. `test_shapes_cover_templates.py`
+  fails when a template gains a section its shape does not declare.
+- **A document may drift from its template without losing its fields.** A section whose fields
+  are all optional can be absent without turning the whole document into raw text; a missing
+  *required* section still does. An undeclared `## ` section a person added is read as an
+  editable `custom` section (one whole-body "Content" field) instead of raw text. This amends
+  spec 0007's "never a partial match" rule; `document_shape.py`'s docstring and
+  `docs/templates-artifacts.md` state the amended rule.
+- **`document_shape_cli.py read` now states its contract** (`"contract": 2`). Studio recognises
+  an older plugin by that key's absence rather than by version number — the 1.5.2 incident was a
+  version that had not been bumped for months — and shows a banner pointing at
+  `claude plugin update`.
+- **Studio renders document markdown in read mode** (headings, lists, real tables, checklists)
+  through `react-markdown` + `remark-gfm`. Raw HTML is dropped, links draw as text and images as
+  their description, so a document a colleague edited cannot navigate the window or fetch a
+  remote URL. Edit mode still shows the source, so saves stay byte-exact.
+- **Fixed: the Design stage crashed on a project with an `adrs/` folder.** `stage_readiness.py`
+  treated every registered artifact as one file, and reading a folder as text raises
+  `PermissionError` on Windows, so Studio showed a raw traceback instead of the stage. A folder
+  artifact is now reported as a folder (present, and non-empty by the gate's own rule), Studio
+  lists it without offering to open it as a document, and opening a folder returns a clear
+  message instead of throwing.
+
 ## 1.5.2 — 2026-09-26
 
 The version had not been bumped since 1.5.1 despite substantial work landing on `master` in the

@@ -17,11 +17,20 @@ survives untouched — these templates check out as CRLF on Windows, and a naive
 read/write would silently rewrite every line ending, which is not a byte-identical round
 trip even when no field changed.
 
-Match semantics (the spec's Decision List, verbatim): every heading the shape declares must
-be found in the document with EXACT text, or the WHOLE document reads as one free-text
-block with a warning naming what didn't match — never a partial match. A document can carry
-headings and content the shape does not mention; those simply end up as free text, same as
-any other unrecognized passage.
+Match semantics (spec 0007's Decision List, amended): every REQUIRED section the shape
+declares must be found in the document with EXACT text, or the WHOLE document reads as one
+free-text block with a warning naming what didn't match — never a partial match. The
+amendment: a section whose fields are all optional (`required: false`) may be absent without
+failing the match. Shapes now cover every section of a template, not only the gate-required
+ones, so without this a person trimming any optional section would turn their whole document
+into raw text. A section that declares no fields is not treated as optional.
+
+A `## ` section the shape does not declare — one the person added to their own document — is
+read as a `section` block flagged `custom: true`, with a single field, "Content" (longtext,
+optional): its whole body, addressed by byte span like every other field so an edit touches
+only those bytes. That is what lets a document grow parts its template never had and still be
+editable. It is ONLY for a `## ` heading: text before the first one, and anything else the
+shape doesn't recognize, is still free text.
 """
 
 import re
@@ -269,6 +278,20 @@ def _resolve_section_heading(sec: dict, doc_headings: dict) -> str | None:
     return sec["heading"] if sec["heading"] in doc_headings else None
 
 
+def _section_is_optional(sec: dict) -> bool:
+    """A section may be absent from a document only when it declares fields and none of them
+    is required. A section declaring no fields says nothing about being optional, so it keeps
+    the original strict behaviour and must be present."""
+    fields = sec.get("fields") or []
+    return bool(fields) and not any(f.get("required") for f in fields)
+
+
+# The one field a person's own section carries: its whole body. Not a shape-declared field —
+# there is no shape entry to declare it — so it is described here, in the same form a shape
+# field takes, and read through the same extraction as any other section-anchored field.
+_CUSTOM_SECTION_FIELD = {"label": "Content", "anchor": "section", "type": "longtext", "required": False}
+
+
 def read_document(text: str, shape: dict) -> dict:
     """See module docstring for the block model and match semantics."""
     section_shapes = shape.get("sections", [])
@@ -279,10 +302,10 @@ def read_document(text: str, shape: dict) -> dict:
     resolved = {}
     for sec in section_shapes:
         heading = _resolve_section_heading(sec, doc_headings)
-        if heading is None:
-            warnings.append(f"section '{sec.get('heading') or sec.get('heading_pattern')}' not found")
-        else:
+        if heading is not None:
             resolved[id(sec)] = heading
+        elif not _section_is_optional(sec):
+            warnings.append(f"section '{sec.get('heading') or sec.get('heading_pattern')}' not found")
 
     if warnings:
         return {
@@ -293,18 +316,32 @@ def read_document(text: str, shape: dict) -> dict:
         }
 
     # Ordered by where they actually occur in the document, so blocks tile [0, len(text)).
-    ordered = sorted(
-        ((sec, *doc_headings[resolved[id(sec)]]) for sec in section_shapes),
-        key=lambda t: t[1],
-    )
+    # A `## ` section no shape entry claimed is the person's own — it goes in the same
+    # sequence with `sec=None` so it is read as an editable section rather than raw text.
+    # A heading a `heading_pattern` matches counts as claimed even when the pattern's section
+    # resolved to an earlier heading (a second "## v1.3.0" beside "## v1.4.0"): the shape
+    # already has a position on those, and it is unchanged.
+    patterns = [re.compile(s["heading_pattern"]) for s in section_shapes if "heading_pattern" in s]
+    claimed = set(resolved.values())
+    entries = [(sec, resolved[id(sec)], *doc_headings[resolved[id(sec)]])
+               for sec in section_shapes if id(sec) in resolved]
+    entries += [(None, h, *span) for h, span in doc_headings.items()
+                if h not in claimed and not any(p.search(h) for p in patterns)]
+    ordered = sorted(entries, key=lambda t: t[2])
 
     blocks = []
     cursor = 0
-    for sec, heading_start, body_start, body_end in ordered:
+    for sec, heading, heading_start, body_start, body_end in ordered:
         if heading_start > cursor:
             blocks.append({"kind": "free_text", "start": cursor, "end": heading_start,
                             "text": text[cursor:heading_start]})
-        if sec.get("repeats"):
+        if sec is None:
+            blocks.append({
+                "kind": "section", "custom": True, "heading": heading,
+                "start": heading_start, "end": body_end,
+                "fields": _extract_fields(text, body_start, body_end, [_CUSTOM_SECTION_FIELD]),
+            })
+        elif sec.get("repeats"):
             numbering = sec["numbering"]["pattern"]
             regex = pattern_to_regex(numbering)
             instances = []
@@ -325,12 +362,12 @@ def read_document(text: str, shape: dict) -> dict:
                 })
                 sub_cursor = sub_body_end
             blocks.append({
-                "kind": "repeating_section", "heading": resolved[id(sec)],
+                "kind": "repeating_section", "heading": heading,
                 "start": heading_start, "end": body_end, "instances": instances,
             })
         else:
             blocks.append({
-                "kind": "section", "heading": resolved[id(sec)],
+                "kind": "section", "heading": heading,
                 "start": heading_start, "end": body_end,
                 "fields": _extract_fields(text, body_start, body_end, sec.get("fields", [])),
             })

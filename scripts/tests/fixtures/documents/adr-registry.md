@@ -18,8 +18,10 @@ This registry is the index of all Architecture Decision Records for this project
 
 | ADR | Title | Superseded By | Date |
 |-----|-------|--------------|------|
+| ADR-000 | Use SQLite for the claims prototype | ADR-001 | 2026-09-23 |
 
 ## Proposed (Under Review)
 
 | ADR | Title | Proposed By | Date |
 |-----|-------|------------|------|
+| ADR-002 | Cache idempotency keys in Redis | Sam K. | 2026-09-24 |

@@ -54,6 +54,8 @@ The proof that the pager works.
 | Alert | Why not drilled | Owner | Drill scheduled for |
 |-------|-----------------|-------|---------------------|
 
+None - both Critical alerts were drilled on 2026-09-10.
+
 ---
 
 ## Sign-off

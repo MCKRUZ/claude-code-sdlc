@@ -31,3 +31,27 @@ sections:
         type: checklist
         required: true
         guidance: At least 2 open questions (Q-01+) Phase 1 must resolve, each naming who needs the answer
+
+  - heading: Known Risks Entering Requirements
+    fields:
+      - label: Known Risks Entering Requirements
+        anchor: section
+        type: table
+        required: false
+        guidance: Each risk with its likelihood, impact, and mitigation
+
+  - heading: Artifacts Produced in Discovery
+    fields:
+      - label: Artifacts Produced in Discovery
+        anchor: section
+        type: table
+        required: false
+        guidance: Each Discovery artifact with its status and notes
+
+  - heading: Exit Gate Status
+    fields:
+      - label: Exit Gate Status
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Whether each Discovery exit-gate item is done, and who approved on what date

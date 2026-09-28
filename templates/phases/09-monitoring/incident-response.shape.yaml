@@ -25,3 +25,19 @@ sections:
         type: longtext
         required: true
         guidance: Initial notification, progress update, and resolution notice templates with channel, timing, and copy-paste-ready body
+
+  - heading: Incident Classification
+    fields:
+      - label: Incident Classification
+        anchor: section
+        type: table
+        required: false
+        guidance: Each severity level with its definition, examples, and target response time
+
+  - heading: Post-Incident Process
+    fields:
+      - label: Post-Incident Process
+        anchor: section
+        type: longtext
+        required: false
+        guidance: When a post-mortem is required and the post-mortem template - timeline, root cause, impact, what went well, what could be better, action items

@@ -18,3 +18,61 @@ sections:
         type: table
         required: true
         guidance: At least 2 assumptions (A-01+), each with the risk if wrong and a validation plan
+
+  - heading: Technical Constraints
+    fields:
+      - label: Must Use / Cannot Use
+        subheading: Must Use / Cannot Use
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Technology, platform, or framework that is mandatory or explicitly off the table, and why
+      - label: Integration Requirements
+        subheading: Integration Requirements
+        anchor: section
+        type: table
+        required: false
+        guidance: Each system to integrate with, the integration type, and what the integration must or must not do
+      - label: Performance / Scale Envelope
+        subheading: Performance / Scale Envelope
+        anchor: section
+        type: table
+        required: false
+        guidance: Minimum required throughput, latency, availability, and data volume
+
+  - heading: Business Constraints
+    fields:
+      - label: Timeline
+        subheading: Timeline
+        anchor: section
+        type: table
+        required: false
+        guidance: Each milestone with its target date, how flexible it is, and why the date matters
+      - label: Budget
+        subheading: Budget
+        anchor: section
+        type: longtext
+        required: false
+        guidance: State the budget constraint at the appropriate level of specificity; if confidential, note that it exists and who holds it
+      - label: Team / Resource
+        subheading: Team / Resource
+        anchor: section
+        type: table
+        required: false
+        guidance: Each role or resource available, how much, and any availability window or skill-level notes
+
+  - heading: Legal & Compliance Constraints
+    fields:
+      - label: Legal & Compliance Constraints
+        anchor: section
+        type: table
+        required: false
+        guidance: Each requirement, the regulation or standard behind it, and its specific design impact
+
+  - heading: Constraint Change Protocol
+    fields:
+      - label: Constraint Change Protocol
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What to do if a constraint changes - update this document, assess impact on earlier design decisions, flag stakeholders

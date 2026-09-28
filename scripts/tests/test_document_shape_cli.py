@@ -181,6 +181,33 @@ class TestCliProcess:
         parsed = json.loads(proc.stdout)
         assert parsed["matched"] is True
 
+    def test_read_states_its_contract_version(self, tmp_path: Path):
+        """Studio compares this against what it expects. An OLD plugin never sent the key, so
+        its absence is how Studio recognises one — which is why it is a marker in the output
+        rather than a version-number comparison that depends on someone remembering to bump."""
+        doc_path = tmp_path / "requirements.md"
+        doc_path.write_bytes(REQUIREMENTS_FIXTURE.read_bytes())
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), "read", "--doc", str(doc_path), "--shape", str(REQUIREMENTS_SHAPE)],
+            capture_output=True, text=True, timeout=30,
+        )
+        parsed = json.loads(proc.stdout)
+        assert parsed["contract"] == 2
+        assert isinstance(parsed["contract"], int)
+
+    def test_contract_two_is_the_one_that_reads_added_sections(self, tmp_path: Path):
+        """The number means something: 2 is 'a `## ` section the shape does not declare comes
+        back as an editable `custom` section'. If that behaviour changes, so must the number."""
+        doc_path = tmp_path / "requirements.md"
+        doc_path.write_bytes(REQUIREMENTS_FIXTURE.read_bytes() + b"\n## Stakeholder Quotes\n\nhi\n")
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), "read", "--doc", str(doc_path), "--shape", str(REQUIREMENTS_SHAPE)],
+            capture_output=True, text=True, timeout=30,
+        )
+        parsed = json.loads(proc.stdout)
+        assert parsed["contract"] == 2
+        assert any(b.get("custom") and b["heading"] == "Stakeholder Quotes" for b in parsed["blocks"])
+
     def test_read_subcommand_missing_doc_exits_one_with_stderr(self, tmp_path: Path):
         proc = subprocess.run(
             [sys.executable, str(CLI_PATH), "read", "--doc", str(tmp_path / "nope.md"), "--shape", str(REQUIREMENTS_SHAPE)],

@@ -25,3 +25,27 @@ sections:
         type: longtext
         required: true
         guidance: "Explicit \"Deployment successful\" or \"Rolled back\", with decision-maker name, time, and 2-3 sentence rationale"
+
+  - heading: Issues Found in Staging
+    fields:
+      - label: Issues Found in Staging
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Each staging issue with severity, story, resolution, and whether it was fixed, followed by the staging go/no-go
+
+  - heading: Issues Found in Production
+    fields:
+      - label: Issues Found in Production
+        anchor: section
+        type: table
+        required: false
+        guidance: Each production issue with severity, story, resolution, and whether it was fixed or rolled back
+
+  - heading: Monitoring Confirmation
+    fields:
+      - label: Monitoring Confirmation
+        anchor: section
+        type: table
+        required: false
+        guidance: Key metrics checked 30 minutes after the production deploy against their baselines

@@ -26,6 +26,8 @@ interface RawArtifact {
   name: string
   path: string
   exists: boolean
+  /** Absent from a plugin that predates folder artifacts, which is read as "a file". */
+  folder?: boolean
   shaped: boolean
   description?: string | null
   findings: RawFinding[]
@@ -64,7 +66,8 @@ async function locate(
   artifact: RawArtifact,
 ): Promise<ReadinessFinding[]> {
   const findings = artifact.findings.map((f) => ({ path: artifact.path, ...f }))
-  if (findings.length === 0 || !artifact.exists) return findings
+  // A folder has no fields to point at, and opening it as a document is exactly the mistake.
+  if (findings.length === 0 || !artifact.exists || artifact.folder) return findings
 
   const doc = await openDocument(projectPath, pluginScriptsDir, artifact.path)
   if (!doc.ok || !doc.shaped) return findings
@@ -103,6 +106,7 @@ export async function getStageReadiness(
     name: a.name,
     path: a.path,
     exists: a.exists,
+    folder: a.folder === true,
     shaped: a.shaped,
     description: a.description ?? undefined,
     findingCount: a.findings.length,

@@ -24,3 +24,71 @@ sections:
         type: table
         required: true
         guidance: Every error code this API returns, with HTTP status, description, and how consumers should handle it
+
+  - heading: Overview
+    fields:
+      - label: Version
+        anchor: inline
+        type: text
+        required: false
+        guidance: The contract version, e.g. 1.0 (Design-time)
+      - label: Date
+        anchor: inline
+        type: date
+        required: false
+        guidance: The date this version of the contract was written
+      - label: Base URL
+        anchor: inline
+        type: text
+        required: false
+        guidance: The root URL every endpoint path is relative to
+      - label: Auth scheme
+        anchor: inline
+        type: text
+        required: false
+        guidance: Bearer JWT / API Key / OAuth2 / None
+  - heading: Data Schemas
+    fields:
+      - label: Data Schemas
+        anchor: section
+        type: longtext
+        required: false
+        guidance: One schema per entity the API sends or receives, with every field, its type, and what it means
+  - heading: Events (if applicable)
+    fields:
+      - label: Events
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Each event this system publishes - who publishes it, who consumes it, what triggers it, and its payload
+  - heading: External APIs Consumed
+    fields:
+      - label: External APIs Consumed
+        anchor: section
+        type: table
+        required: false
+        guidance: Every third-party API this system calls - provider, auth, rate limit, timeout, and what happens if it is unavailable
+  - heading: Contract Versioning
+    fields:
+      - label: Strategy
+        anchor: inline
+        type: text
+        required: false
+        guidance: URL versioning / header versioning / content negotiation
+      - label: Deprecation policy
+        anchor: inline
+        type: text
+        required: false
+        guidance: How old versions are retired
+      - label: Breaking change definition
+        anchor: inline
+        type: text
+        required: false
+        guidance: What constitutes a breaking change for this API
+  - heading: Change Log
+    fields:
+      - label: Change Log
+        anchor: section
+        type: table
+        required: false
+        guidance: Each version of this contract, its date, what changed, and whether the change was breaking
