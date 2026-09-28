@@ -21,6 +21,7 @@
 // than losing it, which is the direction spec 0009 asks for.
 
 import { randomUUID } from 'node:crypto'
+import { rawStdout } from './commandRunner'
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -215,7 +216,7 @@ export async function readShapeFromBytes(
       'read', '--doc', tmpFile, '--shape', shapePath,
     ])
     if (!entry.ok) throw new Error(entry.stderr || 'document_shape_cli.py read failed')
-    const result = JSON.parse(entry.stdout) as ShapeReadResult
+    const result = JSON.parse(rawStdout(entry)) as ShapeReadResult
     if (!result.matched) return result // the single free_text block spans [0, len) either way
     const text = bytes.toString('utf-8')
     return { ...result, blocks: convertBlocksToStringIndices(text, result.blocks) }

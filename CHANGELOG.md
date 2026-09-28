@@ -63,6 +63,18 @@
   original "never a partial match" rule no longer earns its cost. `read` reports this as contract 3,
   so Studio flags an older plugin. On 70 real documents in four projects, 54 now show as sections,
   up from 15 in 1.6.1 (token-tracker: 13 of 13).
+- **Fixed: Studio was rewriting document text that looked like a secret.** Studio masks anything
+  shaped like `token: value` in its console and error messages, which is right for a panel a person
+  might paste into a bug report. But the same masked text was what `git show` returned as a
+  document's content, so a spec containing `id-token: write` (a GitHub Actions permission) arrived
+  on the person's machine as `id-token=***`, was compared against the remote as if it were real,
+  and showed as a clash that looked identical on screen. The same path carried the plugin's reading
+  of a document (what Studio displays and edits), the text Claude combines or drafts for a
+  document, and version and diff text. A command's entry now carries the exact output separately,
+  never serialized to the window or the log, and those five places use it; everything shown or
+  logged is still masked. Output is also decoded as a stream, so a multi-byte character (an em dash,
+  a curly quote) cut by a chunk boundary is no longer turned into a replacement character. On the
+  one project Studio had opened, one file was affected (two lines) and the remote's copy was intact.
 
 ## 1.6.1 — 2026-09-28
 

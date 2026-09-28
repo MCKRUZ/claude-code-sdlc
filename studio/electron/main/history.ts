@@ -15,6 +15,7 @@
 //     before it was applied, so this file never short-circuits it.
 
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { UnsafePathError, resolveProjectDocument } from './projectPaths'
 import type { DocumentVersion, RestorePreview } from '../../shared/types'
 
@@ -41,7 +42,8 @@ async function auditArtifacts(
   args: string[],
 ): Promise<{ ok: boolean; stdout: string; stderr: string }> {
   const entry = await runPluginScript(pluginScriptsDir, 'audit_artifacts.py', [...args, '--repo', projectPath])
-  return { ok: entry.ok, stdout: entry.stdout, stderr: entry.stderr }
+  // stdout is the plugin's own output about a document (version text, diffs, JSON that quotes it): data, so exact.
+  return { ok: entry.ok, stdout: rawStdout(entry), stderr: entry.stderr }
 }
 
 /** The document path reaches the plugin as a POSITIONAL argument, so two things have to be

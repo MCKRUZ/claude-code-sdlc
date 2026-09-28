@@ -6,6 +6,7 @@
 // here never touch a working file, so there's nothing to isolate them from).
 
 import { createHash } from 'node:crypto'
+import { rawStdout } from './commandRunner'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
@@ -136,7 +137,7 @@ export async function isOnRemote(projectPath: string, relPath: string): Promise<
 async function readRemoteBlob(projectPath: string, branch: string, relPath: string): Promise<Buffer | null> {
   const entry = await runGitTolerant(['show', `origin/${branch}:${relPath}`], projectPath)
   if (!entry.ok) return null
-  return Buffer.from(entry.stdout, 'utf-8')
+  return Buffer.from(rawStdout(entry), 'utf-8')
 }
 
 async function describeArrival(projectPath: string, branch: string, relPath: string): Promise<ArrivedChange> {
