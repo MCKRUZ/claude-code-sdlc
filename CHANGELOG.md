@@ -17,6 +17,15 @@
   gets a new id, so a tick is never carried onto a question nobody read. `advance_phase.py` and
   the phase registry are unchanged — the rule is in the command's instructions, so someone
   running the low-level script by hand can still skip it.
+- **Fixed: a remote-added section could be silently deleted from the shared copy.** Found by
+  this release's own automated correctness review, before it shipped. A document missing a
+  required section still reading as sections (above) meant a document whose local copy never
+  had a section at all no longer fell back to the safe whole-file comparison. When a teammate
+  added that section and pushed, the silent per-section merge computed the right value but had
+  no local text to write it into, skipped the write, and still advanced the shared history —
+  so the very next save, with no further edit, pushed the local file over the remote's, taking
+  the new section with it. Such a change now falls the whole document back to a whole-file
+  clash, which never needs a place to write into a section: a choice replaces the entire file.
 - **Fixed: 1.6.0's new shape fields could show a real document as having a gap it didn't have,
   and hide its content.** A labeled block matched its label word for word, so a document that
   wrote `**In scope (v1) — both halves of the one problem:**` where the template says
