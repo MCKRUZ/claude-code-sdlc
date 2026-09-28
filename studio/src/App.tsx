@@ -202,15 +202,23 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     return (
       <Frame
         status={status}
+        projectPath={projectPath}
         consoleEntries={consoleEntries}
         syncState={syncState}
+        area={area}
         viewedStageId={viewedStageId}
-        showViewedStage={area === 'documents'}
-        onSelectStage={(stageId) => {
-          setArea('documents')
-          setOpenDoc(null)
-          setShowHistory(false)
-          setViewedStageId(stageId)
+        onNavigate={(target) => {
+          setArea(target.area)
+          if (target.area === 'documents') {
+            setOpenDoc(null)
+            setShowHistory(false)
+            setViewedStageId(target.stageId)
+          }
+          if (target.area === 'build') {
+            // Choosing Board again returns to the list, not to whichever spec was open.
+            setOpenSpec(null)
+            setHandingOff(false)
+          }
         }}
       >
         {error && (
@@ -218,22 +226,6 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             {error}
           </div>
         )}
-        <div className="mb-4 flex gap-1">
-          {([['documents', 'Documents'], ['build', 'Build'], ['explain', 'How it is going'],
-            ['closing', 'Closing Build'], ['settings', 'Settings']] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setArea(value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                area === value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         {area === 'closing' ? (
           <FeatureCompleteScreen
             projectPath={projectPath}

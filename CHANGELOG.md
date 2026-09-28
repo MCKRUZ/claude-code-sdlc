@@ -24,6 +24,16 @@
   looked as if the click had done nothing, so people clicked again. Picking a folder or clicking
   a recent project now covers the window, names the project and counts the seconds, and takes the
   keyboard as well as the pointer, until the open finishes or fails.
+- **Studio: the sidebar is now the only navigation.** The window had a list of phases beside a
+  row of tabs (Documents, Build, How it is going, Closing Build, Settings) that looked as if they
+  belonged to the phase picked; only Documents did. The tabs and the old header are gone. The
+  sidebar shows the project, its progress, and the journey grouped as Foundation, Build, Ship and
+  Close, joined by a rail. Build Loop, the one stage with screens of its own, opens Board, How it
+  is going, Closing and Documents beneath itself. Settings, Console and the sync status sit in the
+  footer. A stage signed off by a named person gets a solid tick and their name; one completed
+  with no name recorded gets an outlined tick and says so. The current stage shows how many of its
+  documents are complete. Build Loop reads "Specs, checks and close-out" rather than "Not
+  started", since specs are built before the plugin marks the stage as reached.
 
 ## 1.6.1 — 2026-09-28
 

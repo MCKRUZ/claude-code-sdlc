@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { stageStateLabel, stageStateTitle } from '../shared/stageLabel'
+import { stageStateLabel } from '../shared/stageLabel'
 
 describe('stageStateLabel', () => {
   it('says "Signed off" only when a name was recorded', () => {
@@ -25,20 +25,5 @@ describe('stageStateLabel', () => {
   it('leaves the other states as they were', () => {
     expect(stageStateLabel({ stage_state: 'current', signed_off_by: null })).toBe('Current')
     expect(stageStateLabel({ stage_state: 'later', signed_off_by: null })).toBe('Later')
-  })
-})
-
-describe('stageStateTitle', () => {
-  it('names who signed', () => {
-    expect(stageStateTitle({ stage_state: 'signed_off', signed_off_by: 'Matt Kruczek' })).toBe('Signed off by Matt Kruczek')
-  })
-
-  it('says plainly that no name was recorded', () => {
-    expect(stageStateTitle({ stage_state: 'signed_off', signed_off_by: null }))
-      .toBe('Completed — no name was recorded against this stage')
-  })
-
-  it('has nothing to add for a stage that is not finished', () => {
-    expect(stageStateTitle({ stage_state: 'current', signed_off_by: null })).toBeUndefined()
   })
 })

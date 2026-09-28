@@ -65,6 +65,13 @@ A row on the board.
   }
 }
 
+/** Build Loop's own screens sit beneath it in the sidebar, and only once Build Loop is where you
+ * are — so reaching one is two clicks: the stage, then the screen. */
+async function openBuildView(target: Page, view: string) {
+  await target.getByRole('button', { name: /^Build Loop/ }).click()
+  await target.getByRole('button', { name: view, exact: true }).click()
+}
+
 test.describe('[spec 0011] the Build board in the real window', () => {
   test.skip(!PLUGIN_ROOT || !existsSync(VENV_PYTHON), 'needs a plugin checkout beside this repo')
   test.describe.configure({ mode: 'serial' })
@@ -114,7 +121,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
   })
 
   test('opens on what needs the signed-in person', async () => {
-    await page.getByRole('button', { name: 'Build', exact: true }).click()
+    await page.getByRole('button', { name: /^Build Loop/ }).click()
     await expect(page.getByRole('button', { name: 'Needs me' })).toBeVisible({ timeout: 60_000 })
     // It is the SELECTED view on arrival, not merely one of the options.
     await expect(page.getByRole('button', { name: 'Needs me' })).toHaveClass(/bg-brand-600/)
@@ -239,7 +246,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
    */
   test.describe('[spec 0013] the explainer screens', () => {
     test('what Build inherited is read from the documents, and names each location', async () => {
-      await page.getByRole('button', { name: 'How it is going', exact: true }).click()
+      await openBuildView(page, 'How it is going')
       await expect(page.getByRole('heading', { name: 'What Build inherited' })).toBeVisible({ timeout: 60_000 })
       // Read from the documents, which is the spec's own requirement — a list written into
       // the app would look right until a template changed.
@@ -305,7 +312,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
    */
   test.describe('[spec 0014] declaring Build finished', () => {
     test('it says what is outstanding rather than only refusing', async () => {
-      await page.getByRole('button', { name: 'Closing Build', exact: true }).click()
+      await openBuildView(page, 'Closing')
       await expect(page.getByRole('heading', { name: 'Declaring Build finished' }))
         .toBeVisible({ timeout: 60_000 })
       // A refusal a person cannot act on is a wall. This one names the count and the items.
@@ -467,7 +474,7 @@ test.describe('[spec 0013] review-wait alarms by team, in the real window', () =
   })
 
   test('a team over its review-wait alarm is named, with the real threshold', async () => {
-    await alarmPage.getByRole('button', { name: 'How it is going', exact: true }).click()
+    await openBuildView(alarmPage, 'How it is going')
     await alarmPage.getByRole('button', { name: 'How Build is going' }).click()
     await expect(alarmPage.getByRole('heading', { name: 'Review-wait alarms by team' }))
       .toBeVisible({ timeout: 60_000 })

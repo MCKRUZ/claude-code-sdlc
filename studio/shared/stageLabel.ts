@@ -16,11 +16,3 @@ export function stageStateLabel(stage: StageLike): string {
   if (stage.stage_state === 'signed_off') return hasName(stage) ? 'Signed off' : 'Completed'
   return stage.stage_state === 'current' ? 'Current' : 'Later'
 }
-
-/** The hover text for a finished stage — who signed, or plainly that nobody was recorded. */
-export function stageStateTitle(stage: StageLike): string | undefined {
-  if (stage.stage_state !== 'signed_off') return undefined
-  return hasName(stage)
-    ? `Signed off by ${stage.signed_off_by!.trim()}`
-    : 'Completed — no name was recorded against this stage'
-}

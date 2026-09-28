@@ -192,24 +192,38 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(page.getByRole('heading', { name: 'Phase 1: Requirements' })).toBeVisible({ timeout: 30_000 })
   })
 
-  test('the stage list only highlights a stage while its documents are showing', async () => {
-    // The highlight followed the last stage clicked even after the person moved to the Build
-    // board, so a project could show Phase 0 ringed above a list of specs from the whole
-    // project — reading as "these are Phase 0's things".
-    const highlighted = page.locator('nav[aria-label="Project stages"] [aria-current="page"]')
+  test('exactly one sidebar entry is lit, and it is the screen you are on', async () => {
+    // The old top tabs and the phase list were two navigations that looked nested but were not,
+    // and the phase highlight followed the last click even over the Build board. Now the sidebar
+    // is the only navigation, and whichever screen is showing lights exactly one entry.
+    const lit = page.locator('nav[aria-label="Project"] [aria-current="page"], aside [aria-current="page"]')
+
     await page.getByRole('button', { name: /^Phase 0: Discovery/ }).click()
-    await expect(highlighted).toHaveCount(1)
+    await expect(lit).toHaveCount(1)
+    await expect(lit).toHaveAttribute('aria-label', /Phase 0: Discovery/)
 
-    await page.getByRole('button', { name: 'Build', exact: true }).click()
+    // Build Loop opens its own screens beneath it, and the lit entry is the screen, not Phase 0.
+    await page.getByRole('button', { name: /^Build Loop/ }).click()
     await expect(page.getByRole('button', { name: 'Needs me' })).toBeVisible({ timeout: 60_000 })
-    await expect(highlighted).toHaveCount(0)
+    await expect(lit).toHaveCount(1)
+    await expect(lit).toHaveText('Board')
 
-    await page.getByRole('button', { name: 'Documents', exact: true }).click()
-    await expect(highlighted).toHaveCount(1)
+    // Settings is project-wide: no stage is lit at all, only Settings.
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await expect(lit).toHaveCount(1)
+    await expect(lit).toHaveText('Settings')
 
     // Leave the file on the stage the rest of its serial tests expect.
     await page.getByRole('button', { name: /^Phase 1: Requirements/ }).click()
     await expect(page.getByRole('heading', { name: 'Phase 1: Requirements' })).toBeVisible({ timeout: 30_000 })
+    await expect(lit).toHaveCount(1)
+  })
+
+  test('there is no row of tabs above the content', async () => {
+    // Documents, Build, How it is going, Closing Build and Settings used to sit above the content
+    // as if they belonged to the phase picked; only Documents did. They are all in the sidebar now.
+    await expect(page.locator('main').getByRole('button', { name: 'How it is going' })).toHaveCount(0)
+    await expect(page.locator('main').getByRole('button', { name: 'Closing Build' })).toHaveCount(0)
   })
 
   test('opens a document as sections and fields, showing where it lives', async () => {
