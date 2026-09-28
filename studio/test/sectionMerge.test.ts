@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { extractUnits, threeWayMerge, type SectionUnit, type ShapeReadResult } from '../electron/main/sectionMerge'
+import {
+  extractUnits, reclassifyUnwritableMerges, threeWayMerge,
+  type SectionUnit, type ShapeReadResult,
+} from '../electron/main/sectionMerge'
+import type { ClashSection } from '../shared/types'
 
 function unit(key: string, text: string | undefined): SectionUnit | undefined {
   return text === undefined ? undefined : { key, heading: key, text }
@@ -178,5 +182,63 @@ describe('extractUnits', () => {
     for (const u of sorted) {
       expect(text.slice(u.span![0], u.span![1])).toBe(u.text)
     }
+  })
+})
+
+// The bug this PR's own correctness review caught: reclassifying a spanless key into a clash
+// unconditionally (span check alone) raised a false clash for a key nobody had actually
+// changed — and resolving that "clash" (any choice, since all three sides already agreed)
+// appended a byte-identical duplicate of content that was never really written anywhere.
+describe('reclassifyUnwritableMerges', () => {
+  const rawUnit = (key: string, span?: [number, number]): SectionUnit =>
+    ({ key, heading: key, span, text: '' })
+
+  it('drops a spanless key whose merged value already matches local — nothing to ask, nowhere to write', () => {
+    const merged = new Map([['__free_text__', 'same content']])
+    const clashes: ClashSection[] = []
+    reclassifyUnwritableMerges(
+      merged, clashes, [rawUnit('__free_text__')], () => 'same content', [], [],
+    )
+    expect(merged.size).toBe(0)
+    expect(clashes).toEqual([])
+  })
+
+  it('treats it as unchanged across an EOL difference alone, not a real change', () => {
+    const merged = new Map([['__free_text__', 'a\nb']])
+    const clashes: ClashSection[] = []
+    reclassifyUnwritableMerges(
+      merged, clashes, [rawUnit('__free_text__')], () => 'a\r\nb', [], [],
+    )
+    expect(merged.size).toBe(0)
+    expect(clashes).toEqual([])
+  })
+
+  it('clashes a spanless key only when its value genuinely differs from local', () => {
+    const merged = new Map([['__free_text__', 'new content']])
+    const clashes: ClashSection[] = []
+    reclassifyUnwritableMerges(
+      merged, clashes, [rawUnit('__free_text__')], () => 'old content', [], [],
+    )
+    expect(merged.size).toBe(0)
+    expect(clashes).toEqual([{ key: '__free_text__', heading: '__free_text__', localText: 'old content', remoteText: 'new content' }])
+  })
+
+  it('clashes a key local has never had at all — nothing to compare against, definitely worth asking', () => {
+    const merged = new Map([['Non-Negotiable Requirements', 'brand new section']])
+    const clashes: ClashSection[] = []
+    reclassifyUnwritableMerges(
+      merged, clashes, [], () => undefined, [], [{ key: 'Non-Negotiable Requirements', heading: 'Non-Negotiable Requirements', span: [0, 1], text: '' }],
+    )
+    expect(clashes[0]).toMatchObject({ key: 'Non-Negotiable Requirements', localText: '', remoteText: 'brand new section' })
+  })
+
+  it('leaves an ordinary key with a real span alone, whether or not it changed', () => {
+    const merged = new Map([['Overview', 'edited text']])
+    const clashes: ClashSection[] = []
+    reclassifyUnwritableMerges(
+      merged, clashes, [rawUnit('Overview', [0, 10])], () => 'old text', [], [],
+    )
+    expect(merged.get('Overview')).toBe('edited text')
+    expect(clashes).toEqual([])
   })
 })
