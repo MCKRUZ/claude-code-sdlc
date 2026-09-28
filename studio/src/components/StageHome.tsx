@@ -63,12 +63,17 @@ export function StageHome({
             <li key={doc.path}>
               <button
                 type="button"
-                disabled={!doc.exists}
+                // A folder is listed, and its state reported, but there is no one document in it
+                // to open — the row must not offer to.
+                disabled={!doc.exists || doc.folder}
                 onClick={() => onOpenDocument(doc.path)}
                 className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-white"
               >
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium text-slate-900">{doc.name}</span>
+                  <span className="block text-sm font-medium text-slate-900">
+                    {doc.name}
+                    {doc.folder && <span className="ml-2 text-xs font-normal text-slate-400">folder</span>}
+                  </span>
                   {doc.description && <span className="mt-0.5 block text-xs text-slate-500">{doc.description}</span>}
                 </span>
                 <span className="shrink-0 text-xs font-medium">

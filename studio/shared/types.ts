@@ -262,6 +262,9 @@ export interface StageDocument {
   name: string
   path: string
   exists: boolean
+  /** A folder of documents (Design's `adrs/`), not one document. It is listed and its
+   * completeness reported, but it has no single shape and cannot be opened as a document. */
+  folder: boolean
   shaped: boolean
   description?: string
   findingCount: number

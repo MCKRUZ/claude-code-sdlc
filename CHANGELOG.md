@@ -25,6 +25,12 @@ worse: deleting any one section un-shaped the whole document.
   through `react-markdown` + `remark-gfm`. Raw HTML is dropped, links draw as text and images as
   their description, so a document a colleague edited cannot navigate the window or fetch a
   remote URL. Edit mode still shows the source, so saves stay byte-exact.
+- **Fixed: the Design stage crashed on a project with an `adrs/` folder.** `stage_readiness.py`
+  treated every registered artifact as one file, and reading a folder as text raises
+  `PermissionError` on Windows, so Studio showed a raw traceback instead of the stage. A folder
+  artifact is now reported as a folder (present, and non-empty by the gate's own rule), Studio
+  lists it without offering to open it as a document, and opening a folder returns a clear
+  message instead of throwing.
 
 ## 1.5.2 — 2026-09-26
 
