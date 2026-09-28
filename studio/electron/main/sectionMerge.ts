@@ -276,10 +276,12 @@ export interface SectionUnit {
 export function extractUnits(text: string, result: ShapeReadResult): SectionUnit[] {
   const units: SectionUnit[] = []
   const freeTextParts: string[] = []
+  const freeTextBlocks: Array<{ start: number; end: number }> = []
 
   for (const block of result.blocks) {
     if (block.kind === 'free_text') {
       freeTextParts.push(text.slice(block.start, block.end))
+      freeTextBlocks.push({ start: block.start, end: block.end })
     } else if (block.kind === 'section') {
       units.push({ key: block.heading!, heading: block.heading!, span: [block.start, block.end], text: text.slice(block.start, block.end) })
     } else if (block.kind === 'repeating_section') {
@@ -300,7 +302,16 @@ export function extractUnits(text: string, result: ShapeReadResult): SectionUnit
   }
 
   if (freeTextParts.length > 0) {
-    units.push({ key: '__free_text__', heading: '(unstructured text)', text: freeTextParts.join('') })
+    // A real span only when there is exactly one free-text stretch — by far the ordinary case
+    // (a title and intro before the first heading): that one block's own bounds ARE the
+    // combined unit's bounds, so a resolved value can be spliced straight back in like any
+    // other unit. Several disjoint stretches (a gap the shape leaves between sections, say)
+    // have no single range to write into — left spanless, same as the unmatched case above,
+    // so a change there still gets asked about rather than either silently misapplied at the
+    // wrong spot or silently dropped.
+    const span: [number, number] | undefined =
+      freeTextBlocks.length === 1 ? [freeTextBlocks[0].start, freeTextBlocks[0].end] : undefined
+    units.push({ key: '__free_text__', heading: '(unstructured text)', ...(span ? { span } : {}), text: freeTextParts.join('') })
   }
 
   return units

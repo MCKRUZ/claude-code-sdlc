@@ -149,3 +149,21 @@ describe.skipIf(!PLUGIN.available)('a section the local copy never had, added by
     expect(git(['show', 'origin/main:' + DOC], s.project)).toContain('Non-Negotiable Requirements')
   }, 180_000)
 })
+
+describe.skipIf(!PLUGIN.available)('an ordinary edit outside the missing section', () => {
+  it('still merges per section instead of falling back to a whole-file clash for the whole document', async () => {
+    // The fix must not overcorrect: an intro-text edit is the ordinary case (nearly every
+    // document has one), and demoting every such pull to a whole-file clash — found by this
+    // PR's own correctness review — would defeat per-section merging almost entirely.
+    const s = await scenario()
+    const result = await pull(s.project, PLUGIN.scriptsDir)
+    expect(result.ok, result.error).toBe(true)
+
+    const onDisk = readFileSync(join(s.project, DOC), 'utf-8')
+    expect(onDisk).toContain('expanded') // the local intro edit survived, applied normally
+
+    const pending = await getPendingClashes(s.project, PLUGIN.scriptsDir)
+    const clash = pending.find((c) => c.path === DOC)
+    expect(clash?.sections.map((sec) => sec.key)).toEqual(['Non-Negotiable Requirements'])
+  }, 180_000)
+})

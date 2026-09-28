@@ -150,24 +150,73 @@ async function describeArrival(projectPath: string, branch: string, relPath: str
   return { path: relPath, author: author || 'unknown', when: when || '' }
 }
 
-/** Whether threeWayMerge silently resolved any key the local document has no real span for.
- * Most keys DO have one — but a key can resolve silently (ancestor and local both lack it, so
- * "local never touched it" is trivially true) while the local document has never recognized
- * that content at all: most often, a section a teammate's remote added that this local copy
- * has never had. There is then no span to write into for ANY resolution of that key — not the
- * silent merge, and not a person's own later choice either, since a per-section clash would
- * hit the identical problem when it comes time to write their pick. Found on a real project:
- * the write was silently skipped while the ancestor still advanced to the remote's hash, so
- * Studio believed the two sides agreed — and the next save pushed the local file, still
- * missing the section, straight over the remote, deleting it for everyone. The caller falls
- * back to a whole-file clash instead, the one resolution path that never needs a span (a
- * choice replaces the entire file) — the same fail-safe this module already uses whenever the
- * shape can't be read at all. */
-function hasUnwritableMerge(merged: Map<string, string>, localUnitsRaw: SectionUnit[]): boolean {
-  for (const key of merged.keys()) {
-    if (!localUnitsRaw.find((u) => u.key === key)?.span) return true
+/** A key threeWayMerge resolved silently is only actually safe to APPLY when the local
+ * document has a real span to splice the resolved text into. Most keys DO have one — but a
+ * key can resolve silently (ancestor and local both lack it, so "local never touched it" is
+ * trivially true) while the local document has never recognized that content at all: most
+ * often, a section a teammate's remote added that this local copy has never had. There is no
+ * span to write into, and silently skipping the write — while the caller still advances the
+ * shared ancestor to the remote's hash — is exactly how a real project lost a teammate's
+ * section: Studio believed the two sides agreed, and the very next save pushed the local file,
+ * still missing it, straight over the remote. So such a key is moved into `clashes` instead:
+ * the person is asked, the same as any other real disagreement, and every OTHER key — the
+ * ordinary case, a title or an edited section that has a real span — still merges normally
+ * rather than the whole document being demoted to a whole-file clash over one unwritable key.
+ * Mutates both maps in place; shared by pullOneFile and recomputeClashState so the two apply
+ * sites cannot drift apart on this rule. Applying the person's eventual choice for a
+ * reclassified key is applyResolvedUnits' job, below — it has the same span problem and needs
+ * its own answer (append, since there is still nowhere to splice a replacement). */
+function reclassifyUnwritableMerges(
+  merged: Map<string, string>,
+  clashes: ClashSection[],
+  localUnitsRaw: SectionUnit[],
+  ancestorUnits: SectionUnit[],
+  remoteUnits: SectionUnit[],
+): void {
+  for (const [key, newText] of [...merged]) {
+    if (localUnitsRaw.find((u) => u.key === key)?.span) continue // an ordinary write target
+    merged.delete(key)
+    const heading = remoteUnits.find((u) => u.key === key)?.heading
+      ?? ancestorUnits.find((u) => u.key === key)?.heading
+      ?? key
+    clashes.push({ key, heading, localText: '', remoteText: newText })
   }
-  return false
+}
+
+/** Applies every resolved unit (silent merges plus, in resolveClash, the person's just-made
+ * choices) to the local file in one write. A unit with a real span replaces it in place, same
+ * as always. A unit with none — the exact case reclassifyUnwritableMerges moved out of the
+ * silent path — has nowhere to splice a replacement, so its resolved text is appended instead:
+ * the document's own heading-based reading finds it on the next read regardless of position,
+ * and appending, unlike skipping, can never make chosen content vanish. Returns whether
+ * anything was actually written. */
+async function applyResolvedUnits(
+  pluginScriptsDir: string,
+  localFullPath: string,
+  localText: string,
+  localEol: '\r\n' | '\n',
+  merged: Map<string, string>,
+  compareAgainst: (key: string) => string | undefined,
+  localUnitsRaw: SectionUnit[],
+): Promise<boolean> {
+  const updates: Array<[number, number, string]> = []
+  let appended = ''
+  for (const [key, newText] of merged) {
+    if (compareAgainst(key) === newText) continue // unchanged relative to local
+    const rawUnit = localUnitsRaw.find((u) => u.key === key)
+    if (rawUnit?.span) {
+      const out = toEol(newText, localEol)
+      if (rawUnit.text !== out) updates.push([rawUnit.span[0], rawUnit.span[1], out])
+    } else {
+      appended += `\n${toEol(newText, localEol).replace(/\n+$/, '')}\n`
+    }
+  }
+  if (updates.length > 0) await writeShapeUpdates(pluginScriptsDir, localFullPath, updates)
+  if (appended) {
+    const base = updates.length > 0 ? readFileSync(localFullPath, 'utf-8') : localText
+    writeFileSync(localFullPath, base.replace(/\n*$/, '\n') + appended, 'utf-8')
+  }
+  return updates.length > 0 || appended.length > 0
 }
 
 const WHOLE_FILE_KEY = '__whole_file__'
@@ -369,31 +418,22 @@ async function pullOneFile(
   const remoteUnits = extractUnits(remoteNorm, remoteReadN)
   const localUnitsRaw = extractUnits(localText, localReadRaw) // real spans, for writing only
   const { merged, clashes } = threeWayMerge(ancestorUnits, localUnitsForCompare, remoteUnits)
-
-  if (hasUnwritableMerge(merged, localUnitsRaw)) {
-    return { merged: false, clash: freezeWholeFileClash(syncState, relPath, ancestorHash, localText, remoteText) }
-  }
+  reclassifyUnwritableMerges(merged, clashes, localUnitsRaw, ancestorUnits, remoteUnits)
 
   if (clashes.length > 0) {
     syncState.files[relPath] = { ancestorHash, pendingClashSections: clashes.map((c) => c.key) }
     return { merged: false, clash: { path: relPath, sections: clashes } }
   }
 
-  const updates: Array<[number, number, string]> = []
-  for (const [key, newText] of merged) {
-    const compareUnit = localUnitsForCompare.find((u) => u.key === key)
-    if (!compareUnit || compareUnit.text === newText) continue // unchanged relative to local
-    const rawUnit = localUnitsRaw.find((u) => u.key === key)
-    if (!rawUnit || !rawUnit.span) continue
-    updates.push([rawUnit.span[0], rawUnit.span[1], toEol(newText, localEol)])
-  }
-  if (updates.length > 0) {
-    await writeShapeUpdates(pluginScriptsDir, localFullPath, updates)
-  }
+  const wrote = await applyResolvedUnits(
+    pluginScriptsDir, localFullPath, localText, localEol, merged,
+    (key) => localUnitsForCompare.find((u) => u.key === key)?.text,
+    localUnitsRaw,
+  )
 
   storeAncestorBlob(remoteHash!, remoteBytes!)
   syncState.files[relPath] = { ancestorHash: remoteHash! }
-  return { merged: updates.length > 0, arrived: await describeArrival(projectPath, branch, relPath) }
+  return { merged: wrote, arrived: await describeArrival(projectPath, branch, relPath) }
 }
 
 export async function pull(projectPath: string, pluginScriptsDir: string): Promise<PullResult> {
@@ -516,15 +556,7 @@ async function recomputeClashState(
   const remoteUnits = extractUnits(remoteNorm, remoteReadN)
   const localUnitsRaw = extractUnits(localText, localReadRaw)
   const result = threeWayMerge(ancestorUnits, localUnitsForCompare, remoteUnits)
-  if (hasUnwritableMerge(result.merged, localUnitsRaw)) {
-    // Same fail-safe as pullOneFile's — see hasUnwritableMerge's comment. Reached only if a
-    // key became unwritable after this file was already frozen for other section clashes.
-    return {
-      merged: new Map(), shapePath: null, localText, remoteBytes, localEol,
-      localUnitsRaw: [{ key: WHOLE_FILE_KEY, heading: filePath, text: localText }],
-      clashes: [{ key: WHOLE_FILE_KEY, heading: filePath, localText, remoteText }],
-    }
-  }
+  reclassifyUnwritableMerges(result.merged, result.clashes, localUnitsRaw, ancestorUnits, remoteUnits)
   return { merged: result.merged, clashes: result.clashes, localUnitsRaw, localEol, localText, remoteBytes, shapePath }
 }
 
@@ -612,21 +644,18 @@ export async function resolveClash(
 
   // Every clash in this file is now resolved — apply everything (silent merges + resolved
   // clashes) in one write, then advance the ancestor.
-  const updates: Array<[number, number, string]> = []
-  for (const [key, newText] of merged) {
-    if (key === '__whole_file__') {
-      const out = toEol(newText, localEol)
-      if (out !== localText) writeFileSync(localFullPath, out, 'utf-8')
-      continue
-    }
-    const rawUnit = localUnitsRaw.find((u) => u.key === key)
-    if (!rawUnit || !rawUnit.span) continue
-    const out = toEol(newText, localEol)
-    if (rawUnit.text === out) continue
-    updates.push([rawUnit.span[0], rawUnit.span[1], out])
+  const wholeFileText = merged.get(WHOLE_FILE_KEY)
+  if (wholeFileText !== undefined) {
+    merged.delete(WHOLE_FILE_KEY) // a whole-file clash never carries any other key alongside it
+    const out = toEol(wholeFileText, localEol)
+    if (out !== localText) writeFileSync(localFullPath, out, 'utf-8')
   }
-  if (updates.length > 0 && shapePath) {
-    await writeShapeUpdates(pluginScriptsDir, localFullPath, updates)
+  if (merged.size > 0 && shapePath) {
+    await applyResolvedUnits(
+      pluginScriptsDir, localFullPath, localText, localEol, merged,
+      (key) => localUnitsRaw.find((u) => u.key === key)?.text,
+      localUnitsRaw,
+    )
   }
 
   const remoteHash = hashBytes(remoteBytes)

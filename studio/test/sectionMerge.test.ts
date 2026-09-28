@@ -147,6 +147,29 @@ describe('extractUnits', () => {
     expect(freeText?.text).toContain('intro text')
   })
 
+  it('gives a single free-text stretch a real span — the ordinary case, an intro before the first heading', () => {
+    // A real span lets a silently-resolved intro edit be written back like any other unit,
+    // instead of forcing the whole document into a whole-file clash for it (found by this PR's
+    // own correctness review: every titled document has exactly this one intro block).
+    const extracted = extractUnits(text, result)
+    const freeText = extracted.find((u) => u.key === '__free_text__')
+    expect(freeText?.span).toEqual([0, text.indexOf('## Overview')])
+  })
+
+  it('leaves several disjoint free-text stretches spanless — there is no one range to write into', () => {
+    const twoStretches: ShapeReadResult = {
+      ...result,
+      blocks: [
+        result.blocks[0],
+        result.blocks[1],
+        { kind: 'free_text', start: text.indexOf('## Functional Requirements'), end: text.indexOf('### FR-001') },
+        { ...result.blocks[2], start: text.indexOf('### FR-001') },
+      ],
+    }
+    const freeText = extractUnits(text, twoStretches).find((u) => u.key === '__free_text__')
+    expect(freeText?.span).toBeUndefined()
+  })
+
   it('every extracted span, concatenated in document order, reconstructs the tiled portion exactly', () => {
     // The tiling guarantee document_shape.py's own docstring promises — proven here for
     // whatever extractUnits itself claims to have covered with a span.
