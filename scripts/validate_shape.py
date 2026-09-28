@@ -74,6 +74,8 @@ def validate_shape_text(text: str) -> list[str]:
         errors.append(f"line {root_line}: 'sections' must be a non-empty list")
         return errors
 
+    all_headings = {sec["heading"] for sec in sections if isinstance(sec, dict) and isinstance(sec.get("heading"), str)}
+    alias_owner: dict[str, int] = {}
     seen_headings: dict[str, int] = {}
     for sec in sections:
         if not isinstance(sec, dict):
@@ -100,6 +102,28 @@ def validate_shape_text(text: str) -> list[str]:
                 re.compile(pattern)
             except re.error as e:
                 errors.append(f"line {sec_line}: 'heading_pattern' is not a valid regex: {e}")
+
+        if "aliases" in sec:
+            aliases = sec["aliases"]
+            if pattern:
+                errors.append(f"line {sec_line}: 'aliases' has no meaning on a section that uses heading_pattern")
+            elif not isinstance(aliases, list):
+                errors.append(f"line {sec_line}: 'aliases' must be a list of alternate headings")
+            else:
+                for alias in aliases:
+                    if not isinstance(alias, str) or not alias.strip():
+                        errors.append(f"line {sec_line}: each alias must be non-empty text, got {alias!r}")
+                    elif alias == heading:
+                        errors.append(f"line {sec_line}: alias '{alias}' repeats its own heading")
+                    elif alias in all_headings:
+                        errors.append(f"line {sec_line}: alias '{alias}' is the heading of another section")
+                    elif alias in alias_owner:
+                        errors.append(
+                            f"line {sec_line}: alias '{alias}' is listed by more than one section "
+                            f"(first at line {alias_owner[alias]})"
+                        )
+                    else:
+                        alias_owner[alias] = sec_line
 
         if sec.get("repeats"):
             numbering = sec.get("numbering")

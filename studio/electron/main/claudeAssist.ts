@@ -19,7 +19,7 @@
 import { mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runCommand } from './commandRunner'
+import { rawStdout, runCommand } from './commandRunner'
 
 /** An empty, Studio-owned directory to run the `claude` CLI in.
  *
@@ -73,5 +73,5 @@ export async function combineWithClaude(
   if (!entry.ok) {
     return { error: entry.stderr || 'Claude could not combine these versions.' }
   }
-  return { combined: entry.stdout.trim() }
+  return { combined: rawStdout(entry).trim() } // written into the document, so exact
 }

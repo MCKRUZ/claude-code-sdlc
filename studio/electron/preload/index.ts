@@ -36,6 +36,8 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:combineWithClaude', projectPath, localText, remoteText),
 
   getStageReadiness: (projectPath, stageId) => ipcRenderer.invoke('studio:getStageReadiness', projectPath, stageId),
+  setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
+    ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),
   openDocument: (projectPath, relPath) => ipcRenderer.invoke('studio:openDocument', projectPath, relPath),
   getDocumentChanges: (projectPath, relPath) => ipcRenderer.invoke('studio:getDocumentChanges', projectPath, relPath),
   markDocumentSeen: (projectPath, relPath) => ipcRenderer.invoke('studio:markDocumentSeen', projectPath, relPath),

@@ -176,13 +176,37 @@ class TestOptionalSectionsMayBeAbsent:
         result = ds.read_document(self.DOC_WITHOUT_NOTES, shape)
         assert [b.get("heading") for b in result["blocks"] if b["kind"] == "section"] == ["Overview"]
 
-    def test_absent_required_section_still_falls_back_to_free_text(self):
+    def test_absent_required_section_is_reported_but_does_not_hide_the_rest(self):
+        """A document that lacks one required section used to be thrown back to raw text as a whole.
+        Each section that IS found was found by its heading, so it is definitely that section;
+        the missing one is a finding, not a reason to hide the others."""
         doc = "# Title\r\n\r\n## Notes\r\n\r\nhi\r\n"
         shape = {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]}
         result = ds.read_document(doc, shape)
+        assert result["matched"] is True
+        assert "Overview" in result["warnings"][0]
+        notes = next(b for b in result["blocks"] if b.get("heading") == "Notes")
+        assert notes["fields"]["Body"]["value"] == "hi\r\n"
+        _assert_tiles(doc, result)
+
+    def test_a_document_with_nothing_recognizable_is_still_free_text(self):
+        doc = "# Title\r\n\r\n## Unrelated\r\n\r\nhi\r\n"
+        result = ds.read_document(doc, {"sections": [self.REQUIRED_OVERVIEW]})
         assert result["matched"] is False
         assert "Overview" in result["warnings"][0]
         assert result["blocks"] == [{"kind": "free_text", "start": 0, "end": len(doc), "text": doc}]
+
+    def test_every_missing_required_section_is_named(self):
+        two = {"sections": [self.REQUIRED_OVERVIEW, {"heading": "Risks", "fields": [
+            {"label": "Body", "anchor": "section", "type": "longtext", "required": True}]}, self.OPTIONAL]}
+        result = ds.read_document("# T\n\n## Notes\n\nx\n", two)
+        assert result["matched"] is True
+        assert [w for w in result["warnings"] if "Overview" in w] and [w for w in result["warnings"] if "Risks" in w]
+
+    def test_a_complete_document_carries_no_warnings(self):
+        doc = self.DOC_WITHOUT_NOTES  # has Overview; Notes is optional
+        result = ds.read_document(doc, {"sections": [self.REQUIRED_OVERVIEW, self.OPTIONAL]})
+        assert result["matched"] is True and result["warnings"] == []
 
     def test_section_with_one_required_field_is_required(self):
         mixed = {"heading": "Notes", "fields": [
@@ -190,13 +214,15 @@ class TestOptionalSectionsMayBeAbsent:
             {"label": "Owner", "anchor": "inline", "type": "text", "required": True},
         ]}
         result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, mixed]})
-        assert result["matched"] is False
+        assert result["matched"] is True  # Overview is there and is shown
+        assert any("Notes" in w for w in result["warnings"])  # Notes is required, so its absence is reported
 
     def test_section_declaring_no_fields_is_treated_as_required(self):
         # Nothing says it is optional, so the original strict behaviour stands.
         bare = {"heading": "Notes", "fields": []}
         result = ds.read_document(self.DOC_WITHOUT_NOTES, {"sections": [self.REQUIRED_OVERVIEW, bare]})
-        assert result["matched"] is False
+        assert result["matched"] is True
+        assert any("Notes" in w for w in result["warnings"])
 
     def test_absent_optional_pattern_section_is_skipped(self):
         optional_pattern = {"heading_pattern": r"^v\d+\.\d+", "fields": [
@@ -211,6 +237,165 @@ class TestOptionalSectionsMayBeAbsent:
         notes = next(b for b in result["blocks"] if b.get("heading") == "Notes")
         assert notes["fields"]["Body"]["value"] == "Kept.\r\n"
         assert "custom" not in notes
+
+
+class TestHeadingsThatDriftFromTheTemplate:
+    """A real document rarely repeats a template's headings verbatim: Claude writes it from
+    guidance, so "Requirement Traceability" arrives as "Traceability Matrix" and "Deployment Steps"
+    as "3. Deployment steps". Measured across 70 real documents in four projects, 55 failed to
+    match their shape at all for this reason and reached Studio as raw text.
+
+    A heading matches, in order: exactly; by an alias the shape lists; by being the same words once
+    numbering, case and punctuation are ignored; or by being the template heading followed by a
+    qualifier. Each of the last three is safe by construction, since none equates different words."""
+
+    @staticmethod
+    def _shape(heading: str, aliases=None, required=True) -> dict:
+        sec = {"heading": heading, "fields": [
+            {"label": "Body", "anchor": "section", "type": "longtext", "required": required}]}
+        if aliases:
+            sec["aliases"] = aliases
+        return {"sections": [sec]}
+
+    def _matches(self, shape: dict, doc_heading: str) -> bool:
+        result = ds.read_document(f"# T\n\n## {doc_heading}\n\nbody\n", shape)
+        return result["matched"] is True
+
+    def test_exact_heading_still_matches(self):
+        assert self._matches(self._shape("Deployment Steps"), "Deployment Steps")
+
+    def test_case_is_ignored(self):
+        assert self._matches(self._shape("Configuration Reference"), "Configuration reference")
+
+    def test_leading_numbering_is_ignored(self):
+        assert self._matches(self._shape("Deployment Steps"), "3. Deployment steps")
+        assert self._matches(self._shape("Deployment Steps"), "3.1 Deployment Steps")
+        assert self._matches(self._shape("Deployment Steps"), "A) Deployment Steps")
+
+    def test_punctuation_differences_are_ignored(self):
+        assert self._matches(self._shape("Root Cause Analysis — Five Whys"), "Root Cause Analysis (Five Whys)")
+        assert self._matches(self._shape("Root Cause Analysis — Five Whys"), "Root Cause Analysis - Five Whys")
+
+    def test_a_qualifier_after_the_template_heading_is_accepted(self):
+        shape = self._shape("Deployment Procedure")
+        assert self._matches(shape, "Deployment procedure (deploy-dev)")
+        assert self._matches(shape, "Deployment Procedure — staging first")
+        assert self._matches(shape, "Deployment Procedure: how we ship")
+
+    def test_a_qualifier_needs_a_separator_so_a_different_heading_is_not_swallowed(self):
+        shape = self._shape("Data Model")
+        assert not self._matches(shape, "Data Model Review")
+        assert not self._matches(shape, "Data Models")
+        assert not self._matches(shape, "Metadata Model")
+
+    def test_a_different_heading_does_not_match(self):
+        assert not self._matches(self._shape("Overview"), "Summary")
+        assert not self._matches(self._shape("Security"), "Security Review")
+
+    def test_an_alias_the_shape_lists_matches(self):
+        shape = self._shape("Overview", aliases=["Summary"])
+        assert self._matches(shape, "Summary")
+
+    def test_an_alias_also_gets_the_forgiving_match(self):
+        shape = self._shape("Overview", aliases=["Summary"])
+        assert self._matches(shape, "1. summary")
+
+    def test_an_exact_heading_beats_an_alias_when_both_are_present(self):
+        shape = self._shape("Overview", aliases=["Summary"])
+        doc = "# T\n\n## Summary\n\nsummary text\n\n## Overview\n\nthe overview\n"
+        result = ds.read_document(doc, shape)
+        assert result["matched"] is True
+        overview = next(b for b in result["blocks"] if b.get("heading") == "Overview" and not b.get("custom"))
+        assert overview["fields"]["Body"]["value"].strip() == "the overview"
+
+    def test_the_block_carries_the_documents_own_heading_not_the_shapes(self):
+        result = ds.read_document("# T\n\n## 3. Deployment steps\n\nbody\n", self._shape("Deployment Steps"))
+        headings = [b["heading"] for b in result["blocks"] if b["kind"] == "section"]
+        assert headings == ["3. Deployment steps"]
+
+    def test_one_document_heading_is_never_claimed_by_two_sections(self):
+        shape = {"sections": [
+            {"heading": "Overview", "aliases": ["Summary"], "fields": [
+                {"label": "A", "anchor": "section", "type": "longtext", "required": False}]},
+            {"heading": "Summary", "fields": [
+                {"label": "B", "anchor": "section", "type": "longtext", "required": False}]},
+        ]}
+        doc = "# T\n\n## Summary\n\nx\n"
+        result = ds.read_document(doc, shape)
+        sections = [b for b in result["blocks"] if b["kind"] == "section" and not b.get("custom")]
+        assert len(sections) == 1
+        assert list(sections[0]["fields"]) == ["B"]  # the exact heading won it
+
+    def test_still_tiles_and_leaves_the_text_untouched(self):
+        doc = "# T\n\n## 3. Deployment steps\n\nbody\n\n## Extra\n\nmore\n"
+        result = ds.read_document(doc, self._shape("Deployment Steps"))
+        _assert_tiles(doc, result)
+        assert ds.write_document(doc, []) == doc
+
+    def test_a_required_section_with_no_match_at_all_still_falls_back_to_raw_text(self):
+        result = ds.read_document("# T\n\n## Unrelated\n\nx\n", self._shape("Deployment Steps"))
+        assert result["matched"] is False
+        assert "Deployment Steps" in result["warnings"][0]
+
+    def test_findings_name_the_documents_heading_for_a_loosely_matched_section(self):
+        shape = {"sections": [{"heading": "Deployment Steps", "fields": [
+            {"label": "Owner", "anchor": "inline", "type": "text", "required": True}]}]}
+        result = ds.read_document("# T\n\n## 3. Deployment steps\n\nno owner\n", shape)
+        block = next(b for b in result["blocks"] if b["kind"] == "section")
+        assert block["heading"] == "3. Deployment steps"
+        assert block["fields"]["Owner"] is None
+
+
+class TestQualifiedBlockLabels:
+    """A real document rarely repeats a template's label word for word: `**In scope:**` becomes
+    `**In scope (v1) — both halves of the one problem:**`. A labeled_block field is a label on
+    its own line, so a qualifier after the label is unambiguous; if it isn't matched the field
+    reads as absent and the content under it drops out of view."""
+
+    SHAPE = {"sections": [{"heading": "Problem Scope", "fields": [
+        {"label": "In scope", "anchor": "labeled_block", "type": "longtext", "required": False},
+        {"label": "Out of scope", "anchor": "labeled_block", "type": "longtext", "required": False},
+    ]}]}
+
+    def _fields(self, doc: str) -> dict:
+        result = ds.read_document(doc, self.SHAPE)
+        return next(b for b in result["blocks"] if b.get("heading") == "Problem Scope")["fields"]
+
+    def test_exact_label_still_matches(self):
+        f = self._fields("## Problem Scope\n\n**In scope:**\n- a\n\n**Out of scope:**\n- b\n")
+        assert f["In scope"]["value"] == "- a\n\n"
+        assert f["Out of scope"]["value"] == "- b\n"
+
+    def test_a_qualified_label_matches(self):
+        doc = (
+            "## Problem Scope\n\n"
+            "**In scope (v1) — both halves of the one problem:**\n- a\n\n"
+            "**Out of scope (v1, explicitly deferred):**\n- b\n"
+        )
+        f = self._fields(doc)
+        assert f["In scope"] is not None and f["In scope"]["value"] == "- a\n\n"
+        assert f["Out of scope"] is not None and f["Out of scope"]["value"] == "- b\n"
+
+    def test_a_qualified_label_bounds_its_neighbour(self):
+        """The first block must stop where the second qualified label starts, not swallow it."""
+        doc = "## Problem Scope\n\n**In scope (v1):**\n- a\n\n**Out of scope (later):**\n- b\n"
+        f = self._fields(doc)
+        assert "Out of scope" not in f["In scope"]["value"]
+
+    def test_a_label_that_merely_starts_the_same_way_does_not_match(self):
+        """`**Included:**` is not `**In:**` — the label must end at a word boundary."""
+        shape = {"sections": [{"heading": "S", "fields": [
+            {"label": "In", "anchor": "labeled_block", "type": "longtext", "required": False}]}]}
+        result = ds.read_document("## S\n\n**Included:**\n- x\n", shape)
+        assert result["blocks"][0]["fields"]["In"] is None
+
+    def test_inline_labels_are_not_loosened(self):
+        """`**Owner email:** x` is a different field from `**Owner:** x`; only the block form,
+        where the label owns its line, is qualified safely."""
+        shape = {"sections": [{"heading": "S", "fields": [
+            {"label": "Owner", "anchor": "inline", "type": "text", "required": False}]}]}
+        result = ds.read_document("## S\n\n**Owner email:** a@b.c\n", shape)
+        assert result["blocks"][0]["fields"]["Owner"] is None
 
 
 class TestSectionsThePersonAdded:

@@ -14,6 +14,7 @@ import { HandoffDialog } from './components/HandoffDialog'
 import { SettingsScreen } from './components/SettingsScreen'
 import { ExplainViews } from './components/ExplainViews'
 import { FeatureCompleteScreen } from './components/FeatureCompleteScreen'
+import { OpeningOverlay } from './components/OpeningOverlay'
 
 type Screen =
   | { kind: 'loading' }
@@ -22,7 +23,18 @@ type Screen =
   | { kind: 'settingUp'; projectPath: string }
   | { kind: 'project'; status: ProjectStatus; projectPath: string }
 
-function App() {
+/** A project being opened: what to call it on screen, and when it started, for the clock. */
+interface Opening {
+  projectName: string
+  startedAt: number
+}
+
+/** The last folder name of a path, for "Opening token-tracker…". */
+function projectName(projectPath: string): string {
+  return projectPath.split(/[\/]/).filter(Boolean).pop() ?? projectPath
+}
+
+function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => void }) {
   const [screen, setScreen] = useState<Screen>({ kind: 'loading' })
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
@@ -93,24 +105,34 @@ function App() {
 
   const openPath = useCallback(async (projectPath: string) => {
     setError(null)
-    const result = await window.studio.openProject(projectPath)
-    if (!result.hasProject) {
-      setScreen({ kind: 'settingUp', projectPath })
-      return
+    // Opening reads the project through the plugin and can take seconds. The overlay goes up
+    // before the first await and comes down in `finally`, so it can neither be missed nor
+    // strand the window behind it if the open throws.
+    setOpening({ projectName: projectName(projectPath), startedAt: Date.now() })
+    try {
+      const result = await window.studio.openProject(projectPath)
+      if (!result.hasProject) {
+        setScreen({ kind: 'settingUp', projectPath })
+        return
+      }
+      if (result.status) {
+        setScreen({ kind: 'project', status: result.status, projectPath })
+        setOpenDoc(null)
+        setOpenSpec(null)
+        setHandingOff(false)
+        setArea('documents')
+        setViewedStageId(undefined)
+        window.studio.getConnectionInfo(projectPath).then((info) => setActor(info.account ?? ''))
+        loadRecent()
+      } else {
+        setError(result.error ?? "Could not read this project's status.")
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setOpening(null)
     }
-    if (result.status) {
-      setScreen({ kind: 'project', status: result.status, projectPath })
-      setOpenDoc(null)
-      setOpenSpec(null)
-      setHandingOff(false)
-      setArea('documents')
-      setViewedStageId(undefined)
-      window.studio.getConnectionInfo(projectPath).then((info) => setActor(info.account ?? ''))
-      loadRecent()
-    } else {
-      setError(result.error ?? 'Could not read this project\'s status.')
-    }
-  }, [loadRecent])
+  }, [loadRecent, setOpening])
 
   const handlePickFolder = useCallback(async () => {
     const folder = await window.studio.pickFolder()
@@ -180,14 +202,23 @@ function App() {
     return (
       <Frame
         status={status}
+        projectPath={projectPath}
         consoleEntries={consoleEntries}
         syncState={syncState}
+        area={area}
         viewedStageId={viewedStageId}
-        onSelectStage={(stageId) => {
-          setArea('documents')
-          setOpenDoc(null)
-          setShowHistory(false)
-          setViewedStageId(stageId)
+        onNavigate={(target) => {
+          setArea(target.area)
+          if (target.area === 'documents') {
+            setOpenDoc(null)
+            setShowHistory(false)
+            setViewedStageId(target.stageId)
+          }
+          if (target.area === 'build') {
+            // Choosing Board again returns to the list, not to whichever spec was open.
+            setOpenSpec(null)
+            setHandingOff(false)
+          }
         }}
       >
         {error && (
@@ -195,22 +226,6 @@ function App() {
             {error}
           </div>
         )}
-        <div className="mb-4 flex gap-1">
-          {([['documents', 'Documents'], ['build', 'Build'], ['explain', 'How it is going'],
-            ['closing', 'Closing Build'], ['settings', 'Settings']] as const).map(([value, label]) => (
-            <button
-              key={value}
-              type="button"
-              onClick={() => setArea(value)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                area === value ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-
         {area === 'closing' ? (
           <FeatureCompleteScreen
             projectPath={projectPath}
@@ -276,6 +291,7 @@ function App() {
           <StageHome
             projectPath={projectPath}
             stageId={viewedStageId}
+            actor={actor}
             onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
               setOpenDocFocus(focus)
@@ -295,6 +311,18 @@ function App() {
         </div>
       )}
       <WelcomeScreen recentProjects={recentProjects} onPickFolder={handlePickFolder} onOpenRecent={openPath} />
+    </>
+  )
+}
+
+/** Holds the "a project is opening" state above every screen, so the overlay covers whichever
+ * screen is showing — welcome, set-up, or a project being reopened. */
+function App() {
+  const [opening, setOpening] = useState<Opening | null>(null)
+  return (
+    <>
+      <AppScreens setOpening={setOpening} />
+      {opening && <OpeningOverlay projectName={opening.projectName} startedAt={opening.startedAt} />}
     </>
   )
 }

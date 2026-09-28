@@ -1,5 +1,114 @@
 # Changelog
 
+## 1.6.2 — 2026-09-28
+
+- **Sign-off questions can now be ticked, with a pre-check beside each.** Every phase's exit gate
+  carries questions only a person can answer ("Scope boundaries are unambiguous"). They were a
+  plain list. Each now has a box that a named person ticks — recorded with who and when in
+  `.sdlc/metrics/confirmation-log.jsonl` (append-only, so two people ticking on two machines never
+  overwrite each other, and synced by Studio) — and, on the right, what the software could see:
+  "Looks done — 4 dimensions each state pass and fail thresholds and where they are read from.
+  Confirm you agree." / "Not yet — 2 of 3 dimensions have a named source" / "Needs your
+  judgement". A hint is a pre-check, never a verdict: "Looks done" leaves its box empty. Hints
+  exist for Phase 0's four questions and Phase 1's architectural-question and decision-log ones;
+  every other question says it needs judgement. `/sdlc-next` now reads the record and will not ask
+  for sign-off while a question is unconfirmed (`sign_off_confirmations.py`, `confirmation_hints.py`;
+  `stage_readiness.py --json` gains `judgement` and `confirmed_count`). A question reworded later
+  gets a new id, so a tick is never carried onto a question nobody read. `advance_phase.py` and
+  the phase registry are unchanged — the rule is in the command's instructions, so someone
+  running the low-level script by hand can still skip it.
+- **Fixed: a remote-added section could be silently deleted from the shared copy.** Found by
+  this release's own automated correctness review, before it shipped. A document missing a
+  required section still reading as sections (above) meant a document whose local copy never
+  had a section at all no longer fell back to the safe whole-file comparison. When a teammate
+  added that section and pushed, the silent per-section merge computed the right value but had
+  no local text to write it into, skipped the write, and still advanced the shared history —
+  so the very next save, with no further edit, pushed the local file over the remote's, taking
+  the new section with it. Such a change now falls the whole document back to a whole-file
+  clash, which never needs a place to write into a section: a choice replaces the entire file.
+- **Fixed: 1.6.0's new shape fields could show a real document as having a gap it didn't have,
+  and hide its content.** A labeled block matched its label word for word, so a document that
+  wrote `**In scope (v1) — both halves of the one problem:**` where the template says
+  `**In scope:**` read as missing the field: the completeness check reported it, and Studio drew
+  "Not in this document" with the real text out of sight. A labeled block now also matches its
+  label followed by a qualifier, ending at a word boundary (`**Included:**` is not `**In:**`).
+  Inline labels stay exact, since `**Owner email:**` is a different field from `**Owner:**`.
+  Measured on a real project: 1.6.1 added two findings versus 1.5.2, both in one section, and
+  this removes both.
+- **Studio: the stage list no longer says "Signed off" for a stage nobody signed.** The plugin's
+  `stage_state: 'signed_off'` only means the stage's status is `completed`; the name is reported
+  separately. A finished stage now reads "Completed" unless a name was recorded, and "Signed off"
+  (with the name on hover) when one was. On a real project two of three finished stages had no
+  name recorded and were both labelled "Signed off".
+- **Studio: the stage list only highlights a stage while its documents are showing.** It kept the
+  last stage clicked ringed on the Build board and Settings, which read as "these are that
+  stage's things".
+- **Studio: opening a project now shows a blocking "Opening…" overlay with a running clock.**
+  Opening reads the project through the plugin and can take seconds; with nothing on screen it
+  looked as if the click had done nothing, so people clicked again. Picking a folder or clicking
+  a recent project now covers the window, names the project and counts the seconds, and takes the
+  keyboard as well as the pointer, until the open finishes or fails.
+- **Studio: the sidebar is now the only navigation.** The window had a list of phases beside a
+  row of tabs (Documents, Build, How it is going, Closing Build, Settings) that looked as if they
+  belonged to the phase picked; only Documents did. The tabs and the old header are gone. The
+  sidebar shows the project, its progress, and the journey grouped as Foundation, Build, Ship and
+  Close, joined by a rail. Build Loop, the one stage with screens of its own, opens Board, How it
+  is going, Closing and Documents beneath itself. Settings, Console and the sync status sit in the
+  footer. A stage signed off by a named person gets a solid tick and their name; one completed
+  with no name recorded gets an outlined tick and says so. The current stage shows how many of its
+  documents are complete. Build Loop reads "Specs, checks and close-out" rather than "Not
+  started", since specs are built before the plugin marks the stage as reached.
+- **Studio: a sync clash the header reports can now always be resolved.** When a file existed on
+  both sides and differed, and Studio had no shared starting point for it (or it was not a
+  document the plugin reads section by section), the pull reported a whole-file clash but never
+  saved it. The header counted it ("4 sections need your input"), the clash screen, which reads
+  what was saved, found nothing and never opened, the next pull raised it again, and saving was
+  refused, so that file could not be saved from Studio at all. Every clash is now saved when it
+  is raised, resolved by choosing mine, theirs or a combination without needing a shared starting
+  version, counted in the header by what is actually waiting (including files frozen by an earlier
+  pull), and cleared automatically if the two sides come to agree. Tested against a real git
+  remote with a second clone as the teammate.
+- **Documents that reword the template's headings now match their shape.** Measured across 70
+  real documents in four projects, 55 did not match their template's headings and reached Studio
+  as raw text, because a document that misses any required heading is read as free text. A heading
+  now also matches by an `aliases:` entry the shape lists, or as the same words with numbering,
+  case and punctuation ignored, or the template heading followed by a qualifier ("3. Deployment
+  steps", "Deployment procedure (deploy-dev)"); none of these equates different words. Nine aliases
+  are seeded from real documents. On the same 70 documents, 25 now match, up from 15. A document
+  whose structure genuinely differs (a per-endpoint layout, say) still falls back to raw text.
+- **Claude is now told to keep a template's headings.** `SKILL.md` gains a "Writing Artifacts" rule:
+  start from the template, keep its `##` headings exactly (extra sections are welcome), and run the
+  phase's readiness check before moving on. The phase guides only pointed at a template before.
+- **A document missing a required section no longer turns to raw text.** Until now one missing
+  required heading made Studio show the whole document as plain, uneditable text. The sections that
+  are found are now shown as normal, the missing one is named in a notice above the document and in
+  the readiness list, and only a document in which no section is recognized at all is plain text.
+  Every section shown was found by its heading, so it is definitely that section; that is why the
+  original "never a partial match" rule no longer earns its cost. `read` reports this as contract 3,
+  so Studio flags an older plugin. On 70 real documents in four projects, 54 now show as sections,
+  up from 15 in 1.6.1 (token-tracker: 13 of 13).
+- **Fixed: Studio was rewriting document text that looked like a secret.** Studio masks anything
+  shaped like `token: value` in its console and error messages, which is right for a panel a person
+  might paste into a bug report. But the same masked text was what `git show` returned as a
+  document's content, so a spec containing `id-token: write` (a GitHub Actions permission) arrived
+  on the person's machine as `id-token=***`, was compared against the remote as if it were real,
+  and showed as a clash that looked identical on screen. The same path carried the plugin's reading
+  of a document (what Studio displays and edits), the text Claude combines or drafts for a
+  document, and version and diff text. A command's entry now carries the exact output separately,
+  never serialized to the window or the log, and those five places use it; everything shown or
+  logged is still masked. Output is also decoded as a stream, so a multi-byte character (an em dash,
+  a curly quote) cut by a chunk boundary is no longer turned into a replacement character. On the
+  one project Studio had opened, one file was affected (two lines) and the remote's copy was intact.
+- **Studio: the clash screen now shows how the two versions differ, and when each changed.** It put
+  two full versions side by side and left the reading to the person; on a real project two versions
+  of a 178-line spec differed in two words and looked identical. It now says in a sentence how much
+  differs ("2 lines differ, out of 178"), shows only the changed lines with a little context, folds
+  the identical stretches into one row each, and marks only the words that changed inside a line.
+  Each side says when it was last changed: "Last saved" for your copy, and for theirs the time, who
+  made the change and their own words for why. Neither side is coloured as removed or added, since
+  both are somebody's version; they are labelled Yours and Theirs. The side-by-side full text is one
+  click away.
+
 ## 1.6.1 — 2026-09-28
 
 - **Studio: the stage list on the left is now navigable.** It was a set of inert rows and the

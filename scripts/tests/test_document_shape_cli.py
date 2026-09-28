@@ -192,12 +192,13 @@ class TestCliProcess:
             capture_output=True, text=True, timeout=30,
         )
         parsed = json.loads(proc.stdout)
-        assert parsed["contract"] == 2
+        assert parsed["contract"] == 3
         assert isinstance(parsed["contract"], int)
 
-    def test_contract_two_is_the_one_that_reads_added_sections(self, tmp_path: Path):
-        """The number means something: 2 is 'a `## ` section the shape does not declare comes
-        back as an editable `custom` section'. If that behaviour changes, so must the number."""
+    def test_contract_three_is_the_one_that_reads_a_partly_matching_document(self, tmp_path: Path):
+        """The number means something: 3 is 'a document missing a required section still comes back
+        as sections, with the gap in `warnings`' (2 added the `custom` section). If that behaviour
+        changes, so must the number."""
         doc_path = tmp_path / "requirements.md"
         doc_path.write_bytes(REQUIREMENTS_FIXTURE.read_bytes() + b"\n## Stakeholder Quotes\n\nhi\n")
         proc = subprocess.run(
@@ -205,8 +206,22 @@ class TestCliProcess:
             capture_output=True, text=True, timeout=30,
         )
         parsed = json.loads(proc.stdout)
-        assert parsed["contract"] == 2
+        assert parsed["contract"] == 3
         assert any(b.get("custom") and b["heading"] == "Stakeholder Quotes" for b in parsed["blocks"])
+
+    def test_a_document_missing_a_required_section_still_reads_as_sections(self, tmp_path: Path):
+        text = REQUIREMENTS_FIXTURE.read_text(encoding="utf-8")
+        assert "## Overview" in text  # a REQUIRED section of this shape
+        doc_path = tmp_path / "requirements.md"
+        doc_path.write_bytes(text.replace("## Overview", "## Something Else Entirely").encode("utf-8"))
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), "read", "--doc", str(doc_path), "--shape", str(REQUIREMENTS_SHAPE)],
+            capture_output=True, text=True, timeout=30,
+        )
+        parsed = json.loads(proc.stdout)
+        assert parsed["matched"] is True
+        assert any("Overview" in w for w in parsed["warnings"])
+        assert sum(1 for b in parsed["blocks"] if b["kind"] == "section") >= 3
 
     def test_read_subcommand_missing_doc_exits_one_with_stderr(self, tmp_path: Path):
         proc = subprocess.run(

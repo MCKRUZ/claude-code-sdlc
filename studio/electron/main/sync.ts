@@ -6,7 +6,8 @@
 // here never touch a working file, so there's nothing to isolate them from).
 
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { rawStdout } from './commandRunner'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { runGit, runGitTolerant, runGh, ghJson } from './git'
@@ -14,7 +15,8 @@ import { recordVersion } from './history'
 import { runPluginScript } from './project'
 import { isAllowlisted, isSafeInProject, resolveInProject } from './projectPaths'
 import {
-  extractUnits, findShapeForPath, readShapeFromBytes, threeWayMerge, writeShapeUpdates,
+  extractUnits, findShapeForPath, normalizeEol, readShapeFromBytes, reclassifyUnwritableMerges,
+  threeWayMerge, writeShapeUpdates, type SectionUnit,
 } from './sectionMerge'
 import {
   getProjectSyncState, readAncestorBlob, saveProjectSyncState, storeAncestorBlob,
@@ -54,10 +56,6 @@ function emitSyncState(state: SyncState): void {
 // Comparing raw bytes directly would treat every such file as "changed" on every pull —
 // hashing (and any decision about whether content actually differs) must normalize line
 // endings first, or this spec is unusable on one of the most common Windows git configs.
-function normalizeEol(text: string): string {
-  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-}
-
 function detectEol(text: string): '\r\n' | '\n' {
   return text.includes('\r\n') ? '\r\n' : '\n'
 }
@@ -136,7 +134,7 @@ export async function isOnRemote(projectPath: string, relPath: string): Promise<
 async function readRemoteBlob(projectPath: string, branch: string, relPath: string): Promise<Buffer | null> {
   const entry = await runGitTolerant(['show', `origin/${branch}:${relPath}`], projectPath)
   if (!entry.ok) return null
-  return Buffer.from(entry.stdout, 'utf-8')
+  return Buffer.from(rawStdout(entry), 'utf-8')
 }
 
 async function describeArrival(projectPath: string, branch: string, relPath: string): Promise<ArrivedChange> {
@@ -148,11 +146,68 @@ async function describeArrival(projectPath: string, branch: string, relPath: str
   return { path: relPath, author: author || 'unknown', when: when || '' }
 }
 
+/** Applies every resolved unit (silent merges plus, in resolveClash, the person's just-made
+ * choices) to the local file in one write. A unit with a real span replaces it in place, same
+ * as always. A unit with none — the exact case reclassifyUnwritableMerges moved out of the
+ * silent path — has nowhere to splice a replacement, so its resolved text is appended instead:
+ * the document's own heading-based reading finds it on the next read regardless of position,
+ * and appending, unlike skipping, can never make chosen content vanish. Returns whether
+ * anything was actually written. */
+async function applyResolvedUnits(
+  pluginScriptsDir: string,
+  localFullPath: string,
+  localText: string,
+  localEol: '\r\n' | '\n',
+  merged: Map<string, string>,
+  compareAgainst: (key: string) => string | undefined,
+  localUnitsRaw: SectionUnit[],
+): Promise<boolean> {
+  const updates: Array<[number, number, string]> = []
+  let appended = ''
+  for (const [key, newText] of merged) {
+    if (compareAgainst(key) === newText) continue // unchanged relative to local
+    const rawUnit = localUnitsRaw.find((u) => u.key === key)
+    if (rawUnit?.span) {
+      const out = toEol(newText, localEol)
+      if (rawUnit.text !== out) updates.push([rawUnit.span[0], rawUnit.span[1], out])
+    } else {
+      appended += `\n${toEol(newText, localEol).replace(/\n+$/, '')}\n`
+    }
+  }
+  if (updates.length > 0) await writeShapeUpdates(pluginScriptsDir, localFullPath, updates)
+  if (appended) {
+    const base = updates.length > 0 ? readFileSync(localFullPath, 'utf-8') : localText
+    writeFileSync(localFullPath, base.replace(/\n*$/, '\n') + appended, 'utf-8')
+  }
+  return updates.length > 0 || appended.length > 0
+}
+
+const WHOLE_FILE_KEY = '__whole_file__'
+
 function wholeFileClash(relPath: string, localText: string, remoteText: string): FileClash {
   return {
     path: relPath,
-    sections: [{ key: '__whole_file__', heading: relPath, localText, remoteText }],
+    sections: [{ key: WHOLE_FILE_KEY, heading: relPath, localText, remoteText }],
   }
+}
+
+/** Reports a whole-file clash AND remembers it. Reporting alone is what went wrong: the pill
+ * counted a clash, but the clash screen reads what was saved, found nothing, and never opened,
+ * and save() refuses while a clash is reported, so the file could not be saved at all. A clash
+ * Studio raises is one it must be able to resolve, so every path that raises one goes through
+ * here. `ancestorHash` is undefined when Studio has never seen the two sides agree. */
+function freezeWholeFileClash(
+  syncState: ProjectSyncState, relPath: string, ancestorHash: string | undefined,
+  localText: string, remoteText: string,
+): FileClash {
+  syncState.files[relPath] = { ...(ancestorHash ? { ancestorHash } : {}), pendingClashSections: [WHOLE_FILE_KEY] }
+  return wholeFileClash(relPath, localText, remoteText)
+}
+
+/** How many clashing sections are waiting across the project, counting files already frozen by an
+ * earlier pull: the number the indicator shows, so it says what is actually pending. */
+function pendingSectionCount(syncState: ProjectSyncState): number {
+  return Object.values(syncState.files).reduce((n, f) => n + (f.pendingClashSections?.length ?? 0), 0)
 }
 
 // --- connection info -----------------------------------------------------------------------
@@ -229,7 +284,7 @@ async function pullOneFile(
   const localHash = localBytes ? hashBytes(localBytes) : null
   const remoteHash = remoteBytes ? hashBytes(remoteBytes) : null
 
-  if (!existing) {
+  if (!existing?.ancestorHash) {
     // True first sync for this file.
     //
     // A file that exists HERE and not on the remote is new work, and gets no ancestor. It used
@@ -257,7 +312,7 @@ async function pullOneFile(
     }
     // Both exist and already differ with no known shared history (e.g. a clone with local
     // edits made before Studio's first pull) — never guess which is right.
-    return { merged: false, clash: wholeFileClash(relPath, localBytes!.toString('utf-8'), remoteBytes!.toString('utf-8')) }
+    return { merged: false, clash: freezeWholeFileClash(syncState, relPath, undefined, localBytes!.toString('utf-8'), remoteBytes!.toString('utf-8')) }
   }
 
   const ancestorHash = existing.ancestorHash
@@ -292,12 +347,12 @@ async function pullOneFile(
 
   if (!ancestorBytes) {
     // Can't do a precise compare without the ancestor's bytes — fail safe, not silent.
-    return { merged: false, clash: wholeFileClash(relPath, localText, remoteText) }
+    return { merged: false, clash: freezeWholeFileClash(syncState, relPath, ancestorHash, localText, remoteText) }
   }
 
   const shapePath = findShapeForPath(pluginScriptsDir, relPath, localText)
   if (!shapePath) {
-    return { merged: false, clash: wholeFileClash(relPath, localText, remoteText) }
+    return { merged: false, clash: freezeWholeFileClash(syncState, relPath, ancestorHash, localText, remoteText) }
   }
 
   // Two passes: a normalized (LF) pass decides WHAT changed — so a checkout's EOL
@@ -318,7 +373,7 @@ async function pullOneFile(
   ])
 
   if (!ancestorReadN.matched || !localReadN.matched || !remoteReadN.matched || !localReadRaw.matched) {
-    return { merged: false, clash: wholeFileClash(relPath, localText, remoteText) }
+    return { merged: false, clash: freezeWholeFileClash(syncState, relPath, ancestorHash, localText, remoteText) }
   }
 
   const ancestorUnits = extractUnits(ancestorNorm, ancestorReadN)
@@ -326,27 +381,25 @@ async function pullOneFile(
   const remoteUnits = extractUnits(remoteNorm, remoteReadN)
   const localUnitsRaw = extractUnits(localText, localReadRaw) // real spans, for writing only
   const { merged, clashes } = threeWayMerge(ancestorUnits, localUnitsForCompare, remoteUnits)
+  reclassifyUnwritableMerges(
+    merged, clashes, localUnitsRaw, (key) => localUnitsForCompare.find((u) => u.key === key)?.text,
+    ancestorUnits, remoteUnits,
+  )
 
   if (clashes.length > 0) {
     syncState.files[relPath] = { ancestorHash, pendingClashSections: clashes.map((c) => c.key) }
     return { merged: false, clash: { path: relPath, sections: clashes } }
   }
 
-  const updates: Array<[number, number, string]> = []
-  for (const [key, newText] of merged) {
-    const compareUnit = localUnitsForCompare.find((u) => u.key === key)
-    if (!compareUnit || compareUnit.text === newText) continue // unchanged relative to local
-    const rawUnit = localUnitsRaw.find((u) => u.key === key)
-    if (!rawUnit || !rawUnit.span) continue
-    updates.push([rawUnit.span[0], rawUnit.span[1], toEol(newText, localEol)])
-  }
-  if (updates.length > 0) {
-    await writeShapeUpdates(pluginScriptsDir, localFullPath, updates)
-  }
+  const wrote = await applyResolvedUnits(
+    pluginScriptsDir, localFullPath, localText, localEol, merged,
+    (key) => localUnitsForCompare.find((u) => u.key === key)?.text,
+    localUnitsRaw,
+  )
 
   storeAncestorBlob(remoteHash!, remoteBytes!)
   syncState.files[relPath] = { ancestorHash: remoteHash! }
-  return { merged: updates.length > 0, arrived: await describeArrival(projectPath, branch, relPath) }
+  return { merged: wrote, arrived: await describeArrival(projectPath, branch, relPath) }
 }
 
 export async function pull(projectPath: string, pluginScriptsDir: string): Promise<PullResult> {
@@ -378,8 +431,11 @@ export async function pull(projectPath: string, pluginScriptsDir: string): Promi
   syncState.lastPulledAt = new Date().toISOString()
   saveProjectSyncState(projectPath, syncState)
 
-  if (clashes.length > 0) {
-    emitSyncState({ kind: 'clashes', count: clashes.reduce((n, c) => n + c.sections.length, 0) })
+  // Counts everything waiting, including files frozen by an earlier pull. Counting only what THIS
+  // pull newly found made a clash that was still waiting read as "synced" on the next pull.
+  const waiting = pendingSectionCount(syncState)
+  if (waiting > 0) {
+    emitSyncState({ kind: 'clashes', count: waiting })
   } else {
     emitSyncState({ kind: 'idle', lastPulledAt: syncState.lastPulledAt })
   }
@@ -412,7 +468,8 @@ async function recomputeClashState(
   projectPath: string,
   pluginScriptsDir: string,
   filePath: string,
-  ancestorHash: string,
+  ancestorHash: string | undefined,
+  wholeFile: boolean,
 ): Promise<RecomputedClashState | { error: string }> {
   const branch = await currentBranch(projectPath)
   const localFullPath = join(projectPath, filePath)
@@ -421,18 +478,20 @@ async function recomputeClashState(
   }
   const localBytes = readFileSync(localFullPath)
   const remoteBytes = await readRemoteBlob(projectPath, branch, filePath)
-  const ancestorBytes = readAncestorBlob(ancestorHash)
+  const ancestorBytes = ancestorHash ? readAncestorBlob(ancestorHash) : null
 
-  if (!remoteBytes || !ancestorBytes) {
+  // A whole-file clash is settled by choosing one of two complete texts, so it needs no shared
+  // starting version; a section-by-section one cannot be told apart from an edit without it.
+  if (!remoteBytes || (!ancestorBytes && !wholeFile)) {
     return { error: 'Could not recover the versions needed to resolve this clash — try pulling again' }
   }
 
   const localText = localBytes.toString('utf-8')
   const remoteText = remoteBytes.toString('utf-8')
   const localEol = detectEol(localText)
-  const shapePath = findShapeForPath(pluginScriptsDir, filePath, localText)
+  const shapePath = wholeFile ? null : findShapeForPath(pluginScriptsDir, filePath, localText)
 
-  if (!shapePath) {
+  if (!shapePath || !ancestorBytes) {
     return {
       merged: new Map(), shapePath: null, localText, remoteBytes, localEol,
       localUnitsRaw: [{ key: '__whole_file__', heading: filePath, text: localText }],
@@ -463,7 +522,30 @@ async function recomputeClashState(
   const remoteUnits = extractUnits(remoteNorm, remoteReadN)
   const localUnitsRaw = extractUnits(localText, localReadRaw)
   const result = threeWayMerge(ancestorUnits, localUnitsForCompare, remoteUnits)
+  reclassifyUnwritableMerges(
+    result.merged, result.clashes, localUnitsRaw,
+    (key) => localUnitsForCompare.find((u) => u.key === key)?.text, ancestorUnits, remoteUnits,
+  )
   return { merged: result.merged, clashes: result.clashes, localUnitsRaw, localEol, localText, remoteBytes, shapePath }
+}
+
+/** When each side of a clash was last changed, so a person can tell which is newer and who made the
+ * other. Best effort: a missing piece is left out rather than guessed. */
+async function clashMetadata(projectPath: string, filePath: string): Promise<Pick<FileClash, 'localModifiedAt' | 'remote'>> {
+  const out: Pick<FileClash, 'localModifiedAt' | 'remote'> = {}
+  try {
+    out.localModifiedAt = statSync(join(projectPath, filePath)).mtime.toISOString()
+  } catch { /* the file may have gone since the clash was found */ }
+  const branch = await currentBranch(projectPath)
+  const entry = await runGitTolerant(
+    ['log', '-1', '--format=%an%x00%aI%x00%s', `origin/${branch}`, '--', filePath], projectPath,
+  )
+  if (entry.ok) {
+    // The commit's own subject line, shown as written; it is repository content, not a credential.
+    const [author, when, subject] = rawStdout(entry).trim().split('\0')
+    if (when) out.remote = { author: author || 'unknown', when, subject: subject ?? '' }
+  }
+  return out
 }
 
 /** Every currently-pending clash across the whole project, recomputed fresh — what the
@@ -474,10 +556,21 @@ export async function getPendingClashes(projectPath: string, pluginScriptsDir: s
   const out: FileClash[] = []
   for (const [filePath, fileState] of Object.entries(syncState.files)) {
     if (!fileState.pendingClashSections?.length) continue
-    const state = await recomputeClashState(projectPath, pluginScriptsDir, filePath, fileState.ancestorHash)
+    const wholeFile = fileState.pendingClashSections.includes(WHOLE_FILE_KEY)
+    const state = await recomputeClashState(projectPath, pluginScriptsDir, filePath, fileState.ancestorHash, wholeFile)
     if ('error' in state) continue
+    // Nothing left to decide: the two sides now hold the same text (someone took a version by
+    // hand, or the same change arrived both ways). Leaving it pending would keep the indicator
+    // amber over a clash with no question in it.
+    if (wholeFile && normalizeEol(state.localText) === normalizeEol(state.remoteBytes.toString('utf-8'))) {
+      const remoteHash = hashBytes(state.remoteBytes)
+      storeAncestorBlob(remoteHash, state.remoteBytes)
+      syncState.files[filePath] = { ancestorHash: remoteHash }
+      saveProjectSyncState(projectPath, syncState)
+      continue
+    }
     const stillPending = state.clashes.filter((c) => fileState.pendingClashSections!.includes(c.key))
-    if (stillPending.length > 0) out.push({ path: filePath, sections: stillPending })
+    if (stillPending.length > 0) out.push({ path: filePath, sections: stillPending, ...(await clashMetadata(projectPath, filePath)) })
   }
   return out
 }
@@ -496,7 +589,8 @@ export async function resolveClash(
     return { ok: false, fileFullyResolved: false, error: `No pending clash for ${filePath}` }
   }
 
-  const state = await recomputeClashState(projectPath, pluginScriptsDir, filePath, fileState.ancestorHash)
+  const wholeFile = fileState.pendingClashSections.includes(WHOLE_FILE_KEY)
+  const state = await recomputeClashState(projectPath, pluginScriptsDir, filePath, fileState.ancestorHash, wholeFile)
   if ('error' in state) {
     return { ok: false, fileFullyResolved: false, error: state.error }
   }
@@ -512,28 +606,25 @@ export async function resolveClash(
 
   const remainingClashKeys = fileState.pendingClashSections.filter((k) => k !== sectionKey)
   if (remainingClashKeys.length > 0) {
-    syncState.files[filePath] = { ancestorHash: fileState.ancestorHash, pendingClashSections: remainingClashKeys }
+    syncState.files[filePath] = { ...(fileState.ancestorHash ? { ancestorHash: fileState.ancestorHash } : {}), pendingClashSections: remainingClashKeys }
     saveProjectSyncState(projectPath, syncState)
     return { ok: true, fileFullyResolved: false }
   }
 
   // Every clash in this file is now resolved — apply everything (silent merges + resolved
   // clashes) in one write, then advance the ancestor.
-  const updates: Array<[number, number, string]> = []
-  for (const [key, newText] of merged) {
-    if (key === '__whole_file__') {
-      const out = toEol(newText, localEol)
-      if (out !== localText) writeFileSync(localFullPath, out, 'utf-8')
-      continue
-    }
-    const rawUnit = localUnitsRaw.find((u) => u.key === key)
-    if (!rawUnit || !rawUnit.span) continue
-    const out = toEol(newText, localEol)
-    if (rawUnit.text === out) continue
-    updates.push([rawUnit.span[0], rawUnit.span[1], out])
+  const wholeFileText = merged.get(WHOLE_FILE_KEY)
+  if (wholeFileText !== undefined) {
+    merged.delete(WHOLE_FILE_KEY) // a whole-file clash never carries any other key alongside it
+    const out = toEol(wholeFileText, localEol)
+    if (out !== localText) writeFileSync(localFullPath, out, 'utf-8')
   }
-  if (updates.length > 0 && shapePath) {
-    await writeShapeUpdates(pluginScriptsDir, localFullPath, updates)
+  if (merged.size > 0 && shapePath) {
+    await applyResolvedUnits(
+      pluginScriptsDir, localFullPath, localText, localEol, merged,
+      (key) => localUnitsRaw.find((u) => u.key === key)?.text,
+      localUnitsRaw,
+    )
   }
 
   const remoteHash = hashBytes(remoteBytes)
@@ -638,7 +729,7 @@ export async function save(
 
   const alreadyClashed = Object.entries(before.files).filter(([, s]) => s.pendingClashSections?.length)
   if (alreadyClashed.length > 0) {
-    emitSyncState({ kind: 'clashes', count: alreadyClashed.length })
+    emitSyncState({ kind: 'clashes', count: pendingSectionCount(before) })
     return { ok: false, entries: [], error: `${alreadyClashed.length} file(s) still have unresolved clashes — resolve them first.` }
   }
 

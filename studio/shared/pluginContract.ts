@@ -5,7 +5,7 @@
  * Studio and the plugin are installed separately, so the plugin Studio finds can be older than
  * Studio. A version number cannot reliably say so (it went unbumped for months), but a plugin
  * can only claim a capability it has — and one that predates the marker never sent it. */
-export const EXPECTED_READ_CONTRACT = 2
+export const EXPECTED_READ_CONTRACT = 3
 
 /** True when the plugin's `read` output says it is older than this Studio expects. A missing
  * contract is the old-plugin case, so it counts as behind. A NEWER plugin is not behind: it

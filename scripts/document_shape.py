@@ -17,13 +17,20 @@ survives untouched — these templates check out as CRLF on Windows, and a naive
 read/write would silently rewrite every line ending, which is not a byte-identical round
 trip even when no field changed.
 
-Match semantics (spec 0007's Decision List, amended): every REQUIRED section the shape
-declares must be found in the document with EXACT text, or the WHOLE document reads as one
-free-text block with a warning naming what didn't match — never a partial match. The
-amendment: a section whose fields are all optional (`required: false`) may be absent without
-failing the match. Shapes now cover every section of a template, not only the gate-required
-ones, so without this a person trimming any optional section would turn their whole document
-into raw text. A section that declares no fields is not treated as optional.
+Match semantics (spec 0007's Decision List, amended twice). The original rule: every heading the
+shape declares must be found, or the WHOLE document reads as free text — never a partial, guessed
+match. First amendment: a section whose fields are all optional (`required: false`) may be absent, since
+shapes now cover every section of a template, not only the gate-required ones. Second: a document
+missing a REQUIRED section still reads as sections, and the gap is reported in `warnings`; only a
+document in which NO section is recognized reads as one free-text block. The original worry was
+guessing which section was which. A section is found only by its heading (exactly, by an alias, or as
+the same words), so every section that is shown is definitely the one it says it is. A section that
+declares no fields is not treated as optional.
+
+A section is found by its heading as the shape writes it, by an alias the shape lists, or by the
+same words with numbering, case and punctuation ignored, or with a qualifier after them ("3. Deployment
+steps", "Deployment procedure (deploy-dev)"). A block carries the DOCUMENT'S own heading, whichever way
+it matched. See `_resolve_headings`.
 
 A `## ` section the shape does not declare — one the person added to their own document — is
 read as a `section` block flagged `custom: true`, with a single field, "Content" (longtext,
@@ -38,6 +45,9 @@ import re
 HEADING2_RE = re.compile(r"^## +([^\r\n]*)", re.MULTILINE)
 HEADING3_RE = re.compile(r"^### +([^\r\n]*)", re.MULTILINE)
 INLINE_LABEL_TEMPLATE = r"^\*\*{label}:\*\*[ \t]*([^\r\n]*)"
+# The same line, allowing a qualifier after the label: whitespace, then anything up to the first
+# `:**`. Group 1 is kept so both templates yield the same match shape.
+LABELED_BLOCK_LABEL_TEMPLATE = r"^\*\*{label}(?:[ \t]+(?:(?!:\*\*)[^\r\n])*)?:\*\*[ \t]*([^\r\n]*)"
 COMMENT_LINE_RE = re.compile(r"^[ \t]*<!--.*-->[ \t]*$")
 STAMP_RE = re.compile(r"^<!--\s*template:\s*([a-z0-9][a-z0-9-]*)\s+v([0-9]+\.[0-9]+)\s*-->[ \t]*\r?$", re.MULTILINE)
 
@@ -131,8 +141,17 @@ def next_free_number(text: str, numbering_pattern: str) -> int:
 # Field extraction
 # ---------------------------------------------------------------------------
 
-def _find_label_match(text: str, start: int, end: int, label: str):
-    pattern = re.compile(INLINE_LABEL_TEMPLATE.format(label=re.escape(label)), re.MULTILINE)
+def _find_label_match(text: str, start: int, end: int, label: str, anchor: str = "inline"):
+    """The `**Label:**` line for a field, exact for an inline field.
+
+    A labeled_block field's label owns its line, so a qualifier between the label and the colon
+    is unambiguous and is accepted: `**In scope:**` also matches `**In scope (v1) — both halves
+    of the one problem:**`. Real documents rewrite a template's label as they go, and a field
+    that fails to match reads as absent — its content then drops out of view. The label must
+    still end at a word boundary (`**Included:**` is not `**In:**`). Inline fields stay exact:
+    `**Owner email:** x` is a different field from `**Owner:** x`."""
+    template = LABELED_BLOCK_LABEL_TEMPLATE if anchor == "labeled_block" else INLINE_LABEL_TEMPLATE
+    pattern = re.compile(template.format(label=re.escape(label)), re.MULTILINE)
     return pattern.search(text, start, end)
 
 
@@ -198,7 +217,7 @@ def _extract_fields_flat(text: str, body_start: int, body_end: int, field_shapes
         if anchor == "section":
             section_field = f
             continue
-        labeled.append((f, _find_label_match(text, body_start, body_end, f["label"])))
+        labeled.append((f, _find_label_match(text, body_start, body_end, f["label"], anchor)))
 
     # Positional order of whichever labeled fields were actually found, so a labeled_block
     # field's value can be bounded by the NEXT field's label line, whatever field that is.
@@ -278,6 +297,72 @@ def _resolve_section_heading(sec: dict, doc_headings: dict) -> str | None:
     return sec["heading"] if sec["heading"] in doc_headings else None
 
 
+# --- headings that drift from the template ---------------------------------------------------
+#
+# A real document rarely repeats a template's headings verbatim: Claude writes it from guidance,
+# so "Requirement Traceability" arrives as "Traceability Matrix" and "Deployment Steps" as
+# "3. Deployment steps". Measured across 70 real documents in four projects, 55 failed to match
+# their shape at all for this reason and reached Studio as raw text. So a heading matches, in
+# order: exactly; by an alias the shape lists; by being the same words once numbering, case and
+# punctuation are ignored; or by being the template heading followed by a qualifier. None of the
+# last three ever equates different words, which is what keeps them safe.
+
+# "3. ", "3) ", "3.1 ", "2.1.4 ", "A) ". One or two digits only, so a year ("2024 Roadmap") is a
+# word of the heading, not its numbering.
+_NUMBERING_RE = re.compile(r"^\s*(?:\d{1,2}(?:\.\d+)*[.)]?|[A-Za-z][.)])\s+")
+# Where a qualifier starts: an opening bracket, a dash (with spaces, or an em/en dash), or a colon.
+_QUALIFIER_RE = re.compile(r"\s*\(|\s*[\u2014\u2013]|\s+-\s+|\s*:")
+
+
+def _words(text: str) -> str:
+    """Lower-cased alphanumeric words, single-spaced: the comparison form of a heading."""
+    return re.sub(r"[^0-9a-z]+", " ", text.lower()).strip()
+
+
+def heading_keys(heading: str) -> set[str]:
+    """The comparison forms a document heading can be matched by: its words in full, and its words
+    before any qualifier ("Deployment procedure (deploy-dev)" also answers to "deployment procedure").
+    A leading number ("3. ", "2.1 ", "A) ") is not part of the name."""
+    bare = _NUMBERING_RE.sub("", heading.strip())
+    keys = {_words(bare)}
+    qualifier = _QUALIFIER_RE.search(bare)
+    if qualifier and qualifier.start() > 0:
+        keys.add(_words(bare[: qualifier.start()]))
+    keys.discard("")
+    return keys
+
+
+def _resolve_headings(section_shapes: list[dict], doc_headings: dict) -> dict:
+    """{id(section): the document heading it matched}, for every section that found one.
+
+    Exact matches are settled for EVERY section before any loose match is tried, so a document's
+    own "Summary" section is never taken as a shape's alias for "Overview" while another shape
+    section is declared "Summary". A document heading is claimed by at most one section."""
+    resolved: dict = {}
+    taken: set[str] = set()
+
+    for sec in section_shapes:
+        heading = _resolve_section_heading(sec, doc_headings)
+        if heading is not None and heading not in taken:
+            resolved[id(sec)] = heading
+            taken.add(heading)
+
+    for sec in section_shapes:
+        if id(sec) in resolved or "heading" not in sec:
+            continue
+        aliases = [a for a in (sec.get("aliases") or []) if isinstance(a, str)]
+        candidates = [h for h in doc_headings if h not in taken]
+        match = next((a for a in aliases if a in candidates), None)
+        if match is None:
+            wanted = {_words(_NUMBERING_RE.sub("", n)) for n in [sec["heading"], *aliases]}
+            wanted.discard("")
+            match = next((h for h in candidates if heading_keys(h) & wanted), None)
+        if match is not None:
+            resolved[id(sec)] = match
+            taken.add(match)
+    return resolved
+
+
 def _section_is_optional(sec: dict) -> bool:
     """A section may be absent from a document only when it declares fields and none of them
     is required. A section declaring no fields says nothing about being optional, so it keeps
@@ -299,15 +384,16 @@ def read_document(text: str, shape: dict) -> dict:
                     in find_heading_spans(HEADING2_RE, text)}
 
     warnings = []
-    resolved = {}
+    resolved = _resolve_headings(section_shapes, doc_headings)
     for sec in section_shapes:
-        heading = _resolve_section_heading(sec, doc_headings)
-        if heading is not None:
-            resolved[id(sec)] = heading
-        elif not _section_is_optional(sec):
+        if id(sec) not in resolved and not _section_is_optional(sec):
             warnings.append(f"section '{sec.get('heading') or sec.get('heading_pattern')}' not found")
 
-    if warnings:
+    # Only a document in which NOTHING was recognized is thrown back to free text. One that lacks a
+    # required section still comes back as sections, with the gap named in `warnings`: every section
+    # that was found was found by its heading, so it is definitely that section, and hiding all of them
+    # because another is missing helped nobody. (Contract 3 of document_shape_cli's `read`.)
+    if warnings and not resolved:
         return {
             "matched": False,
             "warnings": warnings,
@@ -375,7 +461,7 @@ def read_document(text: str, shape: dict) -> dict:
     if cursor < len(text):
         blocks.append({"kind": "free_text", "start": cursor, "end": len(text), "text": text[cursor:]})
 
-    return {"matched": True, "warnings": [], "stamp": read_stamp(text), "blocks": blocks}
+    return {"matched": True, "warnings": warnings, "stamp": read_stamp(text), "blocks": blocks}
 
 
 def write_document(text: str, updates: list[tuple[int, int, str]]) -> str:

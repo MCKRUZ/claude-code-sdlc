@@ -93,6 +93,22 @@ Phase ids are strings (`build` and `close` are non-numeric); the 4/5/6 gap is in
 | 9 | Monitoring | Manual |
 | close | Close & Transfer | Manual |
 
+## Writing Artifacts
+
+Each phase's artifacts have a template in `templates/phases/<phase>/`. Studio, the gates and the
+completeness check all read a document by its `##` headings, so a document that renames them is
+treated as free text and none of its sections can be edited or checked. When you write an artifact:
+
+- **Start from the template file and keep its `##` headings exactly** — same words, same names, no
+  numbering added, none merged or dropped. You may add sections of your own; an added section is fine.
+  What you write under each heading is yours; the headings are the contract.
+- **Check it before moving on.** Run the phase's readiness check and fix every `section '…' not found`
+  by using the template's heading for that content. A missing field you can genuinely fill, fill.
+
+  ```bash
+  uv run scripts/stage_readiness.py --repo . --phase <phase-id> --json
+  ```
+
 ## Frozen Layers
 
 After each phase completes (gates pass + human sign-off), a **frozen layer** is generated — a token-efficient (1500-2000 token) summary of all phase artifacts. Frozen layers:

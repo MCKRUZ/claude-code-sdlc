@@ -77,6 +77,25 @@ export function redact(text: string): string {
   return REDACTIONS.reduce((out, [pattern, replacement]) => out.replace(pattern, replacement), text)
 }
 
+// Masking is for what a person SEES. It rewrites anything shaped like `token: value`, which is right
+// for a console panel and an error message and wrong for data: a document that mentions
+// `id-token: write` (a GitHub Actions permission) came back from `git show` as `id-token=***` and
+// was written into the file that way. So an entry carries two things. `stdout` and `stderr` are
+// masked, safe to show or log anywhere. The exact output rides along under this key, for the caller
+// that uses it AS data (a document's content, the plugin's JSON about a document, text Claude wrote
+// for one) and reads it with rawStdout().
+//
+// A symbol, so it cannot collide with a field; and it is not serialized, by JSON or by the
+// structured clone that carries an entry to the window, so the exact text can never reach the
+// screen or the log by accident. Forgetting to use it fails safe: the caller gets the masked text.
+const RAW_OUTPUT = Symbol('exactCommandOutput')
+
+/** The command's output exactly as it was written, for a caller that uses it as data. Never show
+ * this or put it in a log; `entry.stdout` is the masked copy meant for that. */
+export function rawStdout(entry: ConsoleEntry): string {
+  return (entry as { [RAW_OUTPUT]?: { stdout: string } })[RAW_OUTPUT]?.stdout ?? entry.stdout
+}
+
 // Windows installs of git and gh from scoop, npm or Chocolatey are batch shims, and a batch
 // file can only be started through the command interpreter — so tooling.ts resolves those to
 // `cmd.exe /c <shim>`. That hands the interpreter the arguments, and it re-reads them:
@@ -159,6 +178,7 @@ export function runCommand(
       // the actual content of a document being merged — truncating that would silently
       // corrupt someone's work, which is far worse than the memory it costs.
       const entry: ConsoleEntry = { ...base, stdout: fullStdout, stderr: fullStderr }
+      Object.defineProperty(entry, RAW_OUTPUT, { value: { stdout }, enumerable: true })
 
       // The LOG gets a bounded copy. It is for a person reading a panel, and it is the part
       // that accumulates for as long as the app is open.
@@ -209,8 +229,13 @@ export function runCommand(
       }, opts.timeoutMs)
     }
 
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString() })
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString() })
+    // Decoded as a stream, not chunk by chunk: a multi-byte character (an em dash, a curly quote)
+    // cut by a chunk boundary is otherwise turned into a replacement character, which for a
+    // document read through `git show` is silent corruption.
+    child.stdout.setEncoding('utf-8')
+    child.stderr.setEncoding('utf-8')
+    child.stdout.on('data', (chunk: string) => { stdout += chunk })
+    child.stderr.on('data', (chunk: string) => { stderr += chunk })
     child.stdin.end(opts?.input)
 
     child.on('error', (err) => finish(null, err.message))

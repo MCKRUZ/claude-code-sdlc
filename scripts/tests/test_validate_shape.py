@@ -71,6 +71,51 @@ class TestDuplicateSectionHeading:
         assert "line 11:" in dup[0] and "line 4" in dup[0]
 
 
+class TestSectionAliases:
+    """`aliases` lists other headings a document may use for a section. A malformed list would
+    make a section quietly match the wrong heading, so it is checked like everything else."""
+
+    def _with_aliases(self, aliases_yaml: str) -> str:
+        return VALID.replace(
+            "  - heading: Overview\n",
+            f"  - heading: Overview\n    aliases: {aliases_yaml}\n", 1,
+        )
+
+    def test_a_list_of_headings_is_valid(self):
+        assert vs.validate_shape_text(self._with_aliases("[Summary, Introduction]")) == []
+
+    def test_must_be_a_list(self):
+        errors = vs.validate_shape_text(self._with_aliases("Summary"))
+        assert any("'aliases' must be a list" in e for e in errors)
+
+    def test_entries_must_be_non_empty_text(self):
+        errors = vs.validate_shape_text(self._with_aliases('["", 3]'))
+        assert sum("alias" in e for e in errors) >= 2
+
+    def test_cannot_repeat_the_sections_own_heading(self):
+        errors = vs.validate_shape_text(self._with_aliases("[Overview]"))
+        assert any("alias 'Overview'" in e and "its own heading" in e for e in errors)
+
+    def test_cannot_name_another_sections_heading(self):
+        errors = vs.validate_shape_text(self._with_aliases("[Functional Requirements]"))
+        assert any("alias 'Functional Requirements'" in e and "another section" in e for e in errors)
+
+    def test_cannot_be_claimed_by_two_sections(self):
+        text = VALID.replace("  - heading: Overview\n", "  - heading: Overview\n    aliases: [Summary]\n", 1).replace(
+            "  - heading: Functional Requirements\n", "  - heading: Functional Requirements\n    aliases: [Summary]\n", 1)
+        errors = vs.validate_shape_text(text)
+        assert any("alias 'Summary'" in e and "more than one" in e for e in errors)
+
+    def test_makes_no_sense_beside_a_heading_pattern(self):
+        text = VALID.replace("  - heading: Overview\n", "  - heading_pattern: '^v\\d+'\n    aliases: [Summary]\n", 1)
+        errors = vs.validate_shape_text(text)
+        assert any("'aliases'" in e and "heading_pattern" in e for e in errors)
+
+    def test_errors_name_the_line(self):
+        errors = vs.validate_shape_text(self._with_aliases("Summary"))
+        assert any(e.startswith("line 4:") and "aliases" in e for e in errors)
+
+
 class TestRepeatingSectionNoNumbering:
     def test_names_the_line(self):
         text = VALID.replace('    numbering:\n      pattern: "FR-%03d"\n', "")

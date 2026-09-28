@@ -20,6 +20,7 @@ sections:
         guidance: At least 3 personas, including one technical and one business stakeholder, all four columns filled in
 
   - heading: Current State
+    aliases: [Current State Analysis]
     fields:
       - label: Process Flow (As-Is)
         subheading: Process Flow (As-Is)

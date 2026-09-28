@@ -1,38 +1,51 @@
-import { type ReactNode, useState } from 'react'
+import { type ReactNode, useEffect, useState } from 'react'
 import type { ConsoleEntry, ProjectStatus, SyncState } from '../../shared/types'
-import { Header } from './Header'
-import { StageNav } from './StageNav'
+import type { Area, DocProgress, NavTarget } from '../../shared/nav'
+import { Sidebar } from './Sidebar'
 import { ChatPanel } from './ChatPanel'
 import { Console } from './Console'
 
-/** The frame every screen shares once a project is open: header, stage navigation, the
- * chat panel, and the console — spec 0008's own scope, in one place so nothing built on
- * top of it can accidentally omit a piece of it. Spec 0009 adds the sync indicator, always
- * on the Header, so it's on every one of those screens too without each having to remember. */
+/** The frame every screen shares once a project is open: the sidebar (the only navigation, which
+ * also carries the project's name and the sync indicator), the chat panel, and the console —
+ * spec 0008's own scope, in one place so nothing built on top of it can accidentally omit a
+ * piece of it. Spec 0009's sync indicator sits in the sidebar's footer, so it is on every one of
+ * those screens without each having to remember. */
 export function Frame({
   status,
+  projectPath,
   consoleEntries,
   syncState,
+  area,
   viewedStageId,
-  onSelectStage,
+  onNavigate,
   children,
 }: {
   status: ProjectStatus
+  projectPath: string
   consoleEntries: ConsoleEntry[]
   syncState: SyncState
-  /** The stage whose home is currently showing, or undefined for the project's current stage —
-   * used only to highlight the right row, since StageHome itself resolves the same default. */
+  area: Area
+  /** The stage whose documents were picked, or undefined for the project's current stage. */
   viewedStageId?: string
-  onSelectStage: (stageId: string) => void
+  onNavigate: (target: NavTarget) => void
   children: ReactNode
 }) {
   const [consoleOpen, setConsoleOpen] = useState(false)
+  const currentDocs = useCurrentStageDocs(projectPath, status, area, viewedStageId)
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
-      <Header status={status} syncState={syncState} consoleOpen={consoleOpen} onToggleConsole={() => setConsoleOpen((v) => !v)} />
       <div className="flex min-h-0 flex-1">
-        <StageNav status={status} viewedStageId={viewedStageId} onSelect={onSelectStage} />
+        <Sidebar
+          status={status}
+          area={area}
+          viewedStageId={viewedStageId}
+          currentDocs={currentDocs}
+          syncState={syncState}
+          consoleOpen={consoleOpen}
+          onToggleConsole={() => setConsoleOpen((v) => !v)}
+          onNavigate={onNavigate}
+        />
         <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
         <ChatPanel status={status} />
       </div>
@@ -43,4 +56,29 @@ export function Frame({
       )}
     </div>
   )
+}
+
+/** How many of the current stage's documents are complete, for the line under it in the sidebar.
+ * One readiness call, for the current stage only — asking for all nine on every open would be nine
+ * plugin calls to draw a list. Re-read when the screen changes, since finishing a document happens
+ * on another screen. Null until known, and on a failure: the sidebar then says "In progress". */
+function useCurrentStageDocs(
+  projectPath: string, status: ProjectStatus, area: Area, viewedStageId: string | undefined,
+): DocProgress | null {
+  const [docs, setDocs] = useState<DocProgress | null>(null)
+  const currentId = status.stages.find((s) => s.stage_state === 'current')?.id
+
+  useEffect(() => {
+    if (!currentId) return
+    let cancelled = false
+    window.studio.getStageReadiness(projectPath, currentId)
+      .then((r) => {
+        if (cancelled || !r.ok) return
+        setDocs({ complete: r.documents.filter((d) => d.ready).length, total: r.documents.length })
+      })
+      .catch(() => { /* the sidebar simply keeps saying "In progress" */ })
+    return () => { cancelled = true }
+  }, [projectPath, currentId, area, viewedStageId])
+
+  return docs
 }

@@ -62,6 +62,7 @@ sections:
         guidance: One sequence diagram per P0 user story, showing the full actor-to-storage flow
 
   - heading: Component Design
+    aliases: [Component Descriptions]
     fields:
       - label: Component Design
         anchor: section

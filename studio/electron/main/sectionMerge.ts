@@ -21,6 +21,7 @@
 // than losing it, which is the direction spec 0009 asks for.
 
 import { randomUUID } from 'node:crypto'
+import { rawStdout } from './commandRunner'
 import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -215,7 +216,7 @@ export async function readShapeFromBytes(
       'read', '--doc', tmpFile, '--shape', shapePath,
     ])
     if (!entry.ok) throw new Error(entry.stderr || 'document_shape_cli.py read failed')
-    const result = JSON.parse(entry.stdout) as ShapeReadResult
+    const result = JSON.parse(rawStdout(entry)) as ShapeReadResult
     if (!result.matched) return result // the single free_text block spans [0, len) either way
     const text = bytes.toString('utf-8')
     return { ...result, blocks: convertBlocksToStringIndices(text, result.blocks) }
@@ -275,10 +276,12 @@ export interface SectionUnit {
 export function extractUnits(text: string, result: ShapeReadResult): SectionUnit[] {
   const units: SectionUnit[] = []
   const freeTextParts: string[] = []
+  const freeTextBlocks: Array<{ start: number; end: number }> = []
 
   for (const block of result.blocks) {
     if (block.kind === 'free_text') {
       freeTextParts.push(text.slice(block.start, block.end))
+      freeTextBlocks.push({ start: block.start, end: block.end })
     } else if (block.kind === 'section') {
       units.push({ key: block.heading!, heading: block.heading!, span: [block.start, block.end], text: text.slice(block.start, block.end) })
     } else if (block.kind === 'repeating_section') {
@@ -299,7 +302,16 @@ export function extractUnits(text: string, result: ShapeReadResult): SectionUnit
   }
 
   if (freeTextParts.length > 0) {
-    units.push({ key: '__free_text__', heading: '(unstructured text)', text: freeTextParts.join('') })
+    // A real span only when there is exactly one free-text stretch — by far the ordinary case
+    // (a title and intro before the first heading): that one block's own bounds ARE the
+    // combined unit's bounds, so a resolved value can be spliced straight back in like any
+    // other unit. Several disjoint stretches (a gap the shape leaves between sections, say)
+    // have no single range to write into — left spanless, same as the unmatched case above,
+    // so a change there still gets asked about rather than either silently misapplied at the
+    // wrong spot or silently dropped.
+    const span: [number, number] | undefined =
+      freeTextBlocks.length === 1 ? [freeTextBlocks[0].start, freeTextBlocks[0].end] : undefined
+    units.push({ key: '__free_text__', heading: '(unstructured text)', ...(span ? { span } : {}), text: freeTextParts.join('') })
   }
 
   return units
@@ -352,4 +364,61 @@ export function threeWayMerge(
   }
 
   return { merged, clashes }
+}
+
+/** Line endings alone must never decide whether content changed: a git blob (LF) checks out
+ * as a CRLF working-tree file on one of the most common Windows git configs, and comparing
+ * raw bytes would treat every such file as different on every pull. */
+export function normalizeEol(text: string): string {
+  return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+}
+
+/** A key threeWayMerge resolved silently is only actually safe to APPLY when the local
+ * document has a real span to splice the resolved text into. Most keys DO have one — but a
+ * key can resolve silently (ancestor and local both lack it, so "local never touched it" is
+ * trivially true) while the local document has never recognized that content at all: most
+ * often, a section a teammate's remote added that this local copy has never had. There is no
+ * span to write into, and silently skipping the write — while the caller still advances the
+ * shared ancestor to the remote's hash — is exactly how a real project lost a teammate's
+ * section: Studio believed the two sides agreed, and the very next save pushed the local file,
+ * still missing it, straight over the remote. So such a key is moved into `clashes` instead:
+ * the person is asked, the same as any other real disagreement, and every OTHER key — the
+ * ordinary case, a title or an edited section that has a real span — still merges normally
+ * rather than the whole document being demoted to a whole-file clash over one unwritable key.
+ *
+ * `localCompare` is checked FIRST, and matters as much as the span check: threeWayMerge puts a
+ * key in `merged` whenever remote (or all three) match the ancestor, even when that means local
+ * is ALSO unchanged — a spanless key with several disjoint free-text stretches can legitimately
+ * go untouched by every pull. Skipping the span check alone would still raise a clash for it
+ * every time, and resolving that "clash" (any choice, since all three sides already agree)
+ * would append a byte-identical copy of content that was never actually written anywhere —
+ * duplicating it. So a key whose value already matches local, EOL style aside, is simply
+ * dropped: there is nothing to ask about and nowhere that needs writing. Found by this PR's
+ * own correctness review, before it shipped.
+ *
+ * Mutates both maps in place; shared by pullOneFile and recomputeClashState so the two apply
+ * sites cannot drift apart on this rule. Applying the person's eventual choice for a
+ * reclassified key is sync.ts's applyResolvedUnits — it has the same span problem and needs
+ * its own answer (append, since there is still nowhere to splice a replacement). */
+export function reclassifyUnwritableMerges(
+  merged: Map<string, string>,
+  clashes: ClashSection[],
+  localUnitsRaw: SectionUnit[],
+  localCompare: (key: string) => string | undefined,
+  ancestorUnits: SectionUnit[],
+  remoteUnits: SectionUnit[],
+): void {
+  for (const [key, newText] of [...merged]) {
+    const current = localCompare(key)
+    if (current !== undefined && normalizeEol(current) === normalizeEol(newText)) {
+      merged.delete(key) // already there, nothing to do — see this function's comment
+      continue
+    }
+    if (localUnitsRaw.find((u) => u.key === key)?.span) continue // an ordinary write target
+    merged.delete(key)
+    const heading = remoteUnits.find((u) => u.key === key)?.heading
+      ?? ancestorUnits.find((u) => u.key === key)?.heading
+      ?? key
+    clashes.push({ key, heading, localText: current ?? '', remoteText: newText })
+  }
 }

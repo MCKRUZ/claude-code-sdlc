@@ -76,10 +76,22 @@ describe.skipIf(!PLUGIN.available)('a document that has drifted from its templat
     expect(after.startsWith(original.trimEnd())).toBe(true)
   })
 
-  it('still reports a missing REQUIRED section as an unshaped document', async () => {
+  it('still shows the sections that ARE there when a REQUIRED section is missing, and names the gap', async () => {
+    // A document missing a required section used to be thrown back to raw text as a whole. Every
+    // section that is found was found by its heading, so it is shown; the missing one is reported.
     const stripped = original.replace(/^## Executive Summary[\s\S]*?(?=^## )/m, '')
     expect(stripped).not.toBe(original)
     write(stripped)
+
+    const doc = await openDocument(project, SCRIPTS_DIR, DOC)
+    expect(doc.ok, doc.error).toBe(true)
+    expect(doc.shaped).toBe(true)
+    expect(doc.warnings.join(' ')).toContain('Executive Summary')
+    expect(doc.sections.filter((s) => s.kind === 'section').length).toBeGreaterThan(1)
+  })
+
+  it('reads a document in which NOTHING is recognized as plain text', async () => {
+    write('# A note\n\n## Totally Unrelated\n\nhello\n')
 
     const doc = await openDocument(project, SCRIPTS_DIR, DOC)
     expect(doc.ok, doc.error).toBe(true)

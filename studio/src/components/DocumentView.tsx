@@ -5,6 +5,7 @@ import type {
 import { matchesSection } from '../../shared/sections'
 import { FieldEditor } from './FieldEditor'
 import { MarkdownView } from './MarkdownView'
+import { TemplateGapsNotice } from './TemplateGapsNotice'
 
 /** The field types whose value is a block of markdown; the rest are single values. Mirrors the
  * multiline set FieldEditor already uses to decide which fields get a text area. */
@@ -216,6 +217,8 @@ export function DocumentView({
           </p>
         </div>
       )}
+
+      {doc.shaped && <TemplateGapsNotice warnings={doc.warnings} />}
 
       {!doc.shaped && doc.warnings.length > 0 && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">

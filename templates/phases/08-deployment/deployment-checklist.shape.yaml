@@ -3,6 +3,7 @@ version: "1.0"
 
 sections:
   - heading: Pre-Deployment
+    aliases: [Pre-deployment gates]
     fields:
       - label: Pre-Deployment
         anchor: section

@@ -12,7 +12,7 @@
 //    history is a record of what the document actually says, and text that was rejected is by
 //    definition not in it.
 
-import { runCommand } from './commandRunner'
+import { rawStdout, runCommand } from './commandRunner'
 import { CLAUDE_SAFE_ARGS, claudeWorkingDirectory } from './claudeAssist'
 import { runPluginScript } from './project'
 import type { DraftOutcome, DraftResult } from '../../shared/types'
@@ -51,7 +51,7 @@ export async function draftField(
   if (!entry.ok) {
     return { ok: false, error: entry.stderr || 'Claude could not draft this field.' }
   }
-  const text = entry.stdout.trim()
+  const text = rawStdout(entry).trim() // becomes the field's content on accept, so exact
   if (!text) {
     return { ok: false, error: 'Claude returned nothing for this field.' }
   }
