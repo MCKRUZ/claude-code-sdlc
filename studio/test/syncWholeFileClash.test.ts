@@ -93,6 +93,21 @@ describe.skipIf(!PLUGIN.available)('a file both sides changed that Studio has no
     expect(pending[0].sections[0].remoteText).toBe(REMOTE)
   }, 180_000)
 
+  it('says when each version was last changed, and by whom', async () => {
+    // A person deciding between two versions needs to know which is newer and who made the other.
+    const s = await scenario(false)
+    await pull(s.project, PLUGIN.scriptsDir)
+    const [clash] = await getPendingClashes(s.project, PLUGIN.scriptsDir)
+
+    const saved = Date.parse(clash.localModifiedAt ?? '')
+    expect(Number.isNaN(saved), 'the local file has a last-saved time').toBe(false)
+    expect(Math.abs(Date.now() - saved)).toBeLessThan(5 * 60_000) // the test just wrote it
+
+    expect(clash.remote?.author).toBe('Them')
+    expect(clash.remote?.subject).toBe('teammate decides D-03')
+    expect(Number.isNaN(Date.parse(clash.remote?.when ?? ''))).toBe(false)
+  }, 180_000)
+
   it('refuses to save while it is unresolved, and says why', async () => {
     const s = await scenario(false)
     await pull(s.project, PLUGIN.scriptsDir)

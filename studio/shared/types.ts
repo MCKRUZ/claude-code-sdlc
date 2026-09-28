@@ -163,6 +163,11 @@ export interface ClashSection {
 export interface FileClash {
   path: string
   sections: ClashSection[]
+  /** When this machine's copy of the file was last saved (ISO). Absent if it could not be read. */
+  localModifiedAt?: string
+  /** The last change to the remote's copy: who, when (ISO), and their own words for why. Absent if
+   * the file has no history on the remote yet. Lets a person see which version is newer. */
+  remote?: { author: string; when: string; subject: string }
 }
 
 export interface PullResult {

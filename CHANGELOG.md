@@ -75,6 +75,15 @@
   logged is still masked. Output is also decoded as a stream, so a multi-byte character (an em dash,
   a curly quote) cut by a chunk boundary is no longer turned into a replacement character. On the
   one project Studio had opened, one file was affected (two lines) and the remote's copy was intact.
+- **Studio: the clash screen now shows how the two versions differ, and when each changed.** It put
+  two full versions side by side and left the reading to the person; on a real project two versions
+  of a 178-line spec differed in two words and looked identical. It now says in a sentence how much
+  differs ("2 lines differ, out of 178"), shows only the changed lines with a little context, folds
+  the identical stretches into one row each, and marks only the words that changed inside a line.
+  Each side says when it was last changed: "Last saved" for your copy, and for theirs the time, who
+  made the change and their own words for why. Neither side is coloured as removed or added, since
+  both are somebody's version; they are labelled Yours and Theirs. The side-by-side full text is one
+  click away.
 
 ## 1.6.1 — 2026-09-28
 

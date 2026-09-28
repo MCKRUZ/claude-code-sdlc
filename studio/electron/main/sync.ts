@@ -7,7 +7,7 @@
 
 import { createHash } from 'node:crypto'
 import { rawStdout } from './commandRunner'
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { runGit, runGitTolerant, runGh, ghJson } from './git'
@@ -494,6 +494,25 @@ async function recomputeClashState(
   return { merged: result.merged, clashes: result.clashes, localUnitsRaw, localEol, localText, remoteBytes, shapePath }
 }
 
+/** When each side of a clash was last changed, so a person can tell which is newer and who made the
+ * other. Best effort: a missing piece is left out rather than guessed. */
+async function clashMetadata(projectPath: string, filePath: string): Promise<Pick<FileClash, 'localModifiedAt' | 'remote'>> {
+  const out: Pick<FileClash, 'localModifiedAt' | 'remote'> = {}
+  try {
+    out.localModifiedAt = statSync(join(projectPath, filePath)).mtime.toISOString()
+  } catch { /* the file may have gone since the clash was found */ }
+  const branch = await currentBranch(projectPath)
+  const entry = await runGitTolerant(
+    ['log', '-1', '--format=%an%x00%aI%x00%s', `origin/${branch}`, '--', filePath], projectPath,
+  )
+  if (entry.ok) {
+    // The commit's own subject line, shown as written; it is repository content, not a credential.
+    const [author, when, subject] = rawStdout(entry).trim().split('\0')
+    if (when) out.remote = { author: author || 'unknown', when, subject: subject ?? '' }
+  }
+  return out
+}
+
 /** Every currently-pending clash across the whole project, recomputed fresh — what the
  * renderer calls to populate the clash screen after any pull (including one that happened
  * on the periodic background timer, whose result the renderer never otherwise sees). */
@@ -516,7 +535,7 @@ export async function getPendingClashes(projectPath: string, pluginScriptsDir: s
       continue
     }
     const stillPending = state.clashes.filter((c) => fileState.pendingClashSections!.includes(c.key))
-    if (stillPending.length > 0) out.push({ path: filePath, sections: stillPending })
+    if (stillPending.length > 0) out.push({ path: filePath, sections: stillPending, ...(await clashMetadata(projectPath, filePath)) })
   }
   return out
 }
