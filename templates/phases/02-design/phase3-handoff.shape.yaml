@@ -42,6 +42,7 @@ sections:
         guidance: Approver name
 
   - heading: Implementation Breakdown for Planning
+    aliases: [Proposed Section Breakdown]
     fields:
       - label: Implementation Breakdown for Planning
         anchor: section

@@ -213,6 +213,113 @@ class TestOptionalSectionsMayBeAbsent:
         assert "custom" not in notes
 
 
+class TestHeadingsThatDriftFromTheTemplate:
+    """A real document rarely repeats a template's headings verbatim: Claude writes it from
+    guidance, so "Requirement Traceability" arrives as "Traceability Matrix" and "Deployment Steps"
+    as "3. Deployment steps". Measured across 70 real documents in four projects, 55 failed to
+    match their shape at all for this reason and reached Studio as raw text.
+
+    A heading matches, in order: exactly; by an alias the shape lists; by being the same words once
+    numbering, case and punctuation are ignored; or by being the template heading followed by a
+    qualifier. Each of the last three is safe by construction, since none equates different words."""
+
+    @staticmethod
+    def _shape(heading: str, aliases=None, required=True) -> dict:
+        sec = {"heading": heading, "fields": [
+            {"label": "Body", "anchor": "section", "type": "longtext", "required": required}]}
+        if aliases:
+            sec["aliases"] = aliases
+        return {"sections": [sec]}
+
+    def _matches(self, shape: dict, doc_heading: str) -> bool:
+        result = ds.read_document(f"# T\n\n## {doc_heading}\n\nbody\n", shape)
+        return result["matched"] is True
+
+    def test_exact_heading_still_matches(self):
+        assert self._matches(self._shape("Deployment Steps"), "Deployment Steps")
+
+    def test_case_is_ignored(self):
+        assert self._matches(self._shape("Configuration Reference"), "Configuration reference")
+
+    def test_leading_numbering_is_ignored(self):
+        assert self._matches(self._shape("Deployment Steps"), "3. Deployment steps")
+        assert self._matches(self._shape("Deployment Steps"), "3.1 Deployment Steps")
+        assert self._matches(self._shape("Deployment Steps"), "A) Deployment Steps")
+
+    def test_punctuation_differences_are_ignored(self):
+        assert self._matches(self._shape("Root Cause Analysis — Five Whys"), "Root Cause Analysis (Five Whys)")
+        assert self._matches(self._shape("Root Cause Analysis — Five Whys"), "Root Cause Analysis - Five Whys")
+
+    def test_a_qualifier_after_the_template_heading_is_accepted(self):
+        shape = self._shape("Deployment Procedure")
+        assert self._matches(shape, "Deployment procedure (deploy-dev)")
+        assert self._matches(shape, "Deployment Procedure — staging first")
+        assert self._matches(shape, "Deployment Procedure: how we ship")
+
+    def test_a_qualifier_needs_a_separator_so_a_different_heading_is_not_swallowed(self):
+        shape = self._shape("Data Model")
+        assert not self._matches(shape, "Data Model Review")
+        assert not self._matches(shape, "Data Models")
+        assert not self._matches(shape, "Metadata Model")
+
+    def test_a_different_heading_does_not_match(self):
+        assert not self._matches(self._shape("Overview"), "Summary")
+        assert not self._matches(self._shape("Security"), "Security Review")
+
+    def test_an_alias_the_shape_lists_matches(self):
+        shape = self._shape("Overview", aliases=["Summary"])
+        assert self._matches(shape, "Summary")
+
+    def test_an_alias_also_gets_the_forgiving_match(self):
+        shape = self._shape("Overview", aliases=["Summary"])
+        assert self._matches(shape, "1. summary")
+
+    def test_an_exact_heading_beats_an_alias_when_both_are_present(self):
+        shape = self._shape("Overview", aliases=["Summary"])
+        doc = "# T\n\n## Summary\n\nsummary text\n\n## Overview\n\nthe overview\n"
+        result = ds.read_document(doc, shape)
+        assert result["matched"] is True
+        overview = next(b for b in result["blocks"] if b.get("heading") == "Overview" and not b.get("custom"))
+        assert overview["fields"]["Body"]["value"].strip() == "the overview"
+
+    def test_the_block_carries_the_documents_own_heading_not_the_shapes(self):
+        result = ds.read_document("# T\n\n## 3. Deployment steps\n\nbody\n", self._shape("Deployment Steps"))
+        headings = [b["heading"] for b in result["blocks"] if b["kind"] == "section"]
+        assert headings == ["3. Deployment steps"]
+
+    def test_one_document_heading_is_never_claimed_by_two_sections(self):
+        shape = {"sections": [
+            {"heading": "Overview", "aliases": ["Summary"], "fields": [
+                {"label": "A", "anchor": "section", "type": "longtext", "required": False}]},
+            {"heading": "Summary", "fields": [
+                {"label": "B", "anchor": "section", "type": "longtext", "required": False}]},
+        ]}
+        doc = "# T\n\n## Summary\n\nx\n"
+        result = ds.read_document(doc, shape)
+        sections = [b for b in result["blocks"] if b["kind"] == "section" and not b.get("custom")]
+        assert len(sections) == 1
+        assert list(sections[0]["fields"]) == ["B"]  # the exact heading won it
+
+    def test_still_tiles_and_leaves_the_text_untouched(self):
+        doc = "# T\n\n## 3. Deployment steps\n\nbody\n\n## Extra\n\nmore\n"
+        result = ds.read_document(doc, self._shape("Deployment Steps"))
+        _assert_tiles(doc, result)
+        assert ds.write_document(doc, []) == doc
+
+    def test_a_required_section_with_no_match_at_all_still_falls_back_to_raw_text(self):
+        result = ds.read_document("# T\n\n## Unrelated\n\nx\n", self._shape("Deployment Steps"))
+        assert result["matched"] is False
+        assert "Deployment Steps" in result["warnings"][0]
+
+    def test_findings_name_the_documents_heading_for_a_loosely_matched_section(self):
+        shape = {"sections": [{"heading": "Deployment Steps", "fields": [
+            {"label": "Owner", "anchor": "inline", "type": "text", "required": True}]}]}
+        result = ds.read_document("# T\n\n## 3. Deployment steps\n\nno owner\n", shape)
+        block = next(b for b in result["blocks"] if b["kind"] == "section")
+        assert block["heading"] == "3. Deployment steps"
+        assert block["fields"]["Owner"] is None
+
+
 class TestQualifiedBlockLabels:
     """A real document rarely repeats a template's label word for word: `**In scope:**` becomes
     `**In scope (v1) — both halves of the one problem:**`. A labeled_block field is a label on

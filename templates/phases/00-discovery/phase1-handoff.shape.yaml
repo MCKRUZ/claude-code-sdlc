@@ -12,6 +12,7 @@ sections:
         guidance: One-sentence problem statement, primary stakeholders, profile, and completion date
 
   - heading: Decisions Made in Discovery
+    aliases: [Decisions Made]
     fields:
       - label: Decisions Made in Discovery
         anchor: section

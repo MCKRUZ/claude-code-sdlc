@@ -4,6 +4,7 @@ description: "How we will know this worked, as measurable thresholds with a name
 
 sections:
   - heading: Measurable Success Dimensions
+    aliases: [Measurable Dimensions]
     repeats: true
     numbering:
       pattern: "Dimension %d"

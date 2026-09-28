@@ -31,6 +31,7 @@ sections:
         guidance: Who approved Requirements
 
   - heading: Decisions Made in Requirements
+    aliases: [Decisions Made, Key Decisions Made]
     fields:
       - label: Decisions Made in Requirements
         anchor: section

@@ -30,6 +30,12 @@ sections:
                                     # where a real document's heading is "## v1.4.0 — 2026-09-23"
                                     # and can never equal that literal placeholder text).
                                     # Matched with .search against each document heading's text.
+    # aliases: [<heading>, ...]     # OPTIONAL — other headings a real document may use for this same
+                                    # section ("Summary" for "Overview"). Only true synonyms belong
+                                    # here; a heading matches without an alias when it is the same
+                                    # words with numbering, case or punctuation ignored, or the
+                                    # template heading followed by a qualifier ("3. Deployment steps",
+                                    # "Deployment procedure (deploy-dev)"). Not for heading_pattern.
     repeats: false                 # true when this is actually a series of numbered
                                     # "### <prefix>-NNN: ..." subsections, one per instance
                                     # (e.g. requirements.md's "### FR-001: ...", "### FR-002: ...")

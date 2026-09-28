@@ -44,6 +44,17 @@
   version, counted in the header by what is actually waiting (including files frozen by an earlier
   pull), and cleared automatically if the two sides come to agree. Tested against a real git
   remote with a second clone as the teammate.
+- **Documents that reword the template's headings now match their shape.** Measured across 70
+  real documents in four projects, 55 did not match their template's headings and reached Studio
+  as raw text, because a document that misses any required heading is read as free text. A heading
+  now also matches by an `aliases:` entry the shape lists, or as the same words with numbering,
+  case and punctuation ignored, or the template heading followed by a qualifier ("3. Deployment
+  steps", "Deployment procedure (deploy-dev)"); none of these equates different words. Nine aliases
+  are seeded from real documents. On the same 70 documents, 25 now match, up from 15. A document
+  whose structure genuinely differs (a per-endpoint layout, say) still falls back to raw text.
+- **Claude is now told to keep a template's headings.** `SKILL.md` gains a "Writing Artifacts" rule:
+  start from the template, keep its `##` headings exactly (extra sections are welcome), and run the
+  phase's readiness check before moving on. The phase guides only pointed at a template before.
 
 ## 1.6.1 — 2026-09-28
 

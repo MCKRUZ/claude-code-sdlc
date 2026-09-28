@@ -107,7 +107,10 @@ what's there:
   fallback, since a shape now covers every section of its template, not just the gate-required
   ones. A `## ` section the shape doesn't declare — one a person added to their own document — is
   read as an editable section of its own (`custom: true`, one whole-body "Content" field) rather
-  than raw text. `scripts/tests/test_shapes_cover_templates.py` fails when a template gains a
+  than raw text. A section is found by its heading as the shape writes it, by an `aliases:` entry,
+  or by the same words with numbering, case and punctuation ignored, or with a qualifier after them
+  (`3. Deployment steps`, `Deployment procedure (deploy-dev)`); none of these ever equates different
+  words. `scripts/tests/test_shapes_cover_templates.py` fails when a template gains a
   section its shape doesn't declare. A repeating section (like `requirements.md`'s `### FR-001`, `###
   FR-002`, ...) allocates its next number by scanning the *whole* document, including free text,
   so a number already in use — even one never captured by the shape — is never reused. Every
