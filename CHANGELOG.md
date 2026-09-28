@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.6.2 — 2026-09-28
+
+- **Fixed: 1.6.0's new shape fields could show a real document as having a gap it didn't have,
+  and hide its content.** A labeled block matched its label word for word, so a document that
+  wrote `**In scope (v1) — both halves of the one problem:**` where the template says
+  `**In scope:**` read as missing the field: the completeness check reported it, and Studio drew
+  "Not in this document" with the real text out of sight. A labeled block now also matches its
+  label followed by a qualifier, ending at a word boundary (`**Included:**` is not `**In:**`).
+  Inline labels stay exact, since `**Owner email:**` is a different field from `**Owner:**`.
+  Measured on a real project: 1.6.1 added two findings versus 1.5.2, both in one section, and
+  this removes both.
+
 ## 1.6.1 — 2026-09-28
 
 - **Studio: the stage list on the left is now navigable.** It was a set of inert rows and the

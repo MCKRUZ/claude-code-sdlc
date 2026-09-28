@@ -213,6 +213,58 @@ class TestOptionalSectionsMayBeAbsent:
         assert "custom" not in notes
 
 
+class TestQualifiedBlockLabels:
+    """A real document rarely repeats a template's label word for word: `**In scope:**` becomes
+    `**In scope (v1) — both halves of the one problem:**`. A labeled_block field is a label on
+    its own line, so a qualifier after the label is unambiguous; if it isn't matched the field
+    reads as absent and the content under it drops out of view."""
+
+    SHAPE = {"sections": [{"heading": "Problem Scope", "fields": [
+        {"label": "In scope", "anchor": "labeled_block", "type": "longtext", "required": False},
+        {"label": "Out of scope", "anchor": "labeled_block", "type": "longtext", "required": False},
+    ]}]}
+
+    def _fields(self, doc: str) -> dict:
+        result = ds.read_document(doc, self.SHAPE)
+        return next(b for b in result["blocks"] if b.get("heading") == "Problem Scope")["fields"]
+
+    def test_exact_label_still_matches(self):
+        f = self._fields("## Problem Scope\n\n**In scope:**\n- a\n\n**Out of scope:**\n- b\n")
+        assert f["In scope"]["value"] == "- a\n\n"
+        assert f["Out of scope"]["value"] == "- b\n"
+
+    def test_a_qualified_label_matches(self):
+        doc = (
+            "## Problem Scope\n\n"
+            "**In scope (v1) — both halves of the one problem:**\n- a\n\n"
+            "**Out of scope (v1, explicitly deferred):**\n- b\n"
+        )
+        f = self._fields(doc)
+        assert f["In scope"] is not None and f["In scope"]["value"] == "- a\n\n"
+        assert f["Out of scope"] is not None and f["Out of scope"]["value"] == "- b\n"
+
+    def test_a_qualified_label_bounds_its_neighbour(self):
+        """The first block must stop where the second qualified label starts, not swallow it."""
+        doc = "## Problem Scope\n\n**In scope (v1):**\n- a\n\n**Out of scope (later):**\n- b\n"
+        f = self._fields(doc)
+        assert "Out of scope" not in f["In scope"]["value"]
+
+    def test_a_label_that_merely_starts_the_same_way_does_not_match(self):
+        """`**Included:**` is not `**In:**` — the label must end at a word boundary."""
+        shape = {"sections": [{"heading": "S", "fields": [
+            {"label": "In", "anchor": "labeled_block", "type": "longtext", "required": False}]}]}
+        result = ds.read_document("## S\n\n**Included:**\n- x\n", shape)
+        assert result["blocks"][0]["fields"]["In"] is None
+
+    def test_inline_labels_are_not_loosened(self):
+        """`**Owner email:** x` is a different field from `**Owner:** x`; only the block form,
+        where the label owns its line, is qualified safely."""
+        shape = {"sections": [{"heading": "S", "fields": [
+            {"label": "Owner", "anchor": "inline", "type": "text", "required": False}]}]}
+        result = ds.read_document("## S\n\n**Owner email:** a@b.c\n", shape)
+        assert result["blocks"][0]["fields"]["Owner"] is None
+
+
 class TestSectionsThePersonAdded:
     """A `## ` section no shape declares is the person's own addition. It is shown as an
     editable section of its own instead of as raw text, and its bytes are addressed exactly

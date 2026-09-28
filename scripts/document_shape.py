@@ -38,6 +38,9 @@ import re
 HEADING2_RE = re.compile(r"^## +([^\r\n]*)", re.MULTILINE)
 HEADING3_RE = re.compile(r"^### +([^\r\n]*)", re.MULTILINE)
 INLINE_LABEL_TEMPLATE = r"^\*\*{label}:\*\*[ \t]*([^\r\n]*)"
+# The same line, allowing a qualifier after the label: whitespace, then anything up to the first
+# `:**`. Group 1 is kept so both templates yield the same match shape.
+LABELED_BLOCK_LABEL_TEMPLATE = r"^\*\*{label}(?:[ \t]+(?:(?!:\*\*)[^\r\n])*)?:\*\*[ \t]*([^\r\n]*)"
 COMMENT_LINE_RE = re.compile(r"^[ \t]*<!--.*-->[ \t]*$")
 STAMP_RE = re.compile(r"^<!--\s*template:\s*([a-z0-9][a-z0-9-]*)\s+v([0-9]+\.[0-9]+)\s*-->[ \t]*\r?$", re.MULTILINE)
 
@@ -131,8 +134,17 @@ def next_free_number(text: str, numbering_pattern: str) -> int:
 # Field extraction
 # ---------------------------------------------------------------------------
 
-def _find_label_match(text: str, start: int, end: int, label: str):
-    pattern = re.compile(INLINE_LABEL_TEMPLATE.format(label=re.escape(label)), re.MULTILINE)
+def _find_label_match(text: str, start: int, end: int, label: str, anchor: str = "inline"):
+    """The `**Label:**` line for a field, exact for an inline field.
+
+    A labeled_block field's label owns its line, so a qualifier between the label and the colon
+    is unambiguous and is accepted: `**In scope:**` also matches `**In scope (v1) — both halves
+    of the one problem:**`. Real documents rewrite a template's label as they go, and a field
+    that fails to match reads as absent — its content then drops out of view. The label must
+    still end at a word boundary (`**Included:**` is not `**In:**`). Inline fields stay exact:
+    `**Owner email:** x` is a different field from `**Owner:** x`."""
+    template = LABELED_BLOCK_LABEL_TEMPLATE if anchor == "labeled_block" else INLINE_LABEL_TEMPLATE
+    pattern = re.compile(template.format(label=re.escape(label)), re.MULTILINE)
     return pattern.search(text, start, end)
 
 
@@ -198,7 +210,7 @@ def _extract_fields_flat(text: str, body_start: int, body_end: int, field_shapes
         if anchor == "section":
             section_field = f
             continue
-        labeled.append((f, _find_label_match(text, body_start, body_end, f["label"])))
+        labeled.append((f, _find_label_match(text, body_start, body_end, f["label"], anchor)))
 
     # Positional order of whichever labeled fields were actually found, so a labeled_block
     # field's value can be bounded by the NEXT field's label line, whatever field that is.
