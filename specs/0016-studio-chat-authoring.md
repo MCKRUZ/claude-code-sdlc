@@ -77,6 +77,22 @@ viewer of someone else's work instead of the place the work happens.
   List): a hostile scratch project — a hook that writes a marker file, a `CLAUDE.md` with a
   sentinel string — granted to a live session the same way a real project would be, asserting the
   hook never fires and the sentinel is never read except on explicit request
+- The tool list is built as an explicit **allow-list** (`--tools Read,Grep,Glob,Task,AskUserQuestion`),
+  not a block-list — so "`Edit`/`Write`/`Bash` are absent" is provable by asserting the launch
+  arguments equal a fixed list, not by asserting three names are missing from an open-ended
+  denial that a future tool addition could silently rejoin
+- The conversation is genuinely multi-turn: one `claude` process per turn, tied together with
+  `--session-id`/`--resume` and `--output-format stream-json`, so replies build on prior turns
+  without replaying the whole transcript as pasted text each time
+- What a proposed write looks like on the wire between the model and Studio is a dedicated,
+  no-op tool in the allow-list (e.g. `ProposeWrite`) that the model calls with the document,
+  section, field and value — not a hope that the model reliably formats a fenced text block in
+  its prose. A real tool call is what the parser reads; free text stays free text
+- Every command this spec's chat driver runs is visible in Studio's existing console window, the
+  same way every other command Studio runs already is (spec 0008's transparency rule) — this is
+  the single biggest new capability grant Studio has made, and it does not get a quiet exemption
+  from the "you can always see what Studio is doing" promise. Streaming output is shown as it
+  arrives, not only once the turn completes
 
 ### Out of scope
 - The Build loop and spec authoring via chat — a different surface (the Build board, spec 0011);
@@ -142,6 +158,13 @@ viewer of someone else's work instead of the place the work happens.
 - [ ] Round trip: a full stage authored end-to-end through chat alone, with nothing touched in the
       structured editor, produces documents that pass the same completeness check as one authored
       by hand.
+- [ ] Every turn of a chat conversation appears in Studio's existing console window as it happens,
+      the same way every other command Studio runs already does — a test asserts the chat driver's
+      calls go through the same command-visibility path as spec 0008's other commands, not a
+      separate, invisible channel.
+- [ ] A proposed write is a real tool call the driver parses structurally (document/section/field/
+      value), not free text pattern-matched out of the model's prose — a test feeds a reply with no
+      such tool call and asserts no proposal card appears, rather than a guessed one.
 
 ## Risk Tier
 <!--
@@ -172,7 +195,10 @@ security sign-off specifically on the isolation test, not just on the feature wo
   draft-ledger functions only; no new write path.
 - **Context (pattern to reuse):** spec 0010's working-directory isolation model, extended with
   scoped `--add-dir` access to the project and the plugin install; propose-then-apply through the
-  shape library for every write.
+  shape library for every write. `runCommand()` (`commandRunner.ts`) is spec 0008's single
+  choke point that makes every command visible in the console — this spec extends it to support
+  streaming output rather than bypassing it for chat specifically; a design that routes chat's
+  calls outside `runCommand()` does not meet the console-visibility acceptance check above.
 - **Permissions:** build, test, lint and reads auto-allowed. New dependencies need confirmation.
   The two `--add-dir` grants named in Scope are the ceiling — adding a third directory, a
   credential, or network access beyond what `claude` itself needs to run is a change this spec
@@ -193,6 +219,20 @@ hostile-scratch-project test (see Scope and Decision List) against the shipped c
 hand-run version this spec's design was checked against — plus a named human sign-off on that
 test's result. The round-trip acceptance check above must be run as a real end-to-end pass
 authoring a full stage through chat on a real project, not fixtures alone.
+
+Before the sub-agent-spawning and structured-question pieces are written, two mechanism facts need
+to be verified empirically against the local `claude` CLI — the same "measured, not assumed"
+discipline spec 0010's own security pass used, not a guess folded into the design:
+1. Whether `--add-dir <pluginRoot>` alone makes the plugin's discipline sub-agents spawnable via
+   the `Task` tool, or whether the session also needs `--plugin-dir <pluginRoot>` — a materially
+   different grant (loading the plugin for the session, not just scoping file-tool access) that
+   may pull in more than intended. If `--plugin-dir` is needed, confirm it does not also expose
+   this plugin's own hooks or commands to the session beyond what's actually wanted.
+2. Whether resuming a session with a plain next-turn message correctly answers a pending
+   `AskUserQuestion` tool call, or whether the driver must construct a formal `tool_result` block
+   (requiring `--input-format stream-json` in addition to the streamed output).
+Both are go/no-go facts about how the CLI actually behaves, not product decisions — verify first,
+then build the piece each fact gates.
 
 ## Decision List
 <!--
@@ -228,3 +268,21 @@ authoring a full stage through chat on a real project, not fixtures alone.
   order and redirect back. Keeps one source of truth for "what to ask and in what order" —
   the phase guidance file — instead of a second, harder-to-audit copy of that judgment living in
   the chat driver's own logic.
+- **Does a live chat conversation get to bypass spec 0008's "everything Studio runs is visible in
+  the console" rule, since it needs continuous streaming rather than one-shot calls?**
+  Resolved 2026-09-29 by Matt: no. `runCommand()` (spec 0008's single choke point for console
+  visibility) is extended to support streaming output rather than routing chat's calls around it.
+  Exempting the single biggest new capability grant from the one rule that lets a person watch
+  everything Studio does would undercut the reason that rule exists.
+- **Studio's `claude` working directory is one constant, shared, Studio-owned scratch folder
+  across every project and stage (spec 0010's model, kept unchanged here). Is there a session
+  collision or retention concern worth addressing now?**
+  Resolved 2026-09-29: no action needed for this spec. Session ids are UUIDs generated per
+  conversation, so cross-project collision risk is negligible; retention/cleanup of old sessions
+  is a real but separate concern, noted here so it isn't lost, not something this spec needs to
+  solve.
+- **Spec 0008's own Acceptance Check 4 ("the chat panel is present on every screen, and states
+  which part of the project it can see") is currently ticked only as "labelling, not a working
+  chat."** Once this spec ships a real `ChatPanel.tsx`, that check's own caveat is resolved by
+  this spec's work, not by editing spec 0008 separately. Noted here so the bookkeeping doesn't
+  fall through the gap between the two specs; spec 0008 itself is otherwise untouched.
