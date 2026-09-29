@@ -12,7 +12,7 @@ owner: "@MCKRUZ"
 developer: "@MCKRUZ"
 checker: ""              # non-author approval — filled at hand-off
 team: "core"
-harness_context: "spec 0010's Claude-drafts-a-field mechanism — Electron main process pastes project content in as context, Claude proposes, the shape library applies the write — generalized from one field to a multi-turn conversation across a whole stage"
+harness_context: "spec 0010's CLI-isolation model (Studio-owned working directory; `--add-dir` grants scoped, working file access without moving the settings/hooks/CLAUDE.md discovery root), extended from a single blocked-tools draft call to a live, multi-turn, tool-capable conversation — writes still land only through spec 0010's shape-library path"
 created: "2026-09-29"
 ---
 
@@ -28,9 +28,10 @@ created: "2026-09-29"
 -->
 
 ## Goal
-The chat panel drives a real, multi-turn conversation that authors a stage's documents as the
-person talks — from a blank project with nothing started, to a stage ready to sign off — without
-ever writing outside the shape-library path spec 0010 already proved safe.
+The chat panel drives a real, multi-turn conversation — with the same real file access, specialist
+sub-agents, and structured questions the terminal's `/sdlc` session has — that authors a stage's
+documents as the person talks, from a blank project with nothing started to a stage ready to sign
+off, without ever writing outside the shape-library path spec 0010 already proved safe.
 
 ## Why
 A brand-new project in Studio shows a stage of empty documents and a chat panel that admits it
@@ -42,12 +43,24 @@ viewer of someone else's work instead of the place the work happens.
 ## Scope
 
 ### In scope
-- `studio/electron/main`: a chat-turn driver that assembles phase context (`state.yaml`, the
-  current `phases/NN-*.md`, the prior phase's handoff document, any in-progress document text) the
-  same way spec 0010's single-field draft call already does, and turns each of Claude's replies
-  into either a question shown in the chat or a proposed document/field write
+- `studio/electron/main`: a chat-turn driver that starts a real, multi-turn `claude` session whose
+  working directory is spec 0010's Studio-owned scratch folder (never the project) but which is
+  explicitly granted real, working file access — via `--add-dir` — to two directories: the actual
+  project, and this plugin's own installed copy. That second grant is what lets the session use the
+  plugin's real phase guidance and spawn its real discipline sub-agents (`discovery-analyst`, and
+  so on) as themselves, sourced from the trusted plugin, never from the untrusted project
+- The session keeps `Edit`, `Write` and `Bash` off its tool list for the whole conversation. Every
+  proposed document change still surfaces as a proposal — naming the document and field — that the
+  person accepts, edits, or discards, exactly as spec 0010's single-field draft flow works; only
+  spec 0010's shape-library write path ever touches a file. This is no longer a security boundary
+  (the isolation model above is) — it is what keeps every chat-authored document inside Studio's
+  version history and draft-audit ledger instead of a raw, unaudited write
+- A genuine structured multiple-choice question, rendered as real options in the chat UI (not
+  typed-out text), for whatever the phase guidance or a sub-agent asks that way — the terminal
+  session's own asking mechanism, not a text workaround
 - `studio/src/components/ChatPanel.tsx` and the transcript UI it needs: a real message list, an
-  input, and a proposal card for every write — matching spec 0010's accept / edit / discard pattern
+  input, structured-question rendering, and a proposal card for every write — matching spec 0010's
+  accept / edit / discard pattern
 - Reusing, never replacing, spec 0010's document-write functions and the draft-audit ledger
   (`record_draft.py`'s log) for every proposed write, whatever its outcome
 - The pre-Build foundation phases (0 Discovery, 1 Requirements, 2 Design, 3 Foundation) — the
@@ -55,19 +68,24 @@ viewer of someone else's work instead of the place the work happens.
 - Starting a conversation on a stage with zero documents started, and continuing one on a
   partially-complete stage
 - What the assistant asks, and in what order, is read from that phase's own `phases/NN-*.md` file
-  at conversation time — never a second, hand-authored copy of that guidance living inside Studio
+  and the plugin's real agent definitions at conversation time — never a second, hand-authored copy
+  of that guidance living inside Studio
 - The assistant opens the conversation itself. Landing on a stage that has at least one document
   not yet started puts the assistant's opening message in the transcript before the person has
   typed anything — nobody has to know to say "let's start" to begin
+- A codified version of the isolation proof this spec's design was verified against (see Decision
+  List): a hostile scratch project — a hook that writes a marker file, a `CLAUDE.md` with a
+  sentinel string — granted to a live session the same way a real project would be, asserting the
+  hook never fires and the sentinel is never read except on explicit request
 
 ### Out of scope
 - The Build loop and spec authoring via chat — a different surface (the Build board, spec 0011);
   a future spec if wanted
-- Any filesystem or network access for the Claude process beyond what spec 0010 already grants —
-  the CLI call stays isolated in its own empty directory with content pasted in by the main
-  process, never run with the project directory as its working directory. This spec reaffirms
-  spec 0010's isolation decision under a live conversation; it does not reopen it silently (see
-  Decision List)
+- Any filesystem or network access for the Claude process beyond the two directories this spec
+  explicitly grants (the project, the plugin's own install) — no other directory, no credential
+  store, no network egress beyond what the `claude` CLI itself already needs to run
+- The Workflow-tab UI (steps and a live file preview next to chat) — spec 0017. This spec is the
+  engine; 0017 is the screen built on top of it
 - Voice or any non-web channel — chat stays the `ag-ui` surface
 - Multiple people in concurrent chat sessions against the same document
 - Any write that reaches disk by a path other than the shape library
@@ -127,21 +145,26 @@ viewer of someone else's work instead of the place the work happens.
 -->
 **Tier:** HIGH
 **Why this tier:** it writes the documents the whole engagement depends on — the same reason spec
-0010 is HIGH — and it is the exact case spec 0010's own security decision flagged for revisiting:
-giving the Claude process a live, multi-turn role in a person's first, blank-project experience,
-where a proposed write is most likely to be accepted without a second look.
+0010 is HIGH — and it is the first Studio feature to grant a live model session real, working
+access to a project's own files and to real sub-agents. The access-grant mechanism was measured
+safe against a planted trap (see Decision List), but that boundary — working directory separate
+from granted directories — is exactly the kind of thing a later, unrelated change could erode by
+accident without anyone noticing until it mattered. That calls for the full ladder and a named
+security sign-off specifically on the isolation test, not just on the feature working.
 
 ## Delegation Plan
 <!-- The box the agent works inside. Set per spec. -->
 - **Scope (file patterns):** `studio/electron/main/chat*.ts` (new), `studio/src/components/ChatPanel.tsx`
   and its supporting renderer state — calling into spec 0010's existing document-write and
   draft-ledger functions only; no new write path.
-- **Context (pattern to reuse):** spec 0010's per-field Claude-draft mechanism — pasted-in context,
-  main-process-only CLI isolation, propose-then-apply through the shape library.
+- **Context (pattern to reuse):** spec 0010's working-directory isolation model, extended with
+  scoped `--add-dir` access to the project and the plugin install; propose-then-apply through the
+  shape library for every write.
 - **Permissions:** build, test, lint and reads auto-allowed. New dependencies need confirmation.
-  Any change to what the Claude CLI process can reach on disk or network needs explicit
-  confirmation, not just code review — this is the one thing this spec must not silently widen.
-- **Gated paths touched:** none directly; the CLI-isolation boundary from spec 0010 is a named
+  The two `--add-dir` grants named in Scope are the ceiling — adding a third directory, a
+  credential, or network access beyond what `claude` itself needs to run is a change this spec
+  does not cover and needs its own review, not a quiet addition here.
+- **Gated paths touched:** none directly; the working-directory / `--add-dir` boundary is a named
   checkpoint in the security pass, not a gated path of its own.
 
 ## Checking Plan
@@ -152,10 +175,11 @@ where a proposed write is most likely to be accepted without a second look.
   HIGH   — full ladder: grader + correctness + security pass + named human sign-off in the PR
 -->
 **Ladder depth:** HIGH — the full ladder.
-**Specifics:** grader, correctness review, and a security pass that explicitly re-verifies spec
-0010's CLI-isolation boundary still holds across a live multi-turn session (not just a single
-draft call), plus a named human sign-off. The round-trip acceptance check above must be run as a
-real end-to-end pass authoring a full stage through chat on a real project, not fixtures alone.
+**Specifics:** grader, correctness review, and a security pass that specifically re-runs the
+hostile-scratch-project test (see Scope and Decision List) against the shipped code — not the
+hand-run version this spec's design was checked against — plus a named human sign-off on that
+test's result. The round-trip acceptance check above must be run as a real end-to-end pass
+authoring a full stage through chat on a real project, not fixtures alone.
 
 ## Decision List
 <!--
@@ -163,17 +187,23 @@ real end-to-end pass authoring a full stage through chat on a real project, not 
   user see?). Each needs a NAMED human answer on the agreed clock — the agent must not guess.
   Leave "none" only if you have genuinely checked there are none.
 -->
-- **Does spec 0010's CLI-isolation decision stand for a live conversation, or does chat need the
-  process to run inside the project directory to be faithful to the CLI's actual `/sdlc` behavior
-  (skills, agents, hooks)?**
-  Resolved 2026-09-29 by Matt: it stands. The Claude process stays boxed out of the project
-  directory for the whole conversation, exactly as spec 0010 built it — Studio pastes in only
-  what it explicitly chooses to hand over. Confirmed after walking the terminal-vs-Studio
-  comparison directly: Matt already accepts this exposure at his own terminal as a deliberate,
-  occasional, expert act, but Studio's chat is meant for people with no reason to expect that
-  typing in a chat box could run code from disk — silently, on every turn. The same mechanism
-  aimed at an audience that never agreed to it is the risk this spec exists to avoid, even though
-  it already had one critical finding under the single-field version of this same call.
+- **Does spec 0010's CLI-isolation decision stand for a live conversation, or does chat need real
+  file and sub-agent access to be faithful to the CLI's actual `/sdlc` behavior?**
+  Reopened and re-resolved 2026-09-29 by Matt, superseding this item's first answer from earlier
+  the same day. The first answer ("stays boxed out, text-only") was tested against a live scratch
+  project set up as a trap — a hook that writes a marker file the instant it runs, a `CLAUDE.md`
+  carrying a planted instruction — and driven the way this spec's design actually would: working
+  directory left at spec 0010's Studio-owned scratch folder, the trap directory granted only
+  through `--add-dir`. The hook never fired; the planted file was read only when the session was
+  explicitly told to read it, and was then treated as inert text, not an instruction. That result
+  separates two things this spec's first draft had bundled together: keeping the untrusted
+  project's own settings/hooks/CLAUDE.md from ever auto-loading (a working-directory question,
+  fully solved) versus whether the AI can see and act on the project's real files (an
+  access-grant question, independent of the first). Matt's answer: grant the real access — real
+  file reads, real discipline sub-agents from the plugin's own trusted install, real structured
+  questions — because the thing that made the boxed-out design necessary turned out not to require
+  giving up capability to get. `Edit`, `Write` and `Bash` still never reach the model's tool list;
+  that boundary was never the isolation question and stays for a different reason (see Scope).
 - **Does the chat transcript itself sync to the repo** (so a teammate opening the same project in
   their own Studio sees the conversation that produced a document), **or does it stay local-only**,
   like a pending draft does today?
