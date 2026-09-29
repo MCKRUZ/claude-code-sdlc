@@ -51,8 +51,16 @@ data into a guided sequence with the file visible beside it, so the work is visi
 - Each step's one-line description reuses the exact text already written for the Documents tab —
   not a second copy of the same sentence
 - A live file panel beside the steps, showing the current step's document content via
-  `openDocument()` — the same function the structured editor already uses — refreshed when that
-  document's content changes on disk, with no page reload
+  `openDocument()` — the same function the structured editor already uses — polled on a fixed
+  ~2 second interval while the tab is visible (paused when it isn't) and replacing the panel's
+  content only when it actually differs, with no page reload
+- The **current** step is always the first not-yet-ready document in the stage's declared order —
+  never "whichever document was last touched." This matches spec 0016's own chat engine, which
+  holds to the same phase-file order rather than letting the conversation jump around
+- Once every document is ready, the **Sign-off step becomes current and expands in place** inside
+  the Workflow tab, showing the same sign-off questions the Documents tab shows — not a link that
+  sends the person to another tab to actually confirm. The sign-off confirmation mechanism itself
+  (see Out of scope) is unchanged; this only changes where it's surfaced
 - A locked step shows only its title and description — no document content, no controls
 - A done step's row states it is complete without re-rendering the full document text underneath
   it — that text is what the Documents tab and the structured editor are for
@@ -86,8 +94,14 @@ data into a guided sequence with the file visible beside it, so the work is visi
       readiness data, report the same done-count for every document — proving both read one
       shared source rather than two that can drift apart.
 - [ ] The current step's file panel shows that document's real, current content; a test that
-      changes the underlying file while the tab is open asserts the panel's rendered text updates
-      without the person reloading or clicking anything.
+      changes the underlying file while the tab is open asserts the panel's rendered text updates,
+      via polling (not a page reload or a click), within one polling interval.
+- [ ] Reopening a stage where 3 of 5 documents are already ready shows the 4th (the first
+      not-ready one, in declared order) as current — even when the 5th was the one most recently
+      edited.
+- [ ] Once all required documents are ready, the Sign-off step renders as current and its content
+      is the same sign-off questions the Documents tab shows, inline in the Workflow tab — not a
+      link elsewhere.
 - [ ] A locked step's row contains its title and description and nothing else — no document text,
       no button, no link — asserted as absence, not as disabled.
 - [ ] A done step's row shows a completion state and does not render that document's full body
@@ -121,7 +135,10 @@ boundary, or a credential, so the full HIGH ladder isn't warranted.
   similarly named) component plus its supporting pieces. No changes to `studio/electron/main` —
   this spec needs no new IPC handler.
 - **Context (pattern to reuse):** `getStageReadiness()` (`readiness.ts`) and `openDocument()`
-  (`documents.ts`), used exactly as the existing Documents tab already uses them.
+  (`documents.ts`), used exactly as the existing Documents tab already uses them. Step status
+  (done / current / locked) should be a small pure function taking `StageReadiness` and returning
+  the step list — unit-testable on its own, and the same function both tabs call, which is what
+  makes the shared-source acceptance check true by construction rather than by convention.
 - **Permissions:** build, test, lint and reads auto-allowed. No new dependencies expected. Adding
   any new IPC handler or main-process function needs confirmation first — this spec shouldn't need
   one, so needing one is a sign the design has drifted.
@@ -145,5 +162,13 @@ Documents tabs never disagree on status) and runs the e2e pass at both a normal 
   user see?). Each needs a NAMED human answer on the agreed clock — the agent must not guess.
   Leave "none" only if you have genuinely checked there are none.
 -->
-- none — checked: every open question here (default tab, locked-step content, done-step content,
-  narrow-width layout) is resolved above in Scope, following the mockup Matt approved.
+- **What counts as the "current" step on reopen?** Resolved 2026-09-29 by Matt: strict declared
+  order (first not-ready document), never "last touched." Matches spec 0016's own resolved order
+  discipline.
+- **Where do the sign-off questions render once every document is ready?** Resolved 2026-09-29 by
+  Matt: inline, as the Sign-off step expanding in place inside the Workflow tab — not a link to
+  another tab.
+- **How often does the live file panel check for changes?** Resolved 2026-09-29 by Matt: ~2 second
+  polling while the tab is visible, paused when it isn't. Each poll is a real, non-trivial call
+  through `openDocument()`'s shape-library round trip, not a cheap read — this interval is a
+  deliberate cost/freshness tradeoff, not a default to tune freely later without noticing the cost.
