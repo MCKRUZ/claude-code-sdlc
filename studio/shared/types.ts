@@ -320,6 +320,8 @@ export interface SignOffQuestion {
 export interface StageReadiness {
   ok: boolean
   stageId: string
+  /** The registry's own phase name (e.g. "discovery"), not the human-facing `display`. */
+  name: string
   display: string
   description?: string
   isCurrent: boolean
@@ -794,6 +796,30 @@ export interface AdvanceResult {
   error?: string
 }
 
+/** What `check_gates.py` said, parsed from its text output (it has no `--json`). */
+export interface GateCheckResult {
+  blocked: boolean
+  /** Only the MUST-severity non-compliant messages — the ones that actually block. */
+  mustFailures: string[]
+  /** The full text, for display when a person wants to see everything, not just the blockers. */
+  raw: string
+}
+
+/** One optional discipline sign-off a person can attach to a phase sign-off — the same
+ * `Discipline:Section:Name` triple `/sdlc-next` offers to capture. */
+export interface DisciplineSignoff {
+  discipline: string
+  section: string
+  by: string
+}
+
+/** Signing off a phase from Studio: check the gates, confirm every judgement question, draft and
+ * validate a frozen-layer summary, snapshot the artifact record, then advance — same order
+ * `/sdlc-next` follows. `stage` names exactly where it stopped, so a refusal is never a mystery. */
+export type SignOffResult =
+  | { ok: true; fromPhase?: string; toPhase?: string; note?: string }
+  | { ok: false; stage: 'plugin' | 'name' | 'not-current' | 'confirmations' | 'gates' | 'frozen-layer' | 'advance'; error: string }
+
 export interface DeclarationResult {
   ok: boolean
   declared_by?: string
@@ -844,6 +870,12 @@ export interface StudioApi {
 
   // --- Documents (spec 0010) ---
   getStageReadiness(projectPath: string, stageId?: string): Promise<StageReadiness>
+  /** Sign off a stage and advance the phase — the general version of `advanceAfterDeclaration`.
+   * Checks the gates, confirms every judgement question, drafts and validates a frozen-layer
+   * summary, then advances. `stage` on a refusal names exactly where it stopped. */
+  signOffStage(
+    projectPath: string, stageId: string, signedBy: string, disciplineSignoffs: DisciplineSignoff[],
+  ): Promise<SignOffResult>
   /** Record (or withdraw) one person's confirmation of one sign-off question. */
   setJudgementConfirmation(
     projectPath: string, stageId: string, questionId: string, confirmed: boolean, actor: string,

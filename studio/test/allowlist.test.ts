@@ -25,6 +25,10 @@ describe('isAllowlisted', () => {
     // The roster now is. Left excluded, an edit would have sat on one person's machine
     // looking saved.
     '.sdlc/team.yaml',
+    // A phase sign-off writes its frozen-layer summary here — must sync, or it would only ever
+    // exist on the machine that signed off.
+    '.sdlc/context/layers/phase0-discovery.md',
+    '.sdlc/context/layers/phase0-discovery.md.superseded',
   ])('allows %s', (path) => {
     expect(isAllowlisted(path)).toBe(true)
   })

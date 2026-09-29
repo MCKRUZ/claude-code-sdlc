@@ -23,10 +23,14 @@ type Screen =
   | { kind: 'settingUp'; projectPath: string }
   | { kind: 'project'; status: ProjectStatus; projectPath: string }
 
-/** A project being opened: what to call it on screen, and when it started, for the clock. */
+/** A project being opened — or any other blocking, plugin-backed action, such as signing off a
+ * phase — what to call it on screen, and when it started, for the clock. `title`/`subtitle` are
+ * only needed for the non-opening case; omitted, the overlay uses its own opening-a-project text. */
 interface Opening {
   projectName: string
   startedAt: number
+  title?: string
+  subtitle?: string
 }
 
 /** The last folder name of a path, for "Opening token-tracker…". */
@@ -138,6 +142,17 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     const folder = await window.studio.pickFolder()
     if (folder) await openPath(folder)
   }, [openPath])
+
+  // After a phase sign-off the sidebar's stage list is stale — current_phase moved, but the
+  // status this screen holds was read before that happened. Re-reads it in place, without
+  // resetting the open document or view the way a fresh openPath would.
+  const refreshStatus = useCallback(async () => {
+    if (screen.kind !== 'project') return
+    const result = await window.studio.openProject(screen.projectPath)
+    if (result.hasProject && result.status) {
+      setScreen({ kind: 'project', status: result.status, projectPath: screen.projectPath })
+    }
+  }, [screen])
 
   const handleOverride = useCallback(
     async (kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', path: string) => {
@@ -292,6 +307,8 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             projectPath={projectPath}
             stageId={viewedStageId}
             actor={actor}
+            setOpening={setOpening}
+            onSignedOff={refreshStatus}
             onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
               setOpenDocFocus(focus)
@@ -322,7 +339,14 @@ function App() {
   return (
     <>
       <AppScreens setOpening={setOpening} />
-      {opening && <OpeningOverlay projectName={opening.projectName} startedAt={opening.startedAt} />}
+      {opening && (
+        <OpeningOverlay
+          projectName={opening.projectName}
+          startedAt={opening.startedAt}
+          title={opening.title}
+          subtitle={opening.subtitle}
+        />
+      )}
     </>
   )
 }

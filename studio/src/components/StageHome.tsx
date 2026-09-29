@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DocumentFocus, ReadinessFinding, SignOffQuestion, StageReadiness } from '../../shared/types'
+import { SignOffPanel } from './SignOffPanel'
 import { SignOffQuestions } from './SignOffQuestions'
+
+interface Opening {
+  projectName: string
+  startedAt: number
+  title?: string
+  subtitle?: string
+}
 
 /** One readiness item, in the words a person would use. The plugin reports a path, a section
  * and a field; a reader wants a sentence. Kept out of the component so the phrasing is one
@@ -23,12 +31,18 @@ export function StageHome({
   projectPath,
   stageId,
   actor,
+  setOpening,
+  onSignedOff,
   onOpenDocument,
 }: {
   projectPath: string
   stageId?: string
   /** Who a confirmation is recorded under; empty when nobody is signed in. */
   actor: string
+  /** Drives the blocking overlay while a sign-off is running — the same one `openPath` uses. */
+  setOpening: (opening: Opening | null) => void
+  /** Called once a sign-off actually advances the phase, so the sidebar's stage list can catch up. */
+  onSignedOff: () => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null)
@@ -161,6 +175,20 @@ export function StageHome({
           <span className="ml-2 text-slate-500">Signed off by {readiness.signOff.signedOffBy}.</span>
         )}
       </div>
+
+      {/* Only offered on the project's actual current stage, once there is nothing left for a
+          person to do first — every document ready and every judgement question confirmed.
+          Signing off a stage that is not current, or that still has open work, is not a
+          decision this button should be able to make look easy. */}
+      {readiness.isCurrent && readiness.ready && readiness.judgement.every((q) => q.confirmation) && (
+        <SignOffPanel
+          projectPath={projectPath}
+          readiness={readiness}
+          actor={actor}
+          setOpening={setOpening}
+          onSignedOff={onSignedOff}
+        />
+      )}
     </div>
   )
 }

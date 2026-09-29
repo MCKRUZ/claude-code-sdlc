@@ -13,6 +13,7 @@ import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPull
 import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } from './documents'
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
+import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
   clearGateAuth, getConnectionReport, getFoundationSummary, getGateAuth, getGateInventory,
@@ -231,7 +232,7 @@ function registerIpcHandlers() {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) {
       return {
-        ok: false, stageId: '', display: '', isCurrent: false, documents: [], findings: [],
+        ok: false, stageId: '', name: '', display: '', isCurrent: false, documents: [], findings: [],
         judgement: [], signOff: { status: 'unknown', signedOffBy: null, completedAt: null },
         ready: false, error: 'claude-code-sdlc plugin scripts not found',
       }
@@ -245,6 +246,21 @@ function registerIpcHandlers() {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return { ok: false, error: 'claude-code-sdlc plugin scripts not found' }
       return setJudgementConfirmation(projectPath, scriptsDir, stageId, questionId, confirmed, actor)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:signOffStage',
+    async (
+      _event, projectPath: string, stageId: string, signedBy: string,
+      disciplineSignoffs: import('../../shared/types').DisciplineSignoff[],
+    ) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) {
+        return { ok: false, stage: 'plugin' as const, error: 'claude-code-sdlc plugin scripts not found' }
+      }
+      const claudePath = loadSettings().claudePathOverride ?? 'claude'
+      return signOffStage(projectPath, scriptsDir, claudePath, stageId, signedBy, disciplineSignoffs)
     },
   )
 

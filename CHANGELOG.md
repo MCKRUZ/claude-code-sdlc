@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+- **Studio can sign off a phase and advance it, without leaving the window.** Until now the only
+  thing in Studio that finished a phase was Build's declare-complete flow; every other phase
+  (Discovery → Requirements, and on) still needed `/sdlc-next` in Claude Code. The new "Sign off"
+  panel on a stage's home (shown only once every document is complete and every judgement
+  question is confirmed) runs the same sequence `/sdlc-next` does: check the exit gates, draft and
+  validate a condensed "frozen layer" summary of the phase (the one step needing a real Claude
+  call — every artifact is read and pasted in, since Claude cannot read files in this call),
+  snapshot the artifact record, then advance, with optional discipline sign-offs. A refusal names
+  exactly which step stopped it and shows the plugin's own words. `advanceAfterDeclaration`
+  (previously Build-only) is now the shared advance step for both flows. `.sdlc/context/layers/`
+  is now synced — previously absent from the allowlist, so a frozen layer would have stayed
+  local forever.
+
 ## 1.6.2 — 2026-09-28
 
 - **Sign-off questions can now be ticked, with a pre-check beside each.** Every phase's exit gate

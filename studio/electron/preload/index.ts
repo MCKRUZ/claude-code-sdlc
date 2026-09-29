@@ -38,6 +38,8 @@ const studio: StudioApi = {
   getStageReadiness: (projectPath, stageId) => ipcRenderer.invoke('studio:getStageReadiness', projectPath, stageId),
   setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
     ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),
+  signOffStage: (projectPath, stageId, signedBy, disciplineSignoffs) =>
+    ipcRenderer.invoke('studio:signOffStage', projectPath, stageId, signedBy, disciplineSignoffs),
   openDocument: (projectPath, relPath) => ipcRenderer.invoke('studio:openDocument', projectPath, relPath),
   getDocumentChanges: (projectPath, relPath) => ipcRenderer.invoke('studio:getDocumentChanges', projectPath, relPath),
   markDocumentSeen: (projectPath, relPath) => ipcRenderer.invoke('studio:markDocumentSeen', projectPath, relPath),

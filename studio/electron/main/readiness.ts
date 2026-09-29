@@ -48,7 +48,7 @@ interface RawReadiness {
 
 function emptyReadiness(error: string): StageReadiness {
   return {
-    ok: false, stageId: '', display: '', isCurrent: false,
+    ok: false, stageId: '', name: '', display: '', isCurrent: false,
     documents: [], findings: [], judgement: [],
     signOff: { status: 'unknown', signedOffBy: null, completedAt: null },
     ready: false, error,
@@ -155,6 +155,10 @@ export async function getStageReadiness(
   return {
     ok: true,
     stageId: raw.stage.id,
+    // The registry's own phase name (e.g. "discovery"), distinct from `display` ("Phase 0:
+    // Discovery") — needed verbatim by anything that has to match the plugin's own frozen-layer
+    // path construction (`phase{id}-{name}.md`, validate_frozen_layer.py's own naming).
+    name: raw.stage.name,
     display: raw.stage.display,
     description: raw.stage.description ?? undefined,
     isCurrent: raw.stage.is_current,

@@ -35,6 +35,9 @@ const ALLOWLIST_PATTERNS: RegExp[] = [
   // ordinary commit. Without this entry the file could be read but never synced or saved —
   // an edit would have stayed on one person's machine, silently.
   /^\.sdlc\/team\.yaml$/,
+  // The frozen-layer summary a phase sign-off writes. Without this a layer Studio generated
+  // would sit on one machine forever — save() only ever pushes what this list allows.
+  /^\.sdlc\/context\/layers\/.+$/,
   /^specs\//,
 ]
 
