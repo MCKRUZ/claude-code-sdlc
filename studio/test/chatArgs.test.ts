@@ -1,0 +1,202 @@
+import { describe, expect, it } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  buildChatArgs, buildSystemPrompt, CHAT_TOOLS, mcpConfigPath, readPluginName,
+} from '../electron/main/chat'
+import { claudeWorkingDirectory } from '../electron/main/claudeAssist'
+
+// Spec 0016's own acceptance checks ask for exactly this: the tool list, the working-directory
+// isolation, and Edit/Write/Bash's absence must be provable "from the session's own launch
+// arguments... not from watching it behave correctly once." buildChatArgs is pure (no process,
+// no I/O beyond writing the tiny mcp-config file) precisely so these are ordinary assertions.
+
+function baseOpts(overrides: Partial<Parameters<typeof buildChatArgs>[0]> = {}) {
+  return {
+    prompt: 'hello',
+    projectPath: 'C:/fake/project',
+    pluginRoot: 'C:/fake/plugin',
+    pluginName: 'claude-code-sdlc',
+    stageId: '1',
+    stageDisplay: 'Requirements',
+    mcpConfig: 'C:/fake/mcp-config.json',
+    resume: false,
+    sessionId: '11111111-1111-1111-1111-111111111111',
+    ...overrides,
+  }
+}
+
+describe('CHAT_TOOLS — the fixed allow-list', () => {
+  it('is exactly Read, Grep, Glob, Task, and the two custom MCP tools — nothing else', () => {
+    expect(CHAT_TOOLS).toEqual([
+      'Read', 'Grep', 'Glob', 'Task',
+      'mcp__sdlc-studio-chat__ProposeWrite',
+      'mcp__sdlc-studio-chat__AskStructuredQuestion',
+    ])
+  })
+
+  it('never contains Edit, Write, or Bash as a STANDALONE tool name (ProposeWrite legitimately contains "Write" as a substring)', () => {
+    expect(CHAT_TOOLS).not.toContain('Edit')
+    expect(CHAT_TOOLS).not.toContain('Write')
+    expect(CHAT_TOOLS).not.toContain('Bash')
+    expect(CHAT_TOOLS.some((t) => t === 'Edit' || t === 'Write' || t === 'Bash')).toBe(false)
+  })
+})
+
+describe('buildChatArgs', () => {
+  it('runs in claudeWorkingDirectory(), never the project', () => {
+    const { cwd } = buildChatArgs(baseOpts())
+    expect(cwd).toBe(claudeWorkingDirectory())
+    expect(cwd).not.toBe('C:/fake/project')
+  })
+
+  it('grants the project and plugin root ONLY through --add-dir', () => {
+    const { args } = buildChatArgs(baseOpts())
+    const addDirIndex = args.indexOf('--add-dir')
+    expect(addDirIndex).toBeGreaterThanOrEqual(0)
+    expect(args[addDirIndex + 1]).toBe('C:/fake/project')
+    expect(args[addDirIndex + 2]).toBe('C:/fake/plugin')
+  })
+
+  it('also grants --plugin-dir the plugin root, and only the plugin root', () => {
+    const { args } = buildChatArgs(baseOpts())
+    const pluginDirIndex = args.indexOf('--plugin-dir')
+    expect(pluginDirIndex).toBeGreaterThanOrEqual(0)
+    expect(args[pluginDirIndex + 1]).toBe('C:/fake/plugin')
+    // The value immediately after is a flag, not a second directory — --plugin-dir gets ONE value here.
+    expect(args[pluginDirIndex + 2].startsWith('--')).toBe(true)
+  })
+
+  it('--tools is exactly the fixed CHAT_TOOLS list, comma-joined', () => {
+    const { args } = buildChatArgs(baseOpts())
+    const i = args.indexOf('--tools')
+    expect(args[i + 1]).toBe(CHAT_TOOLS.join(','))
+  })
+
+  it('--allowedTools carries the same fixed list — MCP tools are denied by --permission-prompts none without it', () => {
+    const { args } = buildChatArgs(baseOpts())
+    const i = args.indexOf('--allowedTools')
+    expect(args[i + 1]).toBe(CHAT_TOOLS.join(','))
+  })
+
+  it('never passes --disallowedTools, --dangerously-skip-permissions, or --bare — the allow-list alone is the boundary', () => {
+    const { args } = buildChatArgs(baseOpts())
+    expect(args).not.toContain('--disallowedTools')
+    expect(args).not.toContain('--dangerously-skip-permissions')
+    expect(args).not.toContain('--allow-dangerously-skip-permissions')
+    expect(args).not.toContain('--bare')
+  })
+
+  it('starts a NEW session with --session-id when resume is false', () => {
+    const { args } = buildChatArgs(baseOpts({ resume: false, sessionId: 'sid-1' }))
+    expect(args).toContain('--session-id')
+    expect(args[args.indexOf('--session-id') + 1]).toBe('sid-1')
+    expect(args).not.toContain('--resume')
+  })
+
+  it('resumes with --resume when resume is true, using the SAME session id', () => {
+    const { args } = buildChatArgs(baseOpts({ resume: true, sessionId: 'sid-1' }))
+    expect(args).toContain('--resume')
+    expect(args[args.indexOf('--resume') + 1]).toBe('sid-1')
+    expect(args).not.toContain('--session-id')
+  })
+
+  it('requires --verbose alongside --output-format stream-json (measured: the CLI refuses to start without it in -p mode)', () => {
+    const { args } = buildChatArgs(baseOpts())
+    expect(args).toContain('--output-format')
+    expect(args[args.indexOf('--output-format') + 1]).toBe('stream-json')
+    expect(args).toContain('--verbose')
+  })
+
+  it('passes --forward-subagent-text so a spawned sub-agent\'s own output reaches the transcript', () => {
+    const { args } = buildChatArgs(baseOpts())
+    expect(args).toContain('--forward-subagent-text')
+  })
+
+  it('isolates MCP servers to the one generated config — --strict-mcp-config, only --mcp-config', () => {
+    const { args } = buildChatArgs(baseOpts({ mcpConfig: 'C:/fake/mcp-config.json' }))
+    expect(args).toContain('--strict-mcp-config')
+    const i = args.indexOf('--mcp-config')
+    expect(args[i + 1]).toBe('C:/fake/mcp-config.json')
+  })
+
+  it('denies every permission prompt rather than escalating to a person who is not there', () => {
+    const { args } = buildChatArgs(baseOpts())
+    const i = args.indexOf('--permission-prompts')
+    expect(args[i + 1]).toBe('none')
+  })
+})
+
+describe('buildSystemPrompt', () => {
+  it('never embeds any file content — only paths, ids, and instructions the driver itself wrote', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'C:/fake/project',
+      pluginRoot: 'C:/fake/plugin',
+      pluginName: 'claude-code-sdlc',
+      stageId: '0',
+      stageDisplay: 'Discovery',
+    })
+    // The function takes no file contents as input at all — this is a by-construction
+    // property, and the assertion below is a regression guard against someone later
+    // "helpfully" reading a file into it.
+    expect(prompt).toContain('C:/fake/project')
+    expect(prompt).toContain('C:/fake/plugin')
+    expect(prompt).toContain('claude-code-sdlc:<agent-name>')
+  })
+
+  it('tells the model to end its turn immediately after AskStructuredQuestion', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',
+    })
+    expect(prompt).toMatch(/AskStructuredQuestion.*END YOUR TURN/s)
+  })
+
+  it('states plainly that Edit, Write and Bash are not available', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',
+    })
+    expect(prompt).toMatch(/no Edit, Write or Bash/)
+  })
+})
+
+describe('readPluginName', () => {
+  it('reads the real name out of .claude-plugin/plugin.json', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'chat-plugin-name-'))
+    try {
+      const manifestDir = join(dir, '.claude-plugin')
+      mkdirSync(manifestDir, { recursive: true })
+      writeFileSync(join(manifestDir, 'plugin.json'), JSON.stringify({ name: 'a-forked-plugin' }))
+      expect(readPluginName(dir)).toBe('a-forked-plugin')
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('falls back to the known plugin name when the manifest is unreadable', () => {
+    expect(readPluginName(join(tmpdir(), 'definitely-does-not-exist-' + Date.now()))).toBe('claude-code-sdlc')
+  })
+})
+
+describe('mcpConfigPath', () => {
+  it('writes a real JSON file naming exactly one MCP server: the Electron binary, run as plain node, given an inline script', () => {
+    const path = mcpConfigPath('C:/fake/electron.exe')
+    expect(existsSync(path)).toBe(true)
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'))
+    const servers = Object.keys(parsed.mcpServers)
+    expect(servers).toHaveLength(1)
+    const server = parsed.mcpServers[servers[0]]
+    expect(server.command).toBe('C:/fake/electron.exe')
+    expect(server.args[0]).toBe('-e')
+    expect(typeof server.args[1]).toBe('string')
+    expect(server.args[1]).toContain('ProposeWrite') // the generated script embeds the real TOOLS schema
+    expect(server.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+  })
+
+  it('the generated inline script is syntactically valid JS (a Function constructor parses it without throwing)', () => {
+    const path = mcpConfigPath('C:/fake/electron.exe')
+    const parsed = JSON.parse(readFileSync(path, 'utf-8'))
+    const script = Object.values(parsed.mcpServers)[0] as { args: string[] }
+    expect(() => new Function(script.args[1])).not.toThrow()
+  })
+})

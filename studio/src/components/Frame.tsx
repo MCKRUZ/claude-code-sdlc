@@ -17,6 +17,7 @@ export function Frame({
   syncState,
   area,
   viewedStageId,
+  actor,
   onNavigate,
   children,
 }: {
@@ -27,11 +28,17 @@ export function Frame({
   area: Area
   /** The stage whose documents were picked, or undefined for the project's current stage. */
   viewedStageId?: string
+  /** Who is using Studio — spec 0016's chat needs this to attribute an accepted or discarded
+   * proposal through the SAME draft ledger a structured-editor draft already uses. */
+  actor: string
   onNavigate: (target: NavTarget) => void
   children: ReactNode
 }) {
   const [consoleOpen, setConsoleOpen] = useState(false)
   const currentDocs = useCurrentStageDocs(projectPath, status, area, viewedStageId)
+  // The chat panel is scoped to whichever stage's documents are showing — the picked stage, or
+  // the project's own current one, the same default stage_readiness.py itself uses.
+  const chatStageId = viewedStageId ?? status.stages.find((s) => s.stage_state === 'current')?.id ?? null
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
@@ -47,7 +54,7 @@ export function Frame({
           onNavigate={onNavigate}
         />
         <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
-        <ChatPanel status={status} />
+        <ChatPanel status={status} projectPath={projectPath} actor={actor} stageId={chatStageId} />
       </div>
       {consoleOpen && (
         <div className="h-64 shrink-0 border-t border-slate-200 bg-white">

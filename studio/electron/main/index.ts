@@ -15,6 +15,10 @@ import { confirmRestore, diffVersions, getVersionText, listVersions, previewRest
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
+  ipcAnswerChatQuestion, ipcEnsureChatStarted, ipcResolveChatProposal, ipcSendChatMessage,
+  readChatState, type ChatContext,
+} from './chat'
+import {
   clearGateAuth, getConnectionReport, getFoundationSummary, getGateAuth, getGateInventory,
   getLastSeenCommit, setGateAuth,
   getProjectSettings, getScorecard, setLastSeenCommit, setRosterPerson, setStageApproval,
@@ -606,6 +610,77 @@ function registerIpcHandlers() {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return
       await recordDraftOutcome(projectPath, scriptsDir, relPath, label, outcome, actor, charsOffered, charsKept, instance)
+    },
+  )
+
+  // --- Chat authoring (spec 0016) ---
+  // Every claude invocation streams through commandRunner's own onChunk hook, broadcast to
+  // the SAME console channel every other command uses (spec 0008's transparency rule) — never
+  // a side channel of its own.
+  const onConsoleStream = (soFar: string) => {
+    win?.webContents.send('studio:consoleEntry', {
+      id: 'chat-stream', command: 'claude', args: [], cwd: '', startedAt: new Date().toISOString(),
+      durationMs: 0, exitCode: null, stdout: soFar, stderr: '', ok: true, pending: true,
+    })
+  }
+
+  async function chatContext(projectPath: string, stageId: string): Promise<ChatContext | null> {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return null
+    const settings = loadSettings()
+    const readiness = await getStageReadiness(projectPath, scriptsDir, stageId)
+    return {
+      projectPath,
+      pluginScriptsDir: scriptsDir,
+      stageId,
+      stageDisplay: readiness.display || stageId,
+      claudePath: settings.claudePathOverride ?? 'claude',
+      execPath: process.execPath,
+      onConsoleStream,
+    }
+  }
+
+  ipcMain.handle('studio:getChatState', (_event, projectPath: string, stageId: string) =>
+    readChatState(projectPath, stageId))
+
+  ipcMain.handle('studio:ensureChatStarted', async (_event, projectPath: string, stageId: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+    // The caller-side gate named in the spec ("a stage that has at least one document not yet
+    // started") lives HERE, in the one place that decides it, rather than duplicated in the
+    // renderer — ipcEnsureChatStarted's own contract is only "have we already greeted".
+    const readiness = await getStageReadiness(projectPath, scriptsDir, stageId)
+    const hasUnstarted = readiness.documents.some((d) => !d.exists)
+    if (!hasUnstarted) return { ok: true, state: readChatState(projectPath, stageId) }
+    const ctx = await chatContext(projectPath, stageId)
+    if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+    return ipcEnsureChatStarted(ctx)
+  })
+
+  ipcMain.handle('studio:sendChatMessage', async (_event, projectPath: string, stageId: string, text: string) => {
+    const ctx = await chatContext(projectPath, stageId)
+    if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+    return ipcSendChatMessage(ctx, text)
+  })
+
+  ipcMain.handle(
+    'studio:answerChatQuestion',
+    async (_event, projectPath: string, stageId: string, messageId: string, optionLabel: string) => {
+      const ctx = await chatContext(projectPath, stageId)
+      if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+      return ipcAnswerChatQuestion(ctx, messageId, optionLabel)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:resolveChatProposal',
+    async (
+      _event, projectPath: string, stageId: string, messageId: string,
+      outcome: DraftOutcome, finalValue: string, actor: string,
+    ) => {
+      const ctx = await chatContext(projectPath, stageId)
+      if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+      return ipcResolveChatProposal(ctx, messageId, outcome, finalValue, actor)
     },
   )
 

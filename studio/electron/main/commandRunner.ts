@@ -132,7 +132,22 @@ export interface RunCommandOptions {
    * ordinary git/gh/plugin-script calls have no ceiling here, since a slow clash resolution
    * or npm audit taking a while is normal, not a hang. */
   timeoutMs?: number
+  /** Called with the REDACTED stdout accumulated so far, as it arrives — spec 0016's chat
+   * turns run long enough (a real model call) that a person waiting for the console to show
+   * anything at all until the whole command exits would be indistinguishable from a hang.
+   * This is the ONE extension point that makes streaming go through runCommand() rather than
+   * around it (spec 0016's own Delegation Plan): every other guarantee runCommand makes —
+   * recorded to the console, redacted, refused on an unsafe cmd.exe argument — is unchanged
+   * and still applies to the final entry. Never called after the command finishes; the final
+   * ConsoleEntry from the returned promise is always the complete, authoritative record. */
+  onChunk?: (stdoutSoFarRedacted: string) => void
 }
+
+// A chunk-by-chunk broadcast for every stdout byte would flood the IPC channel to the
+// renderer for a chatty command — a real model reply streams in dozens of small pieces.
+// Gating by elapsed time keeps "shown as it arrives" honest (nobody waits more than this to
+// see the first sign of life) without turning a five-second reply into fifty IPC messages.
+const STREAM_MIN_INTERVAL_MS = 150
 
 /** Runs `command args` in `cwd`, records the full result to the console log (always —
  * success or failure), and returns it. Never throws: a failed command is a normal,
@@ -145,6 +160,10 @@ export function runCommand(
   cwd: string,
   opts?: RunCommandOptions,
 ): Promise<ConsoleEntry> {
+  // Allocated up front, not at finish, so a live (pending) broadcast and the eventual
+  // finished entry share one id — the renderer replaces the placeholder row in place instead
+  // of leaving a stale "still running" duplicate behind it.
+  const id = String(nextId++)
   const startedAt = new Date().toISOString()
   const start = performance.now()
 
@@ -153,6 +172,7 @@ export function runCommand(
     let stderr = ''
     let settled = false
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined
+    let lastStreamedAt = 0
 
     const finish = (exitCode: number | null, extraStderr?: string) => {
       // A timeout kill() triggers 'close' too — without this guard that would record and
@@ -164,7 +184,7 @@ export function runCommand(
       const fullStdout = redact(stdout)
       const fullStderr = redact(extraStderr ? `${stderr}\n${extraStderr}`.trim() : stderr)
       const base = {
-        id: String(nextId++),
+        id,
         command: redact(command),
         args: args.map(redact),
         cwd,
@@ -234,9 +254,38 @@ export function runCommand(
     // document read through `git show` is silent corruption.
     child.stdout.setEncoding('utf-8')
     child.stderr.setEncoding('utf-8')
-    child.stdout.on('data', (chunk: string) => { stdout += chunk })
+    child.stdout.on('data', (chunk: string) => {
+      stdout += chunk
+      if (!opts?.onChunk) return
+      const now = performance.now()
+      if (now - lastStreamedAt < STREAM_MIN_INTERVAL_MS) return
+      lastStreamedAt = now
+      const soFar = redact(stdout)
+      opts.onChunk(soFar) // the caller's own use (e.g. chat.ts's incremental stream-json parse)
+      // ...and the SAME console-visibility path every other command uses — a live update to
+      // the placeholder entry above, not a channel of its own.
+      for (const listener of listeners) {
+        listener({
+          id, command: redact(command), args: args.map(redact), cwd, startedAt,
+          durationMs: Math.round(now - start), exitCode: null, stdout: soFar, stderr: '',
+          ok: true, pending: true,
+        })
+      }
+    })
     child.stderr.on('data', (chunk: string) => { stderr += chunk })
     child.stdin.end(opts?.input)
+
+    // A live placeholder, broadcast the same way a finished entry is (same listeners, same
+    // shape) but never pushed into `log` — getConsoleLog() and the bounded history stay a
+    // record of FINISHED commands only. `pending: true` is what tells the renderer this row
+    // will be replaced, in place, by the real entry once the command exits.
+    if (opts?.onChunk) {
+      const placeholder: ConsoleEntry = {
+        id, command: redact(command), args: args.map(redact), cwd, startedAt,
+        durationMs: 0, exitCode: null, stdout: '', stderr: '', ok: true, pending: true,
+      }
+      for (const listener of listeners) listener(placeholder)
+    }
 
     child.on('error', (err) => finish(null, err.message))
     child.on('close', (code) => finish(code))

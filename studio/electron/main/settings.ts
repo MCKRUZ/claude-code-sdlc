@@ -7,7 +7,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
 import { dirname, join } from 'node:path'
 import type {
-  GateAuthResult, GateAuthStatus,
+  ChatState, GateAuthResult, GateAuthStatus,
   ConnectionReport, FileSyncState, FoundationSummary, GateInventory, ProjectSettings,
   ProjectSyncState, RecentProject, Scorecard, SettingChangeResult, Settings,
 } from '../../shared/types'
@@ -119,6 +119,28 @@ export function readAncestorBlob(hash: string): Buffer | null {
   return existsSync(path) ? readFileSync(path) : null
 }
 
+
+// --- Chat state (spec 0016) ----------------------------------------------------------------
+// Local-only, by Matt's resolved Decision List item — never synced to the repository, matching
+// how a pending draft already behaves. Keyed by project path AND stage, so switching stages
+// never bleeds one stage's conversation into another's.
+
+function chatKey(projectPath: string, stageId: string): string {
+  return `${projectPath}\u0000${stageId}`
+}
+
+export function getChatState(projectPath: string, stageId: string): ChatState {
+  const settings = loadSettings()
+  return settings.chatState?.[chatKey(projectPath, stageId)] ?? { sessionId: null, messages: [] }
+}
+
+export function saveChatState(projectPath: string, stageId: string, state: ChatState): void {
+  const settings = loadSettings()
+  saveSettings({
+    ...settings,
+    chatState: { ...settings.chatState, [chatKey(projectPath, stageId)]: state },
+  })
+}
 
 // --- Project settings (spec 0012) --------------------------------------------------------
 //
