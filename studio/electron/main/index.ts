@@ -72,6 +72,16 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win: BrowserWindow | null = null
+
+/** The one safe way to push a live update to the renderer. `win?.` alone only guards against
+ * `win` being null — it does nothing for a `win` that still exists as a reference but was
+ * already closed (destroyed). A background task (a chat turn, any streaming command) can finish
+ * after the window closes, and calling `.webContents.send(...)` on a destroyed window throws an
+ * uncaught 'Object has been destroyed' error that crashes the whole main process — proven by a
+ * real Playwright run, which opens and closes windows fast enough to hit this reliably. */
+function sendToWindow(channel: string, payload: unknown) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
+}
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
@@ -696,7 +706,7 @@ function registerIpcHandlers() {
   )
 
   onSyncState((state) => {
-    win?.webContents.send('studio:syncState', state)
+    sendToWindow('studio:syncState', state)
   })
 
   ipcMain.handle('studio:getConsoleLog', () => getConsoleLog())
@@ -704,7 +714,7 @@ function registerIpcHandlers() {
   // Push new console entries to the renderer as they happen, so the console panel updates
   // live rather than only on the next getConsoleLog() poll.
   onConsoleEntry((entry) => {
-    win?.webContents.send('studio:consoleEntry', entry)
+    sendToWindow('studio:consoleEntry', entry)
   })
 }
 

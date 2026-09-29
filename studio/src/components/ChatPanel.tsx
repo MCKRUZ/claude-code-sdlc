@@ -193,6 +193,7 @@ function ChatComposer({
     <div className="border-t border-slate-200 p-3">
       <div className="flex gap-2">
         <textarea
+          data-testid="chat-composer-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {

@@ -236,12 +236,15 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   test('NOTHING that changes content exists outside edit mode', async () => {
     // The acceptance check says these controls do not EXIST outside edit mode — not that they
     // are disabled. A disabled button still tells a person "this is a thing you could do
-    // here", so absence is the assertion, and count(0) is how you assert absence.
+    // here", so absence is the assertion, and count(0) is how you assert absence. The chat
+    // composer (spec 0016) is excluded: it's a persistent conversational input on every screen
+    // by design, not a document-editing control — every change it can cause still goes through
+    // a proposal card the person must accept, so it doesn't violate what this check protects.
     await expect(page.getByRole('button', { name: /^Save field$/ })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Ask Claude to draft/i })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /^Add /i })).toHaveCount(0)
     await expect(page.getByRole('button', { name: /Add another/i })).toHaveCount(0)
-    await expect(page.locator('textarea')).toHaveCount(0)
+    await expect(page.locator('textarea:not([data-testid="chat-composer-input"])')).toHaveCount(0)
     await expect(page.locator('input:not([type="checkbox"])')).toHaveCount(0)
   })
 
