@@ -426,11 +426,18 @@ export interface ChatMessage {
   id: string
   role: ChatMessageRole
   text: string
-  /** Set when this assistant message asks a structured, multiple-choice question — rendered as
-   * selectable options, never as prose the person has to answer by typing. */
-  question?: ChatQuestion
-  /** Set when this assistant message proposes a document write. */
-  proposal?: ChatProposal
+  /** Every structured, multiple-choice question this message asked — rendered as selectable
+   * options, never as prose the person has to answer by typing. A single reply may call
+   * AskStructuredQuestion more than once; each call is its own entry here rather than the
+   * later ones silently overwriting the earlier, so every question the model actually asked
+   * is surfaced and answerable. Empty (never undefined) when the message asked none. */
+  questions: ChatQuestion[]
+  /** Every document write this message proposed. Same reasoning as `questions`: a reply that
+   * calls ProposeWrite more than once gets one card per call, each independently
+   * accept/edit/discard-able and independently recorded to the draft ledger — never just the
+   * last call's proposal, with the earlier ones' MCP acknowledgement having no card to show
+   * for it. Empty (never undefined) when the message proposed none. */
+  proposals: ChatProposal[]
   /** Which of the plugin's real discipline sub-agents produced this message, when
    * role is 'subagent' — e.g. "claude-code-sdlc:discovery-analyst". This is the sub-agent's
    * OWN output, forwarded by the CLI (`--forward-subagent-text`), never a paraphrase Studio
@@ -1026,22 +1033,28 @@ export interface StudioApi {
   /** Starts the conversation if it has never been started AND the stage has a document not yet
    * begun — the assistant's own opening message, never a blank box waiting on the person.
    * A no-op (returns the existing state unchanged) on a stage whose documents are all already
-   * started, or whose chat has already been greeted. */
-  ensureChatStarted(projectPath: string, stageId: string, actor: string): Promise<ChatTurnResult>
+   * started, or whose chat has already been greeted. Takes no `actor`: nothing this call does
+   * (or `sendChatMessage`/`answerChatQuestion` below) attributes anything to a person — only
+   * `resolveChatProposal` writes to the draft ledger, which is what actually needs one. */
+  ensureChatStarted(projectPath: string, stageId: string): Promise<ChatTurnResult>
   /** An ordinary next turn — the person's own words, or (from answerChatQuestion) the option
    * label they picked. Resumes the same `claude` session via --session-id/--resume. */
-  sendChatMessage(projectPath: string, stageId: string, text: string, actor: string): Promise<ChatTurnResult>
+  sendChatMessage(projectPath: string, stageId: string, text: string): Promise<ChatTurnResult>
   /** Answers a pending structured question by submitting the OPTION's label as the next plain
    * turn — the mechanism spec 0016's own spike measured actually works, not a formal
-   * tool_result the CLI's print mode has no way to accept out of band. */
+   * tool_result the CLI's print mode has no way to accept out of band. `questionId` is the
+   * QUESTION's own id (ChatQuestion.id) — distinct from its message's id, since one message
+   * can carry more than one question. */
   answerChatQuestion(
-    projectPath: string, stageId: string, messageId: string, optionLabel: string, actor: string,
+    projectPath: string, stageId: string, questionId: string, optionLabel: string,
   ): Promise<ChatTurnResult>
   /** Accept, edit-then-accept, or discard one proposed write. Accepting (in either shape)
    * writes through documents.setField — the SAME path spec 0010 built, never a second one.
-   * Every outcome, including discarded, is recorded through drafts.recordDraftOutcome. */
+   * Every outcome, including discarded, is recorded through drafts.recordDraftOutcome.
+   * `proposalId` is the PROPOSAL's own id (ChatProposal.id) — distinct from its message's id,
+   * since one message can carry more than one proposal. */
   resolveChatProposal(
-    projectPath: string, stageId: string, messageId: string,
+    projectPath: string, stageId: string, proposalId: string,
     outcome: DraftOutcome, finalValue: string, actor: string,
   ): Promise<ChatTurnResult>
 }

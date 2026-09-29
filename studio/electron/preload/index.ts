@@ -108,14 +108,14 @@ const studio: StudioApi = {
   },
 
   getChatState: (projectPath, stageId) => ipcRenderer.invoke('studio:getChatState', projectPath, stageId),
-  ensureChatStarted: (projectPath, stageId, actor) =>
-    ipcRenderer.invoke('studio:ensureChatStarted', projectPath, stageId, actor),
-  sendChatMessage: (projectPath, stageId, text, actor) =>
-    ipcRenderer.invoke('studio:sendChatMessage', projectPath, stageId, text, actor),
-  answerChatQuestion: (projectPath, stageId, messageId, optionLabel, actor) =>
-    ipcRenderer.invoke('studio:answerChatQuestion', projectPath, stageId, messageId, optionLabel, actor),
-  resolveChatProposal: (projectPath, stageId, messageId, outcome, finalValue, actor) =>
-    ipcRenderer.invoke('studio:resolveChatProposal', projectPath, stageId, messageId, outcome, finalValue, actor),
+  ensureChatStarted: (projectPath, stageId) =>
+    ipcRenderer.invoke('studio:ensureChatStarted', projectPath, stageId),
+  sendChatMessage: (projectPath, stageId, text) =>
+    ipcRenderer.invoke('studio:sendChatMessage', projectPath, stageId, text),
+  answerChatQuestion: (projectPath, stageId, questionId, optionLabel) =>
+    ipcRenderer.invoke('studio:answerChatQuestion', projectPath, stageId, questionId, optionLabel),
+  resolveChatProposal: (projectPath, stageId, proposalId, outcome, finalValue, actor) =>
+    ipcRenderer.invoke('studio:resolveChatProposal', projectPath, stageId, proposalId, outcome, finalValue, actor),
 }
 
 contextBridge.exposeInMainWorld('studio', studio)

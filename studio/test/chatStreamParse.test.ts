@@ -23,6 +23,8 @@ describe('parseStreamJsonToMessages', () => {
     const messages = parseStreamJsonToMessages(lines)
     expect(messages).toHaveLength(1)
     expect(messages[0]).toMatchObject({ id: 'm1', role: 'assistant', text: 'Hello, let\'s start with the problem statement.' })
+    expect(messages[0].questions).toEqual([])
+    expect(messages[0].proposals).toEqual([])
   })
 
   it('ignores non-assistant frames (system, user/tool_result echoes) and malformed lines', () => {
@@ -57,22 +59,22 @@ describe('parseStreamJsonToMessages', () => {
     ], { uuid: 'm1' })]
     const messages = parseStreamJsonToMessages(lines)
     expect(messages).toHaveLength(1)
-    expect(messages[0].proposal).toEqual({
-      id: 'm1',
+    expect(messages[0].proposals).toEqual([{
+      id: 't1',
       document: '.sdlc/artifacts/00-discovery/problem-statement.md',
       section: 'Problem Statement',
       field: 'Summary',
       value: 'The team cannot see...',
-    })
+    }])
   })
 
-  it('a reply with NO ProposeWrite tool call produces NO proposal — never a guess from prose alone', () => {
+  it('a reply with NO ProposeWrite tool call produces NO proposals — never a guess from prose alone', () => {
     const lines = [assistantLine([
       { type: 'text', text: 'I will write "The team cannot see..." into the Summary field.' },
     ])]
     const messages = parseStreamJsonToMessages(lines)
     expect(messages).toHaveLength(1)
-    expect(messages[0].proposal).toBeUndefined()
+    expect(messages[0].proposals).toEqual([])
   })
 
   it('extracts an AskStructuredQuestion tool_use into a structured question with real options', () => {
@@ -81,16 +83,76 @@ describe('parseStreamJsonToMessages', () => {
       input: { question: 'What type of system is this?', options: ['service', 'app', 'library', 'skill', 'cli'] },
     }], { uuid: 'm1' })]
     const messages = parseStreamJsonToMessages(lines)
-    expect(messages).toHaveLength(1)
-    expect(messages[0].question).toEqual({
-      id: 'm1', question: 'What type of system is this?', options: ['service', 'app', 'library', 'skill', 'cli'],
-    })
+    expect(messages[0].questions).toEqual([{
+      id: 't1', question: 'What type of system is this?', options: ['service', 'app', 'library', 'skill', 'cli'],
+    }])
   })
 
-  it('a reply with NO AskStructuredQuestion tool call produces NO question — plain prose never becomes clickable options', () => {
+  it('a reply with NO AskStructuredQuestion tool call produces NO questions — plain prose never becomes clickable options', () => {
     const lines = [assistantLine([{ type: 'text', text: 'Is this a service, app, library, skill, or cli?' }])]
     const messages = parseStreamJsonToMessages(lines)
-    expect(messages[0].question).toBeUndefined()
+    expect(messages[0].questions).toEqual([])
+  })
+
+  // Regression test for a real bug: a turn that calls ProposeWrite (or AskStructuredQuestion)
+  // more than once used to have every call but the last silently overwritten by a single
+  // `proposal`/`question` variable — the MCP server had already acknowledged every call, but
+  // only the last one ever reached the person as a card.
+  it('preserves EVERY ProposeWrite call in a single reply, not just the last one', () => {
+    const lines = [assistantLine([
+      { type: 'text', text: 'Here are two fields.' },
+      {
+        type: 'tool_use', id: 't1', name: 'mcp__sdlc-studio-chat__ProposeWrite',
+        input: { document: 'd.md', section: 'S1', field: 'F1', value: 'V1' },
+      },
+      {
+        type: 'tool_use', id: 't2', name: 'mcp__sdlc-studio-chat__ProposeWrite',
+        input: { document: 'd.md', section: 'S2', field: 'F2', value: 'V2' },
+      },
+    ], { uuid: 'm1' })]
+    const messages = parseStreamJsonToMessages(lines)
+    expect(messages).toHaveLength(1)
+    expect(messages[0].proposals).toHaveLength(2)
+    expect(messages[0].proposals.map((p) => p.id)).toEqual(['t1', 't2'])
+    expect(messages[0].proposals[0]).toMatchObject({ field: 'F1', value: 'V1' })
+    expect(messages[0].proposals[1]).toMatchObject({ field: 'F2', value: 'V2' })
+  })
+
+  it('preserves EVERY AskStructuredQuestion call in a single reply, not just the last one', () => {
+    const lines = [assistantLine([
+      {
+        type: 'tool_use', id: 't1', name: 'mcp__sdlc-studio-chat__AskStructuredQuestion',
+        input: { question: 'Q1?', options: ['A', 'B'] },
+      },
+      {
+        type: 'tool_use', id: 't2', name: 'mcp__sdlc-studio-chat__AskStructuredQuestion',
+        input: { question: 'Q2?', options: ['C', 'D'] },
+      },
+    ], { uuid: 'm1' })]
+    const messages = parseStreamJsonToMessages(lines)
+    expect(messages).toHaveLength(1)
+    expect(messages[0].questions).toHaveLength(2)
+    expect(messages[0].questions.map((q) => q.id)).toEqual(['t1', 't2'])
+    expect(messages[0].questions[0]).toMatchObject({ question: 'Q1?' })
+    expect(messages[0].questions[1]).toMatchObject({ question: 'Q2?' })
+  })
+
+  it('a proposal and a question in the SAME reply are both preserved, each addressable by its own id', () => {
+    const lines = [assistantLine([
+      {
+        type: 'tool_use', id: 't1', name: 'mcp__sdlc-studio-chat__ProposeWrite',
+        input: { document: 'd.md', section: 'S', field: 'F', value: 'V' },
+      },
+      {
+        type: 'tool_use', id: 't2', name: 'mcp__sdlc-studio-chat__AskStructuredQuestion',
+        input: { question: 'Q?', options: ['A', 'B'] },
+      },
+    ], { uuid: 'm1' })]
+    const messages = parseStreamJsonToMessages(lines)
+    expect(messages[0].proposals).toEqual([{ id: 't1', document: 'd.md', section: 'S', field: 'F', value: 'V' }])
+    expect(messages[0].questions).toEqual([{ id: 't2', question: 'Q?', options: ['A', 'B'] }])
+    // The proposal and question ids are distinct from the MESSAGE's own id.
+    expect(messages[0].id).toBe('m1')
   })
 
   it('labels a forwarded sub-agent message with the agent it actually came from, correlated by parent_tool_use_id', () => {

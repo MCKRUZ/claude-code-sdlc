@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type {
   DocumentChange, DocumentField, DocumentFocus, DocumentSection, OpenDocumentResult,
 } from '../../shared/types'
-import { matchesSection } from '../../shared/sections'
+import { matchesSection, sectionInstanceKey } from '../../shared/sections'
 import { FieldEditor } from './FieldEditor'
 import { MarkdownView } from './MarkdownView'
 import { TemplateGapsNotice } from './TemplateGapsNotice'
@@ -349,7 +349,7 @@ function SectionCard({
             relPath={relPath}
             sectionKey={section.key}
             sectionHeading={section.heading}
-            instance={section.kind === 'repeating_instance' ? section.heading : undefined}
+            instance={sectionInstanceKey(section)}
             actor={actor}
             onSave={(value) => onSaveField(section, label, value)}
           />

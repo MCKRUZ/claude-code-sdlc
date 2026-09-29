@@ -1,30 +1,13 @@
 // The chat-turn driver (spec 0016) — a real, multi-turn `claude` conversation that authors a
 // stage's documents. Every acceptance check in the spec traces back to a handful of design
-// choices, each measured against the real CLI on this machine before being committed to (see
-// the header comments below and chatMcpServer.ts):
+// choices, each measured against the real CLI on this machine before being committed to. This
+// file is the IPC/orchestration layer — one `claude` turn, and folding its result into the
+// persisted ChatState; the CLI-argument construction lives in chatArgs.ts, the --mcp-config
+// generation in chatMcpConfig.ts, and stream-json parsing in chatStreamParse.ts (this file was
+// over this repo's 400-line convention with all four in one place). See chatArgs.ts's own
+// header for the measurements behind the launch arguments, and chatMcpServer.ts's for why
+// production spawns a generated inline script rather than that file itself.
 //
-//  * Working directory is ALWAYS claudeWorkingDirectory() (spec 0010's Studio-owned scratch
-//    folder) — never the project. Real access to the project and the plugin's own install is
-//    granted only through --add-dir, which is a file-tool-access grant and nothing else.
-//  * MEASURED (2026-09-29): --add-dir alone does NOT make the plugin's discipline sub-agents
-//    spawnable via Task — the CLI's own error lists them absent. --plugin-dir is required, and
-//    once it is, an agent is registered under its PLUGIN-NAMESPACED name
-//    (`<plugin-name>:<agent-name>`, e.g. `claude-code-sdlc:discovery-analyst`), never the bare
-//    name — confirmed by a real Task-tool spawn succeeding only under the namespaced form.
-//    Loading the plugin this way also loads its own hooks and commands; measured that the
-//    SessionStart hook (hooks/sdlc-session-start.ps1) reads `$PWD/.sdlc/state.yaml`, which is
-//    always the scratch working directory here and never contains that file, so it silently
-//    no-ops — and its slash commands are unreachable since SlashCommand is not in the tool
-//    allow-list. Both side effects are inert by construction, not by luck.
-//  * MEASURED (2026-09-29, with a real control run against the CLI's full, unrestricted
-//    default tool set): the built-in `AskUserQuestion` tool is NOT available in `-p`
-//    (headless/print) mode at all, regardless of --tools — it exists only for an interactive
-//    session that can render buttons and block on a click. This directly contradicts the
-//    spec's Scope, which names it as part of the intended allow-list. `AskStructuredQuestion`
-//    (chatMcpServer.ts) is the substitute: a real, structurally-parsed tool call achieving the
-//    same acceptance-check intent (a genuine tool call, never free text), built the same way
-//    ProposeWrite already had to be. Flagged in this spec's final report as a deviation from
-//    the literal Scope text, closest-match per the task's own instructions.
 //  * MEASURED (2026-09-29): --session-id on the first turn and --resume on every later one,
 //    each a SEPARATE `claude` process, correctly preserves the full conversation across
 //    process boundaries — a fact stated in turn 1's own reply was correctly recalled by a
@@ -32,302 +15,28 @@
 //    tool_result block) is all --resume needs; no pending native tool_use ever needs one here
 //    because both custom tools ack synchronously within their own turn (see
 //    chatMcpServer.ts's header for why that sidesteps the original tool_result question).
-//  * MEASURED (2026-09-29): --output-format stream-json requires --verbose alongside it in
-//    `-p` mode, or the CLI refuses to start ("When using --print, --output-format=stream-json
-//    requires --verbose").
 //  * Every `claude` invocation goes through commandRunner's runCommand() — the single choke
 //    point that makes "every command Studio runs is visible in the console" true by
 //    construction (spec 0008) — extended with runCommand's own streaming hook rather than
 //    bypassed.
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { rawStdout, runCommand } from './commandRunner'
-import { claudeWorkingDirectory } from './claudeAssist'
 import { openDocument, setField } from './documents'
 import { recordDraftOutcome } from './drafts'
 import { getChatState, saveChatState } from './settings'
-import { matchesSection } from '../../shared/sections'
-import {
-  ackText, ASK_QUESTION_TOOL as ASK_QUESTION, MCP_SERVER_NAME, PROPOSE_WRITE_TOOL as PROPOSE_WRITE, TOOLS,
-} from './chatMcpServer'
-import type { ChatMessage, ChatQuestion, ChatState, ChatTurnResult, DraftOutcome } from '../../shared/types'
+import { matchesSection, sectionInstanceKey } from '../../shared/sections'
+import { buildChatArgs } from './chatArgs'
+import { mcpConfigPath } from './chatMcpConfig'
+import { parseStreamJsonToMessages } from './chatStreamParse'
+import { readPluginName } from './chatArgs'
+import type { ChatMessage, ChatState, ChatTurnResult, DraftOutcome } from '../../shared/types'
 
-// --- the fixed tool surface ---------------------------------------------------------------
-// An explicit ALLOW-list, not a block-list (spec's own acceptance check: provable by
-// asserting the launch arguments equal a fixed list, not by asserting three names are
-// missing). Edit, Write and Bash never appear anywhere in this file. PROPOSE_WRITE/ASK_QUESTION
-// are imported from chatMcpServer.ts — the single source of truth for this server's own name
-// and tool names — rather than re-declared here, where a typo would silently create a tool
-// name the server never actually serves.
-
-/** The exact, complete tool list every chat session gets — nothing more, nothing less. A test
- * asserts buildChatArgs() output contains exactly this, comma-joined, as the value that
- * follows --tools (and again after --allowedTools, since --permission-prompts none denies an
- * MCP tool call outright without an explicit allow — measured live; Read/Grep/Glob/Task did
- * not need it, but granting it uniformly is simpler and strictly no wider than --tools already
- * allows). */
-export const CHAT_TOOLS = ['Read', 'Grep', 'Glob', 'Task', PROPOSE_WRITE, ASK_QUESTION] as const
-
-// --- locating the plugin's own name -------------------------------------------------------
-
-/** The plugin's own declared name (`.claude-plugin/plugin.json`'s "name" field) — what a
- * Task-tool subagent_type must be prefixed with once --plugin-dir loads it. Never hardcoded:
- * a fork or rename of the plugin must keep working without a source change here. */
-export function readPluginName(pluginRoot: string): string {
-  const manifestPath = join(pluginRoot, '.claude-plugin', 'plugin.json')
-  try {
-    const parsed = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-    if (typeof parsed.name === 'string' && parsed.name) return parsed.name
-  } catch { /* fall through to the fallback below */ }
-  return 'claude-code-sdlc' // this plugin's own known name, if the manifest is ever unreadable
-}
-
-// --- the MCP config file --------------------------------------------------------------------
-
-/** The MCP server's actual runtime, generated from chatMcpServer.ts's own TOOLS/ackText (the
- * single source of truth — see that file's header for why production spawns THIS generated
- * string rather than a compiled copy of that file). Plain CommonJS (no `import`, no ESM flag
- * needed) so `node -e` runs it with zero ceremony; its only dependency is node:readline. */
-function inlineMcpServerSource(): string {
-  return [
-    'const readline = require("node:readline");',
-    `const TOOLS = ${JSON.stringify(TOOLS)};`,
-    'function send(obj) { process.stdout.write(JSON.stringify(obj) + "\\n"); }',
-    `function ackText(name) { return name === "ProposeWrite" ? ${JSON.stringify(ackText('ProposeWrite'))} : ${JSON.stringify(ackText('AskStructuredQuestion'))}; }`,
-    'readline.createInterface({ input: process.stdin, terminal: false }).on("line", (line) => {',
-    '  if (!line.trim()) return;',
-    '  let msg;',
-    '  try { msg = JSON.parse(line); } catch { return; }',
-    '  const { id, method, params } = msg;',
-    '  if (method === "initialize") {',
-    `    send({ jsonrpc: "2.0", id, result: { protocolVersion: (params && params.protocolVersion) || "2024-11-05", capabilities: { tools: {} }, serverInfo: { name: ${JSON.stringify(MCP_SERVER_NAME)}, version: "0.0.1" } } });`,
-    '    return;',
-    '  }',
-    '  if (method === "notifications/initialized") return;',
-    '  if (method === "tools/list") { send({ jsonrpc: "2.0", id, result: { tools: TOOLS } }); return; }',
-    '  if (method === "tools/call") {',
-    '    const name = params && params.name;',
-    '    const known = TOOLS.some((t) => t.name === name);',
-    '    if (!known) { send({ jsonrpc: "2.0", id, error: { code: -32601, message: "Unknown tool " + name } }); return; }',
-    '    send({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: ackText(name) }] } });',
-    '    return;',
-    '  }',
-    '  if (id !== undefined) send({ jsonrpc: "2.0", id, error: { code: -32601, message: "Unhandled method " + method } });',
-    '});',
-  ].join('\n')
-}
-
-let cachedMcpConfigPath: string | null = null
-
-/** Writes (once per process, idempotent thereafter) the --mcp-config JSON naming ONE server:
- * the SAME Electron binary Studio itself is (`process.execPath`) with ELECTRON_RUN_AS_NODE=1
- * — so a packaged Studio needs no system Node.js install — running the inline script above via
- * `-e`. No file of the server's own to resolve or ship: measured that vite-plugin-electron's
- * build bundles chatMcpServer.ts straight into dist-electron/main/index.js rather than its own
- * sibling file, and that `import 'electron'` resolves to an empty object (not the real API,
- * not a throw) under ELECTRON_RUN_AS_NODE — so index.js's own top-level Electron-bootstrap
- * code would crash the instant it ran that way. An inline `-e` script has neither problem: it
- * needs no file of its own to exist, and it never imports 'electron' at all. */
-export function mcpConfigPath(execPath: string): string {
-  if (cachedMcpConfigPath && existsSync(cachedMcpConfigPath)) return cachedMcpConfigPath
-  const dir = join(tmpdir(), 'sdlc-studio-chat')
-  mkdirSync(dir, { recursive: true })
-  const configPath = join(dir, 'mcp-config.json')
-  const config = {
-    mcpServers: {
-      [MCP_SERVER_NAME]: {
-        command: execPath,
-        args: ['-e', inlineMcpServerSource()],
-        env: { ELECTRON_RUN_AS_NODE: '1' },
-      },
-    },
-  }
-  writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8')
-  cachedMcpConfigPath = configPath
-  return configPath
-}
-
-// --- system prompt ---------------------------------------------------------------------
-// Instructs the model WHERE to read this stage's real guidance and HOW to use its tools.
-// Never restates phase content itself — that would be exactly the second, hand-authored copy
-// the spec forbids. The model reads phases/NN-*.md and agents/*.md itself, at conversation
-// time, through the real, granted file access.
-
-export function buildSystemPrompt(opts: {
-  projectPath: string
-  pluginRoot: string
-  pluginName: string
-  stageId: string
-  stageDisplay: string
-}): string {
-  return [
-    'You are the SDLC assistant inside SDLC Studio\'s chat panel, authoring this project\'s '
-      + 'documents through a live conversation. You have no Edit, Write or Bash tool — you '
-      + 'cannot and must not write to any file yourself, on this machine or any other, by any '
-      + 'means. Never claim a write happened; only ProposeWrite reaches the person, and only '
-      + 'they decide whether it is ever saved.',
-    '',
-    `Project root (real, read-only access granted): ${opts.projectPath}`,
-    `Plugin root (real, read-only access granted): ${opts.pluginRoot}`,
-    `Current stage: ${opts.stageId} — ${opts.stageDisplay}`,
-    '',
-    'Before asking anything, locate and fully read this stage\'s own phase guidance file — '
-      + `glob for it under ${opts.pluginRoot}/phases/ (its name starts with the stage id above, `
-      + 'e.g. "0-*.md" or "01-*.md" — check both patterns) — and read the project\'s own current '
-      + `state (${opts.projectPath}/.sdlc/state.yaml and this stage's artifact folder) to see `
-      + 'what is already written. Follow that phase file\'s own step order exactly. If the '
-      + 'person free-types something the interview has not reached yet, acknowledge it briefly '
-      + 'and redirect back to the current step — do not reorder or skip ahead on your own '
-      + 'judgement.',
-    '',
-    'When the phase guidance calls for one of the plugin\'s own discipline sub-agents (for '
-      + 'example discovery-analyst), spawn it with the Task tool using '
-      + `subagent_type "${opts.pluginName}:<agent-name>" — the bare name will be rejected. `
-      + 'Relay its own findings; never paraphrase them as if they were your own.',
-    '',
-    'To propose writing a field of a document, call the ProposeWrite tool with the document\'s '
-      + 'repo-relative path, the section, the field label, and the proposed text. This does '
-      + 'NOT write anything — it only shows the person a proposal card.',
-    '',
-    'To ask a structured, multiple-choice question, call the AskStructuredQuestion tool, then '
-      + 'END YOUR TURN immediately — say nothing else after calling it. Never ask a '
-      + 'multiple-choice question as plain prose the person has to type an answer to.',
-  ].join('\n')
-}
-
-// --- building the CLI arguments ------------------------------------------------------------
-
-export interface ChatArgsOptions {
-  prompt: string
-  projectPath: string
-  pluginRoot: string
-  pluginName: string
-  stageId: string
-  stageDisplay: string
-  mcpConfig: string
-  /** Present to --resume this session; absent (with sessionId still required) to start a new
-   * one with --session-id. */
-  resume: boolean
-  sessionId: string
-}
-
-/** Pure: no I/O, no process spawn — every acceptance check about "the session's own launch
- * arguments" (the tool list, the working-directory isolation, Edit/Write/Bash's absence) is
- * provable by calling this and asserting on its output, without spawning a real process. */
-export function buildChatArgs(opts: ChatArgsOptions): { command: string; args: string[]; cwd: string } {
-  const toolList = CHAT_TOOLS.join(',')
-  const args = [
-    '-p', opts.prompt,
-    '--add-dir', opts.projectPath, opts.pluginRoot,
-    '--plugin-dir', opts.pluginRoot,
-    '--tools', toolList,
-    '--allowedTools', toolList,
-    '--mcp-config', opts.mcpConfig,
-    '--strict-mcp-config',
-    '--permission-prompts', 'none',
-    '--output-format', 'stream-json',
-    '--input-format', 'text',
-    '--verbose',
-    '--forward-subagent-text',
-    opts.resume ? '--resume' : '--session-id', opts.sessionId,
-    '--append-system-prompt', buildSystemPrompt(opts),
-  ]
-  return { command: 'claude', args, cwd: claudeWorkingDirectory() }
-}
-
-// --- parsing stream-json into chat messages -------------------------------------------------
-
-interface RawContentBlock {
-  type: string
-  text?: string
-  name?: string
-  id?: string
-  input?: Record<string, unknown>
-}
-
-interface RawStreamEntry {
-  type: string
-  message?: { role?: string; content?: RawContentBlock[] }
-  parent_tool_use_id?: string | null
-  uuid?: string
-  session_id?: string
-}
-
-/** Turns the raw lines of `claude --output-format stream-json`'s stdout into the chat
- * messages a person actually sees. Pure and independently testable — this is "the driver
- * parses structurally" from the acceptance checks, made into a function with no process, no
- * timing, and no network in it. Ignores anything it does not recognise rather than throwing,
- * since a stream carries plenty of frames (system, user/tool_result echoes) irrelevant here. */
-export function parseStreamJsonToMessages(lines: string[]): ChatMessage[] {
-  const messages: ChatMessage[] = []
-  // Task tool_use id -> subagent_type, so a later forwarded message (parent_tool_use_id set)
-  // can be labelled with which sub-agent actually produced it.
-  const taskCallers = new Map<string, string>()
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed[0] !== '{') continue
-    let entry: RawStreamEntry
-    try {
-      entry = JSON.parse(trimmed)
-    } catch {
-      continue
-    }
-    if (entry.type !== 'assistant' || !entry.message?.content) continue
-
-    for (const block of entry.message.content) {
-      if (block.type === 'tool_use' && block.name === 'Task' && block.id) {
-        const subagentType = typeof block.input?.subagent_type === 'string' ? block.input.subagent_type : 'unknown'
-        taskCallers.set(block.id, subagentType)
-      }
-    }
-
-    const isSubagent = Boolean(entry.parent_tool_use_id)
-    const subagentType = isSubagent ? (taskCallers.get(entry.parent_tool_use_id!) ?? 'unknown') : undefined
-
-    let text = ''
-    let question: ChatQuestion | undefined
-    let proposal: ChatMessage['proposal']
-
-    for (const block of entry.message.content) {
-      if (block.type === 'text' && block.text) {
-        text += (text ? '\n' : '') + block.text
-      } else if (block.type === 'tool_use' && block.name === PROPOSE_WRITE && block.input) {
-        proposal = {
-          id: entry.uuid ?? randomUUID(),
-          document: String(block.input.document ?? ''),
-          section: String(block.input.section ?? ''),
-          field: String(block.input.field ?? ''),
-          value: String(block.input.value ?? ''),
-        }
-      } else if (block.type === 'tool_use' && block.name === ASK_QUESTION && block.input) {
-        const options = Array.isArray(block.input.options) ? block.input.options.map(String) : []
-        question = {
-          id: entry.uuid ?? randomUUID(),
-          question: String(block.input.question ?? ''),
-          options,
-        }
-      }
-    }
-
-    if (!text && !question && !proposal) continue // pure tool_use bookkeeping (e.g. Read/Grep), nothing to show
-
-    messages.push({
-      id: entry.uuid ?? randomUUID(),
-      role: isSubagent ? 'subagent' : 'assistant',
-      text,
-      question,
-      proposal,
-      subagentType,
-      at: new Date().toISOString(),
-    })
-  }
-
-  return messages
-}
+export { CHAT_TOOLS, buildChatArgs, buildSystemPrompt, readPluginName } from './chatArgs'
+export type { ChatArgsOptions } from './chatArgs'
+export { mcpConfigPath } from './chatMcpConfig'
+export { parseStreamJsonToMessages } from './chatStreamParse'
 
 // --- running one turn ------------------------------------------------------------------------
 
@@ -339,7 +48,6 @@ export interface RunTurnContext {
   stageId: string
   stageDisplay: string
   execPath: string
-  onConsoleStream?: (soFar: string) => void
 }
 
 export interface RunTurnResult {
@@ -372,7 +80,15 @@ export async function runChatTurn(
   const resolvedCommand = ctx.claudePath || command
 
   const entry = await runCommand(resolvedCommand, args, cwd, {
-    onChunk: ctx.onConsoleStream,
+    // A truthy onChunk is what turns on runCommand's own live "pending" broadcast
+    // (commandRunner.ts) — the SAME channel (commandRunner's onConsoleEntry, forwarded by
+    // index.ts to 'studio:consoleEntry') every other command's entries reach the renderer
+    // through, carrying the real id/command/args/cwd. Nothing here needs to observe the
+    // chunks itself, so this is intentionally a no-op: a second, bespoke broadcast used to
+    // live in index.ts (ChatContext.onConsoleStream), duplicating that path with a hardcoded
+    // 'chat-stream' id that runCommand's own finish() never resolves — a permanent "still
+    // running" ghost entry in the console. Deleted; this is the one channel now.
+    onChunk: () => {},
   })
 
   if (!entry.ok) {
@@ -402,7 +118,6 @@ export interface ChatContext {
   stageDisplay: string
   claudePath: string
   execPath: string
-  onConsoleStream?: (soFar: string) => void
 }
 
 function pluginRootFromScriptsDir(pluginScriptsDir: string): string {
@@ -419,7 +134,6 @@ function turnContext(ctx: ChatContext): RunTurnContext {
     stageId: ctx.stageId,
     stageDisplay: ctx.stageDisplay,
     execPath: ctx.execPath,
-    onConsoleStream: ctx.onConsoleStream,
   }
 }
 
@@ -443,12 +157,23 @@ export async function sendTurn(ctx: ChatContext, state: ChatState, text: string)
   return runChatTurn(turnContext(ctx), text, state.sessionId)
 }
 
-/** Folds a turn's result into the persisted state and saves it — or, on failure, changes and
- * saves nothing, so a failed turn never corrupts the session id a retry would need. */
+/** Folds a turn's result into the persisted state and saves it. On success, the leading
+ * messages (e.g. the person's own just-submitted text) and the turn's own replies are both
+ * appended. On FAILURE, the session id is left untouched — so a retry still resumes (or
+ * starts) the right session — but `leading` is still appended and saved: whatever the person
+ * actually submitted already left the input box, and losing it a second time (once from the
+ * input, once from the record) on top of a failed turn is its own, separate bug from the turn
+ * having failed at all. A caller with no leading messages (answering a question, whose own
+ * state mutation already rode in on `state` itself) sees no behavioural change. */
 function applyTurnResult(
   ctx: ChatContext, state: ChatState, result: RunTurnResult, leading: ChatMessage[],
 ): ChatTurnResult {
-  if (!result.ok) return { ok: false, state, error: result.error }
+  if (!result.ok) {
+    if (leading.length === 0) return { ok: false, state, error: result.error }
+    const updated: ChatState = { sessionId: state.sessionId, messages: [...state.messages, ...leading] }
+    saveChatState(ctx.projectPath, ctx.stageId, updated)
+    return { ok: false, state: updated, error: result.error }
+  }
   const updated: ChatState = { sessionId: result.sessionId, messages: [...state.messages, ...leading, ...result.messages] }
   saveChatState(ctx.projectPath, ctx.stageId, updated)
   return { ok: true, state: updated }
@@ -472,26 +197,31 @@ export async function ipcEnsureChatStarted(ctx: ChatContext): Promise<ChatTurnRe
 
 export async function ipcSendChatMessage(ctx: ChatContext, text: string): Promise<ChatTurnResult> {
   const state = getChatState(ctx.projectPath, ctx.stageId)
-  const userMessage: ChatMessage = { id: randomUUID(), role: 'user', text, at: new Date().toISOString() }
+  const userMessage: ChatMessage = {
+    id: randomUUID(), role: 'user', text, questions: [], proposals: [], at: new Date().toISOString(),
+  }
   const result = await sendTurn(ctx, state, text)
   return applyTurnResult(ctx, state, result, [userMessage])
 }
 
 export async function ipcAnswerChatQuestion(
-  ctx: ChatContext, messageId: string, optionLabel: string,
+  ctx: ChatContext, questionId: string, optionLabel: string,
 ): Promise<ChatTurnResult> {
   const state = getChatState(ctx.projectPath, ctx.stageId)
-  const target = state.messages.find((m) => m.id === messageId)
-  if (!target?.question) return { ok: false, state, error: 'No pending question with that id.' }
-  if (target.question.answeredWith) return { ok: false, state, error: 'This question was already answered.' }
-  if (!target.question.options.includes(optionLabel)) {
+  const target = state.messages.find((m) => m.questions.some((q) => q.id === questionId))
+  const question = target?.questions.find((q) => q.id === questionId)
+  if (!question) return { ok: false, state, error: 'No pending question with that id.' }
+  if (question.answeredWith) return { ok: false, state, error: 'This question was already answered.' }
+  if (!question.options.includes(optionLabel)) {
     return { ok: false, state, error: 'That is not one of this question\'s options.' }
   }
 
   const answered: ChatState = {
     ...state,
     messages: state.messages.map((m) => (
-      m.id === messageId && m.question ? { ...m, question: { ...m.question, answeredWith: optionLabel } } : m
+      m === target
+        ? { ...m, questions: m.questions.map((q) => (q.id === questionId ? { ...q, answeredWith: optionLabel } : q)) }
+        : m
     )),
   }
   const result = await sendTurn(ctx, answered, optionLabel)
@@ -504,16 +234,18 @@ export async function ipcAnswerChatQuestion(
  * addressing goes through matchesSection, the SAME loose match readiness.ts already uses to
  * join a plugin-reported section name to the document's own key, since the model names a
  * section the way it read it in the document (heading text), not by Studio's internal key
- * format. */
+ * format. `proposalId` addresses the PROPOSAL itself (not its message) — a message may carry
+ * more than one proposal, each independently resolvable. */
 export async function ipcResolveChatProposal(
-  ctx: ChatContext, messageId: string, outcome: DraftOutcome, finalValue: string, actor: string,
+  ctx: ChatContext, proposalId: string, outcome: DraftOutcome, finalValue: string, actor: string,
 ): Promise<ChatTurnResult> {
   const state = getChatState(ctx.projectPath, ctx.stageId)
-  const target = state.messages.find((m) => m.id === messageId)
-  if (!target?.proposal) return { ok: false, state, error: 'No pending proposal with that id.' }
-  if (target.proposal.outcome) return { ok: false, state, error: 'This proposal was already resolved.' }
+  const target = state.messages.find((m) => m.proposals.some((p) => p.id === proposalId))
+  const proposal = target?.proposals.find((p) => p.id === proposalId)
+  if (!proposal) return { ok: false, state, error: 'No pending proposal with that id.' }
+  if (proposal.outcome) return { ok: false, state, error: 'This proposal was already resolved.' }
 
-  const { document: relPath, section: reportedSection, field, value: offeredValue } = target.proposal
+  const { document: relPath, section: reportedSection, field, value: offeredValue } = proposal
   let instance: string | undefined
 
   if (outcome !== 'discarded') {
@@ -523,20 +255,26 @@ export async function ipcResolveChatProposal(
     if (!section) {
       return { ok: false, state, error: `Could not find a section matching "${reportedSection}" in ${relPath}.` }
     }
-    instance = section.number !== undefined ? String(section.number) : undefined
+    // The SAME mapping DocumentView.tsx's structured editor uses (shared/sections.ts) — a
+    // bare String(section.number) here, distinct from DocumentView's section.heading, used to
+    // split the same requirement's draft-ledger audit trail across two different keys
+    // depending on which UI made the edit.
+    instance = sectionInstanceKey(section)
     const write = await setField(ctx.projectPath, ctx.pluginScriptsDir, relPath, section.key, field, finalValue)
     if (!write.ok) return { ok: false, state, error: write.error ?? `Could not write ${field}.` }
   }
 
   await recordDraftOutcome(
-    ctx.projectPath, ctx.pluginScriptsDir, relPath, field, outcome, actor,
+    ctx.projectPath, ctx.pluginScriptsDir, relPath, field, outcome, actor || 'unknown',
     offeredValue.length, outcome === 'discarded' ? 0 : finalValue.length, instance,
   )
 
   const updated: ChatState = {
     ...state,
     messages: state.messages.map((m) => (
-      m.id === messageId && m.proposal ? { ...m, proposal: { ...m.proposal, outcome } } : m
+      m === target
+        ? { ...m, proposals: m.proposals.map((p) => (p.id === proposalId ? { ...p, outcome } : p)) }
+        : m
     )),
   }
   saveChatState(ctx.projectPath, ctx.stageId, updated)

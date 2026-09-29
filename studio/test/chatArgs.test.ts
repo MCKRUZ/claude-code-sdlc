@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import {
   buildChatArgs, buildSystemPrompt, CHAT_TOOLS, mcpConfigPath, readPluginName,
 } from '../electron/main/chat'
-import { claudeWorkingDirectory } from '../electron/main/claudeAssist'
+import { CLAUDE_SHARED_SAFE_ARGS, claudeWorkingDirectory } from '../electron/main/claudeAssist'
 
 // Spec 0016's own acceptance checks ask for exactly this: the tool list, the working-directory
 // isolation, and Edit/Write/Bash's absence must be provable "from the session's own launch
@@ -126,6 +126,15 @@ describe('buildChatArgs', () => {
     const i = args.indexOf('--permission-prompts')
     expect(args[i + 1]).toBe('none')
   })
+
+  // Regression: chat.ts used to hand-type '--strict-mcp-config' and '--permission-prompts',
+  // 'none' itself instead of reusing claudeAssist.ts's own CLAUDE_SHARED_SAFE_ARGS — a second,
+  // independently-maintained copy of flags that exist because of a real past security finding.
+  it('reuses claudeAssist.ts\'s own CLAUDE_SHARED_SAFE_ARGS for the flags every claude invocation shares, rather than a hand-typed copy', () => {
+    const { args } = buildChatArgs(baseOpts())
+    const i = args.indexOf('--permission-prompts')
+    expect(args.slice(i, i + CLAUDE_SHARED_SAFE_ARGS.length)).toEqual(CLAUDE_SHARED_SAFE_ARGS)
+  })
 })
 
 describe('buildSystemPrompt', () => {
@@ -157,6 +166,27 @@ describe('buildSystemPrompt', () => {
       projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',
     })
     expect(prompt).toMatch(/no Edit, Write or Bash/)
+  })
+
+  // Regression: the prompt used to tell the model to call ProposeWrite with "the field label"
+  // but never stated it must match the shape's declared key EXACTLY — documents.ts's setField
+  // does a plain `section.fields[label]` lookup with no fuzz matching (unlike matchesSection's
+  // loose section-name match), so a model-phrased label that differs by casing, punctuation, or
+  // wording just fails to save with no useful signal why.
+  it('tells the model the field label must match the shape\'s declared key EXACTLY, and where to find it', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'p', pluginRoot: '/plugin', pluginName: 'n', stageId: '0', stageDisplay: 'D',
+    })
+    expect(prompt).toMatch(/EXACTLY/)
+    expect(prompt).toContain('/plugin/templates/phases/**/*.shape.yaml')
+    expect(prompt).toMatch(/label: <exact text>/)
+  })
+
+  it('tells the model a single reply may call ProposeWrite or AskStructuredQuestion more than once', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',
+    })
+    expect(prompt).toMatch(/more than once/)
   })
 })
 
