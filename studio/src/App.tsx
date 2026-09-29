@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BoardRow, ClashChoice, ConsoleEntry, DocumentFocus, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
+import { appendConsoleEntry } from './consoleLog'
 import { ToolingIssues } from './components/ToolingIssues'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
@@ -80,7 +81,10 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
 
   useEffect(() => {
     window.studio.getConsoleLog().then(setConsoleEntries)
-    return window.studio.onConsoleEntry((entry) => setConsoleEntries((prev) => [...prev, entry]))
+    // Capped the same way the main process's own log already is — see consoleLog.ts. Before
+    // this, a session left on the Workflow tab (whose live panel now polls roughly every 2s)
+    // grew this array without bound for as long as the window stayed open.
+    return window.studio.onConsoleEntry((entry) => setConsoleEntries((prev) => appendConsoleEntry(prev, entry)))
   }, [])
 
   useEffect(() => window.studio.onSyncState(setSyncState), [])
