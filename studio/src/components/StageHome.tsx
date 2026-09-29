@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { DocumentFocus, SignOffQuestion, StageReadiness } from '../../shared/types'
+import { stageHomeKey } from '../stageHomeKey'
 import { DocumentsTab } from './DocumentsTab'
 import { WorkflowTab } from './WorkflowTab'
 
@@ -38,12 +39,16 @@ export function StageHome({
 
   useEffect(() => { refresh() }, [refresh])
 
-  // Opening a DIFFERENT stage is opening its home page fresh, and Workflow is what a fresh
-  // opening lands on (spec 0017) — even if the reader had switched to Documents on the stage
-  // they came from. StageHome itself does not remount on a stage switch (App.tsx keeps it
-  // mounted across one and only changes `stageId`), so the default has to be re-asserted here
-  // rather than left to the initial state, which only fires once.
-  useEffect(() => { setTab('workflow') }, [stageId])
+  // Opening a DIFFERENT stage — or a different PROJECT — is opening a home page fresh, and
+  // Workflow is what a fresh opening lands on (spec 0017), even if the reader had switched to
+  // Documents on the stage (or project) they came from. StageHome itself never remounts on
+  // either of those (App.tsx keeps it mounted and only changes `projectPath`/`stageId`), so the
+  // default has to be re-asserted here rather than left to the initial state, which only fires
+  // once. Keyed on BOTH, via `stageHomeKey`, not `stageId` alone: `viewedStageId` resets to
+  // `undefined` on every project open (App.tsx's `openPath`), which is not a change at all when
+  // the reader never picked a specific stage in the PREVIOUS project either — that was bug #2,
+  // where an `undefined`-to-`undefined` "switch" silently kept the reader on Documents.
+  useEffect(() => { setTab('workflow') }, [stageHomeKey(projectPath, stageId)])
 
   const toggle = async (question: SignOffQuestion, confirmed: boolean) => {
     if (!readiness) return
