@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import type { OpenDocumentResult, SignOffQuestion, StageReadiness } from '../../shared/types'
+import type { SignOffQuestion, StageReadiness } from '../../shared/types'
 import { computeWorkflowSteps, type WorkflowStep, type WorkflowStepStatus } from '../workflowSteps'
-import { MarkdownView } from './MarkdownView'
+import { startDocumentPolling } from '../documentPoller'
+import type { DocumentSnapshot } from '../documentSnapshot'
+import { SectionCard } from './DocumentSections'
 import { SignOffQuestions } from './SignOffQuestions'
 
 /** How often the live panel re-reads the current step's document. Each poll is a real
  * subprocess round trip through `openDocument()`'s shape-library CLI, not a cheap read — spec
  * 0017's own Decision List calls this a deliberate cost/freshness tradeoff, not a default to
- * shrink later without noticing the cost. */
+ * shrink later without noticing the cost. Paused while the window/tab is not visible — see
+ * `documentPoller.ts`. */
 const POLL_MS = 2000
 
 /** A stage's home page, redrawn as a guided sequence (spec 0017): one step per required
@@ -47,40 +50,54 @@ export function WorkflowTab({
           what makes a locked row's absence and a done row's absence both true by construction
           rather than by care: neither status ever reaches this branch. */}
       <div className="min-w-0 flex-1">
-        {current?.kind === 'document' && (
-          current.document.folder ? (
-            <p className="text-sm text-slate-400">
-              {current.title} is a folder of documents — open it from the Documents tab.
-            </p>
-          ) : (
-            <LiveDocumentPanel
-              key={current.document.path}
-              projectPath={projectPath}
-              relPath={current.document.path}
-            />
-          )
-        )}
-
-        {current?.kind === 'sign-off' && (
-          readiness.judgement.length > 0 ? (
-            <SignOffQuestions
-              questions={readiness.judgement}
-              actor={actor}
-              busyId={busyId}
-              error={confirmError}
-              onToggle={onToggleSignOff}
-            />
-          ) : (
-            <p className="text-sm text-slate-400">
-              Nothing further needs confirming before this stage can be signed off.
-            </p>
-          )
-        )}
-
-        {!current && <p className="text-sm text-slate-400">Nothing is currently in progress on this stage.</p>}
+        <CurrentStepPanel projectPath={projectPath} current={current} readiness={readiness} actor={actor} busyId={busyId} confirmError={confirmError} onToggleSignOff={onToggleSignOff} />
       </div>
     </div>
   )
+}
+
+/** What shows beside the step list: the current document step's live content, the sign-off
+ * questions, a folder notice, or nothing. Pulled out of `WorkflowTab` itself so that function
+ * stays a plain layout — this repo's "functions under 50 lines" convention (spec 0017's fix
+ * pass, bug #10). */
+function CurrentStepPanel({
+  projectPath, current, readiness, actor, busyId, confirmError, onToggleSignOff,
+}: {
+  projectPath: string
+  current: WorkflowStep | null
+  readiness: StageReadiness
+  actor: string
+  busyId: string | null
+  confirmError: string | null
+  onToggleSignOff: (question: SignOffQuestion, confirmed: boolean) => void
+}) {
+  if (current?.kind === 'document') {
+    if (current.document.folder) {
+      return (
+        <p className="text-sm text-slate-400">
+          {current.title} is a folder of documents — open it from the Documents tab.
+        </p>
+      )
+    }
+    return <LiveDocumentPanel key={current.document.path} projectPath={projectPath} relPath={current.document.path} />
+  }
+
+  if (current?.kind === 'sign-off') {
+    if (readiness.judgement.length === 0) {
+      return <p className="text-sm text-slate-400">Nothing further needs confirming before this stage can be signed off.</p>
+    }
+    return (
+      <SignOffQuestions
+        questions={readiness.judgement}
+        actor={actor}
+        busyId={busyId}
+        error={confirmError}
+        onToggle={onToggleSignOff}
+      />
+    )
+  }
+
+  return <p className="text-sm text-slate-400">Nothing is currently in progress on this stage.</p>
 }
 
 function StepRow({ step }: { step: WorkflowStep }) {
@@ -116,83 +133,75 @@ function StepBadge({ status }: { status: WorkflowStepStatus }) {
   return <span className="shrink-0 text-xs font-medium text-slate-400">Locked</span>
 }
 
-/** The exact string `electron/main/documents.ts`'s `openDocument()` returns for a document that
- * has not been created yet — matched precisely rather than guessed at, so a real error is never
- * mistaken for "still waiting", and vice versa. */
-function notCreatedError(relPath: string): string {
-  return `${relPath} does not exist`
-}
-
 /** The current step's real file, read through the exact same `openDocument()` the structured
- * editor uses, polled while this panel is mounted — which is to say, while the Workflow tab is
- * showing and this is the current step. Leaving the tab (or the current step moving on) unmounts
- * this panel and stops the polling with it; there is no separate visibility flag to fall out of
- * sync with that. Read-only: nothing here writes, edits, or offers to. */
+ * editor uses, polled while this panel is mounted, the tab is visible, and this is the current
+ * step. Leaving the tab (or the current step moving on) unmounts this panel and stops the
+ * polling with it — see `documentPoller.ts` for the pause-while-hidden and
+ * discard-stale-response guarantees. Read-only: nothing here writes, edits, or offers to. */
 function LiveDocumentPanel({ projectPath, relPath }: { projectPath: string; relPath: string }) {
-  const [doc, setDoc] = useState<OpenDocumentResult | null>(null)
-  const [waiting, setWaiting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [snapshot, setSnapshot] = useState<DocumentSnapshot | null>(null)
   const lastJson = useRef<string>('')
 
   useEffect(() => {
-    let cancelled = false
     lastJson.current = ''
+    setSnapshot(null)
 
-    const poll = async () => {
-      const result = await window.studio.openDocument(projectPath, relPath)
-      if (cancelled) return
-
-      if (!result.ok) {
-        if (result.error === notCreatedError(relPath)) {
-          setWaiting(true)
-          setError(null)
-        } else {
-          setError(result.error ?? 'Could not open this document.')
+    return startDocumentPolling({
+      openDocument: window.studio.openDocument,
+      projectPath,
+      relPath,
+      intervalMs: POLL_MS,
+      setInterval: (cb, ms) => window.setInterval(cb, ms),
+      clearInterval: (id) => window.clearInterval(id as number),
+      isHidden: () => document.hidden,
+      onVisibilityChange: (cb) => {
+        document.addEventListener('visibilitychange', cb)
+        return () => document.removeEventListener('visibilitychange', cb)
+      },
+      onSnapshot: (next) => {
+        // Only replace what is on screen when the content actually changed. Every poll is
+        // still a real call through the shape library — this only stops an unchanged answer
+        // from flickering the panel or resetting a reader's scroll position.
+        const json = JSON.stringify(next)
+        if (json !== lastJson.current) {
+          lastJson.current = json
+          setSnapshot(next)
         }
-        return
-      }
-
-      setWaiting(false)
-      setError(null)
-      // Only replace what is on screen when the content actually changed. Every poll is still
-      // a real call through the shape library — this only stops an unchanged answer from
-      // flickering the panel or resetting a reader's scroll position.
-      const json = JSON.stringify(result)
-      if (json !== lastJson.current) {
-        lastJson.current = json
-        setDoc(result)
-      }
-    }
-
-    poll()
-    const id = window.setInterval(poll, POLL_MS)
-    return () => { cancelled = true; window.clearInterval(id) }
+      },
+    })
   }, [projectPath, relPath])
 
-  if (error) {
+  return <LiveDocumentPanelContent snapshot={snapshot} />
+}
+
+/** Renders one `DocumentSnapshot` — split out of `LiveDocumentPanel` so that function stays
+ * about SCHEDULING (spec 0017's fix pass, bug #10) and this one stays about DISPLAY. */
+function LiveDocumentPanelContent({ snapshot }: { snapshot: DocumentSnapshot | null }) {
+  if (!snapshot) return <p className="text-sm text-slate-400">Opening…</p>
+
+  if (snapshot.kind === 'error') {
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
-        {error}
+        {snapshot.message}
       </div>
     )
   }
-  if (waiting) {
+  if (snapshot.kind === 'waiting') {
     return (
       <p className="text-sm text-slate-400">
         Not started yet — this will appear here as soon as it is created.
       </p>
     )
   }
-  if (!doc) {
-    return <p className="text-sm text-slate-400">Opening…</p>
-  }
 
-  const shown = doc.sections.filter((s) => s.text.trim() !== '')
-
+  const { sections } = snapshot.doc
   return (
     <div data-testid="live-document-panel" className="space-y-3 rounded-xl border border-slate-200 bg-white p-4">
-      {shown.length > 0 ? (
-        shown.map((s) => <MarkdownView key={s.key} source={s.text} />)
+      {sections.length > 0 ? (
+        // The SAME field-by-field rendering DocumentView uses (bug #9) — an unfilled field
+        // reads "Empty", a field the shape declares but the document lacks reads "Not in this
+        // document.", never raw placeholder text. Read-only: no `editing`, no `onSaveField`.
+        sections.map((s) => <SectionCard key={s.key} section={s} />)
       ) : (
         <p className="text-sm text-slate-400">This document is still empty.</p>
       )}
