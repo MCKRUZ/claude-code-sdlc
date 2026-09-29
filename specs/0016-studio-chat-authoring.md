@@ -113,13 +113,26 @@ viewer of someone else's work instead of the place the work happens.
 - [ ] A discarded or edited-then-accepted proposal is recorded in the existing draft-audit ledger,
       with the same three outcomes spec 0010 defined (accepted / edited then accepted / discarded).
       Chat does not get a ledger of its own.
-- [ ] The Claude process driving the conversation is given the project's contents only as
-      pasted-in context assembled by Studio's main process; it is never run with the project
-      directory as its working directory, and a test proves it cannot read or write any file the
-      main process did not explicitly hand it.
+- [ ] The Claude process's working directory is always spec 0010's Studio-owned scratch folder,
+      never the project — a test asserts this from the session's launch arguments, not from
+      behavior alone. It is granted real read access to the project and to the plugin's own
+      install directory, and to nothing else.
+- [ ] The hostile-scratch-project test (see Scope) passes as an automated test, not a one-off
+      manual run: a planted hook never fires, and a planted `CLAUDE.md` sentinel is absent from
+      every prompt sent to the model unless the conversation explicitly reads that file.
+- [ ] `Edit`, `Write` and `Bash` are absent from the session's tool list for the entire
+      conversation — a test asserts this from the session's own configuration, not from watching
+      it behave correctly once.
+- [ ] The assistant can spawn one of the plugin's real discipline sub-agents (for example
+      `discovery-analyst`) mid-conversation when the phase guidance calls for it, and the
+      sub-agent's own output — not a paraphrase Studio wrote — reaches the transcript.
+- [ ] A structured, multiple-choice question from the phase guidance or a sub-agent renders as
+      selectable options in the chat UI, not as plain sentence text the person has to type an
+      answer to by hand.
 - [ ] What the assistant asks, and in what order, comes from that phase's own guidance file
-      (`phases/NN-*.md`), read at conversation time — not copied into Studio's own source — so a
-      phase's requirements cannot drift between the terminal and the chat panel.
+      (`phases/NN-*.md`) and the plugin's real agent definitions, read at conversation time — not
+      copied into Studio's own source — so a phase's requirements cannot drift between the
+      terminal and the chat panel.
 - [ ] Closing Studio mid-conversation and reopening the same stage leaves every already-accepted
       write in place and no partially-applied write exists on disk.
 - [ ] Chat is available and useful on a stage whose documents are already complete — it answers
