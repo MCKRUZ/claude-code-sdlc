@@ -111,6 +111,21 @@ describe('computeWorkflowSteps', () => {
     expect(steps.at(-1)).toMatchObject({ kind: 'sign-off', status: 'current' })
   })
 
+  it('the Sign-off step is done once every document is ready AND the stage is already signed off', () => {
+    // documentsTab.test.ts's own "signed off" fixture — status: 'signed_off' with a name and a
+    // completedAt — is the same shape stage_readiness.py actually reports (readiness.ts reads
+    // `raw.sign_off.status` straight through). Before this fix, computeWorkflowSteps never read
+    // `readiness.signOff` at all, so this step could only ever be 'current' or 'locked' — never
+    // 'done' — even though the Documents tab, reading the very same readiness object, already
+    // shows "Signed off by Priya N." for this exact fixture.
+    const docs = [doc({ path: 'a.md', ready: true }), doc({ path: 'b.md', ready: true })]
+    const steps = computeWorkflowSteps(readiness(docs, {
+      ready: true,
+      signOff: { status: 'signed_off', signedOffBy: 'Priya N', completedAt: '2026-09-29T00:00:00.000Z' },
+    }))
+    expect(steps.at(-1)).toMatchObject({ kind: 'sign-off', status: 'done' })
+  })
+
   it('the Sign-off step is locked while any document is not ready', () => {
     const docs = [doc({ path: 'a.md', ready: true }), doc({ path: 'b.md', ready: false })]
     const steps = computeWorkflowSteps(readiness(docs))

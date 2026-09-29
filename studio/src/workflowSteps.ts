@@ -74,8 +74,12 @@ export function computeWorkflowSteps(readiness: StageReadiness): WorkflowStep[] 
     key: 'sign-off',
     title: 'Sign-off',
     description: 'Confirm the questions for whoever signs this stage off.',
-    // Current exactly when nothing before it was — i.e. every document is ready.
-    status: foundCurrent ? 'locked' : 'current',
+    // Locked while any document still isn't ready. Otherwise done when the stage's own record
+    // says it actually was signed off (readiness.signOff.status, the same field the Documents
+    // tab already reads to show "Signed off by X.") — never just "every document is ready",
+    // which is what makes the step CURRENT, not DONE: the stage can sit fully ready and
+    // unsigned for a while, and that is a real, different state from having been signed off.
+    status: foundCurrent ? 'locked' : readiness.signOff.status === 'signed_off' ? 'done' : 'current',
   })
 
   return steps
