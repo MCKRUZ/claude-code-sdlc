@@ -119,7 +119,12 @@ export interface ChatArgsOptions {
 export function buildChatArgs(opts: ChatArgsOptions): { command: string; args: string[]; cwd: string } {
   const toolList = CHAT_TOOLS.join(',')
   const args = [
-    '-p', opts.prompt,
+    // `--` before the prompt value is required, not decorative: a message or option label
+    // starting with "-" (a bullet point, a negative number, someone pasting "-1 priority")
+    // is otherwise read by the CLI's own argument parser as an unknown flag rather than -p's
+    // value, and that turn fails outright — reproduced directly against the real `claude`
+    // binary, caught by CI's automated correctness review.
+    '-p', '--', opts.prompt,
     '--add-dir', opts.projectPath, opts.pluginRoot,
     '--plugin-dir', opts.pluginRoot,
     '--tools', toolList,

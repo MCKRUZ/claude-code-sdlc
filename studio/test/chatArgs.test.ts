@@ -45,6 +45,17 @@ describe('CHAT_TOOLS — the fixed allow-list', () => {
 })
 
 describe('buildChatArgs', () => {
+  it('always puts -- right before the prompt value, so a message starting with "-" is never read as a flag', () => {
+    // Reproduced directly against the real `claude` binary: `-p "-something"` fails with
+    // "error: unknown option '-something'" — a bullet point, a negative number, anything a
+    // person might actually type. `-- value` fixes it without disturbing any flag that
+    // follows, confirmed against the exact flag set this function actually emits.
+    const { args } = buildChatArgs(baseOpts({ prompt: '-looks like a flag but is not' }))
+    const pIndex = args.indexOf('-p')
+    expect(args[pIndex + 1]).toBe('--')
+    expect(args[pIndex + 2]).toBe('-looks like a flag but is not')
+  })
+
   it('runs in claudeWorkingDirectory(), never the project', () => {
     const { cwd } = buildChatArgs(baseOpts())
     expect(cwd).toBe(claudeWorkingDirectory())
