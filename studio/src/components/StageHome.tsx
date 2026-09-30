@@ -2,9 +2,20 @@ import { useCallback, useEffect, useState } from 'react'
 import type { DocumentFocus, SignOffQuestion, StageReadiness } from '../../shared/types'
 import { stageHomeKey } from '../stageHomeKey'
 import { DocumentsTab } from './DocumentsTab'
+import { SignOffPanel } from './SignOffPanel'
 import { WorkflowTab } from './WorkflowTab'
 
 type StageTab = 'workflow' | 'documents'
+
+// Duplicated from App.tsx/SignOffPanel.tsx rather than imported — neither exports it, and this
+// file follows the pattern already established there rather than introducing a new shared type
+// as a side effect of reconnecting this feature.
+interface Opening {
+  projectName: string
+  startedAt: number
+  title?: string
+  subtitle?: string
+}
 
 /** The stage's home page: a title, then a Workflow / Documents tab pair, in that order, in the
  * same tab-bar location on every stage (spec 0017).
@@ -17,12 +28,16 @@ export function StageHome({
   projectPath,
   stageId,
   actor,
+  setOpening,
+  onSignedOff,
   onOpenDocument,
 }: {
   projectPath: string
   stageId?: string
   /** Who a confirmation is recorded under; empty when nobody is signed in. */
   actor: string
+  setOpening: (opening: Opening | null) => void
+  onSignedOff: () => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null)
@@ -100,6 +115,22 @@ export function StageHome({
           confirmError={confirmError}
           onOpenDocument={onOpenDocument}
           onToggle={toggle}
+        />
+      )}
+
+      {/* The action itself — sign off and advance — is a whole-stage decision, not a tab's
+          content, so it renders once here rather than inside either tab. Same gate as before
+          spec 0017 introduced tabs: this is the CURRENT stage, every document is ready, and
+          every judgement question has actually been confirmed. Signing off a stage that is not
+          current, or that still has open work, is not a decision this button should be able to
+          make look easy. */}
+      {readiness.isCurrent && readiness.ready && readiness.judgement.every((q) => q.confirmation) && (
+        <SignOffPanel
+          projectPath={projectPath}
+          readiness={readiness}
+          actor={actor}
+          setOpening={setOpening}
+          onSignedOff={onSignedOff}
         />
       )}
     </div>
