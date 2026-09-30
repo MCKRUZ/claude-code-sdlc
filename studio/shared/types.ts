@@ -15,6 +15,11 @@ export interface ConsoleEntry {
   stdout: string
   stderr: string
   ok: boolean
+  /** True only for an interim broadcast of a command that is still running — never present on
+   * an entry in getConsoleLog()'s own list, which holds finished commands only. Lets the
+   * console show a long-running command (spec 0016's chat turns) as it happens rather than
+   * only once it exits, without changing what a finished entry looks like. */
+  pending?: boolean
 }
 
 export interface ToolStatus {
@@ -80,6 +85,10 @@ export interface Settings {
   ghPathOverride?: string
   /** Keyed by project path. */
   projectSyncState?: Record<string, ProjectSyncState>
+  /** Keyed by `${projectPath}\u0000${stageId}` — spec 0016's chat transcripts. Local-only, by
+   * Matt's resolved decision (Decision List): a chat transcript never syncs to the repository,
+   * matching how a pending draft already behaves. */
+  chatState?: Record<string, ChatState>
 }
 
 export interface ProjectStage {
@@ -380,6 +389,76 @@ export type SyncState =
   | { kind: 'waitingForApproval'; approver: string }
   | { kind: 'waitingForChecks' }
   | { kind: 'error'; message: string }
+
+// --- Chat authoring (spec 0016) ---------------------------------------------------------
+//
+// A real, multi-turn `claude` conversation drives a stage's documents. Two structural rules
+// carry every acceptance check in the spec:
+//
+//  * A write is never applied on arrival — a ChatProposal is a PROPOSAL, exactly like
+//    FieldEditor's own draft. It reaches disk only through documents.setField, and its outcome
+//    (whatever it is) is recorded through drafts.recordDraftOutcome — the same write path and
+//    the same ledger spec 0010 built, never a second one of either.
+//  * A structured question is a real tool call the driver parses structurally
+//    (ChatQuestion.options), never free text pattern-matched out of the model's prose.
+
+export interface ChatProposal {
+  id: string
+  document: string
+  section: string
+  field: string
+  value: string
+  /** Set once the person decides. Absent means still waiting on them. */
+  outcome?: DraftOutcome
+}
+
+export interface ChatQuestion {
+  id: string
+  question: string
+  options: string[]
+  /** The option label the person picked, once they have. Absent means still waiting. */
+  answeredWith?: string
+}
+
+export type ChatMessageRole = 'assistant' | 'user' | 'subagent'
+
+export interface ChatMessage {
+  id: string
+  role: ChatMessageRole
+  text: string
+  /** Every structured, multiple-choice question this message asked — rendered as selectable
+   * options, never as prose the person has to answer by typing. A single reply may call
+   * AskStructuredQuestion more than once; each call is its own entry here rather than the
+   * later ones silently overwriting the earlier, so every question the model actually asked
+   * is surfaced and answerable. Empty (never undefined) when the message asked none. */
+  questions: ChatQuestion[]
+  /** Every document write this message proposed. Same reasoning as `questions`: a reply that
+   * calls ProposeWrite more than once gets one card per call, each independently
+   * accept/edit/discard-able and independently recorded to the draft ledger — never just the
+   * last call's proposal, with the earlier ones' MCP acknowledgement having no card to show
+   * for it. Empty (never undefined) when the message proposed none. */
+  proposals: ChatProposal[]
+  /** Which of the plugin's real discipline sub-agents produced this message, when
+   * role is 'subagent' — e.g. "claude-code-sdlc:discovery-analyst". This is the sub-agent's
+   * OWN output, forwarded by the CLI (`--forward-subagent-text`), never a paraphrase Studio
+   * wrote. */
+  subagentType?: string
+  at: string
+}
+
+/** One stage's chat conversation, as Studio persists it locally (never synced — see the
+ * spec's Decision List). `sessionId` is what ties consecutive `claude` processes into one
+ * conversation via --resume; null before the first turn has run. */
+export interface ChatState {
+  sessionId: string | null
+  messages: ChatMessage[]
+}
+
+export interface ChatTurnResult {
+  ok: boolean
+  state: ChatState
+  error?: string
+}
 
 /** The ONLY surface the renderer gets — see electron/preload/index.ts. Both the preload
  * script's implementation and the renderer's `window.studio` typing point at this one
@@ -946,6 +1025,38 @@ export interface StudioApi {
 
   getConsoleLog(): Promise<ConsoleEntry[]>
   onConsoleEntry(callback: (entry: ConsoleEntry) => void): () => void
+
+  // --- Chat authoring (spec 0016) ---
+  /** Reads the stage's chat state without ever starting the model — used on mount so opening
+   * a stage that already has a conversation shows it without a network call. */
+  getChatState(projectPath: string, stageId: string): Promise<ChatState>
+  /** Starts the conversation if it has never been started AND the stage has a document not yet
+   * begun — the assistant's own opening message, never a blank box waiting on the person.
+   * A no-op (returns the existing state unchanged) on a stage whose documents are all already
+   * started, or whose chat has already been greeted. Takes no `actor`: nothing this call does
+   * (or `sendChatMessage`/`answerChatQuestion` below) attributes anything to a person — only
+   * `resolveChatProposal` writes to the draft ledger, which is what actually needs one. */
+  ensureChatStarted(projectPath: string, stageId: string): Promise<ChatTurnResult>
+  /** An ordinary next turn — the person's own words, or (from answerChatQuestion) the option
+   * label they picked. Resumes the same `claude` session via --session-id/--resume. */
+  sendChatMessage(projectPath: string, stageId: string, text: string): Promise<ChatTurnResult>
+  /** Answers a pending structured question by submitting the OPTION's label as the next plain
+   * turn — the mechanism spec 0016's own spike measured actually works, not a formal
+   * tool_result the CLI's print mode has no way to accept out of band. `questionId` is the
+   * QUESTION's own id (ChatQuestion.id) — distinct from its message's id, since one message
+   * can carry more than one question. */
+  answerChatQuestion(
+    projectPath: string, stageId: string, questionId: string, optionLabel: string,
+  ): Promise<ChatTurnResult>
+  /** Accept, edit-then-accept, or discard one proposed write. Accepting (in either shape)
+   * writes through documents.setField — the SAME path spec 0010 built, never a second one.
+   * Every outcome, including discarded, is recorded through drafts.recordDraftOutcome.
+   * `proposalId` is the PROPOSAL's own id (ChatProposal.id) — distinct from its message's id,
+   * since one message can carry more than one proposal. */
+  resolveChatProposal(
+    projectPath: string, stageId: string, proposalId: string,
+    outcome: DraftOutcome, finalValue: string, actor: string,
+  ): Promise<ChatTurnResult>
 }
 
 // --- The Build board (spec 0011) ------------------------------------------------------

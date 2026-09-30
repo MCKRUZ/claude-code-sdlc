@@ -14,8 +14,19 @@ import type { ConsoleEntry } from '../shared/types'
 export const MAX_CONSOLE_ENTRIES = 500
 
 /** Appends one entry, keeping only the most recent `MAX_CONSOLE_ENTRIES` — oldest entries fall
- * off first, matching `commandRunner.ts`'s own `log.splice(0, log.length - MAX_LOG_ENTRIES)`. */
+ * off first, matching `commandRunner.ts`'s own `log.splice(0, log.length - MAX_LOG_ENTRIES)`.
+ *
+ * `commandRunner.ts` allocates a command's `id` up front specifically so a streaming command's
+ * interim "pending" broadcasts and its final, finished entry share one id — the whole point
+ * being that the renderer replaces that one row in place as it updates, rather than growing a
+ * new row per chunk. A plain append doesn't honor that: it was only ever capping the list's
+ * overall length, not deduplicating by id, so a single chat turn (which streams many chunks
+ * while it runs) still left a pile of separate rows behind for the one command. Replace an
+ * existing entry with the same id in place; only a genuinely new id appends a new row. */
 export function appendConsoleEntry(prev: ConsoleEntry[], entry: ConsoleEntry): ConsoleEntry[] {
-  const next = [...prev, entry]
+  const existingIndex = prev.findIndex((e) => e.id === entry.id)
+  const next = existingIndex === -1
+    ? [...prev, entry]
+    : [...prev.slice(0, existingIndex), entry, ...prev.slice(existingIndex + 1)]
   return next.length > MAX_CONSOLE_ENTRIES ? next.slice(next.length - MAX_CONSOLE_ENTRIES) : next
 }

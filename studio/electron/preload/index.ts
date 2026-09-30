@@ -106,6 +106,16 @@ const studio: StudioApi = {
     ipcRenderer.on('studio:consoleEntry', handler)
     return () => ipcRenderer.off('studio:consoleEntry', handler)
   },
+
+  getChatState: (projectPath, stageId) => ipcRenderer.invoke('studio:getChatState', projectPath, stageId),
+  ensureChatStarted: (projectPath, stageId) =>
+    ipcRenderer.invoke('studio:ensureChatStarted', projectPath, stageId),
+  sendChatMessage: (projectPath, stageId, text) =>
+    ipcRenderer.invoke('studio:sendChatMessage', projectPath, stageId, text),
+  answerChatQuestion: (projectPath, stageId, questionId, optionLabel) =>
+    ipcRenderer.invoke('studio:answerChatQuestion', projectPath, stageId, questionId, optionLabel),
+  resolveChatProposal: (projectPath, stageId, proposalId, outcome, finalValue, actor) =>
+    ipcRenderer.invoke('studio:resolveChatProposal', projectPath, stageId, proposalId, outcome, finalValue, actor),
 }
 
 contextBridge.exposeInMainWorld('studio', studio)

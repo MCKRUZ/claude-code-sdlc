@@ -40,4 +40,22 @@ describe('appendConsoleEntry', () => {
     for (let i = 0; i < pollCount; i++) entries = appendConsoleEntry(entries, entry(`poll-${i}`))
     expect(entries.length).toBeLessThanOrEqual(MAX_CONSOLE_ENTRIES)
   })
+
+  it('replaces an existing entry with the same id in place, rather than appending a duplicate row', () => {
+    // commandRunner.ts allocates a streaming command's id up front so its interim "pending"
+    // broadcasts and its final entry share one id, and the renderer is meant to replace that
+    // one row as it updates. A caught-by-CI regression: a plain append only capped the list's
+    // overall length, it never deduplicated by id — so one chat turn's many streamed chunks
+    // each landed as a separate row sharing the same id, instead of one row updating in place.
+    let entries: ConsoleEntry[] = [entry('a'), entry('b')]
+    entries = appendConsoleEntry(entries, entry('a'))
+    expect(entries).toHaveLength(2)
+    expect(entries.map((e) => e.id)).toEqual(['a', 'b'])
+  })
+
+  it('a same-id replacement keeps its original position, so chronological order survives many updates', () => {
+    let entries: ConsoleEntry[] = [entry('a'), entry('b'), entry('c')]
+    for (let i = 0; i < 10; i++) entries = appendConsoleEntry(entries, entry('b'))
+    expect(entries.map((e) => e.id)).toEqual(['a', 'b', 'c'])
+  })
 })

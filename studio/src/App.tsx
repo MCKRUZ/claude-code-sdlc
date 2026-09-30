@@ -211,6 +211,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
         syncState={syncState}
         area={area}
         viewedStageId={viewedStageId}
+        actor={actor}
         onNavigate={(target) => {
           setArea(target.area)
           if (target.area === 'documents') {

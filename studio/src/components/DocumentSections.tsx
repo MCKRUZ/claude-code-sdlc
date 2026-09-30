@@ -1,4 +1,5 @@
 import type { DocumentField, DocumentSection } from '../../shared/types'
+import { sectionInstanceKey } from '../../shared/sections'
 import { FieldEditor } from './FieldEditor'
 import { MarkdownView } from './MarkdownView'
 
@@ -90,7 +91,7 @@ export function SectionCard({
             relPath={relPath}
             sectionKey={section.key}
             sectionHeading={section.heading}
-            instance={section.kind === 'repeating_instance' ? section.heading : undefined}
+            instance={sectionInstanceKey(section)}
             actor={actor}
             onSave={onSaveField ? (value) => onSaveField(section, label, value) : undefined}
           />

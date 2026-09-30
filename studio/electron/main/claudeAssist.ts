@@ -39,13 +39,21 @@ export function claudeWorkingDirectory(): string {
   return dir
 }
 
-/** Flags shared by every `claude` invocation in this app. `--strict-mcp-config` with no
- * `--mcp-config` loads no MCP servers at all; the tool denials pin the surface directly
- * rather than relying on prompt denial, since document text reaches the prompt verbatim and
- * must be assumed hostile. */
-export const CLAUDE_SAFE_ARGS = [
+/** Flags shared by every `claude` invocation in this app, regardless of whether the caller
+ * pins its tool surface with a deny-list (below) or an explicit `--tools` allow-list
+ * (chat.ts's chatArgs.ts, spec 0016's own acceptance check — see its header for why an
+ * allow-list is used there instead of spreading the deny-list this constant also carries).
+ * `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. */
+export const CLAUDE_SHARED_SAFE_ARGS = [
   '--permission-prompts', 'none',
   '--strict-mcp-config',
+]
+
+/** The deny-list callers (combineWithClaude below, drafts.ts's draftField) actually use: the
+ * shared flags above, plus denying every tool outright — since document text reaches the
+ * prompt verbatim here and must be assumed hostile. */
+export const CLAUDE_SAFE_ARGS = [
+  ...CLAUDE_SHARED_SAFE_ARGS,
   '--disallowedTools', 'Bash', 'Edit', 'Write', 'Read', 'WebFetch', 'WebSearch',
 ]
 
