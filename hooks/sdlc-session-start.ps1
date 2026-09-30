@@ -64,7 +64,7 @@ if ($phaseMatch.Success) {
         "1"     = "Ensure changes trace back to documented requirements."
         "2"     = "Document architectural decisions as ADRs."
         "3"     = "Build the factory (harness, rails, dev infra) and a thin walking skeleton."
-        "build" = "One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work."
+        "build" = "One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work. Refinement for the next sprint runs alongside — /sdlc-refine; the board is /sdlc-sprint."
         "7"     = "Prove docs by cold use. Finalize ADRs."
         "8"     = "Promote the proven artifact. Document the rollback plan."
         "9"     = "Configure alerts from measured baselines. Run the drill."
@@ -72,6 +72,39 @@ if ($phaseMatch.Success) {
     }
     $phaseReminder = $phaseReminders[$phaseId]
     if ($phaseReminder) { Write-Output "[SDLC-PHASE] $phaseReminder" }
+
+    # --- Active sprints (Sprint Team Layer): one line per .sdlc/sprints/*.md whose state is not closed ---
+    # Regex only — no date arithmetic, no JSON. Silent when the directory is absent. Wrapped in try/catch
+    # so a malformed file never throws: a thrown error would make hooks.json's `pwsh ... || bash ...`
+    # run the bash twin too and double-print.
+    function Get-SprintField([string]$text, [string]$key) {
+        # First "key:" line wins; a quoted value is taken verbatim, else a trailing "# comment" is stripped.
+        $m = [regex]::Match($text, '(?m)^' + $key + ':[ \t]*(?:"([^"\r\n]*)"|([^#\r\n]*))')
+        if (-not $m.Success) { return $null }
+        if ($m.Groups[1].Success) { return $m.Groups[1].Value.Trim() }
+        return $m.Groups[2].Value.Trim()
+    }
+    $sprintsDir = Join-Path $sdlcDir "sprints"
+    if (Test-Path $sprintsDir) {
+        try {
+            $sprintFiles = @(Get-ChildItem $sprintsDir -Filter "*.md" -File -ErrorAction SilentlyContinue | Sort-Object Name)
+            foreach ($sprintFile in $sprintFiles) {
+                try {
+                    $sprintText = Get-Content $sprintFile.FullName -Raw -ErrorAction SilentlyContinue
+                    if (-not $sprintText) { continue }
+                    $sprintState = Get-SprintField $sprintText "state"
+                    if (-not $sprintState) { continue }            # no state line — not a sprint record we understand
+                    if ($sprintState -eq "closed") { continue }
+                    $sprintId = Get-SprintField $sprintText "sprint"
+                    if (-not $sprintId) { $sprintId = $sprintFile.BaseName }
+                    $sprintGoal = Get-SprintField $sprintText "goal"
+                    $sprintStart = Get-SprintField $sprintText "start"
+                    $sprintEnd = Get-SprintField $sprintText "end"
+                    Write-Output "[SDLC-SPRINT] $sprintId ($sprintState) — `"$sprintGoal`" — $sprintStart → $sprintEnd"
+                } catch { }
+            }
+        } catch { }
+    }
 
     # --- Tier 1: Foundation Context ---
     $constitutionPath = Join-Path $sdlcDir "constitution.md"
@@ -151,43 +184,6 @@ if ($phaseMatch.Success) {
 
         if ($isEnabled -and $curOrder -ge $minOrder) {
             Write-Output "[SDLC-HEALTH] Health check is enabled. Run the configured smoke test before starting new work (Build loop pre-flight check)."
-        }
-    }
-
-    # Check for session handoff file (Build loop continuity)
-    if ($phaseId -eq "build") {
-        $handoffFile = Join-Path $sdlcDir "artifacts" "build" "session-handoff.json"
-        if (Test-Path $handoffFile) {
-            try {
-                $handoff = Get-Content $handoffFile -Raw | ConvertFrom-Json
-            } catch {
-                Write-Output "[SDLC] WARNING: session-handoff.json is malformed - skipping handoff summary"
-                $handoff = $null
-            }
-            if ($handoff) {
-                $sections = @($handoff.sections)
-                $completedCount = @($sections | Where-Object { $_.status -eq "complete" }).Count
-                $totalCount = $sections.Count
-                $inProgress = @($sections | Where-Object { $_.status -eq "in_progress" }).Count
-                $blocked = @($sections | Where-Object { $_.status -eq "blocked" }).Count
-
-                Write-Output "[SDLC] Session Handoff: $completedCount/$totalCount sections complete, $inProgress in progress, $blocked blocked (session #$($handoff.session_number))"
-                if ($handoff.context_for_next_session) {
-                    Write-Output "[SDLC] Context: $($handoff.context_for_next_session)"
-                }
-                if ($handoff.next_actions -and @($handoff.next_actions).Count -gt 0) {
-                    $firstAction = @($handoff.next_actions)[0]
-                    if ($firstAction.action) {
-                        Write-Output "[SDLC] Next action: $($firstAction.action) ($($firstAction.section))"
-                    }
-                }
-                if ($handoff.blockers -and @($handoff.blockers).Count -gt 0) {
-                    $activeBlockers = @($handoff.blockers | Where-Object { -not $_.resolved }).Count
-                    if ($activeBlockers -gt 0) {
-                        Write-Output "[SDLC] WARNING: $activeBlockers active blocker(s)"
-                    }
-                }
-            }
         }
     }
 }

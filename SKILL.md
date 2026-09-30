@@ -36,6 +36,8 @@ This plugin makes structured SDLC methodology executable in Claude Code. It prov
 | `/sdlc-intake` | Catalog and summarize an external document corpus (Phase 0, opt-in) |
 | `/sdlc-brief` | Prep a stakeholder workshop brief from the document corpus |
 | `/sdlc-spec` | Author a ready Build-loop spec (`specs/NNNN-name.md`) and enforce the Definition of Ready |
+| `/sdlc-sprint` | Sprint board — slate a count of specs by risk-tier mix, ready the sprint once every slated spec clears the DoR and its Eng/Data verdicts, close it with kept / carried / dropped (advisory; never a gate) |
+| `/sdlc-refine` | Refinement agenda for the sprint's specs — DoR gaps, pending verdicts, overdue decisions; refine one spec or the whole slate; record Eng/Data verdicts; route upstream fixes without regressing a phase |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory and gate results |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases — identify always-pass and high-fail gates |
@@ -58,7 +60,7 @@ The plugin maintains state in `.sdlc/state.yaml` in your project directory. Each
 
 Phase transitions are atomic — either all MUST gates pass and you advance, or none do and you get a blockers report.
 
-For long-running phases (especially the Build loop), session continuity is maintained through `session-handoff.json` — a structured JSON file that tracks section progress, blockers, and next actions across sessions. The session start hook reads this file and displays a continuity summary.
+For long-running phases (especially the Build loop), the spec is the durable source of truth across sessions — the agent re-reads it every session, and `scripts/track_specs.py` derives backlog progress from spec frontmatter. When the engagement runs sprints (`/sdlc-sprint`), the session start hook prints one `[SDLC-SPRINT]` line per active sprint record in `.sdlc/sprints/` (id, state, goal, start → end) so every session opens knowing the commitment window. The retired section-plan handoff summary (`session-handoff.json`) is no longer read by the hook.
 
 ## Profiles
 
@@ -197,7 +199,7 @@ Generate a visual report as the **second-to-last step** of every phase, immediat
 | 0 Discovery | Problem space overview | Persona cards, current state flow diagram, scope boundaries |
 | 1 Requirements | Requirements matrix | Requirements by domain/priority, traceability matrix, epic overview |
 | 2 Design | Architecture diagrams | Layer diagram, core flow, data flow, section dependencies, trust boundaries |
-| 3 Foundation | Section review & sprint plan | Section breakdown table, sprint timeline, dependency DAG, risk cards |
+| 3 Foundation | Section review / spec backlog order | Section breakdown table, spec backlog order, dependency DAG, risk cards |
 | build Build Loop | Build progress | Section completion status, test coverage dashboard, code metrics, review & security findings, test pass/fail by category |
 | 7 Documentation | Documentation audit | Docs completeness matrix, API coverage, README status |
 | 8 Deployment | Release checklist | Deployment readiness, environment status, rollback plan |
@@ -324,3 +326,4 @@ Detailed documentation is in the `references/` directory:
 - `skill-mapping.md` — Phase-to-skill mapping
 - `agent-roster.md` — Phase-to-subagent mapping with parallel groups and conditions
 - `compliance-frameworks.md` — SOC 2, HIPAA, GDPR, PCI-DSS gate definitions
+- `sprint-model.md` — The sprint team layer: lifecycle, the slate and the mix, the ready rule, build order, the five spec keys, the ledger, the metrics policy

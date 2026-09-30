@@ -527,7 +527,7 @@ Four short meetings replace the ceremony calendar. None asks "what did you do ye
 | Meeting | Length | Replaces | What it does |
 |---------|--------|----------|--------------|
 | **Flow check** (daily) | 10-15 min | standup | The queue number first: how many changes wait for checking, how long the oldest has waited. Every waiting change gets a Checker; vague specs flagged back to triage; the WIP cap enforced. |
-| **Intent triage** (weekly) | 60 min | refinement | Stories become ready specs: vague lines sharpened, silent decisions surfaced, risk tiers assigned, the backlog ordered. |
+| **Intent triage** (weekly) | 60 min | refinement | Stories become ready specs: vague lines sharpened, silent decisions surfaced, risk tiers assigned, the backlog ordered. Run it with `/sdlc-refine` (the agenda, then one spec at a time); the sprint slate it feeds is `/sdlc-sprint`. |
 | **Retro+** (weekly) | 60 min | retro | Every escaped bug gets the same question -- "which check should have caught it?" -- and the answer becomes a harness improvement. |
 | **Setup review** (weekly) | 30-60 min | (new) | The week's harness changes merge: `CLAUDE.md` updates, skill/hook improvements, permission tuning -- versioned, PR'd, deputy-reviewed. |
 

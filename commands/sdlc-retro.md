@@ -12,9 +12,20 @@ question the per-round commands can't answer on their own. It reports four patte
 4. **Disposition debt rollup** — combined honest-counting debt across all three ledgers, each line
    naming its source.
 
+When the sprint team layer's ledger (`.sdlc/metrics/sprint-log.jsonl`, written by `/sdlc-sprint`)
+holds at least one event, two more sections appear after the debt block — keyed by spec, lane, and
+reason, never by person:
+
+5. **Carry-over recurrence** — per spec, how many *distinct* sprints it was carried out of, with each
+   `S06 → S07: reason`; a spec carried out of **>= 2 sprints** is flagged `RECURRING`. This is the
+   **only** cross-sprint number the plugin shows — there is deliberately no kept/carried trend
+   ("velocity with the points removed").
+6. **Bounce causes** — `returned` verdicts grouped by lane (eng, then data) and reason category, with
+   the specs each cause touched; rendered only when at least one return exists.
+
 This is a **sibling** to `/sdlc-audit-artifacts` (freshness *now*) and `/sdlc-audit` (gate
 effectiveness). This command reads the accumulated *history* and reports the recurring shape of it.
-It reads three ledgers, computes nothing about people, and never blocks.
+It reads the ledgers, computes nothing about people, and never blocks.
 
 ## Instructions
 
@@ -47,7 +58,10 @@ It reads three ledgers, computes nothing about people, and never blocks.
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/retro_report.py --state .sdlc/state.yaml --json
    ```
    The JSON has a stable top-level shape: `has_data` (a bool per section), `recurring_findings`,
-   `repeat_stale`, `refresh_funnel` (`by_spec` + `by_stem`), `debt`, and `window_days`.
+   `repeat_stale`, `refresh_funnel` (`by_spec` + `by_stem`), `debt`, `window_days`, plus the sprint
+   sections `carry_over_recurrence` (rows `{spec, carried, sprints, carries, reasons, flagged}`),
+   `bounce_causes` (rows `{lane, reason, times, specs}`), and `sprint_ledger_present`. With no sprint
+   ledger both lists are empty and their `has_data` flags are false — "no data", never a fabricated 0.
 
 5. **Act on the patterns** (a human's call — this command only surfaces them):
    - A **recurring finding** across rounds is the promotion signal: consider turning it into a
@@ -83,10 +97,11 @@ It is a signal to *tune the heuristic*, not a verdict on anyone's work.
 - The user runs `/sdlc-retro` — never `retro_report.py` by hand. The command owns mode resolution and
   the windowing.
 - **Read-only. Writes nothing** — no ledger appends, no `state.yaml`, no artifacts, no files. It is a
-  pure read across `findings-log.jsonl` and `artifact-log.jsonl`. Re-gating and dispositioning stay
-  where they live (`/sdlc-gate`, `/sdlc-revise`, `/sdlc-audit-artifacts`).
-- **Patterns, not people.** Every pattern is keyed by category, artifact, or upstream stem — **never
-  by actor**. There is deliberately **no flag to rank by person**, in the same spirit as the steering
+  pure read across `findings-log.jsonl`, `artifact-log.jsonl`, and — when present — `sprint-log.jsonl`.
+  Re-gating and dispositioning stay where they live (`/sdlc-gate`, `/sdlc-revise`,
+  `/sdlc-audit-artifacts`); carrying and dropping stay in `/sdlc-sprint close`.
+- **Patterns, not people.** Every pattern is keyed by category, artifact, upstream stem, spec, lane,
+  or reason — **never by actor** (the sprint ledger's `by` field is never read). There is deliberately **no flag to rank by person**, in the same spirit as the steering
   scorecard's forbidden metrics: this command never reports velocity, story points, PR count, or
   lines of code, and never attributes a pattern to an individual.
 - **Advisory by construction** — `retro_report.py` exits 0 on every path (no stack traces). A

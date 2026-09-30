@@ -113,6 +113,7 @@ The Build loop spans many sessions. Context windows fill; people pause. The spec
 
 - **A spec in flight is the unit of handoff.** One spec = one branch = one PR. A spec's `status` frontmatter moves draft → ready → in-flight → merged, and the spec file IS the progress tracker — `scripts/track_specs.py` derives the backlog (counts by status and risk, the in-flight list, WIP-cap breaches) straight from the specs, so there is no separate progress file to drift from reality. Do not start a new spec while one you own is in-flight and half-built — finishing the in-flight spec before starting the next is how the loop avoids compounding half-done work across sessions. The Build gate reports this backlog as information; it never batch-gates on a count.
 - **Session health check.** When `session_health_check.enabled` is true in the profile, run the configured command (via the Bash tool) at session start before touching new work. On failure, do not start new spec work — diagnose and fix the build first (spawn `build-error-resolver` if needed). This catches a broken build before you compound it.
+- **Governed specs may carry the sprint keys.** A spec slated into a sprint carries five optional frontmatter keys — `sprint`, `next_owner`, `eng_review`, `data_review`, `depends_on` — written only by `scripts/sprint.py` (through `/sdlc-sprint` and `/sdlc-refine`), never by hand. They hold enumerations, names and spec ids only; `status` is not one of them and stays hand-moved. A spec without the keys behaves exactly as before. The session-start hook prints the active sprint (`[SDLC-SPRINT] S07 (ready) — "goal" — start → end`) so every session opens knowing the commitment window and its end date.
 - **At a session boundary**, leave the in-flight spec's branch and PR in a state the next session can resume from: the spec current, the plan recorded, the failing/passing test state obvious. If the engagement uses a machine-readable handoff file, update it with the in-flight specs, what's blocked, and the next action. The 60 seconds this costs saves 30 minutes of context reconstruction next session.
 
 ## The Week: Cadences
@@ -122,7 +123,7 @@ Four short meetings replace the ceremony calendar. None asks "what did you do ye
 | Meeting | Length | Replaces | What it does |
 |---------|--------|----------|--------------|
 | **Flow check** (daily) | 10-15 min | standup | The queue number first: how many changes wait for checking, how long the oldest has waited. Walk in-flight changes nearest-done first. Every waiting change gets a Checker; vague specs get flagged back to triage; the WIP cap gets enforced; one commitment each. |
-| **Intent triage** (weekly) | 60 min | refinement | Stories become ready specs: vague lines sharpened, silent decisions surfaced onto the decision list, risk tiers assigned, the backlog ordered. |
+| **Intent triage** (weekly) | 60 min | refinement | Stories become ready specs: vague lines sharpened, silent decisions surfaced onto the decision list, risk tiers assigned, the backlog ordered. Run it with `/sdlc-refine` — the agenda first (NOT READY specs, pending Engineering/Data verdicts, overdue decisions), then one spec at a time. The slate it feeds is `/sdlc-sprint`. |
 | **Retro+** (weekly) | 60 min | retro | Every escaped bug gets the same question — "which check should have caught it?" — and the answer becomes a harness improvement, not a resolution to try harder. |
 | **Setup review** (weekly) | 30-60 min | (new) | The week's harness changes merge: `CLAUDE.md` updates, skill and hook improvements, permission tuning — versioned, PR'd, reviewed by the Setup Owner's deputy. |
 
@@ -150,7 +151,7 @@ Internal dashboard, baseline-and-trend, no vanity targets:
 
 ## Leaving the Loop
 
-There is no batch exit gate. The loop ends when a **human declares the backlog feature-complete** — every story that the engagement committed to has ridden the loop and merged. That declaration produces `phase7-handoff.md`: the entry package for Phase 7 Documentation. The handoff names what was built, the current state of the system in dev, the open questions carried forward, the deferred items with their rationale, and anything the documentation phase must cover that surfaced during Build.
+There is no batch exit gate. The loop ends when a **human declares the backlog feature-complete** — every story that the engagement committed to has ridden the loop and merged. Sprints (`/sdlc-sprint`) are commitment windows *inside* Build — a closed sprint reports kept / carried / dropped for its own slate and never suggests leaving the loop; the declaration is release-scoped, not sprint-scoped. That declaration produces `phase7-handoff.md`: the entry package for Phase 7 Documentation. The handoff names what was built, the current state of the system in dev, the open questions carried forward, the deferred items with their rationale, and anything the documentation phase must cover that surfaced during Build.
 
 ## Standalone or Workflow
 

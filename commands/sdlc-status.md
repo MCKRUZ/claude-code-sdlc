@@ -60,6 +60,16 @@ Display the current SDLC progress for this project.
      absent, skip silently. Advisory only (exit 0) — never blocks. See `/sdlc-refresh` for the
      draft+confirm path.
 
+   - **Active sprint** — one additive read of the sprint team layer:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py status --state .sdlc/state.yaml --json
+     ```
+     If `sprint` is `null` (no sprint record exists) or the script is absent, skip silently. Otherwise
+     render one line from the JSON — `Sprint S07 (ends 2026-10-09): 6 slated · 4 ready · 1 verdict
+     pending · 2 handoffs unacknowledged` — using `sprint.id`, `sprint.end`, `readiness.total`,
+     `readiness.ready`, `len(verdicts_pending)`, and `len(handoffs_open)`. Read-only (exit 0) and
+     advisory — a sprint never gates a phase. See `/sdlc-sprint` for the full board.
+
 6. **Suggest next action:** Based on current phase status:
    - If phase is `active`: suggest running `/sdlc` for phase guidance
    - If all gates would pass: suggest running `/sdlc-next` to advance

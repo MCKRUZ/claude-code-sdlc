@@ -20,6 +20,8 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 - [/sdlc-intake -- Document Corpus Intake](#sdlc-intake----document-corpus-intake)
 - [/sdlc-brief -- Discovery Workshop Brief](#sdlc-brief----discovery-workshop-brief)
 - [/sdlc-spec -- Author a Ready Spec](#sdlc-spec----author-a-ready-spec)
+- [/sdlc-sprint -- Sprint Board](#sdlc-sprint----sprint-board)
+- [/sdlc-refine -- Refinement Agenda](#sdlc-refine----refinement-agenda)
 - [Additional Commands (summaries)](#additional-commands-summaries)
 - [Command Interaction Flow](#command-interaction-flow)
 - [Python Script Invocation](#python-script-invocation)
@@ -44,6 +46,8 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-intake` | Catalog + summarize the document corpus | Writes intake summaries/registry | Phase 0 Step 0c, when the profile has a `documentation` section; also runs standalone via `--docs` |
 | `/sdlc-brief` | Analyze intake corpus + draft workshop brief | No | Phase 0 Step 0d, before a stakeholder workshop; also runs standalone via `--docs` |
 | `/sdlc-spec` | Author a ready spec (scaffold → DoR → human risk tier) | Writes `specs/NNNN-name.md`; logs spec metrics | The Build-loop Intent beat, before building any change; also runs standalone via `--repo` |
+| `/sdlc-sprint` | Sprint board — slate a count of specs by risk-tier mix, ready the sprint (DoR + Eng/Data verdicts), show build order and next-up, close with kept / carried / dropped | Writes `.sdlc/sprints/SNN.md`, the five optional spec sprint keys, `sprint-log.jsonl`, sprint pages; **never `state.yaml`** | Any phase where specs exist; daily `status`, `ready` at sprint planning, `close` on the last day; also standalone via `--repo` |
+| `/sdlc-refine` | Refinement agenda and per-spec refinement for the sprint's slate; records Eng/Data verdicts; routes upstream fixes without regressing a phase | Writes spec bodies via `/sdlc-spec`, `eng_review`/`data_review` keys, `DL-NN` decisions; **never `state.yaml`** | The Mon/Wed/Fri cross-functional review and the weekly Intent triage; also standalone via `--repo` |
 | `/sdlc-spike` | Open a bounded spike for a question nobody can answer yet | Writes `spikes/NNNN-name.md` | When a story fails the Definition of Ready because the ground truth is unknown, not because the spec is badly written |
 | `/sdlc-doctor` | Day-1 environment check — proves the installed harness can actually run here; pack-aware, checks `gh` on GitHub installs and `az` on Azure DevOps installs, never the other | No | After `/sdlc-setup`, when onboarding a second developer, and any time a gate behaves inexplicably |
 
@@ -237,6 +241,7 @@ None.
    - Phase is `active`: suggest `/sdlc` for guidance.
    - All gates would pass: suggest `/sdlc-next` to advance.
    - Artifacts are missing: list what is needed.
+6. **Sprint line (additive, 1.6.0):** read `sprint.py status --json` and print one line — `Sprint S07 (ends 2026-10-09): 6 slated · 4 ready · 1 verdict pending · 2 handoffs unacknowledged` — skipped silently when the view's `sprint` is `null` (no sprint exists). Read-only; it never changes the dashboard's phase table.
 
 ### Output Format
 
@@ -251,6 +256,7 @@ None. This command is purely informational.
 | Script | Purpose |
 |--------|---------|
 | `generate_status.py` | Reads `state.yaml` and produces the formatted dashboard |
+| `sprint.py status --json` | The active sprint's slate, readiness, verdicts and handoffs (one additive line; silent when no sprint exists) |
 
 ---
 
@@ -718,6 +724,165 @@ The Build loop's Intent beat — before building any change. A spec that `check_
 
 ---
 
+## /sdlc-sprint -- Sprint Board
+
+### What It Does
+
+Gives the spec backlog a two-week **commitment window** without a second backlog, a reordering, or a gate. A named human types a sprint id (`S07`), slates a *count* of specs (`target`) by a **mix of work** — risk tiers, the axis that sets checking depth — and the command shows the slate's readiness every day, **readies** the sprint once every slated spec clears the Definition of Ready and its independent Engineering and Data verdicts, and **closes** it with kept / carried / dropped, each carry or drop with a name and a reason. The command owns `scripts/sprint.py`; users never call the script by hand.
+
+The layer is additive and advisory. `sprint.py` exits 0 on every read; `ready` and `close` check only the slate (DoR + verdicts + dependency gaps), never G1–G7; nothing is ever written to `state.yaml`; `close` never suggests advancing (leaving Build stays a human, release-scoped declaration). Refinement runs in **any phase** where specs exist — neither this command nor `/sdlc-refine` reads `current_phase` to decide whether it may run.
+
+Different verbs belong to different points in the two-week rhythm:
+
+| Moment | Verbs | Who |
+|---|---|---|
+| Setting up the next sprint (current sprint's last week) | `new`, `slate`, `unslate` | Product proposes and confirms the slate; `/sdlc-refine --sprint` drives the slated specs to READY |
+| Sprint planning meeting (day 0) | `ready` → writes the **sprint-planning page**; `plan` re-renders it on demand | a named human readies it; the team walks the page |
+| Every day (the flow check) | `status` *(default)* | anyone |
+| Whenever work changes hands | `handoff`, `ack` | the recorder and the recipient |
+| Last day (sprint review, Retro+) | `close` → writes the **sprint-review page** | a named human confirms every carry / drop with a reason |
+
+### Arguments
+
+| Verb | Flags | Does |
+|---|---|---|
+| *(none)* / `status` | `[--sprint S07] [--wip-cap N] [--json]` | The slate (spec, name, risk, type, status, DoR, eng, data, next owner); unacknowledged handoffs and pending verdicts with business-day age; mix actual vs target; WIP vs cap; open/overdue `DL-NN` decisions; the advisory **build order** (dependencies first, then the spec that unblocks the most others, then HIGH → MEDIUM → LOW, then spec id) and **next up** (first spec in that order that is READY, `status: ready`, dependencies merged, under the WIP cap). Defaults to the active sprint — the highest-numbered sprint not yet closed, else the highest-numbered closed one, whose slate is replayed from the ledger and whose header shows `closed by` instead of days remaining |
+| `new` | `--sprint S07 --goal "…" --start YYYY-MM-DD [--end D \| --days 10] --target N [--mix "HIGH:1,MEDIUM:2,LOW:3"] [--board-ref "ADO Iteration 6"] --by NAME` | Creates `.sdlc/sprints/S07.md` in `planning`. `end` defaults to the last business day of a 10-business-day window that starts on `start` (start is day 1: Mon 2026-09-28 -> Fri 2026-10-09); mix counts must sum ≤ target; `board_ref` is a manual mapping nothing reads; `--by` is required like every write |
+| `slate` | `[--sprint S07]` | **Proposal only, writes nothing:** candidates are specs with `status: ready \| draft` and no sprint, filled into the remaining mix slots in spec-id order. Prints a copy-paste confirm line |
+| `slate` | `--sprint S07 --by NAME --spec ID [--spec ID …] [--override --reason R]` | Writes `sprint: "S07"` on each confirmed spec. Over target → exit 1 unless `--override --reason` (recorded); mix breach → warning; a `depends_on` pointing outside the slate at an unmerged spec → warning |
+| `unslate` | `[--sprint S07] --spec ID --by NAME --reason R` | Removes a spec from the slate (`sprint: ""`), reason recorded |
+| `handoff` / `ack` | `--spec ID --to NAME --by NAME [--note …]` / `--spec ID --by NAME` | Assign-and-acknowledge: sets / clears `next_owner`; `status` lists unacknowledged handoffs with age. `ack` by someone other than `next_owner` warns, never fails |
+| `verdict` | `--spec ID --lane eng\|data --verdict accepted\|returned\|pending\|n-a --by NAME [--reason R]` | Records the independent Engineering or Data verdict (`eng_review` / `data_review`). `n-a` is legal for `--lane data` only and only with `--reason`. Usually reached through `/sdlc-refine validate` |
+| `ready` | `[--sprint S07] --by NAME` | Requires every slated spec: `check_spec` READY, `status: ready`, `eng_review: accepted`, `data_review: accepted \| n-a`, and a dependency graph with no cycle and nothing pointing outside the slate at an unmerged spec; else exit 1 listing the gaps per spec. On success sets `state: ready`, `readied_by`, writes `.sdlc/reports/sprint-S07-planning.html` |
+| `plan` | `[--sprint S07] [--output PATH]` | Renders (or re-renders) the planning page on demand — before `ready` to run the meeting from a draft that still shows the gaps, or after a late change |
+| `close` | `[--sprint S07] --by NAME [--carry-to S08] [--carry SPEC=REASON …] [--drop SPEC=REASON …]` | kept = `status: merged`; every other slated spec must appear in exactly one `--carry` or `--drop` with a reason, else exit 1 naming the undecided. Carried specs move `sprint:` to `--carry-to`; dropped get `sprint: ""`. Writes `## Close`, sets `state: closed`, `closed_by`, renders `sprint-S07-review.html` |
+| all verbs | `--state <.sdlc/state.yaml> \| --repo <path>` | Workflow vs standalone (mutually exclusive). Standalone creates `.sdlc/sprints/` and the ledger under `<repo>/.sdlc/` and the page header notes the missing engagement context. Workflow mode is detected by `state.yaml` presence, never by a bare `.sdlc/` |
+| write verbs | `--field KEY=VALUE` (repeatable), `--today YYYY-MM-DD` | Extra ledger keys; date override for business-day maths. Activity-metric keys are refused (see errors) |
+
+### Internal Flow
+
+1. **Resolve mode and repo root** (workflow: `--state`, repo root = parent of `.sdlc/`; standalone: `--repo`).
+2. **`new`** — validate the id (`^S\d{2,}$`), dates, target and mix (HITL: goal, dates, target and mix confirmed), render `templates/phases/build/sprint.md` into `.sdlc/sprints/SNN.md`, append `sprint_new` to the ledger.
+3. **`slate`** — run the proposal (`sprint.py slate --sprint S07 [--json]`), present it, and stop at an `AskUserQuestion` gate: the human confirms or edits the set. Then run the confirm form with `--by <name> --spec …`. Each spec's frontmatter gains the five keys (`sprint`, `next_owner`, `eng_review`, `data_review`, `depends_on`) on first touch, inserted after `status:`; the body bytes and `check_spec`'s verdict are unchanged.
+4. **`status`** (daily) — read-only; pairs with `/sdlc-refine` (no args) for the refinement agenda.
+5. **`ready`** — run `sprint.py ready --by <name>`; on exit 1 show the gap list per spec and route each gap to `/sdlc-refine --spec` (DoR), `/sdlc-refine validate` (verdicts) or `/sdlc-spec --spec` (status flip). On success the planning page is written and linked from `.sdlc/reports/index.html` (an idempotent block between `<!-- sprints:start -->` and `<!-- sprints:end -->`).
+6. **`close`** — derive kept vs open; ask per open spec: carry (to `--carry-to`) or drop, each with a reason and the named human; run `sprint.py close …`; the review page is written.
+
+```bash
+# Propose, then confirm, a slate
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py slate --state .sdlc/state.yaml --sprint S07
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py slate --state .sdlc/state.yaml --sprint S07 --by "Pod Lead" --spec 0007 --spec 0009
+
+# The daily view (text, or the JSON /sdlc-status and /sdlc-refine read)
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py status --state .sdlc/state.yaml --json
+
+# Ready, then close
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py ready --state .sdlc/state.yaml --sprint S07 --by "Pod Lead"
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py close --state .sdlc/state.yaml --sprint S07 --by "Pod Lead" --carry-to S08 --carry "0009=blocked on DL-04"
+```
+
+### State Changes
+
+- Writes `.sdlc/sprints/SNN.md` (state, `readied_by`, `closed_by`, the rendered `## Slate` and `## Close` tables).
+- Writes **only** the five optional keys on spec files whose basename matches `^\d{4}-` (`specs/spec-template.md` is never listed or written). `status` is not one of them and stays hand-moved — `sprint_model.set_frontmatter` refuses to write it.
+- Appends to `.sdlc/metrics/sprint-log.jsonl` (events `sprint_new`, `slated`, `unslated`, `handoff`, `ack`, `verdict`, `ready`, `closed`, `carried`, `dropped`). Frontmatter is written first, then the ledger line; if the append fails the script prints `DRIFT` and exits 1 so the mismatch is never silent.
+- Writes `.sdlc/reports/sprint-SNN-planning.html` / `-review.html` and the sprints block in `index.html` (only if it already exists).
+- **Never** writes `state.yaml`, never advances a phase, never touches a board (ADO is updated by hand — `board_ref` is a label).
+
+### Python Scripts Called
+
+| Script | Purpose |
+|--------|---------|
+| `sprint.py` | Every verb; the I/O CLI over the pure `sprint_model.py` (mix, slate proposal, ready rule, build order, frontmatter writer rules) |
+| `generate_sprint_report.py` | Imported lazily by `ready`, `plan`, `close` to render the planning / review pages (reuses `generate_phase_report.md_to_html`) |
+| `check_spec.py` | Imported for `parse_frontmatter` and the per-spec DoR verdict (`check_spec_text`) — byte-for-byte unchanged |
+| `track_decisions.py` | Imported for the open / overdue `DL-NN` decisions shown in `status` and on the pages |
+| `track_specs.py --sprint SNN` | The slate's backlog view (`by_sprint`); the WIP cap is enforced globally by `--wip-cap` |
+
+### Error Scenarios
+
+| Situation | Behaviour |
+|---|---|
+| `status` / `slate` proposal on an unknown or malformed sprint id | prints "no data"; exit 0 (reads never fail) |
+| Bad sprint id, existing sprint, mix sum > target, `--end` before `--start` | exit 1 |
+| Unknown spec, spec already merged or in another sprint, closed sprint | exit 1 |
+| Slate over `target` without `--override --reason` | exit 1 (mix breach is a warning only) |
+| `ready` with gaps | exit 1 listing `<spec>: <gap>` per spec and the ready-when rule; nothing written |
+| `close` with an undecided open spec, or `--carry` without `--carry-to` | exit 1 naming the spec |
+| `verdict --verdict n-a` on `--lane eng`, or on `data` without `--reason` | exit 1 |
+| `--field` with an activity-metric key (`velocity`, `story_points`, `pr_count`, `loc`, `points`, `estimate`, `effort`, `hours`, `capacity`, …) | exit 2 — "Refused: '<key>' is an activity metric the standard never tracks (velocity, story points, PR count, lines of code). Steering is on outcomes." |
+| A frontmatter value containing `#`, quotes, a newline, or a placeholder token; a `--by`/`--to` that reads as an AI actor | exit 2 (the AI-actor check is labelling, not enforcement) |
+| Ledger append failed after frontmatter was written | `DRIFT: N file(s) were written but the ledger append failed`; exit 1 |
+| Page render failed at `ready`/`close` | `WARNING … Re-render with: sprint.py plan --sprint SNN`; the verb still exits 0 |
+
+### Metrics Policy
+
+Shown (this sprint only; "no data" when empty): slated / ready / not-ready counts, kept / carried / dropped with names and reasons, pending verdicts and unacknowledged handoffs with business-day age, mix actual vs target, WIP vs cap, carry-over recurrence per spec (in `/sdlc-retro`, the only cross-sprint number), overdue `DL-NN` decisions. Refused or never computed: velocity, story points, estimates, effort, hours, PR count, LOC, any per-person aggregation, "% complete" as a sprint number, fabricated zeros. See `references/sprint-model.md`.
+
+---
+
+## /sdlc-refine -- Refinement Agenda
+
+### What It Does
+
+Refines **the sprint's specs** — the Mon/Wed/Fri cross-functional review and the weekly Intent triage, made executable. With no arguments it renders the **agenda**: which slated specs are NOT READY and why, vague-line hits, which Engineering/Data verdicts are pending and for how many business days, unacknowledged handoffs, and which `DL-NN` decisions are overdue on their 2-business-day clock. Pointed at one spec it runs the DoR, proposes fixes to vague lines, surfaces silent decisions, proposes the risk tier and `depends_on`, and hands the edit to `/sdlc-spec --spec`. It records the independent Engineering and Data **verdicts** that `/sdlc-sprint ready` requires, and it routes a gap that lives in a Phase 1 or 2 artifact through the existing no-regression path so the engagement never "goes backwards".
+
+It never approves anything itself, never assigns a tier, never answers a decision, and never edits `check_spec.py`.
+
+### Arguments
+
+| Form | Does | HITL |
+|---|---|---|
+| *(no args)* | The agenda for the current sprint, composed read-only from `sprint.py status --json` and `track_decisions.py --json`; "next review: Wed" when the cadence plan states the review days | none |
+| `--spec <id \| path>` | Refine one spec: `check_spec.py` (+ `check_channel.py` when a channel is bound), propose fixes to vague lines, surface silent decisions to the spec's Decision List or to `.sdlc/decision-log.md` as `DL-NN` (owner + 2-day clock), propose the risk tier, propose `depends_on` when the spec's Scope or Delegation Plan names files, contracts or ids another slated spec introduces, then hand the edit to `/sdlc-spec --spec` | tier confirmed; dependencies confirmed; decisions owned by a named human; `status: ready` flipped only after READY and a human's yes |
+| `--sprint S07` | **Batch mode:** load the Phase 0–2 context once (constitution, frozen layers, `requirements.md`, `epics.md`, `business-rules.md`, `design-doc.md`, `adr-registry.md`, `api-contracts.md`, `data/data-contract.md`, `risk-tier-map.md`) and check every slated spec against it — mechanically (DoR, `source:` ids resolve, cited upstream artifacts not stale via `audit_artifacts.py report --json` (a `source` artifact in the stale list is a gap), tier vs `risk-tier-map.md`, channel dimensions) and by judgment (the `multi-reviewer` lenses fanned out across specs). One agenda, then fixes one spec at a time | as above, per spec |
+| `validate --spec N --lane eng\|data --verdict accepted\|returned\|n-a --by <name> [--reason]` | Records the independent verdict (`sprint.py verdict`). `returned` sends the spec back to refinement with the reason; `n-a` is allowed only from Data and only with a reason | the named lead |
+| `--upstream --spec N` | The no-regression path: pick the upstream artifact (`FR-…`, `BR-…`, `ADR-…`) → `/sdlc-revise <id>` → `check_gates.py --phase N` re-gates that phase → the spec re-enters refinement with its `DL-NN` link. `current_phase` never moves | which artifact; confirm the re-gate |
+| `--repo <path>` | Standalone, same degradation as `/sdlc-sprint` (no `.sdlc/` needed; missing engagement context noted) | — |
+
+### Internal Flow
+
+1. **Resolve mode and the sprint** (active sprint by default; `--sprint` to name one).
+2. **Agenda** — read `sprint.py status --json` (readiness gaps, `verdicts_pending`, `handoffs_open`, `dependency_gaps`, `decisions`) and render the agenda; nothing is written.
+3. **Per spec** — run the DoR, walk each finding with the human, write through `/sdlc-spec --spec`, re-run until READY; then ask for the `status: ready` flip.
+4. **Verdicts** — `validate` records `eng_review` / `data_review` by name; both lanes may run in parallel, before anyone builds.
+5. **Upstream** — when the gap is upstream, stop and route via `/sdlc-revise` + `check_gates.py --phase N` instead of editing the spec around it.
+
+```bash
+# The agenda's two read-only sources
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py status --state .sdlc/state.yaml --json
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/track_decisions.py --state .sdlc/state.yaml --json
+
+# Record a verdict
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py verdict --state .sdlc/state.yaml --spec 0007 --lane data --verdict n-a --by "Data Lead" --reason "no data impact — UI copy only"
+```
+
+### State Changes
+
+Writes spec bodies only through `/sdlc-spec --spec`; writes `eng_review` / `data_review` (and the `verdict` ledger line) through `sprint.py`; appends `DL-NN` items to `.sdlc/decision-log.md`. The `--upstream` path writes through `/sdlc-revise` and re-gates with `check_gates.py --phase N` (which records that phase's `gate_results`), but never moves `current_phase`. Never writes `state.yaml` itself.
+
+### Python Scripts Called
+
+| Script | Purpose |
+|--------|---------|
+| `sprint.py status --json` / `sprint.py verdict` | The agenda's sprint view; the verdict writer |
+| `track_decisions.py --json` | Open / overdue `DL-NN` decisions |
+| `check_spec.py` (+ `check_channel.py`) | The DoR verdict and vague-line lint per spec (advisory channel lint when bound) |
+| `audit_artifacts.py report --json` | Staleness of the upstream artifacts a spec cites (batch mode: a spec whose `source` artifact is in the stale list is flagged and routed to `--upstream`) |
+| `check_gates.py --phase N` | Re-gate the phase an upstream fix touched (`--upstream` path only) |
+
+### Error Scenarios
+
+| Situation | Behaviour |
+|---|---|
+| No sprint exists | the agenda says so ("no data") and offers `/sdlc-sprint new`; exit 0 |
+| Spec not found | exit 1 from `check_spec.py` / `sprint.py`; the command names the path tried |
+| `validate --verdict n-a` on the `eng` lane, or without `--reason` | refused (exit 1) — Data may be not-applicable, Engineering may not |
+| `--by` reads as an AI actor | refused (exit 2) — verdicts carry a human's name |
+| Upstream re-gate fails | the phase's gate report lists the failures; `current_phase` is unchanged and the spec stays in refinement |
+
+---
+
 ## Additional Commands (summaries)
 
 Fifteen commands have their full flow documented in their command files rather than here. One
@@ -739,7 +904,7 @@ line each; see `commands/<name>.md` for the complete instructions.
 | `/sdlc-audit-artifacts` | Read-only sibling to `/sdlc-audit`: artifact freshness dashboard, forward `--impact`, and `--history` change trail (advisory; never blocks) |
 | `/sdlc-version` | Content history for any pre-Build artifact — list/show/diff versions derived from the change-ledger's hashes; rollback is preview → named-human confirm, append-only ("restored from vX"), `--ack-signoff` for signed-off artifacts; `gc` prunes the local store safely |
 | `/sdlc-refresh` | Reverse propagation — back-propagate a merged spec's shipped reality into pre-Build artifacts: detect (review-first, divergence-aware) → draft a `.proposed` → named-human apply/reject → status. The One Rule throughout: agent proposes, human decides |
-| `/sdlc-retro` | Read-only cross-ledger retro roll-up: recurring findings (permanent-check candidates), repeat-stale artifacts, the refresh funnel (divergence-heuristic tuning signal), and a disposition-debt rollup. Patterns, not people; never blocks |
+| `/sdlc-retro` | Read-only cross-ledger retro roll-up: recurring findings (permanent-check candidates), repeat-stale artifacts, the refresh funnel (divergence-heuristic tuning signal), a disposition-debt rollup, and — when `sprint-log.jsonl` exists — carry-over recurrence per spec (≥2 sprints; the only cross-sprint number) and bounce causes by lane and reason. Patterns, not people; never blocks |
 
 ---
 
@@ -819,6 +984,9 @@ Scripts write structured output to stdout, which the calling command parses and 
 | `generate_phase_report.py` | `/sdlc-gate`, `/sdlc-next`, `/sdlc-phase-report` | Renders HTML reports |
 | `advance_phase.py` | `/sdlc-next` | Updates `state.yaml` with phase transition |
 | `audit_gates.py` | `/sdlc-audit` | Analyzes gate effectiveness across phases |
+| `sprint.py` | `/sdlc-sprint`, `/sdlc-refine`, `/sdlc-status` (read) | Sprint records, slate, verdicts, ready / close; the sprint ledger |
+| `generate_sprint_report.py` | `/sdlc-sprint` (`ready`, `plan`, `close`) | Renders the sprint-planning and sprint-review HTML pages |
+| `track_decisions.py` | `/sdlc-status`, `/sdlc-refine` | Open / overdue `DL-NN` decisions on their 2-business-day clock |
 
 ---
 
@@ -829,3 +997,4 @@ Scripts write structured output to stdout, which the calling command parses and 
 - **Phase lifecycle:** See [phase-lifecycle.md](phase-lifecycle.md) for phase definitions, artifact requirements, and entry/exit criteria.
 - **Script internals:** See [scripts.md](scripts.md) for Python script implementation details, dependencies, and extension points.
 - **Validation rules:** See [references/validation-rules.md](../references/validation-rules.md) for gate override protocol and validation rule definitions.
+- **Sprint layer:** See [references/sprint-model.md](../references/sprint-model.md) for the sprint lifecycle, the slate and the mix, the ready rule, the build-order heuristic, the five spec keys, the ledger, and the metrics policy behind `/sdlc-sprint` and `/sdlc-refine`.

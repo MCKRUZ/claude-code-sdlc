@@ -40,6 +40,7 @@ No existing tool combines specification-driven development + quality enforcement
 - **Phase-scoped evaluation criteria** — Quality rubrics that apply to non-code artifacts (requirements, design, foundation) in addition to code
 - **Empirical metrics logging** — JSONL instrumentation in gates, frozen layer validation, and section evaluation for evidence-based harness optimization
 - **Discipline seats** — Conditional, interview-driven drafting seats that stop at a human confirmation: `/sdlc-feature` (epic → channel-aware feature brief, one channel per spec), `/sdlc-rules` (business rules as a BR-NN decision table with a named approver, plus golden scenarios), `/sdlc-data` (PII-classified data contract that drives the risk tier, readiness, lineage), `/sdlc-experience` (journey, surface layout, per-channel interaction contract), `/sdlc-channel` (binds a spec to its channel and injects the acceptance dimensions). Sign-offs recorded at the phase advance.
+- **Sprint team layer** — Additive, advisory sprints over the spec backlog: `/sdlc-sprint` slates a *count* of specs by risk-tier mix into a two-week commitment window (`.sdlc/sprints/SNN.md`), readies the sprint only when every slated spec clears the Definition of Ready **and** its independent Engineering and Data verdicts, shows the advisory build order and next-up, and closes with kept / carried / dropped — each carry or drop with a named human and a reason. `/sdlc-refine` renders the refinement agenda (NOT READY specs and why, verdicts pending with business-day age, unacknowledged handoffs, overdue `DL-NN` decisions) and refines one spec or the whole slate. Self-contained planning and review pages (`sprint-SNN-planning.html` / `-review.html`), an `[SDLC-SPRINT]` session-start line, carry-over recurrence in `/sdlc-retro`. Never a gate, never gated, never writes `state.yaml`; velocity, story points, estimates, effort and hours are refused (exit 2); no per-person aggregation exists.
 - **Document intake** — Opt-in Phase 0 corpus analysis for external reference materials (RFPs, API specs, vendor docs, compliance handbooks) with per-document summaries, DOC-NNN traceability IDs, token-budgeted session-start index (Tier 1.5), and Phase 1 requirement-to-source linking
 
 ## Installation
@@ -110,13 +111,13 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 9 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
 | [Gate System](docs/gate-system.md) | 7-gate validation — integrity, completeness, metrics, compliance, consistency, quality, exit criteria — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 23 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Commands](docs/commands.md) | All 30 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
 | [Agents](docs/agents.md) | 13 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
-| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, the spec backlog |
+| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, the spec backlog, sprint records (`.sdlc/sprints/`) |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
 | [Scripts](docs/scripts.md) | All Python scripts (incl. `phase_model.py`, the phase-identity source of truth) — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
 | [Integrations](docs/integrations.md) | How /deep-plan, /deep-implement, /tdd, /code-review map into SDLC phases, artifact transformation pipeline |
-| [Hooks](docs/hooks.md) | Session-start and phase-inject hooks — what they read, what they inject, session continuity, convention reminders |
+| [Hooks](docs/hooks.md) | Session-start and phase-inject hooks — what they read, what they inject, the active-sprint line, convention reminders |
 
 ## Commands
 
@@ -132,6 +133,8 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-intake` | Catalog and summarize an external document corpus (Phase 0, opt-in) |
 | `/sdlc-brief` | Prep a stakeholder workshop brief from the document corpus |
 | `/sdlc-spec` | Author a ready Build-loop spec (`specs/NNNN-name.md`) and enforce the Definition of Ready |
+| `/sdlc-sprint` | Sprint board — slate N specs by risk-tier mix, ready the sprint (DoR + Eng/Data verdicts), close with kept / carried / dropped; advisory, never a gate |
+| `/sdlc-refine` | Refinement agenda for the sprint's specs — DoR gaps, pending verdicts, overdue decisions; refine one spec or the slate; record Eng/Data verdicts |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases |
@@ -252,7 +255,7 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # 23 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals, /sdlc-harness, /sdlc-upgrade, /sdlc-revise, /sdlc-audit-artifacts)
+├── commands/                # 30 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-spike, /sdlc-sprint, /sdlc-refine, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals, /sdlc-harness, /sdlc-upgrade, /sdlc-doctor, /sdlc-revise, /sdlc-audit-artifacts, /sdlc-version, /sdlc-refresh, /sdlc-retro)
 ├── agents/                  # 13 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst, feature-architect, visual-designer, conversation-designer, data-analyst, bizreq-analyst)
 ├── profiles/                # Company/stack YAML profiles
 ├── channels/                # Channel descriptor library (ag-ui, voice, chat) + schema

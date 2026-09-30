@@ -72,7 +72,7 @@
 <div class="sheet">
 
 <header class="hero">
-  <div class="kicker">claude-code-sdlc · proposal · 1.6.0</div>
+  <div class="kicker">claude-code-sdlc · proposal · 1.6.0 · reconciled to what shipped (2026-09-30)</div>
   <h1>Sprint Team Layer — what it looks like</h1>
   <div class="one">Two new commands. <b>/sdlc-sprint</b> slates a set number of specs into a two-week sprint by a mix of work and readies it. <b>/sdlc-refine</b> refines that sprint's specs. Nothing about the phases or the gates changes.</div>
   <div class="why">A sprint is a commitment window laid over the spec backlog — never a second backlog, never a gate, never a velocity chart. ADO stays manual.</div>
@@ -124,25 +124,29 @@
 <span class="dim">planning · 2026-09-28 → 2026-10-09 · target 6 · mix HIGH:1 MEDIUM:2 LOW:3</span>
 
 <span class="h">Slate</span>
-spec  name                      risk    status  DoR        eng       data      next owner
-0007  warranty-lookup-intent    HIGH    ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">accepted</span>  —
-0009  case-write-guardrail      MEDIUM  ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="warn">pending</span>   Data lead
-0011  entitlement-cache         MEDIUM  draft   <span class="bad">NOT READY</span>  <span class="dim">pending</span>   <span class="dim">pending</span>   spec owner
-0012  agent-copy-polish         LOW     ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">n-a</span>       —
-0013  pricing-console-tooltips  LOW     ready   <span class="ok">READY</span>      <span class="warn">pending</span>   <span class="ok">n-a</span>       Eng lead
-0014  audit-record-fields       LOW     ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">accepted</span>  —
+spec  name                      risk    type     status  DoR        eng       data      next owner
+0007  warranty-lookup-intent    HIGH    feature  ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">accepted</span>  —
+0009  case-write-guardrail      MEDIUM  feature  ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="warn">pending</span>   Data lead
+0011  entitlement-cache         MEDIUM  feature  draft   <span class="bad">NOT READY</span>  <span class="dim">—</span>         <span class="dim">—</span>         spec owner
+0012  agent-copy-polish         LOW     bugfix   ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">n-a</span>       —
+0013  pricing-console-tooltips  LOW     feature  ready   <span class="ok">READY</span>      <span class="warn">pending</span>   <span class="ok">n-a</span>       Eng lead
+0014  audit-record-fields       LOW     feature  ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">accepted</span>  —
 
-<span class="h">Readiness</span>   4 of 6 ready · 1 NOT READY (0011: scope-out empty, 2 vague lines)
+<span class="h">Readiness</span>   2 of 6 ready · 4 with gaps
+  0009: data_review is pending, needs accepted or n-a
+  0011: DoR: NOT READY (Scope &gt; Out of scope is empty); status is draft, not ready; eng_review is not recorded, needs accepted; data_review is not recorded, needs accepted or n-a
+  0013: eng_review is pending, needs accepted
+  0012: … (one line per spec with a gap)
 <span class="h">Verdicts</span>    2 pending — 0009 data (2 business days), 0013 eng (1 business day)
 <span class="h">Handoffs</span>    1 unacknowledged — 0011 → spec owner (3 business days)
 <span class="h">Mix</span>         HIGH 1/1 · MEDIUM 2/2 · LOW 3/3
-<span class="h">WIP</span>         1 in-flight · cap 2 (cadence-plan.md)
-<span class="h">Decisions</span>   DL-04 overdue (owner: Product lead, due 2026-09-25)
+<span class="h">WIP</span>         1 in-flight · cap 2
+<span class="h">Decisions</span>   3 open · overdue: DL-04 (owner: Product lead, due 2026-09-25)
 
-<span class="h">Build order</span> 0007 → 0009 → 0011 → 0014 → 0012 → 0013   <span class="dim">(deps, then unblocks-most, then HIGH→LOW)</span>
-<span class="h">Next up</span>     <span class="ok">0007</span> — READY, no open dependencies, WIP 1 of 2
+<span class="h">Build order</span> 0007 → 0009 → 0011 → 0014 → 0012 → 0013  <span class="dim">(deps, then unblocks-most, then HIGH→LOW, then id)</span>
+<span class="h">Next up</span>     <span class="ok">0007</span> — READY, dependencies merged, WIP 1 of 2
 
-<span class="dim">ready when: every slated spec READY + eng accepted + data accepted|n-a</span></div>
+<span class="dim">ready when: every slated spec READY + status ready + eng accepted + data accepted|n-a</span></div>
 
   <div>
     <div class="card" style="margin-bottom:12px">
@@ -152,25 +156,27 @@ spec  name                      risk    status  DoR        eng       data      n
 sprint: "S07"
 goal: "Warranty lookup answers in one turn"
 start: "2026-09-28"
-end: "2026-10-09"          # start + 10 business days
+end: "2026-10-09"          # last business day of a 10-business-day window (start is day 1)
 state: planning           # planning | ready | closed
-target: 6
+target: 6                 # a count, never a size
 mix: "HIGH:1,MEDIUM:2,LOW:3"
+board_ref: "ADO Iteration 6"   # manual mapping only; nothing reads it
 readied_by: ""
 closed_by: ""
+created: "2026-09-24"
 ---
 ## Goal
-## Slate        ← rendered from the specs, never hand-edited
-## Close        ← kept / carried → S08 / dropped, with reasons</pre>
+## Slate        ← written by slate/unslate/ready/close from the specs, never hand-edited
+## Close        ← kept / carried → S08 / dropped, with reasons (written at close)</pre>
     </div>
     <div class="card">
       <span class="tag t-eng">on each spec — five optional keys</span>
       <h3><span class="mono">specs/0009-case-write-guardrail.md</span></h3>
 <pre class="mono" style="margin:6px 0 0; font-size:12px; line-height:1.5">status: ready            # unchanged — still the four values
-sprint: "S07"            # set by slate, moved by carry
+sprint: "S07"            # set by slate, moved by carry, cleared by drop
 next_owner: "Data lead"  # handoff → ack clears it
-eng_review: accepted     # pending | accepted | returned | n-a
-data_review: pending     # n-a only from Data, with a reason
+eng_review: "accepted"   # pending | accepted | returned | n-a
+data_review: "pending"   # n-a only from Data, with a reason
 depends_on: "0007"       # comma list; refine proposes, a human confirms</pre>
       <p style="margin-top:8px; color:var(--muted)">Inserted on first use. <code>check_spec.py</code>, the DoR, and the spec template's protected keys are untouched.</p>
     </div>
@@ -206,7 +212,7 @@ depends_on: "0007"       # comma list; refine proposes, a human confirms</pre>
 
 <div class="band">Refining one spec</div>
 <div class="flow">
-  <div class="step"><span class="n">a</span><h3>DoR + upstream check</h3><div>Required sections, scope in <i>and</i> out, tier, no placeholders — and does <code>source:</code> resolve to a real FR/EP/BR, is that artifact stale, does the tier match the risk map? In <code>--sprint</code> mode this runs across every slated spec at once against the Phase 0–2 artifacts.</div><span class="cmd mono">check_spec.py · artifact_lineage · audit_artifacts impact</span></div>
+  <div class="step"><span class="n">a</span><h3>DoR + upstream check</h3><div>Required sections, scope in <i>and</i> out, tier, no placeholders — and does <code>source:</code> resolve to a real FR/EP/BR, is that artifact stale, does the tier match the risk map? In <code>--sprint</code> mode this runs across every slated spec at once against the Phase 0–2 artifacts.</div><span class="cmd mono">check_spec.py · artifact_lineage · audit_artifacts report --json</span></div>
   <div class="arrow">→</div>
   <div class="step"><span class="n">b</span><h3>Vague lines</h3><div>"Could two people build different things from this line?" Rewrite until they couldn't.</div><span class="cmd mono">/sdlc-refine --spec 0011</span></div>
   <div class="arrow">→</div>
@@ -248,7 +254,7 @@ depends_on: "0007"       # comma list; refine proposes, a human confirms</pre>
   </table>
   <table>
     <tr><th>Refused</th></tr>
-    <tr><td>velocity · story points · estimates · effort · hours</td></tr>
+    <tr><td>velocity · story points · estimates · effort · hours · capacity</td></tr>
     <tr><td>PR count · commit count · lines of code</td></tr>
     <tr><td>anything per person</td></tr>
     <tr><td>trends of kept-per-sprint ("velocity with the points removed")</td></tr>
@@ -261,26 +267,28 @@ depends_on: "0007"       # comma list; refine proposes, a human confirms</pre>
   <tr><th>Thing</th><th>Path</th><th>Owner of truth</th></tr>
   <tr><td>Sprint record</td><td class="mono">.sdlc/sprints/S07.md</td><td>goal, dates, target, mix, state — the slate itself is rendered from the specs</td></tr>
   <tr><td>Sprint membership, next owner, verdicts</td><td class="mono">specs/NNNN-name.md frontmatter</td><td>the spec file (the plugin's existing rule: derive from the spec, never a second tracker)</td></tr>
-  <tr><td>Who did what, when</td><td class="mono">.sdlc/metrics/sprint-log.jsonl</td><td>append-only ledger: slated, handoff, ack, verdict, ready, carried, dropped, closed</td></tr>
+  <tr><td>Who did what, when</td><td class="mono">.sdlc/metrics/sprint-log.jsonl</td><td>append-only ledger: sprint_new, slated, unslated, handoff, ack, verdict, ready, carried, dropped, closed</td></tr>
   <tr><td>Open product decisions</td><td class="mono">.sdlc/decision-log.md</td><td>existing — owner + 2-business-day clock</td></tr>
   <tr><td>Cadence, WIP cap, sprint length</td><td class="mono">.sdlc/artifacts/03-foundation/cadence-plan.md</td><td>existing Phase-3 artifact, gains three rows</td></tr>
   <tr><td>Logic</td><td class="mono">scripts/sprint_model.py (pure) · scripts/sprint.py (CLI)</td><td>new; <code>track_specs.py</code> gains <code>by_sprint</code></td></tr>
 </table>
 
-<div class="band">Decisions for you</div>
+<div class="band">Decisions (taken 2026-09-30 — every recommended default was adopted)</div>
 <table>
-  <tr><th>#</th><th>Decision</th><th>Recommended</th><th>Alternative</th></tr>
+  <tr><th>#</th><th>Decision</th><th>Recommended (adopted)</th><th>Alternative</th></tr>
   <tr><td>D1</td><td>Mix axis</td><td>Risk tier — it sets checking depth</td><td>by type (feature/bugfix) or channel</td></tr>
-  <tr><td>D2</td><td>Sprint length and id</td><td>10 business days; id typed at <code>new</code></td><td>14 calendar days; auto-numbered</td></tr>
-  <tr><td>D3</td><td>"Ready" rule</td><td>DoR READY <b>and</b> Eng accepted <b>and</b> Data accepted-or-n-a</td><td>DoR only</td></tr>
+  <tr><td>D2</td><td>Sprint length and id</td><td>10 business days, counted inclusively (a Monday start ends the second Friday); id typed at <code>new</code></td><td>14 calendar days; auto-numbered</td></tr>
+  <tr><td>D3</td><td>"Ready" rule</td><td>DoR READY <b>and</b> <code>status: ready</code> <b>and</b> Eng accepted <b>and</b> Data accepted-or-n-a, plus no dependency cycle and no dependency outside the slate at an unmerged spec</td><td>DoR only</td></tr>
   <tr><td>D4</td><td>Data verdict</td><td>required until Data records n-a with a reason</td><td>optional</td></tr>
   <tr><td>D5</td><td>Slate over target</td><td>refused unless <code>--override --reason</code>; mix breach warns</td><td>both warn</td></tr>
   <tr><td>D6</td><td>Fix the retro velocity row and the "no sprint plan" sentence</td><td>now, in Increment 1</td><td>later</td></tr>
+  <tr><td>D7</td><td>Build-order heuristic shown by <code>status</code></td><td>dependencies first (topological), then the spec that unblocks the most others, then HIGH → MEDIUM → LOW, then backlog order; advisory, never enforced</td><td>backlog order only</td></tr>
+  <tr><td>D8</td><td>Sprint pages</td><td>planning page written at <code>ready</code> (and on demand via <code>plan</code>); review page written at <code>close</code> with the same renderer, from the slate as it stood before the close rewrote it</td><td>planning page only</td></tr>
 </table>
 
 <div class="note" style="margin-top:14px"><b>Untouched, byte-for-byte:</b> <code>check_spec.py</code> · <code>check_gates.py</code> · <code>advance_phase.py</code> · <code>phase_model.py</code> · <code>phase-registry.yaml</code> · <code>section-evaluator</code> · <code>harness/**</code> · <code>/sdlc-coach</code> · <code>/sdlc-spec</code>. Ships as 1.6.0 in two increments: the sprint, then refine + the five extras. Full detail: <span class="mono">sprint-team-layer.md</span>; the long analysis: <span class="mono">sprint-team-layer-extended-draft.md</span>.</div>
 
-<footer>Draft for review, 2026-09-24. Names shown are roles; product areas and people are placeholders in every shipped template.</footer>
+<footer>Drafted 2026-09-24; reconciled to the shipped 1.6.0 behaviour 2026-09-30. Names shown are roles; product areas and people are placeholders in every shipped template.</footer>
 </div>
 </body>
 </html>

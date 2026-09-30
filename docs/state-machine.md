@@ -14,7 +14,7 @@ Comprehensive reference for the SDLC plugin's state management system. All proje
 6. [Transition Flow (advance_phase.py)](#6-transition-flow-advance_phasepy)
 7. [Gate System Integration](#7-gate-system-integration)
 8. [History Tracking](#8-history-tracking)
-9. [session-handoff.json (Build Loop Continuity)](#9-session-handoffjson-build-loop-continuity)
+9. [session-handoff.json (Build Loop Continuity — retired from the hook)](#9-session-handoffjson-build-loop-continuity)
 10. [Spec Backlog (Build Loop Tracking)](#10-spec-backlog-build-loop-tracking)
 11. [State Diagram](#11-state-diagram)
 12. [Cross-References](#12-cross-references)
@@ -43,7 +43,9 @@ The SDLC plugin uses a file-based state machine to track a project's progress th
     01-requirements/   # Phase 1 artifacts
     02-design/         # Phase 2 artifacts
     03-foundation/     # Phase 3 artifacts
-    build/             # Build loop artifacts (includes session-handoff.json, build-summary.md)
+    build/             # Build loop artifacts (build-summary.md, phase7-handoff.md)
+  sprints/             # Sprint records SNN.md (optional; written by sprint.py, never by hand)
+  metrics/             # Append-only JSONL ledgers (gate-log, spec-log, loop-events, sprint-log, ...)
     07-documentation/  # Phase 7 artifacts
     08-deployment/     # Phase 8 artifacts
     09-monitoring/     # Phase 9 artifacts
@@ -388,7 +390,7 @@ The audit report is used for process improvement and is typically run after seve
 
 Located at: `.sdlc/artifacts/build/session-handoff.json`
 
-The Build loop often spans multiple Claude Code sessions. The session handoff file provides cross-session continuity so that each new session can pick up where the last one left off.
+The Build loop often spans multiple Claude Code sessions. The spec is the durable source of truth across them (see section 10); an engagement *may* additionally keep this machine-readable handoff file for its own notes. **Nothing in the plugin reads it any more** — the session-start hook's Build-loop summary of it was retired in 1.6.0 (it was a section-plan progress model competing with the spec backlog). The retired `current_sprint` field is gone: the active sprint lives in `.sdlc/sprints/SNN.md` (section 10) and the hook prints it as `[SDLC-SPRINT]`.
 
 ### Complete Schema
 
@@ -399,7 +401,6 @@ The Build loop often spans multiple Claude Code sessions. The session handoff fi
   "last_updated": "2026-03-26T15:00:00Z",
   "session_number": 3,
   "overall_status": "in_progress",
-  "current_sprint": 2,
   "sections": [
     {
       "id": "SECTION-001",
@@ -463,7 +464,6 @@ The Build loop often spans multiple Claude Code sessions. The session handoff fi
 | `last_updated` | string/null | ISO 8601 timestamp of last update |
 | `session_number` | int | Incremented each session |
 | `overall_status` | string | "in_progress", "blocked", or "complete" |
-| `current_sprint` | int | Active sprint number from the sprint plan |
 | `sections[]` | array | Per-section tracking with status, agent, timestamps |
 | `completed_this_session` | array | Section IDs finished in the current/last session |
 | `in_progress` | array | Section IDs actively being worked |
@@ -476,16 +476,13 @@ The Build loop often spans multiple Claude Code sessions. The session handoff fi
 
 ### Hook Integration
 
-The `sdlc-session-start.ps1` hook reads this file at the start of every Claude Code session. When the Build loop is active, the hook:
+Neither session-start hook twin (`sdlc-session-start.sh` / `.ps1`) reads this file. Since 1.6.0 the Build-loop continuity line comes from the sprint layer instead: for every record under `.sdlc/sprints/*.md` whose `state:` is not `closed`, the hook prints
 
-1. Parses `session-handoff.json` from `.sdlc/artifacts/build/`
-2. Counts completed, in-progress, and blocked sections
-3. Outputs a summary line: `[SDLC] Session Handoff: 3/8 sections complete, 1 in progress, 0 blocked (session #3)`
-4. Displays `context_for_next_session` if present
-5. Shows the first `next_actions` entry as the recommended starting point
-6. Warns if there are unresolved blockers
+```
+[SDLC-SPRINT] S07 (ready) — "Ship the duplicate-claim rail" — 2026-09-28 → 2026-10-09
+```
 
-This gives the agent immediate context without needing to read the full handoff file.
+read with grep/sed only (no Python, no JSON, no date arithmetic), silent when the directory is absent. See [hooks.md](hooks.md).
 
 ---
 
@@ -524,6 +521,36 @@ risk: HIGH            # HIGH / MEDIUM / LOW
 3. Can flag a WIP-cap breach with `--wip-cap N` (exits non-zero) when more specs are in-flight than the cap allows.
 
 It runs standalone (`--repo <path>`) or in-workflow (`--state .sdlc/state.yaml`, where the repo root is the directory containing `.sdlc/`). In the Build loop, `check_gates.py` prints this summary as **INFO** -- it reads progress from reality and does not block.
+
+### Sprint Layer (Optional Commitment Windows)
+
+A sprint is a *commitment window over the backlog order* -- never a second backlog, a reordering, or a gate. The layer is additive and advisory; it never writes `state.yaml` and never checks G1-G7.
+
+**Sprint record -- `.sdlc/sprints/SNN.md`** (from `templates/phases/build/sprint.md`; id human-typed, `^S\d{2,}$`):
+
+| Field | Values | Note |
+|-------|--------|------|
+| `sprint` | `"S07"` | typed at `sprint.py new`, one record per id |
+| `goal` | one outcome-shaped sentence | |
+| `start`, `end` | ISO dates | `end` defaults to the last business day of a 10-business-day window that starts on `start` (start is day 1: Mon 2026-09-28 -> Fri 2026-10-09) |
+| `state` | `planning` -> `ready` -> `closed` | human-triggered, forward only |
+| `target` | integer | how many specs to slate -- a count, never a size |
+| `mix` | `"HIGH:1,MEDIUM:2,LOW:3"` | by risk tier; counts sum <= `target`; a breach warns, never blocks |
+| `board_ref` | free text | manual board mapping only (e.g. "ADO Iteration 6"); nothing reads it |
+| `readied_by`, `closed_by` | named humans | |
+| `## Slate` / `## Close` | rendered tables | written by `sprint.py`, never hand-edited |
+
+**Spec frontmatter -- five optional keys**, inserted after `status:` by `sprint.py` on first write (values `""`, enumerations, names and spec ids only; `status` is *not* one of them and stays hand-moved):
+
+| Key | Values | Written by | Read by |
+|-----|--------|------------|---------|
+| `sprint` | `""` or `SNN` | `slate`, `unslate`, `close --carry-to` | `track_specs --sprint` / `by_sprint`, `sprint.py` (the hook reads `.sdlc/sprints/SNN.md`, not this key) |
+| `next_owner` | a name | `handoff`; cleared by `ack` | `status`, the `/sdlc-refine` agenda |
+| `eng_review` | `pending \| accepted \| returned \| n-a` | `verdict --lane eng` | the ready rule |
+| `data_review` | `pending \| accepted \| returned \| n-a` | `verdict --lane data` (`n-a` needs `--reason`) | the ready rule |
+| `depends_on` | `""` or comma-separated spec ids | `/sdlc-refine` proposes, a human confirms | build order, next-up, `slate` warning, ready gap |
+
+**Ledger -- `.sdlc/metrics/sprint-log.jsonl`** (append-only; events `sprint_new`, `slated`, `unslated`, `handoff`, `ack`, `verdict`, `ready`, `closed`, `carried`, `dropped`; `ts` is full ISO UTC). Writers write frontmatter first, then the ledger line; if the append fails the script prints `DRIFT` and exits 1. A spec without the keys behaves exactly as before; a spec with `sprint: ""` and `status: merged` is bucketed `pre-sprint` by `track_specs.py`. See `references/sprint-model.md`.
 
 ---
 
@@ -631,5 +658,7 @@ The Build Loop has no batch exit gate -- checking happens per-change inside the 
 | Phase registry | `phases/phase-registry.yaml` | Phase definitions, gates, artifacts, skills |
 | /sdlc-next command | `commands/sdlc-next.md` | User-facing command that invokes advance_phase.py |
 | /sdlc-gate command | `commands/sdlc-gate.md` | User-facing command that runs gate checks |
-| Session hook | `hooks/sdlc-session-start.ps1` | Reads state + handoff at session start |
+| Session hook | `hooks/sdlc-session-start.ps1` (+ `.sh` twin) | Reads state, frozen layers, and active sprint records at session start |
+| Sprint CLI | `scripts/sprint.py` | Sprint records, spec sprint keys, and the sprint ledger (never writes `state.yaml`) |
+| Sprint template | `templates/phases/build/sprint.md` | Shape of `.sdlc/sprints/SNN.md` |
 | State machine ref | `references/state-machine.md` | Concise reference (progressive disclosure) |

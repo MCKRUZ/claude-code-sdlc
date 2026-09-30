@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.6.0 — 2026-09-30
+
+The Build loop had a backlog, a Definition of Ready, and a WIP cap — and no way for a team to
+commit to a set of specs for two weeks without reaching for a board and the velocity chart that
+comes with it. Two documents shipped contradicting the standard's own rule meanwhile: the
+retrospective template asked for "Sprint velocity (avg)" and `docs/integrations.md` said "there is
+no sprint plan". This release adds a sprint layer that is a *commitment window over the backlog
+order* — never a second backlog, a reordering, or a gate — and fixes both sentences.
+
+- **`/sdlc-sprint` — the sprint board.** A named human types a sprint id (`S07`), slates a *count* of
+  specs by a mix of risk tiers (`HIGH:1,MEDIUM:2,LOW:3` — the axis that sets checking depth; a mix
+  breach warns, over-target exits 1 unless `--override --reason`), sees the slate's readiness every
+  day (`status`, with the advisory build order and next-up), **readies** the sprint once every
+  slated spec clears the DoR **and** its independent Engineering and Data verdicts, and **closes**
+  it with kept / carried / dropped — each carry or drop with a name and a reason. `ready` writes the
+  self-contained sprint-planning page, `close` the review page. Backed by the pure
+  `sprint_model.py` (mirrors `findings_model.py`), the I/O CLI `sprint.py`, and
+  `generate_sprint_report.py`; the sprint record is `.sdlc/sprints/SNN.md`, the ledger
+  `.sdlc/metrics/sprint-log.jsonl`. Commands 28 → 30.
+- **`/sdlc-refine` — refinement with an agenda.** The Mon/Wed/Fri cross-functional review and the
+  weekly Intent triage, made executable: NOT READY specs and why, verdicts pending with their
+  business-day age, unacknowledged handoffs, overdue `DL-NN` decisions; then one spec at a time
+  through `check_spec` and `/sdlc-spec`. `validate --lane eng|data` records the verdicts `ready`
+  requires; `--upstream` routes a Phase 1/2 gap through `/sdlc-revise` + `check_gates.py --phase N`
+  so the engagement never regresses a phase.
+- **Five optional spec keys, one writer.** `sprint`, `next_owner`, `eng_review`, `data_review`,
+  `depends_on` — `""` by default, values are enumerations, names and spec ids only, written solely
+  by `sprint.py` on files matching `^\d{4}-` (the installed `specs/spec-template.md` is never listed
+  or written). `status` is not one of them and stays hand-moved; a spec without the keys behaves
+  exactly as before, and a test proves `check_spec`'s verdict is unchanged after insertion.
+  `track_specs.py` gains `by_sprint` and `--sprint SNN` with legacy output byte-identical.
+- **Never a gate, never gated, never `state.yaml`.** Reads exit 0 always; `ready` and `close` check
+  only the slate, never G1–G7; `close` never suggests advancing — leaving Build stays a release-
+  scoped human declaration. Writers write frontmatter first, then the ledger line, and print `DRIFT`
+  (exit 1) if the append fails so the mismatch is never silent.
+- **The metrics policy, enforced.** `FORBIDDEN_FIELDS = scorecard.FORBIDDEN_TYPES ∪ {points,
+  estimate, effort, hours, capacity}` is refused with exit 2 and scorecard's wording; no per-person
+  aggregation exists in any JSON; empty series read "no data", never 0; an AI `--by` is refused as
+  labelling, not enforcement. `/sdlc-retro` gains carry-over recurrence per spec (≥ 2 sprints — the
+  only cross-sprint number) and bounce causes by lane and reason. The retrospective's velocity row
+  is now "Sprint commitment outcomes"; `docs/integrations.md` now says a sprint is a time-boxed
+  commitment overlay on the backlog order.
+- **Session start knows the sprint.** Both hook twins print `[SDLC-SPRINT] S07 (ready) — "goal" —
+  start → end` per non-closed record (grep only, never throws), the Build reminder points at
+  `/sdlc-refine`, and the stale `session-handoff.json` section summary — a section-plan progress
+  model competing with the spec backlog — is retired. First session-start hook test.
+- **Protected core byte-for-byte unchanged:** `check_spec.py`, `check_gates.py`, `advance_phase.py`,
+  `phase_model.py`, `phase-registry.yaml`, `section-evaluator`, `harness/**`, `/sdlc-coach`,
+  `/sdlc-spec`, `new_spec.py`, `scorecard.py`, `generate_status.py`, `templates/state-init.yaml`.
+  See `references/sprint-model.md` and `docs/proposals/sprint-team-layer.md`.
+
 ## 1.5.1 — 2026-08-28
 
 The discipline seats shipped in July as commands and agents (`/sdlc-feature`, `/sdlc-rules`,

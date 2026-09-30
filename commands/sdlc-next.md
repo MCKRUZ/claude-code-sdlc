@@ -33,6 +33,17 @@ Run exit gate checks for the current phase and advance to the next phase if all 
        --state .sdlc/state.yaml --phase <phase-number>
      ```
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
+   - **Sprint slate outcome (advisory, Build only):** when the current phase is `build`, put one line
+     beside the feature-complete declaration so the human declares with the last sprint's outcome in
+     view. Read the most recently closed record in `.sdlc/sprints/SNN.md` (`state: closed`) and count
+     its `## Close` table — `slate S07: 5 of 6 merged, 1 carried, 0 dropped`. If a sprint is still open,
+     add its readiness from:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py status --state .sdlc/state.yaml --json
+     ```
+     (`open sprint S08: N slated · M ready`). Skip silently when `.sdlc/sprints/` is absent or the
+     JSON's `sprint` is `null`. This line informs the declaration; it never gates it — leaving Build
+     stays a human call, and a sprint is never a phase gate.
    - **HITL GATE — Ask for explicit sign-off before advancing:** Present the phase summary (what was produced, key decisions made) and ask: "Does this look correct? Shall I advance to Phase N?" Do NOT call `advance_phase.py` until the human explicitly confirms.
    - **Optional — capture discipline sign-off(s):** After the human confirms the advance, use
      `AskUserQuestion` to offer (optionally) recording per-discipline sign-off on this phase's work:

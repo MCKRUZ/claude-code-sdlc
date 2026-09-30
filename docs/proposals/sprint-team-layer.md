@@ -1,6 +1,6 @@
 # Proposal: Sprint Team Layer — `/sdlc-sprint` and `/sdlc-refine`
 
-**Status:** Draft for review (simplified)
+**Status:** Reconciled to what shipped in 1.6.0 (2026-09-30) — the tables below describe the implemented behaviour; where the first draft differed, the code was kept and the text corrected (or the reverse, noted inline)
 **Author:** drafted 2026-09-24 against v1.5.1 (`master` of the nested `claude-code-sdlc/` clone)
 **Related:** `sprint-team-layer-extended-draft.md` (the full analysis this is cut from), `references/team-model.md`, the channel and artifact-audit layers
 **Build target:** the nested `claude-code-sdlc/` repo; the outer `.sdlc/` (solo `plugin-self` engagement, two `ready` specs) is the first fixture. ADO is handled manually by the team — nothing here touches a board.
@@ -39,7 +39,7 @@ Each is small, reuses existing machinery, and is the part of sprint teaming that
 | **R1** | **Assign-and-notify handoffs with acknowledgement** | The operating model's rule "never rely on the next owner noticing". Without it, a spec sits between Product, Engineering and Data and nobody owns the wait | `next_owner:` on the spec; `sprint.py handoff --spec --to <name>` and `ack`; `status` lists unacknowledged handoffs with business-day age | one key, two verbs, one ledger line |
 | **R2** | **Independent Engineering and Data verdicts are part of "ready"** | The model's Control 2: Eng validates feasibility and the harness context; Data validates data impact **in parallel**, before anyone builds. "Ready up a sprint" means this, not just DoR | `eng_review:` / `data_review:` (`pending \| accepted \| returned \| n-a`) recorded via `/sdlc-refine validate --lane eng\|data --by <name>`; `sprint.py ready` requires both (Data may be `n-a` only with a reason) | two keys, one verb |
 | **R3** | **A self-rendering refinement agenda with the decision clock** | The Mon/Wed/Fri review needs an agenda, not a status deck: which slated specs are NOT READY and why, which verdicts are pending and for how long, which `DL-NN` decisions are overdue | `/sdlc-refine` with no arguments renders it from `sprint.py status --json` + `track_decisions.py --json` | read-only composition |
-| **R4** | **Commitment-shaped close, forbidden metrics enforced, contradictions fixed** | Sprints invite velocity back in through the side door. The standard bans it and `scorecard.py` refuses it; the sprint layer must too | `close` records kept / carried (with reason) / dropped (with reason) for **this sprint only**; `FORBIDDEN_FIELDS` imports `scorecard.FORBIDDEN_TYPES` + `points, estimate, effort, hours`; fix `project-retrospective.md`'s "Sprint velocity" row and `docs/integrations.md`'s "there is no sprint plan" now | a few lines + two doc edits |
+| **R4** | **Commitment-shaped close, forbidden metrics enforced, contradictions fixed** | Sprints invite velocity back in through the side door. The standard bans it and `scorecard.py` refuses it; the sprint layer must too | `close` records kept / carried (with reason) / dropped (with reason) for **this sprint only**; `FORBIDDEN_FIELDS` imports `scorecard.FORBIDDEN_TYPES` + `points, estimate, effort, hours, capacity`; fix `project-retrospective.md`'s "Sprint velocity" row and `docs/integrations.md`'s "there is no sprint plan" now | a few lines + two doc edits |
 | **R5** | **Sprint visible at session start; retire the stale section-plan block** | Everyone should open a session knowing the sprint and its end date; today the Build hook still prints the retired `session-handoff.json` section summary, which would sit next to the new line as a competing progress model | one grep-only `[SDLC-SPRINT]` line in both hook twins; the section-handoff block removed; the first session-start hook test | small, both shells |
 
 One safety note (not a recommendation to build, just to know): the Azure DevOps harness pack merges an MCP server with work-item create tools into client repos. Since the team updates ADO by hand, the target repo's `.claude/settings.local.json` should deny `mcp__azure-devops__wit_*` create/update tools and `Bash(az boards:*)`. That fix belongs in the kit, not here.
@@ -52,13 +52,15 @@ One safety note (not a recommendation to build, just to know): the Azure DevOps 
 |---|---|---|
 | `sprint` | `"S07"` | typed, so the three repos can share one convention |
 | `goal` | one outcome-shaped sentence | |
-| `start`, `end` | ISO dates; `end` defaults to `start` + 10 business days | `track_decisions.add_business_days` |
+| `start`, `end` | ISO dates; `end` defaults to the last business day of a 10-business-day window — `start` is day 1, so Mon 2026-09-28 → Fri 2026-10-09 | `track_decisions.add_business_days(start, days - 1)`; `status` counts the window inclusively |
 | `state` | `planning \| ready \| closed` | human-triggered, forward only |
 | `target` | integer — how many specs to slate | the planning input; a count of items, never a size |
 | `mix` | flat string, e.g. `"HIGH:1,MEDIUM:2,LOW:3"` | by risk tier (the axis that drives checking depth); counts sum ≤ `target`; a breach warns, never blocks |
+| `board_ref` | free text, e.g. `"ADO Iteration 6"` | manual board mapping only; shown in the planning-page header; nothing reads it |
 | `readied_by`, `closed_by` | named humans | |
+| `created` | ISO date | stamped by `new` |
 | `## Goal` | prose | |
-| `## Slate` | **rendered** by `sprint.py status` from spec frontmatter — never hand-maintained | `\| spec \| name \| risk \| type \| status \| DoR \| eng \| data \| next owner \|` |
+| `## Slate` | **written** by `sprint.py slate` / `unslate` / `ready` / `close` from spec frontmatter — never hand-maintained; `status` is read-only and prints the live view | `\| spec \| name \| risk \| type \| status \| DoR \| eng \| data \| next owner \|` |
 | `## Close` | `\| spec \| outcome (kept \| carried → SNN \| dropped) \| by \| reason \|` | written at `close`, confirmed by a human |
 
 **Spec frontmatter — five optional keys**, inserted by `sprint.py` after `status:` on first write (values `""`, enumerations and spec ids only, so `check_spec.parse_frontmatter`'s `#`-truncation and `PLACEHOLDER_RE` never bite; `harness/spec-template.md` is generated and stays untouched)
@@ -71,12 +73,13 @@ One safety note (not a recommendation to build, just to know): the Azure DevOps 
 | `data_review` | `pending \| accepted \| returned \| n-a` | `/sdlc-refine validate --lane data` (`n-a` needs `--reason`) | `ready` rule |
 | `depends_on` | `""` or comma-separated spec ids, e.g. `"0007,0009"` | `/sdlc-refine` proposes from Scope/Delegation overlaps, a human confirms; `slate` may add when pulling a dependency in | `status` build order and next-up, `slate` warning, `ready` gap (cycle or unmerged dependency outside the slate) |
 
-`status` stays the protected four-value field and is still moved by hand as today. The only new writer is `sprint.py`, which only ever touches its own four keys and only in files matching `^\d{4}-` (so the installed `specs/spec-template.md` is never listed or written).
+`status` stays the protected four-value field and is still moved by hand as today. The only new writer is `sprint.py`, which only ever touches its own five keys and only in files matching `^\d{4}-` (so the installed `specs/spec-template.md` is never listed or written).
 
 **Ledger — `.sdlc/metrics/sprint-log.jsonl`** (append-only; one line per event; `ts` full ISO)
 
 | `event` | Fields |
 |---|---|
+| `sprint_new` | `sprint, by` |
 | `slated` / `unslated` | `sprint, spec, by, reason?` |
 | `handoff` / `ack` | `spec, to?, by` |
 | `verdict` | `spec, lane: eng\|data, verdict, by, reason?` |
@@ -97,7 +100,7 @@ One safety note (not a recommendation to build, just to know): the Azure DevOps 
 | Carried in | specs carried from the previous sprint with the recorded reason | previous sprint's `## Close` / ledger |
 | Footer | "Never tracked: velocity, story points, PR count, lines of code." | the standard's guardrail |
 
-The same renderer produces `sprint-S07-review.html` at `close` (kept / carried / dropped with reasons, bounce causes, carry-over recurrence) — decision D8.
+The same renderer produces `sprint-S07-review.html` at `close` (kept / carried / dropped with reasons, carry-over recurrence per spec) — decision D8. `close` builds the view **before** it rewrites carried specs to the next sprint and clears dropped ones, then hands that view (stamped `state: closed`) to the renderer, so the review page shows the slate it is reviewing; `status` on a closed sprint replays the same slate from the ledger (`slated` − `unslated` + `carried` / `dropped`).
 
 ## 5. Commands
 
@@ -115,14 +118,16 @@ The same renderer produces `sprint-S07-review.html` at `close` (kept / carried /
 
 | Verb | Does | HITL |
 |---|---|---|
-| `new --sprint S07 --goal "…" --start YYYY-MM-DD [--days 10] --target 6 --mix HIGH:1,MEDIUM:2,LOW:3` | Creates the record in `planning` | goal, dates, target and mix confirmed |
-| `slate [--sprint S07]` | Proposes candidates from specs with `status: ready \| draft` and no sprint, in backlog order (spec id), filling the mix; writes `sprint:` on the confirmed set. Over `target` → exit 1 unless `--override --reason`; mix breach → warning; a slated spec whose `depends_on` names a spec that is neither merged nor in this slate → warning with an offer to pull the dependency in | the human confirms or edits the set |
-| `unslate --spec N --reason` | Removes a spec from the slate | reason |
-| `status [--sprint S07] [--json]` *(default)* | Renders the slate with DoR verdict (imports `check_spec.check_spec_text`), `eng`/`data` verdicts, next owner, unacknowledged handoffs with age, mix actual vs target, WIP vs cap (`track_specs --wip-cap`); plus a **Build order** — topological by `depends_on`, then the spec that unblocks the most others, then HIGH → MEDIUM → LOW (the longest checking ladder starts first), then backlog order — and **Next up**: the first spec in that order that is READY, whose dependencies are merged, within the WIP cap. Advisory; the human picks | none |
-| `handoff --spec N --to <name> --by <name>` / `ack --spec N --by <name>` | R1 | recorder, recipient |
+| `new --sprint S07 --goal "…" --start YYYY-MM-DD [--end YYYY-MM-DD \| --days 10] --target 6 [--mix HIGH:1,MEDIUM:2,LOW:3] [--board-ref "ADO Iteration 6"] --by <name>` | Creates the record in `planning`; `--by` is required, like every write | goal, dates, target and mix confirmed |
+| `slate [--sprint S07] [--json]` | **Proposal (read, exit 0 always — an unknown or malformed id prints "no data")**: candidates from specs with `status: ready \| draft` and no sprint, in backlog order (spec id), filling the mix; writes nothing | the human confirms or edits the set |
+| `slate --sprint S07 --by <name> --spec N [--spec N …] [--override --reason "…"]` | **Confirm (write)**: writes `sprint:` on each named spec. Over `target` → exit 1 unless `--override --reason` (recorded); mix breach → warning; a slated spec whose `depends_on` names a spec that is neither merged nor in this slate → warning with an offer to pull the dependency in | the named human confirms |
+| `unslate --sprint S07 --spec N --by <name> --reason "…"` | Removes a spec from the slate; the reason is recorded | name and reason |
+| `status [--sprint S07] [--wip-cap N] [--json]` *(default)* | Renders the slate (spec, name, risk, type, status, DoR, eng, data, next owner — DoR via `check_spec.check_spec_text`), unacknowledged handoffs with age, mix actual vs target, WIP vs cap (the cap from `--wip-cap N`, else the bold value on the `WIP cap` line of `.sdlc/artifacts/*/cadence-plan.md`, else "not set" — `track_specs` is not called; the cap stays global per cadence plan); plus a **Build order** — topological by `depends_on`, then the spec that unblocks the most others, then HIGH → MEDIUM → LOW (the longest checking ladder starts first), then backlog order — and **Next up**: the first spec in that order that is READY, whose dependencies are merged, within the WIP cap. Advisory; the human picks. With `--sprint` omitted the active sprint is the highest-numbered one not yet closed, else the highest closed one (slate replayed from the ledger, header shows `closed by`) | none |
+| `handoff --spec N --to <name> --by <name> [--note]` / `ack --spec N --by <name>` | R1; `ack` by someone other than `next_owner` warns, never fails | recorder, recipient |
+| `verdict --spec N --lane eng\|data --verdict accepted\|returned\|pending\|n-a --by <name> [--reason]` | R2 (the write behind `/sdlc-refine validate`): `n-a` is legal for `--lane data` only and only with `--reason` (exit 1 otherwise); `returned` without a reason records but warns; `pending` resets a verdict | the named lead |
 | `ready --sprint S07 --by <name>` | Requires every slated spec: `check_spec` READY, `status: ready`, `eng_review: accepted`, `data_review: accepted \| n-a`; and a dependency graph with no cycle and no `depends_on` pointing outside the slate at an unmerged spec; else exit 1 listing the gaps per spec. On success sets `state: ready` and writes the **sprint-planning page** `.sdlc/reports/sprint-S07-planning.html` (§4), linking it from `.sdlc/reports/index.html` | the person readying it |
 | `plan --sprint S07` | Renders (or re-renders) the sprint-planning page on demand — before `ready`, to run the meeting from a draft that still shows the gaps, or after a late change | none |
-| `close --sprint S07 --by <name> [--carry-to S08] [--drop N --reason]…` | Derives kept (`status: merged`) vs open; asks per open spec: carry (moves `sprint:` to `--carry-to`) or drop; writes `## Close` and the **sprint-review page** `.sdlc/reports/sprint-S07-review.html` with the same renderer | every carry/drop has a name and a reason |
+| `close --sprint S07 --by <name> [--carry-to S08] [--carry SPEC=REASON …] [--drop SPEC=REASON …]` | Derives kept (`status: merged`) vs open; every open spec must appear in exactly one `--carry` or `--drop` (exit 1 naming the undecided); `--carry` requires `--carry-to` (a carry-to sprint without a record is a warning). Carried specs get `sprint: "S08"`, dropped `sprint: ""`; writes `## Close`, sets `state: closed` + `closed_by`, appends `carried` / `dropped` / `closed`, and renders the **sprint-review page** `.sdlc/reports/sprint-S07-review.html` from the pre-write view | every carry/drop has a name and a reason |
 | `--repo <path>` | Standalone: sprints and ledger under `<repo>/.sdlc/` (created); header notes the missing engagement context; workflow mode detected by `state.yaml` presence, never by `.sdlc/` alone | — |
 
 **`/sdlc-refine`**
@@ -131,8 +136,8 @@ The same renderer produces `sprint-S07-review.html` at `close` (kept / carried /
 |---|---|---|
 | *(no args)* | **Agenda** for the current sprint (R3): NOT READY specs with their blocking findings, vague-line hits, pending verdicts with business-day age, unacknowledged handoffs, overdue `DL-NN` items, "next review: Wed" if `review_days` is set in `cadence-plan.md` | none |
 | `--spec <id\|path>` | Refines one spec: `check_spec.py` (+ `check_channel.py` when bound), proposes fixes to vague lines, surfaces silent decisions to the spec's Decision List or to `.sdlc/decision-log.md` as `DL-NN` (owner + 2-day clock), proposes the risk tier, **proposes `depends_on`** when the spec's Scope or Delegation Plan names files, contracts, or ids that another slated spec introduces, then hands the edit to `/sdlc-spec --spec` | tier confirmed; dependencies confirmed; decisions owned by a named human; `status: ready` flipped only after READY and a human's yes |
-| `--sprint S07` | **Batch mode.** Loads the Phase 0–2 context once (constitution, frozen layers, `requirements.md`, `epics.md`, `business-rules.md`, `design-doc.md`, `adr-registry.md`, `api-contracts.md`, `data/data-contract.md`, `risk-tier-map.md`) and checks every slated spec against it: mechanically — DoR (`check_spec`), `source:` ids resolve (`artifact_lineage` id vocabulary), cited upstream artifacts not stale (`audit_artifacts impact`), tier vs `risk-tier-map.md`, channel dimensions (`check_channel`); by judgment — the `multi-reviewer` lenses (design/ADR/API contradictions, PII classification, `BR-NN` coverage, fit to the problem statement) fanned out across specs. Renders one agenda for the sprint, then walks fixes one spec at a time (the weekly Intent-triage ceremony, made executable) | as above, per spec |
-| `validate --spec N --lane eng\|data --verdict accepted\|returned\|n-a --by <name> [--reason]` | R2: records the independent verdict; `returned` sends the spec back to refinement with the reason; `n-a` is allowed only from Data with a reason | the named lead |
+| `--sprint S07` | **Batch mode.** Loads the Phase 0–2 context once (constitution, frozen layers, `requirements.md`, `epics.md`, `business-rules.md`, `design-doc.md`, `adr-registry.md`, `api-contracts.md`, `data/data-contract.md`, `risk-tier-map.md`) and checks every slated spec against it: mechanically — DoR (`check_spec`), `source:` ids resolve (`artifact_lineage` id vocabulary), cited upstream artifacts not stale (`audit_artifacts.py report --json` — a spec whose `source` artifact is in the stale list is routed to `--upstream`), tier vs `risk-tier-map.md`, channel dimensions (`check_channel`); by judgment — the `multi-reviewer` lenses (design/ADR/API contradictions, PII classification, `BR-NN` coverage, fit to the problem statement) fanned out across specs. Renders one agenda for the sprint, then walks fixes one spec at a time (the weekly Intent-triage ceremony, made executable) | as above, per spec |
+| `validate --spec N --lane eng\|data --verdict accepted\|returned\|pending\|n-a --by <name> [--reason]` | R2: records the independent verdict through `sprint.py verdict`; `returned` sends the spec back to refinement with the reason (a missing reason is recorded with a warning, not refused); `n-a` is allowed only from Data with a reason (exit 1 otherwise); `pending` resets a verdict | the named lead |
 | `--upstream --spec N` | The no-regression path: pick the upstream artifact (`FR-…`, `BR-…`, `ADR-…`) → `/sdlc-revise` → `check_gates.py --phase N` → back to refinement | which artifact; confirm the re-gate |
 | `--repo <path>` | Standalone, same degradation as `/sdlc-sprint` | — |
 
@@ -148,8 +153,8 @@ The same renderer produces `sprint-S07-review.html` at `close` (kept / carried /
 
 | File | Kind | Content |
 |---|---|---|
-| `scripts/sprint_model.py` | **new, pure** (mirrors `findings_model.py`) | `STATES`, `parse_mix`, `propose_slate(specs, target, mix)`, `ready_gaps(spec_rows)` (incl. dependency gaps), `build_order(slate, deps)` and `next_up(...)` reusing `check_dependencies.detect_cycles` / `topological_sort` (imported; the Phase-2 aid regains a Build-loop use without changing), `outcomes(rows)`, `FORBIDDEN_FIELDS = set(scorecard.FORBIDDEN_TYPES) \| {points, estimate, effort, hours}`, `ts_to_date` adapter over `track_decisions.business_days_elapsed`, `set_frontmatter(text, key, value)` (refuses `#`, quotes, placeholder tokens) |
-| `scripts/sprint.py` | **new, I/O CLI**, dual-mode `--state \| --repo`, flat verbs (`new slate unslate status handoff ack verdict ready close`), `--help` exits 0 with no filesystem work | reads only `^\d{4}-` spec files; writes frontmatter then the ledger; on ledger failure prints DRIFT and exits 1; reads exit 0 always; writes 0 ok / 1 gap or illegal / 2 forbidden field |
+| `scripts/sprint_model.py` | **new, pure** (mirrors `findings_model.py`) | `STATES`, `parse_mix`, `propose_slate(specs, target, mix)`, `ready_gaps(spec_rows)` (incl. dependency gaps), `build_order(slate, deps)` and `next_up(...)` reusing `check_dependencies.detect_cycles` / `topological_sort` (imported; the Phase-2 aid regains a Build-loop use without changing), `outcomes(rows)`, `FORBIDDEN_FIELDS = set(scorecard.FORBIDDEN_TYPES) \| {points, estimate, effort, hours, capacity}`, `ts_to_date` adapter over `track_decisions.business_days_elapsed`, `set_frontmatter(text, key, value)` (refuses `#`, quotes, placeholder tokens) |
+| `scripts/sprint.py` | **new, I/O CLI**, dual-mode `--state \| --repo`, flat verbs (`new slate unslate status handoff ack verdict ready plan close`), `--help` exits 0 with no filesystem work | reads only `^\d{4}-` spec files; writes frontmatter then the ledger; on ledger failure prints DRIFT and exits 1; reads (`status`, `slate` proposal) exit 0 always; writes 0 ok / 1 gap or illegal / 2 forbidden field, malformed value or AI `--by`; every write requires `--by` |
 | `scripts/generate_sprint_report.py` | **new** (mirrors `generate_phase_report.py`; dual-mode `--state \| --repo`, `--sprint SNN`, `--kind planning\|review`, `--output`) | Renders the self-contained planning / review page from the sprint record, spec frontmatter and bodies, `check_spec` verdicts, `sprint_model.build_order`, `track_decisions`, and the ledger; reuses `generate_phase_report.md_to_html` and its style block; updates `.sdlc/reports/index.html` the way `--all` does today. "no data" for any empty section; never writes anything but the HTML |
 | `scripts/track_specs.py` | extended | `sprint` passed through; `by_sprint`; `--sprint SNN` filter; legacy output byte-identical |
 | `scripts/retro_report.py` | extended | carry-over recurrence section, `has_data`, exit 0 |
@@ -160,7 +165,7 @@ The same renderer produces `sprint-S07-review.html` at `close` (kept / carried /
 | `templates/phases/09-monitoring/project-retrospective.md` | edited | "Sprint velocity" row → "Sprint commitment outcomes (kept / carried / dropped, with reasons)" |
 | `docs/integrations.md:200`, `phases/build-loop.md:125`, `docs/hooks.md`, `docs/state-machine.md` `current_sprint` | edited | "a sprint is a commitment window over the backlog order, never a second backlog"; "run Intent triage with `/sdlc-refine`"; hook line contract; retired field removed |
 | `references/sprint-model.md` | new | the sprint lifecycle, the ready rule, the mix, the no-lock guarantees, the metrics policy |
-| Registration | edited | `SKILL.md`, `README.md`, `docs/commands.md` ("Fifteen" → "Seventeen"), `docs/scripts.md`, `CLAUDE.md` (28 commands), `CHANGELOG.md` `## 1.6.0`, `plugin.json` + `marketplace.json` |
+| Registration | edited | `SKILL.md`, `README.md`, `docs/commands.md` (both commands get full sections, 13 → 15; the "Fifteen commands" sentence counts the *summaries* table and stays as is), `docs/scripts.md`, `CLAUDE.md` (30 commands), `CHANGELOG.md` `## 1.6.0`, `plugin.json` + `marketplace.json` |
 
 ## 7. Metrics policy
 
@@ -168,7 +173,7 @@ The same renderer produces `sprint-S07-review.html` at `close` (kept / carried /
 |---|---|
 | slated / ready / not-ready counts during refinement; kept / carried / dropped at close, each carry or drop with a named human and a reason | velocity, story points, estimates, effort, hours — `FORBIDDEN_FIELDS`, exit 2 |
 | pending verdicts and unacknowledged handoffs with business-day age | PR count, commit count, LOC — never computed |
-| mix actual vs target; WIP vs cap (from `track_specs`) | any per-person aggregation — no such key exists in any JSON |
+| mix actual vs target; WIP vs cap (cap from `--wip-cap` or `cadence-plan.md`; enforced globally by `track_specs --wip-cap`) | any per-person aggregation — no such key exists in any JSON |
 | carry-over recurrence per spec (the only cross-sprint number) | cross-sprint trend of kept/carried counts ("velocity with the points removed") |
 | overdue `DL-NN` decisions (from `track_decisions`) | "% complete" as a sprint number; fabricated zeros |
 
@@ -188,13 +193,13 @@ Both ship together as **1.6.0** (new capability = minor per `RELEASING.md`).
 - **New:** `commands/sdlc-sprint.md`, `commands/sdlc-refine.md`, `scripts/sprint_model.py`, `scripts/sprint.py`, `templates/phases/build/sprint.md`, `references/sprint-model.md`, `.sdlc/sprints/`, `.sdlc/metrics/sprint-log.jsonl`, tests.
 - **Migration:** none. Specs without the new keys behave exactly as today; the first `slate` inserts them and a test proves `check_spec`'s verdict is unchanged.
 
-## 10. Decisions for you (recommended default first)
+## 10. Decisions (taken 2026-09-30 — every recommended default was adopted)
 
-| # | Decision | Recommended | Alternative |
+| # | Decision | Recommended (adopted) | Alternative |
 |---|---|---|---|
 | D1 | Mix axis | Risk tier (`HIGH:n,MEDIUM:n,LOW:n`) — it is what sets checking depth; type and channel are shown for information | by `type` (`feature`/`bugfix`) or by channel |
-| D2 | Sprint length and id | 10 business days; id typed at `new` | 14 calendar days; auto-numbered |
-| D3 | "Ready" rule | DoR READY **and** Eng accepted **and** Data accepted-or-n-a (R2) | DoR only |
+| D2 | Sprint length and id | 10 business days, counted inclusively (`start` is day 1, so a Monday start ends the second Friday); id typed at `new` | 14 calendar days; auto-numbered |
+| D3 | "Ready" rule | DoR READY **and** `status` at least `ready` (`ready`, `in-flight` or `merged`; only `draft` falls short) **and** Eng accepted **and** Data accepted-or-n-a (R2), plus no dependency cycle and no `depends_on` outside the slate at an unmerged spec | DoR only |
 | D4 | Data verdict | required until Data records `n-a` with a reason | optional |
 | D5 | Slate over `target` | exit 1 unless `--override --reason` (recorded); mix breach warns | both warn |
 | D6 | The retrospective's velocity row and the "no sprint plan" sentence | fix in Inc 1 (they contradict a shipped rule today) | later |
