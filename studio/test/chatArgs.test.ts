@@ -45,15 +45,22 @@ describe('CHAT_TOOLS — the fixed allow-list', () => {
 })
 
 describe('buildChatArgs', () => {
-  it('always puts -- right before the prompt value, so a message starting with "-" is never read as a flag', () => {
-    // Reproduced directly against the real `claude` binary: `-p "-something"` fails with
-    // "error: unknown option '-something'" — a bullet point, a negative number, anything a
-    // person might actually type. `-- value` fixes it without disturbing any flag that
-    // follows, confirmed against the exact flag set this function actually emits.
+  it('puts -p -- <prompt> LAST, after every other flag — not just anywhere before the prompt', () => {
+    // Two facts, both reproduced directly against the real `claude` binary, and both required
+    // together:
+    // 1. `-p "-something"` fails outright: "error: unknown option '-something'" — a bullet
+    //    point, a negative number, anything a real message might start with.
+    // 2. `--` doesn't protect just the one value after it — it tells the parser to stop
+    //    reading flags AT ALL from that point on. Putting '-p', '--', prompt BEFORE the other
+    //    flags (an earlier version of this fix) silently broke every flag that followed it:
+    //    --output-format stream-json stopped applying with no error, falling back to plain
+    //    prose instead of the structured output this app's stream parser depends on.
+    // So `-- <prompt>` is correct, AND it must be the very last thing in the argument list.
     const { args } = buildChatArgs(baseOpts({ prompt: '-looks like a flag but is not' }))
-    const pIndex = args.indexOf('-p')
-    expect(args[pIndex + 1]).toBe('--')
-    expect(args[pIndex + 2]).toBe('-looks like a flag but is not')
+    expect(args.slice(-3)).toEqual(['-p', '--', '-looks like a flag but is not'])
+    // Every other flag this function emits appears before that point, not after.
+    expect(args.indexOf('--output-format')).toBeLessThan(args.length - 3)
+    expect(args.indexOf('--append-system-prompt')).toBeLessThan(args.length - 3)
   })
 
   it('runs in claudeWorkingDirectory(), never the project', () => {
