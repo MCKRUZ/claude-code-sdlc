@@ -16,6 +16,11 @@ import { getStageReadiness, setJudgementConfirmation } from './readiness'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
+  ipcAnswerChatQuestion, ipcEnsureChatStarted, ipcResolveChatProposal, ipcSendChatMessage,
+  readChatState, type ChatContext,
+} from './chat'
+import { getCachedStageDisplay, setCachedStageDisplay } from './chatStageDisplay'
+import {
   clearGateAuth, getConnectionReport, getFoundationSummary, getGateAuth, getGateInventory,
   getLastSeenCommit, setGateAuth,
   getProjectSettings, getScorecard, setLastSeenCommit, setRosterPerson, setStageApproval,
@@ -68,6 +73,16 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 let win: BrowserWindow | null = null
+
+/** The one safe way to push a live update to the renderer. `win?.` alone only guards against
+ * `win` being null — it does nothing for a `win` that still exists as a reference but was
+ * already closed (destroyed). A background task (a chat turn, any streaming command) can finish
+ * after the window closes, and calling `.webContents.send(...)` on a destroyed window throws an
+ * uncaught 'Object has been destroyed' error that crashes the whole main process — proven by a
+ * real Playwright run, which opens and closes windows fast enough to hit this reliably. */
+function sendToWindow(channel: string, payload: unknown) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel, payload)
+}
 const preload = path.join(__dirname, '../preload/index.mjs')
 const indexHtml = path.join(RENDERER_DIST, 'index.html')
 
@@ -625,8 +640,89 @@ function registerIpcHandlers() {
     },
   )
 
+  // --- Chat authoring (spec 0016) ---
+  // Every claude invocation streams through commandRunner's own onChunk hook, broadcast to
+  // the SAME console channel every other command uses (spec 0008's transparency rule) — never
+  // a side channel of its own (chat.ts's runChatTurn wires a no-op onChunk itself; there is no
+  // second, index.ts-owned broadcast to keep in step with it).
+
+  async function cachedStageDisplay(projectPath: string, scriptsDir: string, stageId: string): Promise<string> {
+    const cached = getCachedStageDisplay(projectPath, stageId)
+    if (cached !== undefined) return cached
+    const readiness = await getStageReadiness(projectPath, scriptsDir, stageId)
+    const display = readiness.display || stageId
+    setCachedStageDisplay(projectPath, stageId, display)
+    return display
+  }
+
+  async function chatContext(
+    projectPath: string, stageId: string, precomputedDisplay?: string,
+  ): Promise<ChatContext | null> {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return null
+    const settings = loadSettings()
+    const stageDisplay = precomputedDisplay !== undefined
+      ? precomputedDisplay
+      : await cachedStageDisplay(projectPath, scriptsDir, stageId)
+    if (precomputedDisplay !== undefined) setCachedStageDisplay(projectPath, stageId, precomputedDisplay)
+    return {
+      projectPath,
+      pluginScriptsDir: scriptsDir,
+      stageId,
+      stageDisplay,
+      claudePath: settings.claudePathOverride ?? 'claude',
+      execPath: process.execPath,
+    }
+  }
+
+  ipcMain.handle('studio:getChatState', (_event, projectPath: string, stageId: string) =>
+    readChatState(projectPath, stageId))
+
+  ipcMain.handle('studio:ensureChatStarted', async (_event, projectPath: string, stageId: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+    // The caller-side gate named in the spec ("a stage that has at least one document not yet
+    // started") lives HERE, in the one place that decides it, rather than duplicated in the
+    // renderer — ipcEnsureChatStarted's own contract is only "have we already greeted". This
+    // readiness read also supplies chatContext's stageDisplay below, rather than making it
+    // fetch readiness a second time for the same stage.
+    const readiness = await getStageReadiness(projectPath, scriptsDir, stageId)
+    const hasUnstarted = readiness.documents.some((d) => !d.exists)
+    if (!hasUnstarted) return { ok: true, state: readChatState(projectPath, stageId) }
+    const ctx = await chatContext(projectPath, stageId, readiness.display || stageId)
+    if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+    return ipcEnsureChatStarted(ctx)
+  })
+
+  ipcMain.handle('studio:sendChatMessage', async (_event, projectPath: string, stageId: string, text: string) => {
+    const ctx = await chatContext(projectPath, stageId)
+    if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+    return ipcSendChatMessage(ctx, text)
+  })
+
+  ipcMain.handle(
+    'studio:answerChatQuestion',
+    async (_event, projectPath: string, stageId: string, questionId: string, optionLabel: string) => {
+      const ctx = await chatContext(projectPath, stageId)
+      if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+      return ipcAnswerChatQuestion(ctx, questionId, optionLabel)
+    },
+  )
+
+  ipcMain.handle(
+    'studio:resolveChatProposal',
+    async (
+      _event, projectPath: string, stageId: string, proposalId: string,
+      outcome: DraftOutcome, finalValue: string, actor: string,
+    ) => {
+      const ctx = await chatContext(projectPath, stageId)
+      if (!ctx) return { ok: false, state: readChatState(projectPath, stageId), error: 'claude-code-sdlc plugin scripts not found' }
+      return ipcResolveChatProposal(ctx, proposalId, outcome, finalValue, actor)
+    },
+  )
+
   onSyncState((state) => {
-    win?.webContents.send('studio:syncState', state)
+    sendToWindow('studio:syncState', state)
   })
 
   ipcMain.handle('studio:getConsoleLog', () => getConsoleLog())
@@ -634,7 +730,7 @@ function registerIpcHandlers() {
   // Push new console entries to the renderer as they happen, so the console panel updates
   // live rather than only on the next getConsoleLog() poll.
   onConsoleEntry((entry) => {
-    win?.webContents.send('studio:consoleEntry', entry)
+    sendToWindow('studio:consoleEntry', entry)
   })
 }
 

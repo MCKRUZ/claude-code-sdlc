@@ -1,54 +1,35 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { DocumentFocus, ReadinessFinding, SignOffQuestion, StageReadiness } from '../../shared/types'
-import { SignOffPanel } from './SignOffPanel'
-import { SignOffQuestions } from './SignOffQuestions'
+import type { DocumentFocus, SignOffQuestion, StageReadiness } from '../../shared/types'
+import { stageHomeKey } from '../stageHomeKey'
+import { DocumentsTab } from './DocumentsTab'
+import { WorkflowTab } from './WorkflowTab'
 
-interface Opening {
-  projectName: string
-  startedAt: number
-  title?: string
-  subtitle?: string
-}
+type StageTab = 'workflow' | 'documents'
 
-/** One readiness item, in the words a person would use. The plugin reports a path, a section
- * and a field; a reader wants a sentence. Kept out of the component so the phrasing is one
- * thing in one place rather than assembled inline. */
-function describe(finding: ReadinessFinding): string {
-  const doc = finding.path.split('/').pop() ?? finding.path
-  const where = finding.field ? `${finding.field} in ${finding.section}` : finding.section
-  // The FIELD leads, not the filename. Two reasons, and the second is not cosmetic: what a
-  // person has to go and do is the field, and naming the document first made this button's
-  // accessible name start with "requirements.md", which collided with the document list's own
-  // button and broke an unrelated test on strict-mode ambiguity. This file already carries a
-  // note that "a bare text match became ambiguous once a Documents tab existed" — same lesson,
-  // second visit.
-  return `${where} — ${doc}`
-}
-
-/** The stage's documents: what each is for, what needs attention, and whether the stage can
- * move on. Read-only by construction — there is nothing here that changes a document. */
+/** The stage's home page: a title, then a Workflow / Documents tab pair, in that order, in the
+ * same tab-bar location on every stage (spec 0017).
+ *
+ * Workflow — a step-by-step guide to the stage, its steps' status derived from the exact same
+ * readiness data the Documents tab reads — is the default view. Documents is the flat list spec
+ * 0010 shipped, unchanged, in its own component. Read-only by construction — there is nothing
+ * here that changes a document. */
 export function StageHome({
   projectPath,
   stageId,
   actor,
-  setOpening,
-  onSignedOff,
   onOpenDocument,
 }: {
   projectPath: string
   stageId?: string
   /** Who a confirmation is recorded under; empty when nobody is signed in. */
   actor: string
-  /** Drives the blocking overlay while a sign-off is running — the same one `openPath` uses. */
-  setOpening: (opening: Opening | null) => void
-  /** Called once a sign-off actually advances the phase, so the sidebar's stage list can catch up. */
-  onSignedOff: () => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null)
   const [loading, setLoading] = useState(true)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
+  const [tab, setTab] = useState<StageTab>('workflow')
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -57,6 +38,17 @@ export function StageHome({
   }, [projectPath, stageId])
 
   useEffect(() => { refresh() }, [refresh])
+
+  // Opening a DIFFERENT stage — or a different PROJECT — is opening a home page fresh, and
+  // Workflow is what a fresh opening lands on (spec 0017), even if the reader had switched to
+  // Documents on the stage (or project) they came from. StageHome itself never remounts on
+  // either of those (App.tsx keeps it mounted and only changes `projectPath`/`stageId`), so the
+  // default has to be re-asserted here rather than left to the initial state, which only fires
+  // once. Keyed on BOTH, via `stageHomeKey`, not `stageId` alone: `viewedStageId` resets to
+  // `undefined` on every project open (App.tsx's `openPath`), which is not a change at all when
+  // the reader never picked a specific stage in the PREVIOUS project either — that was bug #2,
+  // where an `undefined`-to-`undefined` "switch" silently kept the reader on Documents.
+  useEffect(() => { setTab('workflow') }, [stageHomeKey(projectPath, stageId)])
 
   const toggle = async (question: SignOffQuestion, confirmed: boolean) => {
     if (!readiness) return
@@ -86,109 +78,46 @@ export function StageHome({
         {readiness.description && <p className="mt-1 text-sm text-slate-500">{readiness.description}</p>}
       </div>
 
-      <div>
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Documents</h3>
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {readiness.documents.map((doc) => (
-            <li key={doc.path}>
-              <button
-                type="button"
-                // A folder is listed, and its state reported, but there is no one document in it
-                // to open — the row must not offer to.
-                disabled={!doc.exists || doc.folder}
-                onClick={() => onOpenDocument(doc.path)}
-                className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-white"
-              >
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-slate-900">
-                    {doc.name}
-                    {doc.folder && <span className="ml-2 text-xs font-normal text-slate-400">folder</span>}
-                  </span>
-                  {doc.description && <span className="mt-0.5 block text-xs text-slate-500">{doc.description}</span>}
-                </span>
-                <span className="shrink-0 text-xs font-medium">
-                  {!doc.exists ? (
-                    <span className="text-slate-400">Not started</span>
-                  ) : doc.findingCount > 0 ? (
-                    <span className="text-amber-700">
-                      {doc.findingCount} to fill
-                    </span>
-                  ) : (
-                    <span className="text-[var(--color-command-ok)]">Complete</span>
-                  )}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+      <div role="tablist" aria-label="Stage view" className="flex gap-1 border-b border-slate-200">
+        <TabButton label="Workflow" active={tab === 'workflow'} onClick={() => setTab('workflow')} />
+        <TabButton label="Documents" active={tab === 'documents'} onClick={() => setTab('documents')} />
       </div>
 
-      {/* WHAT IS MISSING, ITEM BY ITEM. Spec 0010's acceptance check asks for exactly this —
-          "in plain language, each item linking to the field it refers to" — and until now this
-          screen showed only a COUNT per document ("3 to fill") and dropped the list. The
-          findings already carried the field and its position, and the join to that position is
-          unit-tested; nothing rendered it. A number tells a person there is work; it does not
-          tell them where, which is the whole job of a readiness check. */}
-      {readiness.findings.length > 0 && (
-        <div>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-            What is missing
-          </h3>
-          <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
-            {readiness.findings.map((f) => (
-              <li key={`${f.path}#${f.section}#${f.field ?? ''}`}>
-                <button
-                  type="button"
-                  onClick={() => onOpenDocument(f.path, { section: f.section, field: f.field })}
-                  className="flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left hover:bg-slate-50"
-                >
-                  <span className="text-sm font-medium text-slate-900">{describe(f)}</span>
-                  <span className="text-xs text-slate-500">{f.reason}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {readiness.judgement.length > 0 && (
-        <SignOffQuestions
-          questions={readiness.judgement}
-          actor={actor}
-          busyId={busyId}
-          error={confirmError}
-          onToggle={toggle}
-        />
-      )}
-
-      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-        {readiness.ready ? (
-          <span className="text-[var(--color-command-ok)]">
-            Every required document is present and complete.
-          </span>
-        ) : (
-          <span className="text-amber-700">
-            {readiness.documents.filter((d) => !d.ready).length} document(s) still need work before this stage can be signed off.
-          </span>
-        )}
-        {readiness.signOff.signedOffBy && (
-          <span className="ml-2 text-slate-500">Signed off by {readiness.signOff.signedOffBy}.</span>
-        )}
-      </div>
-
-      {/* Only offered on the project's actual current stage, once there is nothing left for a
-          person to do first — every document ready and every judgement question confirmed.
-          Signing off a stage that is not current, or that still has open work, is not a
-          decision this button should be able to make look easy. */}
-      {readiness.isCurrent && readiness.ready && readiness.judgement.every((q) => q.confirmation) && (
-        <SignOffPanel
+      {tab === 'workflow' ? (
+        <WorkflowTab
           projectPath={projectPath}
           readiness={readiness}
           actor={actor}
-          setOpening={setOpening}
-          onSignedOff={onSignedOff}
+          busyId={busyId}
+          confirmError={confirmError}
+          onToggleSignOff={toggle}
+        />
+      ) : (
+        <DocumentsTab
+          readiness={readiness}
+          actor={actor}
+          busyId={busyId}
+          confirmError={confirmError}
+          onOpenDocument={onOpenDocument}
+          onToggle={toggle}
         />
       )}
     </div>
+  )
+}
+
+function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium ${
+        active ? 'border-brand-600 text-brand-700' : 'border-transparent text-slate-500 hover:text-slate-800'
+      }`}
+    >
+      {label}
+    </button>
   )
 }

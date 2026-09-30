@@ -180,9 +180,12 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     await page.locator('main li button').first().click()
     await expect(page.getByText(/Owns it/)).toBeVisible({ timeout: 30_000 })
 
-    // Absence, not disabled — the same standard spec 0010's edit mode is held to.
+    // Absence, not disabled — the same standard spec 0010's edit mode is held to. The chat
+    // composer (spec 0016) is excluded: it's a persistent conversational input on every screen
+    // by design, not a document-editing control — every change it can cause still goes through
+    // a proposal card the person must accept, so it doesn't violate what this check protects.
     await expect(page.getByRole('button', { name: /^Hand off$/ })).toHaveCount(0)
-    await expect(page.locator('textarea')).toHaveCount(0)
+    await expect(page.locator('textarea:not([data-testid="chat-composer-input"])')).toHaveCount(0)
     await expect(page.locator('input')).toHaveCount(0)
   })
 

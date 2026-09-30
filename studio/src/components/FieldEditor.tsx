@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { DocumentField } from '../../shared/types'
+import { AiProposalCard } from './AiProposalCard'
 
 /** Editing one field, including asking Claude to draft it.
  *
@@ -105,28 +106,15 @@ export function FieldEditor({
       )}
 
       {draft !== null && (
-        <div className="rounded-lg border border-brand-200 bg-brand-50 p-3">
-          <p className="text-xs font-medium uppercase tracking-wide text-brand-700">
-            Claude's draft — review before accepting
-          </p>
+        <AiProposalCard
+          label="Claude's draft — review before accepting"
+          busy={false}
+          acceptLabel="Use this"
+          onAccept={acceptDraft}
+          onDiscard={discardDraft}
+        >
           <pre className="mt-1 whitespace-pre-wrap font-sans text-sm text-slate-800">{draft}</pre>
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={acceptDraft}
-              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
-            >
-              Use this
-            </button>
-            <button
-              type="button"
-              onClick={discardDraft}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300"
-            >
-              Discard
-            </button>
-          </div>
-        </div>
+        </AiProposalCard>
       )}
 
       {draftError && <p className="text-xs text-[var(--color-command-error)]">{draftError}</p>}
