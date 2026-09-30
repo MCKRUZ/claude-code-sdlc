@@ -140,6 +140,45 @@ describe('ChatPanel — item 2: busy resets on stage switch, and a stale reply f
     await new Promise((r) => setTimeout(r, 0))
     expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(false)
   })
+
+  it('a stale sendChatMessage reply for the OLD stage, arriving after the person switched stages, is never applied', async () => {
+    // Caught by CI's automated correctness review: unlike the mount effect above (which already
+    // had a `cancelled` guard), submit/answer/resolveProposal had none at all — a reply for a
+    // stage the person already navigated away from would still overwrite whatever is on screen.
+    let resolveOldSend: (r: ChatTurnResult) => void = () => {}
+    const oldSendPromise = new Promise<ChatTurnResult>((resolve) => { resolveOldSend = resolve })
+    const staleReply: ChatTurnResult = {
+      ok: true,
+      state: { sessionId: 's', messages: [{ id: 'stale', role: 'assistant', text: 'STALE-OLD-REPLY', questions: [], proposals: [], at: new Date().toISOString() }] },
+    }
+    const newStageState: ChatState = {
+      sessionId: 's2', messages: [{ id: 'n1', role: 'assistant', text: 'NEW-STAGE-CONTENT', questions: [], proposals: [], at: new Date().toISOString() }],
+    }
+
+    installStudioMock({
+      getChatState: vi.fn().mockImplementation((_projectPath: string, stageId: string) => (
+        Promise.resolve(stageId === 'new' ? newStageState : emptyState())
+      )),
+      sendChatMessage: vi.fn().mockImplementation(() => oldSendPromise),
+    })
+
+    const { rerender } = render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+
+    const user = userEvent.setup()
+    await user.type(screen.getByPlaceholderText('Type a message…'), 'hello')
+    await act(async () => { await user.click(screen.getByRole('button', { name: 'Send' })) })
+
+    // Navigate to a new stage BEFORE the old stage's send reply comes back.
+    rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="new" />)
+    await waitFor(() => expect(screen.getByText('NEW-STAGE-CONTENT')).toBeTruthy())
+
+    // Now the stale reply for "old" finally arrives. It must never reach the screen.
+    await act(async () => { resolveOldSend(staleReply) })
+    await new Promise((r) => setTimeout(r, 0))
+    expect(screen.queryByText('STALE-OLD-REPLY')).toBeNull()
+    expect(screen.getByText('NEW-STAGE-CONTENT')).toBeTruthy()
+  })
 })
 
 describe('ChatPanel — item 1: a failed send does not lose the person\'s own message', () => {

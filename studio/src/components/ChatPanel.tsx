@@ -22,6 +22,14 @@ export function ChatPanel({
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
+  // What stage is actually on screen right now, readable from inside a handler's async
+  // continuation — a plain closure variable would only ever hold the stage the handler was
+  // CALLED for, which is exactly the bug this guards: switching stages while submit/answer/
+  // resolveProposal is still awaiting its reply must not apply that stale reply's state to
+  // whatever stage is on screen by the time it comes back, or send the next message to the
+  // session the person already navigated away from believing they're on a different one.
+  const currentStageId = useRef(stageId)
+  useEffect(() => { currentStageId.current = stageId }, [stageId])
 
   useEffect(() => {
     if (!projectPath || !stageId) {
@@ -68,10 +76,12 @@ export function ChatPanel({
   const submit = async () => {
     const text = draft.trim()
     if (!text || busy) return
+    const forStage = stageId
     setDraft('')
     setBusy(true)
     setError(null)
     const result = await window.studio.sendChatMessage(projectPath, stageId, text)
+    if (currentStageId.current !== forStage) return // the person moved on; this reply is now stale
     setBusy(false)
     // Always render the result, success or failure: on failure, `result.state` still carries
     // the message the person just sent (chat.ts persists it even when the turn itself fails) —
@@ -82,18 +92,22 @@ export function ChatPanel({
   }
 
   const answer = async (questionId: string, option: string) => {
+    const forStage = stageId
     setBusy(true)
     setError(null)
     const result = await window.studio.answerChatQuestion(projectPath, stageId, questionId, option)
+    if (currentStageId.current !== forStage) return
     setBusy(false)
     setState(result.state)
     if (!result.ok) setError(result.error ?? 'The assistant could not respond.')
   }
 
   const resolveProposal = async (proposalId: string, outcome: 'accepted' | 'edited' | 'discarded', finalValue: string) => {
+    const forStage = stageId
     setBusy(true)
     setError(null)
     const result = await window.studio.resolveChatProposal(projectPath, stageId, proposalId, outcome, finalValue, actor || 'unknown')
+    if (currentStageId.current !== forStage) return
     setBusy(false)
     setState(result.state)
     if (!result.ok) setError(result.error ?? 'That could not be saved.')
