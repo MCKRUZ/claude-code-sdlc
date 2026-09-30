@@ -115,8 +115,15 @@ describe('ChatPanel — item 2: busy resets on stage switch, and a stale reply f
 
     const { rerender } = render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
     // The old stage is now busy (auto-greeting, awaiting the never-yet-resolved promise).
+    // `busy` flips to true inside the mount effect, not synchronously with the textarea's own
+    // first render — so this needs its own wait, not a bare assertion right after the element
+    // merely exists. A CI runner slow enough to observe the gap between "element rendered" and
+    // "effect ran" (macOS's, in practice) fails a synchronous check here even though the real
+    // behavior is correct.
     await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
-    expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(true)
+    await waitFor(() => {
+      expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(true)
+    })
 
     // Navigate to a new stage BEFORE the old stage's greet resolves.
     rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="new" />)
