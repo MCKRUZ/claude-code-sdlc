@@ -111,7 +111,10 @@ test.describe('[spec 0016] chat on a stage whose documents are already complete'
 
   test('never restarts the interview — no auto-greet call happens, and no live model call at all', async () => {
     await page.getByText('complete stage project').click()
-    await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
+    // Waiting on the Chat panel's own heading, not a specific main-content tab, since which
+    // tab a stage opens to is spec 0017's concern, not this one's — this test only needs proof
+    // the stage page has finished loading before it looks at chat.
+    await expect(page.getByRole('heading', { name: 'Chat' })).toBeVisible({ timeout: 30_000 })
     // The chat panel is present (spec 0008's own requirement, which this spec finally makes
     // real) — and NEVER the dead placeholder claiming "isn't wired up yet".
     await expect(page.getByText(/isn't wired up yet/i)).toHaveCount(0)
@@ -162,7 +165,9 @@ test.describe('[spec 0016] the assistant opens a stage that has a document not y
   test('the assistant\'s own opening message appears with nobody having typed anything', async () => {
     test.setTimeout(180_000)
     await page.getByText('greenfield project').click()
-    await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
+    // Same reasoning as the other test in this file: wait on Chat's own heading, not a
+    // particular main-content tab (that default is spec 0017's concern).
+    await expect(page.getByRole('heading', { name: 'Chat' })).toBeVisible({ timeout: 30_000 })
 
     // "Starting the conversation…" while the first turn is in flight, then a real message —
     // never a person having to type first.
