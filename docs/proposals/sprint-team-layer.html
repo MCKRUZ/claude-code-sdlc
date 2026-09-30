@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sprint Team Layer — what it looks like</title>
+<style>
+  :root{
+    --product:#1d4ed8; --product-d:#1e3a8a; --product-bg:#eef2ff;
+    --eng:#0d9488;     --eng-d:#0f766e;     --eng-bg:#e6fffb;
+    --data:#7c3aed;    --data-d:#5b21b6;    --data-bg:#f3ecff;
+    --gate:#ca8a04;    --gate-d:#a16207;    --gate-bg:#fef9e7;
+    --rework:#dc2626;  --rework-bg:#fef2f2;
+    --ok:#166534;      --ok-bg:#e7f6ea;
+    --ink:#0f172a; --muted:#64748b; --line:#cbd5e1; --paper:#f1f5f9; --card:#fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; color:var(--ink); background:var(--paper);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px; line-height:1.45; padding:22px}
+  .sheet{max-width:1180px; margin:0 auto}
+  h1,h2,h3{margin:0; font-weight:800; letter-spacing:-.01em}
+  .mono{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace}
+  code{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; background:#e2e8f0; padding:1px 5px; border-radius:4px}
+
+  header.hero{background:linear-gradient(180deg,#0b1220,#111c33); color:#fff; border-radius:14px; padding:20px 24px}
+  header.hero .kicker{color:#93c5fd; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase}
+  header.hero h1{font-size:24px; margin-top:4px}
+  header.hero .one{margin-top:10px; font-size:15px; font-weight:600; color:#e2e8f0}
+  header.hero .why{margin-top:6px; font-size:12.5px; color:#94a3b8}
+
+  .band{display:flex; align-items:center; gap:8px; margin:26px 0 12px; font-size:12px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--muted)}
+  .band::after{content:""; flex:1; height:1px; background:var(--line)}
+
+  .grid{display:grid; gap:12px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)} .g5{grid-template-columns:repeat(5,1fr)}
+  @media (max-width:900px){ .g2,.g3,.g4,.g5{grid-template-columns:1fr} .flow{flex-direction:column} .flow .arrow{transform:rotate(90deg)} }
+
+  .card{background:var(--card); border:1.5px solid var(--line); border-radius:12px; padding:14px 16px}
+  .card h3{font-size:15px; margin-bottom:6px}
+  .card p{margin:6px 0}
+  .card ul{margin:6px 0 0 18px; padding:0} .card li{margin:3px 0}
+  .tag{display:inline-block; font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase; padding:2px 8px; border-radius:6px; margin-bottom:6px}
+  .t-product{background:var(--product-bg); color:var(--product-d)} .t-eng{background:var(--eng-bg); color:var(--eng-d)} .t-data{background:var(--data-bg); color:var(--data-d)}
+  .t-gate{background:var(--gate-bg); color:var(--gate-d)} .t-ok{background:var(--ok-bg); color:var(--ok)} .t-rework{background:var(--rework-bg); color:var(--rework)}
+  .b-product{border-color:var(--product)} .b-eng{border-color:var(--eng)} .b-data{border-color:var(--data)} .b-gate{border-color:var(--gate)} .b-ok{border-color:var(--ok)}
+
+  /* flow */
+  .flow{display:flex; align-items:stretch; gap:8px}
+  .flow .step{flex:1; background:var(--card); border:1.5px solid var(--line); border-radius:12px; padding:12px}
+  .flow .step .n{display:inline-block; font-size:11px; font-weight:800; color:#fff; background:var(--ink); border-radius:6px; padding:2px 8px}
+  .flow .step h3{font-size:14px; margin:8px 0 4px}
+  .flow .step .cmd{display:block; margin-top:6px; font-size:12px; color:var(--product-d); font-weight:700}
+  .flow .step .who{font-size:12px; color:var(--muted); margin-top:4px}
+  .flow .arrow{align-self:center; color:var(--muted); font-size:22px; font-weight:800}
+
+  /* terminal mock */
+  .term{background:#0b1220; color:#e2e8f0; border-radius:12px; padding:16px 18px; font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; line-height:1.55; overflow:auto; white-space:pre}
+  .term .p{color:#93c5fd} .term .ok{color:#86efac} .term .warn{color:#fcd34d} .term .bad{color:#fca5a5} .term .dim{color:#94a3b8} .term .h{color:#fff; font-weight:700}
+
+  table{width:100%; border-collapse:collapse; background:var(--card); border:1.5px solid var(--line); border-radius:12px; overflow:hidden}
+  th,td{padding:9px 12px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; font-size:13px}
+  th{background:#f8fafc; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
+  tr:last-child td{border-bottom:0}
+
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:12px} @media (max-width:900px){.two{grid-template-columns:1fr}}
+  .note{background:var(--gate-bg); border:1.5px solid var(--gate); border-radius:12px; padding:12px 14px; font-size:13px}
+  footer{margin-top:28px; color:var(--muted); font-size:12px}
+</style>
+</head>
+<body>
+<div class="sheet">
+
+<header class="hero">
+  <div class="kicker">claude-code-sdlc · proposal · 1.6.0</div>
+  <h1>Sprint Team Layer — what it looks like</h1>
+  <div class="one">Two new commands. <b>/sdlc-sprint</b> slates a set number of specs into a two-week sprint by a mix of work and readies it. <b>/sdlc-refine</b> refines that sprint's specs. Nothing about the phases or the gates changes.</div>
+  <div class="why">A sprint is a commitment window laid over the spec backlog — never a second backlog, never a gate, never a velocity chart. ADO stays manual.</div>
+</header>
+
+<div class="band">A sprint, start to finish</div>
+<div class="flow">
+  <div class="step b-product">
+    <span class="n">1</span><h3>New</h3>
+    <div>Goal, dates, how many specs, and the mix by risk tier.</div>
+    <span class="cmd mono">/sdlc-sprint new --sprint S07 --target 6 --mix HIGH:1,MEDIUM:2,LOW:3</span>
+    <div class="who">Product</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="step b-product">
+    <span class="n">2</span><h3>Slate</h3>
+    <div>Proposes 6 specs from the backlog that fill the mix, in backlog order. A human confirms or edits the set.</div>
+    <span class="cmd mono">/sdlc-sprint slate</span>
+    <div class="who">Product decides · agent proposes</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="step b-eng">
+    <span class="n">3</span><h3>Refine</h3>
+    <div>Each slated spec clears the Definition of Ready; Engineering and Data each record a verdict.</div>
+    <span class="cmd mono">/sdlc-refine --sprint S07</span>
+    <div class="who">Product · Engineering · Data</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="step b-gate">
+    <span class="n">4</span><h3>Ready</h3>
+    <div>Passes only when every slated spec is READY with both verdicts in; otherwise it lists the gaps. On success it writes the <b>sprint-planning page</b> (HTML) the team runs planning from.</div>
+    <span class="cmd mono">/sdlc-sprint ready --by "&lt;name&gt;"</span>
+    <div class="who">A named human</div>
+  </div>
+  <div class="arrow">→</div>
+  <div class="step b-ok">
+    <span class="n">5</span><h3>Close</h3>
+    <div>Kept (merged), carried to S08, or dropped — each carry or drop with a reason and a name.</div>
+    <span class="cmd mono">/sdlc-sprint close --carry-to S08</span>
+    <div class="who">A named human</div>
+  </div>
+</div>
+
+<div class="band">What you see on screen</div>
+<div class="two">
+  <div class="term"><span class="p">$</span> /sdlc-sprint status
+
+<span class="h">Sprint S07</span> — "Warranty lookup answers in one turn"
+<span class="dim">planning · 2026-09-28 → 2026-10-09 · target 6 · mix HIGH:1 MEDIUM:2 LOW:3</span>
+
+<span class="h">Slate</span>
+spec  name                      risk    status  DoR        eng       data      next owner
+0007  warranty-lookup-intent    HIGH    ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">accepted</span>  —
+0009  case-write-guardrail      MEDIUM  ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="warn">pending</span>   Data lead
+0011  entitlement-cache         MEDIUM  draft   <span class="bad">NOT READY</span>  <span class="dim">pending</span>   <span class="dim">pending</span>   spec owner
+0012  agent-copy-polish         LOW     ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">n-a</span>       —
+0013  pricing-console-tooltips  LOW     ready   <span class="ok">READY</span>      <span class="warn">pending</span>   <span class="ok">n-a</span>       Eng lead
+0014  audit-record-fields       LOW     ready   <span class="ok">READY</span>      <span class="ok">accepted</span>  <span class="ok">accepted</span>  —
+
+<span class="h">Readiness</span>   4 of 6 ready · 1 NOT READY (0011: scope-out empty, 2 vague lines)
+<span class="h">Verdicts</span>    2 pending — 0009 data (2 business days), 0013 eng (1 business day)
+<span class="h">Handoffs</span>    1 unacknowledged — 0011 → spec owner (3 business days)
+<span class="h">Mix</span>         HIGH 1/1 · MEDIUM 2/2 · LOW 3/3
+<span class="h">WIP</span>         1 in-flight · cap 2 (cadence-plan.md)
+<span class="h">Decisions</span>   DL-04 overdue (owner: Product lead, due 2026-09-25)
+
+<span class="h">Build order</span> 0007 → 0009 → 0011 → 0014 → 0012 → 0013   <span class="dim">(deps, then unblocks-most, then HIGH→LOW)</span>
+<span class="h">Next up</span>     <span class="ok">0007</span> — READY, no open dependencies, WIP 1 of 2
+
+<span class="dim">ready when: every slated spec READY + eng accepted + data accepted|n-a</span></div>
+
+  <div>
+    <div class="card" style="margin-bottom:12px">
+      <span class="tag t-product">the sprint record</span>
+      <h3><span class="mono">.sdlc/sprints/S07.md</span></h3>
+<pre class="mono" style="margin:6px 0 0; font-size:12px; line-height:1.5">---
+sprint: "S07"
+goal: "Warranty lookup answers in one turn"
+start: "2026-09-28"
+end: "2026-10-09"          # start + 10 business days
+state: planning           # planning | ready | closed
+target: 6
+mix: "HIGH:1,MEDIUM:2,LOW:3"
+readied_by: ""
+closed_by: ""
+---
+## Goal
+## Slate        ← rendered from the specs, never hand-edited
+## Close        ← kept / carried → S08 / dropped, with reasons</pre>
+    </div>
+    <div class="card">
+      <span class="tag t-eng">on each spec — five optional keys</span>
+      <h3><span class="mono">specs/0009-case-write-guardrail.md</span></h3>
+<pre class="mono" style="margin:6px 0 0; font-size:12px; line-height:1.5">status: ready            # unchanged — still the four values
+sprint: "S07"            # set by slate, moved by carry
+next_owner: "Data lead"  # handoff → ack clears it
+eng_review: accepted     # pending | accepted | returned | n-a
+data_review: pending     # n-a only from Data, with a reason
+depends_on: "0007"       # comma list; refine proposes, a human confirms</pre>
+      <p style="margin-top:8px; color:var(--muted)">Inserted on first use. <code>check_spec.py</code>, the DoR, and the spec template's protected keys are untouched.</p>
+    </div>
+  </div>
+</div>
+
+<div class="band">When /sdlc-sprint runs — and the sprint-planning page</div>
+<div class="two">
+  <table>
+    <tr><th>Moment</th><th>Verbs</th><th>Alongside</th></tr>
+    <tr><td><b>Setting up the next sprint</b><br><span style="color:var(--muted)">last week of the current one, at the Mon/Wed/Fri review</span></td><td class="mono">new · slate · unslate</td><td><code>/sdlc-refine --sprint</code> drives the slate to READY; Eng and Data record verdicts</td></tr>
+    <tr><td><b>Sprint planning meeting</b><br><span style="color:var(--muted)">day 0</span></td><td class="mono">ready → planning page<br>plan (re-render on demand)</td><td>the page is the meeting's agenda and its record</td></tr>
+    <tr><td><b>Every day</b><br><span style="color:var(--muted)">the flow check</span></td><td class="mono">status</td><td><code>/sdlc-refine</code> with no args for the refinement agenda</td></tr>
+    <tr><td><b>Whenever work changes hands</b></td><td class="mono">handoff · ack</td><td>—</td></tr>
+    <tr><td><b>Last day</b><br><span style="color:var(--muted)">sprint review and Retro+</span></td><td class="mono">close → review page</td><td><code>/sdlc-retro</code> for cross-sprint patterns</td></tr>
+  </table>
+  <div class="card b-gate">
+    <span class="tag t-gate">generated at ready</span>
+    <h3><span class="mono">.sdlc/reports/sprint-S07-planning.html</span></h3>
+    <p>Self-contained HTML in the style of the phase reports, linked from <span class="mono">reports/index.html</span>. Run the planning meeting from it:</p>
+    <ul>
+      <li><b>Header</b> — goal, dates, board reference, readied by</li>
+      <li><b>Commitment</b> — the slate with risk, type, DoR, Eng and Data verdicts, next owner</li>
+      <li><b>Mix and capacity</b> — mix vs target, WIP cap, turnaround target or "no target set"</li>
+      <li><b>Build order and next up</b> — with dependency arrows and why</li>
+      <li><b>Spec cards</b> — Goal, Why, acceptance-check count, tier and why, harness context, open Decision List items</li>
+      <li><b>Open decisions</b> and <b>carried-in</b> specs with their reasons</li>
+      <li><b>Footer</b> — "Never tracked: velocity, story points, PR count, lines of code."</li>
+    </ul>
+    <p style="color:var(--muted)">The same renderer writes <span class="mono">sprint-S07-review.html</span> at <code>close</code>.</p>
+  </div>
+</div>
+
+<div class="band">Refining one spec</div>
+<div class="flow">
+  <div class="step"><span class="n">a</span><h3>DoR + upstream check</h3><div>Required sections, scope in <i>and</i> out, tier, no placeholders — and does <code>source:</code> resolve to a real FR/EP/BR, is that artifact stale, does the tier match the risk map? In <code>--sprint</code> mode this runs across every slated spec at once against the Phase 0–2 artifacts.</div><span class="cmd mono">check_spec.py · artifact_lineage · audit_artifacts impact</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><span class="n">b</span><h3>Vague lines</h3><div>"Could two people build different things from this line?" Rewrite until they couldn't.</div><span class="cmd mono">/sdlc-refine --spec 0011</span></div>
+  <div class="arrow">→</div>
+  <div class="step b-product"><span class="n">c</span><h3>Silent decisions</h3><div>Every unmade product choice goes to the decision-log with an owner and a 2-day clock.</div><span class="cmd mono">DL-NN</span></div>
+  <div class="arrow">→</div>
+  <div class="step b-eng"><span class="n">d</span><h3>Eng verdict</h3><div>Feasible? Harness context named? Tier right? Recorded by the Engineering lead.</div><span class="cmd mono">validate --lane eng</span></div>
+  <div class="arrow">∥</div>
+  <div class="step b-data"><span class="n">d</span><h3>Data verdict</h3><div>Data impact? PII? Contract exists? Recorded by the Data lead — or n-a with a reason.</div><span class="cmd mono">validate --lane data</span></div>
+  <div class="arrow">→</div>
+  <div class="step b-ok"><span class="n">e</span><h3>Ready</h3><div><code>status: ready</code> flipped only after READY and a human's yes. A returned verdict sends it back with the reason.</div></div>
+</div>
+
+<div class="band">Nothing locks — the guarantees</div>
+<div class="grid g4">
+  <div class="card b-ok"><span class="tag t-ok">any phase</span><h3>Refine whenever specs exist</h3><p>Neither command reads the engagement phase to decide whether it may run. Mid-Build refinement for the <i>next</i> sprint is the normal case.</p></div>
+  <div class="card b-ok"><span class="tag t-ok">no going backwards</span><h3>Upstream fixes stay in place</h3><p>A spec whose gap is in a Phase 1 or 2 artifact runs <code>/sdlc-refine --upstream</code>: revise the artifact, re-gate <i>that</i> phase with <code>check_gates.py --phase N</code>, return to refinement. <code>current_phase</code> never moves.</p></div>
+  <div class="card b-ok"><span class="tag t-ok">never a gate</span><h3>Sprints are advisory</h3><p><code>ready</code> and <code>close</code> check only the slate. Nothing is written to <code>state.yaml</code>; the seven gates neither block a sprint nor are blocked by one.</p></div>
+  <div class="card b-ok"><span class="tag t-ok">human exit</span><h3>Leaving Build is unchanged</h3><p>Still a human declaration. <code>/sdlc-next</code> shows one line about the last sprint's outcome; <code>close</code> never suggests advancing.</p></div>
+</div>
+
+<div class="band">Five things we add regardless</div>
+<div class="grid g5">
+  <div class="card b-product"><span class="tag t-product">R1</span><h3>Handoffs with ack</h3><p><code>handoff --to</code> and <code>ack</code>. A spec waiting between teams always has an owner and an age. "Never rely on the next owner noticing."</p></div>
+  <div class="card b-eng"><span class="tag t-eng">R2</span><h3>Eng + Data verdicts in "ready"</h3><p>Independent validation, in parallel, before anyone builds. This is what readying a sprint means for this team.</p></div>
+  <div class="card b-product"><span class="tag t-product">R3</span><h3>Self-rendering agenda</h3><p><code>/sdlc-refine</code> with no arguments: not-ready specs and why, pending verdicts by age, overdue decisions. The Mon/Wed/Fri review reads it.</p></div>
+  <div class="card b-gate"><span class="tag t-gate">R4</span><h3>Honest close, no velocity</h3><p>Kept / carried / dropped with reasons, this sprint only. Points, estimates, hours and per-person counts are refused at the ledger. Fix the retro template's velocity row now.</p></div>
+  <div class="card b-ok"><span class="tag t-ok">R5</span><h3>Sprint at session start</h3><p>One <code>[SDLC-SPRINT]</code> line in both hook shells; the stale section-plan summary the Build hook still prints is retired at the same time.</p></div>
+</div>
+
+<div class="band">Numbers</div>
+<div class="two">
+  <table>
+    <tr><th>Shown — this sprint only</th></tr>
+    <tr><td>slated · ready · not ready, with the blocking findings</td></tr>
+    <tr><td>kept · carried (→ SNN, reason, name) · dropped (reason, name)</td></tr>
+    <tr><td>pending verdicts and unacknowledged handoffs, in business days</td></tr>
+    <tr><td>mix actual vs target · WIP vs cap · overdue decisions</td></tr>
+    <tr><td>carry-over recurrence per spec — the only number that crosses sprints</td></tr>
+  </table>
+  <table>
+    <tr><th>Refused</th></tr>
+    <tr><td>velocity · story points · estimates · effort · hours</td></tr>
+    <tr><td>PR count · commit count · lines of code</td></tr>
+    <tr><td>anything per person</td></tr>
+    <tr><td>trends of kept-per-sprint ("velocity with the points removed")</td></tr>
+    <tr><td>fabricated zeros — empty reads "no data"</td></tr>
+  </table>
+</div>
+
+<div class="band">Where things live</div>
+<table>
+  <tr><th>Thing</th><th>Path</th><th>Owner of truth</th></tr>
+  <tr><td>Sprint record</td><td class="mono">.sdlc/sprints/S07.md</td><td>goal, dates, target, mix, state — the slate itself is rendered from the specs</td></tr>
+  <tr><td>Sprint membership, next owner, verdicts</td><td class="mono">specs/NNNN-name.md frontmatter</td><td>the spec file (the plugin's existing rule: derive from the spec, never a second tracker)</td></tr>
+  <tr><td>Who did what, when</td><td class="mono">.sdlc/metrics/sprint-log.jsonl</td><td>append-only ledger: slated, handoff, ack, verdict, ready, carried, dropped, closed</td></tr>
+  <tr><td>Open product decisions</td><td class="mono">.sdlc/decision-log.md</td><td>existing — owner + 2-business-day clock</td></tr>
+  <tr><td>Cadence, WIP cap, sprint length</td><td class="mono">.sdlc/artifacts/03-foundation/cadence-plan.md</td><td>existing Phase-3 artifact, gains three rows</td></tr>
+  <tr><td>Logic</td><td class="mono">scripts/sprint_model.py (pure) · scripts/sprint.py (CLI)</td><td>new; <code>track_specs.py</code> gains <code>by_sprint</code></td></tr>
+</table>
+
+<div class="band">Decisions for you</div>
+<table>
+  <tr><th>#</th><th>Decision</th><th>Recommended</th><th>Alternative</th></tr>
+  <tr><td>D1</td><td>Mix axis</td><td>Risk tier — it sets checking depth</td><td>by type (feature/bugfix) or channel</td></tr>
+  <tr><td>D2</td><td>Sprint length and id</td><td>10 business days; id typed at <code>new</code></td><td>14 calendar days; auto-numbered</td></tr>
+  <tr><td>D3</td><td>"Ready" rule</td><td>DoR READY <b>and</b> Eng accepted <b>and</b> Data accepted-or-n-a</td><td>DoR only</td></tr>
+  <tr><td>D4</td><td>Data verdict</td><td>required until Data records n-a with a reason</td><td>optional</td></tr>
+  <tr><td>D5</td><td>Slate over target</td><td>refused unless <code>--override --reason</code>; mix breach warns</td><td>both warn</td></tr>
+  <tr><td>D6</td><td>Fix the retro velocity row and the "no sprint plan" sentence</td><td>now, in Increment 1</td><td>later</td></tr>
+</table>
+
+<div class="note" style="margin-top:14px"><b>Untouched, byte-for-byte:</b> <code>check_spec.py</code> · <code>check_gates.py</code> · <code>advance_phase.py</code> · <code>phase_model.py</code> · <code>phase-registry.yaml</code> · <code>section-evaluator</code> · <code>harness/**</code> · <code>/sdlc-coach</code> · <code>/sdlc-spec</code>. Ships as 1.6.0 in two increments: the sprint, then refine + the five extras. Full detail: <span class="mono">sprint-team-layer.md</span>; the long analysis: <span class="mono">sprint-team-layer-extended-draft.md</span>.</div>
+
+<footer>Draft for review, 2026-09-24. Names shown are roles; product areas and people are placeholders in every shipped template.</footer>
+</div>
+</body>
+</html>
