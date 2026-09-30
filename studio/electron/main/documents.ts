@@ -13,6 +13,7 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { pluginIsBehind } from '../../shared/pluginContract'
+import { documentNotFoundError } from '../../shared/documentErrors'
 import { runPluginScript } from './project'
 import {
   findShapeForPath, readShapeFromBytes, writeShapeUpdates,
@@ -172,7 +173,49 @@ function toSections(text: string, result: ShapeReadResult, meta: Map<string, Sha
   return sections.sort((a, b) => a.start - b.start)
 }
 
+/** Reads currently in flight, keyed by the resolved absolute path — so two callers asking for
+ * the SAME file at the same moment share one subprocess instead of spawning two (spec 0017's
+ * fix pass, bug #7: `getStageReadiness()`'s own `locate()` and the Workflow tab's live panel
+ * both open the current step's file, moments apart on first load and potentially at once on a
+ * sign-off toggle).
+ *
+ * Deliberately keyed on the RESOLVED path, not `${projectPath}\0${relPath}`: two different
+ * relPath spellings of the same file should still coalesce, and this is exactly what `docPath`
+ * already normalises. Entries are removed the instant their read settles (`finally`, success or
+ * failure alike), so this is a coalescing cache, never a content cache — the very next call,
+ * even one tick later, does a fresh read. That is what keeps this safe for the polling that
+ * wants exactly that freshness, and why `setField`/`addInstance` deliberately do NOT go through
+ * this function for their own post-write re-read below: coalescing a re-read against an
+ * in-flight read that started BEFORE the write would hand the write's caller stale, pre-write
+ * content. They call `openDocumentUncached` directly instead. */
+const inFlightReads = new Map<string, Promise<OpenDocumentResult>>()
+
 export async function openDocument(
+  projectPath: string,
+  pluginScriptsDir: string,
+  relPath: string,
+): Promise<OpenDocumentResult> {
+  let key: string
+  try {
+    key = docPath(projectPath, relPath)
+  } catch {
+    // The uncached path produces the same, better-worded error — let it.
+    return openDocumentUncached(projectPath, pluginScriptsDir, relPath)
+  }
+
+  const existing = inFlightReads.get(key)
+  if (existing) return existing
+
+  const promise = openDocumentUncached(projectPath, pluginScriptsDir, relPath)
+  inFlightReads.set(key, promise)
+  try {
+    return await promise
+  } finally {
+    inFlightReads.delete(key)
+  }
+}
+
+async function openDocumentUncached(
   projectPath: string,
   pluginScriptsDir: string,
   relPath: string,
@@ -184,7 +227,7 @@ export async function openDocument(
     return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: (err as Error).message }
   }
   if (!existsSync(full)) {
-    return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: `${relPath} does not exist` }
+    return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: documentNotFoundError(relPath) }
   }
 
   if (statSync(full).isDirectory()) {
@@ -243,7 +286,7 @@ export async function setField(
   label: string,
   value: string,
 ): Promise<OpenDocumentResult> {
-  const current = await openDocument(projectPath, pluginScriptsDir, relPath)
+  const current = await openDocumentUncached(projectPath, pluginScriptsDir, relPath)
   if (!current.ok) return current
   if (!current.shaped) {
     return { ...current, ok: false, error: 'This document has no usable shape, so individual fields cannot be edited.' }
@@ -267,7 +310,7 @@ export async function setField(
   } catch (err) {
     return { ...current, ok: false, error: err instanceof Error ? err.message : String(err) }
   }
-  return openDocument(projectPath, pluginScriptsDir, relPath)
+  return openDocumentUncached(projectPath, pluginScriptsDir, relPath)
 }
 
 export async function nextNumber(
@@ -281,7 +324,7 @@ export async function nextNumber(
   } catch (err) {
     return { ok: false, error: (err as Error).message }
   }
-  if (!existsSync(full)) return { ok: false, error: `${relPath} does not exist` }
+  if (!existsSync(full)) return { ok: false, error: documentNotFoundError(relPath) }
   const shapePath = findShapeForPath(pluginScriptsDir, relPath, readFileSync(full, 'utf-8'))
   if (!shapePath) return { ok: false, error: 'This document has no shape, so it has no numbered sections.' }
 
@@ -310,7 +353,7 @@ export async function addInstance(
     return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: (err as Error).message }
   }
   if (!existsSync(full)) {
-    return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: `${relPath} does not exist` }
+    return { ok: false, path: relPath, shaped: false, warnings: [], sections: [], error: documentNotFoundError(relPath) }
   }
   const shapePath = findShapeForPath(pluginScriptsDir, relPath, readFileSync(full, 'utf-8'))
   if (!shapePath) {
@@ -329,7 +372,7 @@ export async function addInstance(
       error: entry.stderr || 'add-instance failed',
     }
   }
-  return openDocument(projectPath, pluginScriptsDir, relPath)
+  return openDocumentUncached(projectPath, pluginScriptsDir, relPath)
 }
 
 /** Who changed this document since `sinceCommit`, and why — author, date and the commit

@@ -131,6 +131,12 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
       }).observe(document.body, { childList: true, subtree: true, characterData: true })
     })
     await page.getByText('e2e project').click()
+    // Spec 0017: a stage home opens on the Workflow tab by default now, so every one of this
+    // file's assertions about the flat document list needs the Documents tab explicitly
+    // selected — that switch IS the acceptance check ("opening a stage lands on Workflow by
+    // default"), proven for real here rather than only in workflow.spec.ts.
+    await expect(page.getByRole('tab', { name: 'Workflow' })).toHaveAttribute('aria-selected', 'true', { timeout: 30_000 })
+    await page.getByRole('tab', { name: 'Documents' }).click()
     // The stage home's HEADING specifically. A bare text match became ambiguous once a
     // Documents navigation tab existed, which is the kind of breakage a loose locator
     // invites — it was only ever unique by accident.
@@ -168,6 +174,9 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     await expect(marked).toContainText(/sent here to fill in Dependencies/)
 
     await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    // StageHome remounted fresh (spec 0017: a document's own "← Back to the stage" is opening
+    // the stage home again, which lands on Workflow), so the Documents tab has to be reselected.
+    await page.getByRole('tab', { name: 'Documents' }).click()
     await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible({ timeout: 30_000 })
   })
 
@@ -227,6 +236,10 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
   })
 
   test('opens a document as sections and fields, showing where it lives', async () => {
+    // The stage-navigation dance above (Phase 0, Build Loop, Settings, back to Phase 1) landed
+    // each time on a freshly-mounted stage home, which spec 0017 defaults to Workflow — so the
+    // document list this test needs is one tab click away, not the view already showing.
+    await page.getByRole('tab', { name: 'Documents' }).click()
     await page.getByRole('button', { name: /^requirements\.md/ }).click()
     // Spec 0010: every field shows where the document lives, without leaving the page.
     await expect(page.getByText(REQUIREMENTS)).toBeVisible({ timeout: 30_000 })
@@ -272,6 +285,8 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
     // it replaced, because it teaches people that the red box means nothing.
     await page.getByRole('button', { name: /Done editing/i }).click()
     await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    // A fresh stage-home mount, defaulted back to Workflow (spec 0017).
+    await page.getByRole('tab', { name: 'Documents' }).click()
     await page.getByRole('button', { name: /^non-functional-requirements\.md/ }).click()
     await expect(page.getByRole('heading', { name: /non-functional-requirements\.md/i }))
       .toBeVisible({ timeout: 30_000 })
@@ -298,6 +313,7 @@ test.describe('[spec 0010] reading and editing a document in the real window', (
 
     await page.getByRole('button', { name: /Done editing/i }).click()
     await page.getByRole('button', { name: /^← Back to the stage$/ }).click()
+    await page.getByRole('tab', { name: 'Documents' }).click()
     await page.getByRole('button', { name: /^requirements\.md/ }).click()
     await expect(page.getByRole('heading', { name: /requirements\.md/i })).toBeVisible({ timeout: 30_000 })
     await page.getByRole('button', { name: /^Edit$/ }).click()
