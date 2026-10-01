@@ -27,7 +27,13 @@ export function connectingSteps(
   const readinessOk = readiness !== null && readiness.ok
   return [
     { label: 'Connecting to Claude Code', done: state !== null },
-    { label: `Reading ${status?.project_name ?? 'the project'}`, done: state !== null && readinessOk },
+    // Finding #3 (PR #76 round 2): driven ONLY by `readinessOk`, never by `state` — this step
+    // represents the readiness read finishing, and `getStageReadiness()`/`getChatState()` are two
+    // genuinely independent calls that can resolve in either order (ChatPanel's own mount effect
+    // comment says so); tying this to `state` made it wrongly still read "in progress" whenever
+    // readiness happened to resolve first, even though the thing this step actually names had
+    // already finished.
+    { label: `Reading ${status?.project_name ?? 'the project'}`, done: readinessOk },
     // Finding #3: driven by `chatSettled` (set once the chat flow, including any needed first
     // turn, has actually finished), never by `initializing` — and finding #4's own follow-on:
     // also gated on `readinessOk`, or this would read done despite a failed readiness read.

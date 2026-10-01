@@ -101,6 +101,16 @@ describe('ChatPanel — item 8: the "Can see" status line always has real text',
     renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
   })
+
+  it('finding #2: shows the real status line when status HAS loaded even though no stage is current (e.g. every stage signed off) — status takes precedence over projectOpen, never the "open a project first" placeholder for a project that is demonstrably already open', () => {
+    installStudioMock()
+    // Frame.tsx's currentStageId can be undefined once every stage is signed off, so stageId
+    // reaches ChatPanel as null even though `status` is fully loaded — the exact FeatureComplete
+    // scenario this regresses.
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId={null} />)
+    expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
+    expect(screen.queryByText('Can see: nothing yet — open a project first.')).toBeNull()
+  })
 })
 
 describe('ChatPanel — item 7: actor is dropped from the three calls that never used it, kept (and normalized) on resolveChatProposal', () => {
@@ -405,6 +415,22 @@ describe('ChatPanel — finding #2: a rejected Promise.all (e.g. a readiness rea
   })
 })
 
+describe('ChatPanel — finding #4 (PR #76 round 2): getChatState() itself rejecting outright reaches a sane, non-contradictory terminal UI', () => {
+  it('does not show "Starting the conversation…" forever once settled, and shows the error', async () => {
+    installStudioMock({
+      getChatState: vi.fn().mockRejectedValue(new Error('disk read failed mid-request')),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    await waitFor(() => expect(screen.getByText('disk read failed mid-request')).toBeTruthy())
+    // The literal bug: `state` stayed null forever, so ChatMessageList's unconditional
+    // `state === null` check kept rendering this — permanently, right next to the error banner
+    // saying the assistant could not start, with no way to tell it had actually, definitively
+    // failed rather than still being in progress.
+    expect(screen.queryByText('Starting the conversation…')).toBeNull()
+  })
+})
+
 describe('ChatPanel — findings #3 and #4: connectingSteps\' "Loading <file>" and "Reading <project>" steps', () => {
   it('"Reading <project>" never reads done when readiness resolved but failed (finding #4 — follows currentDocumentTitle\'s own `.ok` guard)', () => {
     const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
@@ -426,6 +452,11 @@ describe('ChatPanel — findings #3 and #4: connectingSteps\' "Loading <file>" a
     const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
     const steps = connectingSteps(emptyState(), failed, /* chatSettled */ true, status(), null)
     expect(steps[2].done).toBe(false)
+  })
+
+  it('finding #3: "Reading <project>" becomes done as soon as readiness resolves successfully, even when chat state has NOT arrived yet — the opposite resolution order from the mixed-order component test above, which always resolves chat state first and so could never discriminate this', () => {
+    const steps = connectingSteps(/* state */ null, emptyReadiness(), /* chatSettled */ false, status(), null)
+    expect(steps[1].done).toBe(true)
   })
 })
 
@@ -451,5 +482,63 @@ describe('ChatPanel — spec 0018: the header names which document it is helping
     renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     await waitFor(() => expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy())
     expect(screen.queryByText(/Helping with:/)).toBeNull()
+  })
+})
+
+function readinessWithDoc(stageId: string, docName: string): StageReadiness {
+  return {
+    ok: true, stageId, name: stageId, display: stageId, isCurrent: true,
+    documents: [{
+      name: docName, path: docName, exists: false, folder: false, shaped: true,
+      description: undefined, findingCount: 0, ready: false,
+    }],
+    findings: [], judgement: [],
+    signOff: { status: 'pending', signedOffBy: null, completedAt: null },
+    ready: false,
+  }
+}
+
+describe('ChatPanel — finding #1: cross-panel agreement during a stage switch', () => {
+  it('keeps showing the OLD stage\'s document name while the NEW stage\'s own readiness fetch is still in flight, instead of resetting to a neutral subtitle (matches StageHome/WorkflowTab\'s own stale-but-valid convention)', async () => {
+    let resolveNewReadiness: (r: StageReadiness) => void = () => {}
+    const newReadinessPromise = new Promise<StageReadiness>((resolve) => { resolveNewReadiness = resolve })
+
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(emptyState()),
+      getStageReadiness: vi.fn().mockImplementation((_projectPath: string, stageId?: string) => (
+        stageId === 'new' ? newReadinessPromise : Promise.resolve(readinessWithDoc('old', 'old-doc.md'))
+      )),
+    })
+
+    const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    await waitFor(() => expect(screen.getByText('Helping with: old-doc.md')).toBeTruthy())
+
+    rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="new" />)
+
+    // StageReadinessContext never nulls `readiness` on a switch (by design) — the document panel
+    // (StageHome/WorkflowTab) keeps showing the OLD stage's content until the new fetch resolves.
+    // The chat header must agree, not revert to the generic "Can see" line while the real document
+    // panel beside it is still showing `old-doc.md`.
+    expect(screen.getByText('Helping with: old-doc.md')).toBeTruthy()
+
+    await act(async () => { resolveNewReadiness(readinessWithDoc('new', 'new-doc.md')) })
+    await waitFor(() => expect(screen.getByText('Helping with: new-doc.md')).toBeTruthy())
+  })
+})
+
+describe('ChatPanel — finding #5 (PR #76 round 2): the same mobile height cap Sidebar.tsx already has', () => {
+  it('bounds its own height below `sm` (two stacked siblings now share the budget with Sidebar\'s own 50vh cap), and lifts the bound again at `sm:`+', () => {
+    installStudioMock()
+    const { container } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    const aside = container.querySelector('aside')
+    expect(aside).not.toBeNull()
+    // Sidebar.tsx's own fix used `max-h-[50vh] sm:max-h-none` for a SINGLE capped sibling. With
+    // ChatPanel now also capped, giving it the same 50vh would let Sidebar (50vh) + ChatPanel
+    // (50vh) sum to the full viewport height in the worst case, squeezing the main document panel
+    // — spec 0018's actual reason for existing on this screen — down to nothing. ChatPanel gets a
+    // smaller share (35vh) so the two capped siblings can never together exceed 85vh, always
+    // leaving the document panel real room.
+    expect(aside!.className).toMatch(/\bmax-h-\[35vh\]/)
+    expect(aside!.className).toMatch(/\bsm:max-h-none\b/)
   })
 })

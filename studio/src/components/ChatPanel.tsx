@@ -25,27 +25,25 @@ export function ChatPanel({
 }) {
   const [state, setState] = useState<ChatState | null>(null)
   // The one shared getStageReadiness read for this stage (spec 0019's StageReadinessProvider,
-  // which Frame.tsx wraps this panel in) — not a fetch of its own. Used only to label which
-  // document this conversation is helping with (computeWorkflowSteps' own "current" rule) and
-  // to gate the connecting checklist's "Reading" step; never written to.
-  const { readiness: sharedReadiness, loading: readinessLoading, error: readinessError } = useStageReadiness()
-  // `connectingSteps()` reads "not yet known" as `null` (see chatConnectingSteps.ts) — while the
-  // shared fetch is in flight for THIS stage, present it as not-yet-known even if it still holds
-  // an older stage's data (the Provider does not clear `readiness` to null on a stage switch,
-  // only after the new fetch resolves), so the checklist never shows "Reading" as done before
-  // the CURRENT stage's data has actually arrived.
-  const readiness = readinessLoading ? null : sharedReadiness
+  // which Frame.tsx wraps this panel in) — not a fetch of its own. Used to label which document
+  // this conversation is helping with (computeWorkflowSteps' own "current" rule) and to gate the
+  // connecting checklist's "Reading" step; never written to.
+  //
+  // Finding #1 (PR #76 round 2): used directly, with NO loading-based nulling — the Provider
+  // deliberately keeps the OLD stage's `readiness` on screen until the NEW stage's fetch resolves
+  // (so a sidebar line doesn't flash empty), and StageHome/WorkflowTab already read it the same
+  // way (`loading && !readiness`, which is false the whole time stale data is held). This panel
+  // used to disagree: nulling `readiness` for the entire loading window reset the header's
+  // document name and the "Reading" checklist step to a neutral/blank state while the document
+  // panel right beside it kept showing the OLD stage's content — a visible contradiction until
+  // the fetch settled. Showing the same stale-but-valid data here keeps every reader of this one
+  // shared value telling the same story during a switch, exactly as the REST of the screen does.
+  const { readiness, loading: readinessLoading, error: readinessError } = useStageReadiness()
   const [busy, setBusy] = useState(false)
-  // True from mount until the connecting sequence below has fully settled for THIS stage —
-  // distinct from `busy`, which also flips true/false for every ordinary turn afterward. Gates
-  // which of the two states spec 0018 asks for (Connecting vs Ready) is on screen; once it drops
-  // to false for a stage it never goes true again for that same stage.
-  const [initializing, setInitializing] = useState(true)
-  // Independent of `initializing` on purpose (finding #3): this function is only ever called
-  // from INSIDE the `initializing` branch below, so `initializing` itself is always true at the
-  // point it would be read — a condition built on it can never observe its own completion. This
-  // flips true once the chat flow (including the model's own first turn, when one was needed)
-  // has actually finished, strictly before the `Promise.all` below also flips `initializing`.
+  // True once the chat flow (including the model's own first turn, when one was needed) has
+  // actually finished for THIS stage — reset to false at the top of the mount effect below on
+  // every stage switch. `initializing` (derived below, finding #6) reads this directly rather
+  // than copying it into a second piece of state.
   const [chatSettled, setChatSettled] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
@@ -63,7 +61,6 @@ export function ChatPanel({
     if (!projectPath || !stageId) {
       setState(null)
       setBusy(false)
-      setInitializing(false)
       setChatSettled(false)
       return
     }
@@ -76,7 +73,6 @@ export function ChatPanel({
     // in-flight call's own `if (cancelled) return` guard (below) correctly skips setBusy(false)
     // for the stage it was actually for, but nothing else was ever going to reset it back.
     setBusy(false)
-    setInitializing(true)
     setChatSettled(false)
 
     // The readiness half of "ready" is now the shared read spec 0019's StageReadinessProvider
@@ -106,6 +102,15 @@ export function ChatPanel({
       // itself) still correctly keeps that step from reading done.
       if (cancelled) return
       setError(err instanceof Error ? err.message : 'The assistant could not start.')
+      // Finding #4 (PR #76 round 2): without this, `state` stays null forever once this half
+      // settles below — ChatMessageList's `state === null` check keeps rendering "Starting the
+      // conversation…" permanently, right next to the error banner this sets, with no way to
+      // tell the difference between "still starting" and "definitively failed". An empty-but-
+      // non-null state (matching `emptyState()`'s shape used throughout this file's own tests)
+      // lets ChatMessageList's OTHER empty-but-not-busy branch render instead, which reads the
+      // `startError` prop below to show failure-specific text rather than its normal "already
+      // started" copy.
+      setState({ sessionId: null, messages: [] })
       setChatSettled(true)
     })
 
@@ -114,14 +119,21 @@ export function ChatPanel({
   }, [projectPath, stageId])
 
   // "Ready" only once BOTH halves have settled — the chat flow above (including the model's own
-  // first turn, when one was needed) AND the shared readiness read — so the checklist's third
-  // item can never read as done before the other two. `chatSettled` is reset to false at the top
-  // of the effect above on every stage switch, and `readinessLoading` already reflects the
-  // CURRENT stage (StageReadinessProvider is keyed the same way), so this needs no stage guard
-  // of its own — it can only read both true once both genuinely belong to the stage on screen.
-  useEffect(() => {
-    if (chatSettled && !readinessLoading) setInitializing(false)
-  }, [chatSettled, readinessLoading])
+  // first turn, when one was needed) AND the shared readiness read — so the checklist can never
+  // read as done before both of its underlying signals actually have. `chatSettled` is reset to
+  // false at the top of the effect above on every stage switch, and `readinessLoading` already
+  // reflects the CURRENT stage (StageReadinessProvider is keyed the same way), so this needs no
+  // stage guard of its own — it can only read both true once both genuinely belong to the stage
+  // on screen.
+  //
+  // Finding #6 (PR #76 round 2): a plain derived value, not a second piece of state copied in by
+  // its own `useEffect`. The old `useState` + effect pair meant `initializing` only caught up to
+  // `chatSettled`/`readinessLoading` ONE RENDER AFTER they actually changed — a stale extra frame
+  // on every settle, the same self-referential-flag bug class `chatSettled` itself (see its own
+  // comment above) was already written to avoid. Computing it directly here removes that lag
+  // entirely: there is no render where `chatSettled`/`readinessLoading` have already flipped but
+  // `initializing` has not yet caught up.
+  const initializing = !chatSettled || readinessLoading
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
@@ -180,13 +192,24 @@ export function ChatPanel({
   }
 
   return (
-    <aside className="flex w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:w-80">
+    // `max-h-[35vh] sm:max-h-none` — finding #5 (PR #76 round 2): the same mobile-stacking bug
+    // class Sidebar.tsx was already fixed for in this PR (its own comment explains the mechanism:
+    // below `sm`, Frame.tsx's row becomes a COLUMN, so an uncapped sibling's main axis sizes to
+    // content and pushes everything after it off-screen). This `<aside>` is Frame.tsx's THIRD
+    // stacked sibling and had no cap of its own. Deliberately smaller than Sidebar's 50vh, not
+    // the same value: with two capped siblings now sharing one viewport, giving both 50vh could
+    // sum to the full 100vh in the worst case (a tall stage list alongside a long conversation),
+    // squeezing the main document panel — spec 0018's actual reason this screen stacks at all —
+    // down to nothing. 35vh keeps the two capped siblings' combined worst case at 85vh, always
+    // leaving the document panel real room, while still giving the conversation meaningfully
+    // more than a token sliver.
+    <aside className="flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-80">
       <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
       {initializing ? (
         <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
       ) : (
         <>
-          <ChatMessageList listRef={listRef} state={state} busy={busy} onAnswer={answer} onResolveProposal={resolveProposal} />
+          <ChatMessageList listRef={listRef} state={state} busy={busy} startError={error} onAnswer={answer} onResolveProposal={resolveProposal} />
           {/* A chat-turn failure takes priority when both are set — it's the more recent, more
               actionable one; the shared readiness error is what proves this panel isn't silently
               stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
@@ -203,11 +226,16 @@ export function ChatPanel({
   )
 }
 
-/** `status` can be null in two DIFFERENT situations, which used to read identically (or, for
- * the main project view, as a bare "Can see: " with nothing after it — the fallback for that
- * branch had been dropped entirely): no project is open at all, versus a project (and stage)
- * IS open but its status has not finished loading yet. `projectOpen` tells them apart so each
- * gets its own honest message rather than a blank line or the wrong explanation.
+/** `status` is the authoritative signal here, checked FIRST (finding #2, PR #76 round 2):
+ * once it has loaded, the real project/phase (or document) line always shows, regardless of
+ * `projectOpen` — `stageId` can be `null` even with a project genuinely open and fully loaded
+ * (Frame.tsx's `currentStageId` is `undefined` once every stage is signed off), and in that case
+ * showing "open a project first" would be actively wrong, telling the reader to do something
+ * they've already done.
+ *
+ * `status` can ALSO be null in two different situations, which is where `projectOpen` still
+ * earns its keep: no project is open at all, versus a project (and stage) IS open but its status
+ * has not finished loading yet. Those two get told apart only once `status` itself is absent.
  *
  * The heading itself stays the literal word "Chat" (spec 0016's own e2e test locates the panel
  * by it) — spec 0018's "scoped to the current document" shows up in the SUBTITLE instead, naming
@@ -219,13 +247,11 @@ function ChatHeader({
   projectOpen: boolean
   currentDocumentTitle?: string | null
 }) {
-  const subtitle = !projectOpen
-    ? 'Can see: nothing yet — open a project first.'
-    : !status
-      ? 'Can see: loading…'
-      : currentDocumentTitle
-        ? `Helping with: ${currentDocumentTitle}`
-        : `Can see: ${status.project_name}, ${status.current_phase.display}.`
+  const subtitle = !status
+    ? (projectOpen ? 'Can see: loading…' : 'Can see: nothing yet — open a project first.')
+    : currentDocumentTitle
+      ? `Helping with: ${currentDocumentTitle}`
+      : `Can see: ${status.project_name}, ${status.current_phase.display}.`
   return (
     <div className="border-b border-slate-200 px-4 py-3">
       <h2 className="text-sm font-semibold text-slate-900">Chat</h2>
@@ -236,7 +262,10 @@ function ChatHeader({
 
 function ChatPlaceholder({ status }: { status: ProjectStatus | null }) {
   return (
-    <aside className="flex w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:w-80">
+    // Same cap as the main panel's own `<aside>` above (finding #5) — this renders in the exact
+    // same Frame.tsx sibling slot whenever no project/stage is open, so it is just as capable of
+    // pushing the document panel off-screen at phone width if left uncapped.
+    <aside className="flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-80">
       <ChatHeader status={status} projectOpen={false} />
       <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400">
         Open a stage to start a conversation.
@@ -246,11 +275,15 @@ function ChatPlaceholder({ status }: { status: ProjectStatus | null }) {
 }
 
 function ChatMessageList({
-  listRef, state, busy, onAnswer, onResolveProposal,
+  listRef, state, busy, startError, onAnswer, onResolveProposal,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>
   state: ChatState | null
   busy: boolean
+  /** Set when the chat flow has definitively failed to start (finding #4, PR #76 round 2) — swaps
+   * the empty-session message below for one that admits the failure, rather than the "already
+   * started" copy that branch normally shows for an ordinary, no-error empty session. */
+  startError: string | null
   onAnswer: (questionId: string, option: string) => void
   onResolveProposal: (proposalId: string, outcome: 'accepted' | 'edited' | 'discarded', finalValue: string) => void
 }) {
@@ -260,7 +293,9 @@ function ChatMessageList({
         <p className="text-xs text-slate-400">Starting the conversation…</p>
       ) : state.messages.length === 0 ? (
         <p className="text-xs text-slate-400">
-          This stage's documents are already started. Ask a question, or open a document to edit it directly.
+          {startError
+            ? 'The assistant could not start automatically. Type a message below to try again, or open a document to edit it directly.'
+            : "This stage's documents are already started. Ask a question, or open a document to edit it directly."}
         </p>
       ) : (
         state.messages.map((message) => (
