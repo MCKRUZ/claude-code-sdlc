@@ -1,15 +1,24 @@
-import { type ReactNode, useEffect, useState } from 'react'
+import { type ReactNode, useState } from 'react'
 import type { ConsoleEntry, ProjectStatus, SyncState } from '../../shared/types'
-import type { Area, DocProgress, NavTarget } from '../../shared/nav'
+import type { Area, NavTarget } from '../../shared/nav'
 import { Sidebar } from './Sidebar'
 import { ChatPanel } from './ChatPanel'
 import { Console } from './Console'
+import { StageReadinessProvider, useStageReadiness } from './StageReadinessContext'
 
 /** The frame every screen shares once a project is open: the sidebar (the only navigation, which
  * also carries the project's name and the sync indicator), the chat panel, and the console —
  * spec 0008's own scope, in one place so nothing built on top of it can accidentally omit a
  * piece of it. Spec 0009's sync indicator sits in the sidebar's footer, so it is on every one of
- * those screens without each having to remember. */
+ * those screens without each having to remember.
+ *
+ * Spec 0019: Frame is the common ancestor of both `StageHome` (rendered as its `children`) and
+ * `ChatPanel` (its direct sibling) — see `studio/src/App.tsx` — so it owns the ONE
+ * `getStageReadiness` fetch for the stage on screen and shares it downward through
+ * `StageReadinessProvider`, rather than each descendant (plus Frame's own sidebar doc-count
+ * line) fetching independently. `FrameBody` is split out only because a value a
+ * `Context.Provider` holds can be read by a descendant, never by the component that renders the
+ * provider itself. */
 export function Frame({
   status,
   projectPath,
@@ -34,11 +43,66 @@ export function Frame({
   onNavigate: (target: NavTarget) => void
   children: ReactNode
 }) {
+  // The ONE resolved stage every consumer below needs — the picked stage, or the project's own
+  // current one, the same default stage_readiness.py itself uses when called with no --phase.
+  const stageId = viewedStageId ?? status.stages.find((s) => s.stage_state === 'current')?.id
+
+  return (
+    <StageReadinessProvider projectPath={projectPath} stageId={stageId}>
+      <FrameBody
+        status={status}
+        projectPath={projectPath}
+        consoleEntries={consoleEntries}
+        syncState={syncState}
+        area={area}
+        viewedStageId={viewedStageId}
+        stageId={stageId}
+        actor={actor}
+        onNavigate={onNavigate}
+      >
+        {children}
+      </FrameBody>
+    </StageReadinessProvider>
+  )
+}
+
+function FrameBody({
+  status,
+  projectPath,
+  consoleEntries,
+  syncState,
+  area,
+  viewedStageId,
+  stageId,
+  actor,
+  onNavigate,
+  children,
+}: {
+  status: ProjectStatus
+  projectPath: string
+  consoleEntries: ConsoleEntry[]
+  syncState: SyncState
+  area: Area
+  viewedStageId?: string
+  stageId: string | undefined
+  actor: string
+  onNavigate: (target: NavTarget) => void
+  children: ReactNode
+}) {
   const [consoleOpen, setConsoleOpen] = useState(false)
-  const currentDocs = useCurrentStageDocs(projectPath, status, area, viewedStageId)
-  // The chat panel is scoped to whichever stage's documents are showing — the picked stage, or
-  // the project's own current one, the same default stage_readiness.py itself uses.
-  const chatStageId = viewedStageId ?? status.stages.find((s) => s.stage_state === 'current')?.id ?? null
+  const { readiness } = useStageReadiness()
+  const currentStageId = status.stages.find((s) => s.stage_state === 'current')?.id
+  // Sidebar's doc-count line is always about the ACTUAL current stage, regardless of which
+  // stage is being viewed (it only ever renders under the row whose own stage_state is
+  // 'current' — see Sidebar.tsx). The shared fetch above is for the VIEWED stage, which is the
+  // current stage in the common case (no stage picked) but can genuinely differ from it — e.g.
+  // browsing a signed-off stage's documents while a later stage is current. Gated like this, the
+  // line shows a real count whenever it is accurate and falls back to "In progress" (the same
+  // fallback it already used before data arrived) rather than ever showing another stage's count
+  // mislabeled as the current one's.
+  const currentDocs = readiness?.ok && readiness.stageId === currentStageId
+    ? { complete: readiness.documents.filter((d) => d.ready).length, total: readiness.documents.length }
+    : null
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
@@ -54,7 +118,7 @@ export function Frame({
           onNavigate={onNavigate}
         />
         <main className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
-        <ChatPanel status={status} projectPath={projectPath} actor={actor} stageId={chatStageId} />
+        <ChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} />
       </div>
       {consoleOpen && (
         <div className="h-64 shrink-0 border-t border-slate-200 bg-white">
@@ -63,29 +127,4 @@ export function Frame({
       )}
     </div>
   )
-}
-
-/** How many of the current stage's documents are complete, for the line under it in the sidebar.
- * One readiness call, for the current stage only — asking for all nine on every open would be nine
- * plugin calls to draw a list. Re-read when the screen changes, since finishing a document happens
- * on another screen. Null until known, and on a failure: the sidebar then says "In progress". */
-function useCurrentStageDocs(
-  projectPath: string, status: ProjectStatus, area: Area, viewedStageId: string | undefined,
-): DocProgress | null {
-  const [docs, setDocs] = useState<DocProgress | null>(null)
-  const currentId = status.stages.find((s) => s.stage_state === 'current')?.id
-
-  useEffect(() => {
-    if (!currentId) return
-    let cancelled = false
-    window.studio.getStageReadiness(projectPath, currentId)
-      .then((r) => {
-        if (cancelled || !r.ok) return
-        setDocs({ complete: r.documents.filter((d) => d.ready).length, total: r.documents.length })
-      })
-      .catch(() => { /* the sidebar simply keeps saying "In progress" */ })
-    return () => { cancelled = true }
-  }, [projectPath, currentId, area, viewedStageId])
-
-  return docs
 }
