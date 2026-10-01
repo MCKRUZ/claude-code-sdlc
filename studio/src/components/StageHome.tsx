@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { DocumentFocus, SignOffQuestion, StageReadiness } from '../../shared/types'
+import { useEffect, useState } from 'react'
+import type { DocumentFocus, SignOffQuestion } from '../../shared/types'
 import { stageHomeKey } from '../stageHomeKey'
 import { DocumentsTab } from './DocumentsTab'
 import { SignOffPanel } from './SignOffPanel'
 import { WorkflowTab } from './WorkflowTab'
+import { useStageReadiness } from './StageReadinessContext'
 
 type StageTab = 'workflow' | 'documents'
 
@@ -40,19 +41,10 @@ export function StageHome({
   onSignedOff: () => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
-  const [readiness, setReadiness] = useState<StageReadiness | null>(null)
-  const [loading, setLoading] = useState(true)
+  const { readiness, loading, refresh } = useStageReadiness()
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [tab, setTab] = useState<StageTab>('workflow')
-
-  const refresh = useCallback(async () => {
-    setLoading(true)
-    setReadiness(await window.studio.getStageReadiness(projectPath, stageId))
-    setLoading(false)
-  }, [projectPath, stageId])
-
-  useEffect(() => { refresh() }, [refresh])
 
   // Opening a DIFFERENT stage — or a different PROJECT — is opening a home page fresh, and
   // Workflow is what a fresh opening lands on (spec 0017), even if the reader had switched to
