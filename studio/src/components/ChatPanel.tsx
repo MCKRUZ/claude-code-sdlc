@@ -101,6 +101,11 @@ export function ChatPanel({
       // on BOTH halves below, so a readiness-side failure (handled separately, in the context
       // itself) still correctly keeps that step from reading done.
       if (cancelled) return
+      // CI's correctness-review (PR #76 round 3): this catch also fires when `ensureChatStarted`
+      // rejects INSIDE the `.then` above, after `setBusy(true)` already ran for it — without
+      // resetting it here too, `busy` stays stuck true forever for this stage: the composer
+      // (bound to `disabled={busy}`) never re-enables, even once the error below is showing.
+      setBusy(false)
       setError(err instanceof Error ? err.message : 'The assistant could not start.')
       // Finding #4 (PR #76 round 2): without this, `state` stays null forever once this half
       // settles below — ChatMessageList's `state === null` check keeps rendering "Starting the

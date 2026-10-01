@@ -431,6 +431,22 @@ describe('ChatPanel — finding #4 (PR #76 round 2): getChatState() itself rejec
   })
 })
 
+describe('ChatPanel — finding (PR #76 round 3, CI correctness-review): ensureChatStarted() rejecting leaves `busy` stuck, keeping the composer disabled forever', () => {
+  it('re-enables the composer and shows the error when ensureChatStarted rejects', async () => {
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(emptyState()), // no messages -> ensureChatStarted runs
+      ensureChatStarted: vi.fn().mockRejectedValue(new Error('the model call timed out')),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    // Before the fix: `busy` was set true right before awaiting ensureChatStarted, and the
+    // catch block that handles its rejection never reset it — the composer (disabled={busy})
+    // stayed disabled forever, even once the error below was showing.
+    await waitFor(() => expect(screen.getByText('the model call timed out')).toBeTruthy())
+    expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(false)
+  })
+})
+
 describe('ChatPanel — findings #3 and #4: connectingSteps\' "Loading <file>" and "Reading <project>" steps', () => {
   it('"Reading <project>" never reads done when readiness resolved but failed (finding #4 — follows currentDocumentTitle\'s own `.ok` guard)', () => {
     const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
