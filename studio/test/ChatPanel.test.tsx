@@ -2,6 +2,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { connectingSteps } from '../src/chatConnectingSteps'
 import { ChatPanel } from '../src/components/ChatPanel'
 import type { ChatState, ChatTurnResult, ProjectStatus, StageReadiness } from '../shared/types'
 
@@ -361,6 +362,45 @@ describe('ChatPanel — spec 0018: free text stays usable even with a pending st
     await user.type(input, 'something unrelated to the question')
     await act(async () => { await user.click(screen.getByRole('button', { name: 'Send' })) })
     expect(studio.sendChatMessage).toHaveBeenCalledWith('/p', '0', 'something unrelated to the question')
+  })
+})
+
+describe('ChatPanel — finding #2: a rejected Promise.all (e.g. a readiness read racing a TOCTOU gap) never leaves `initializing` stuck forever', () => {
+  it('reaches the composer and shows an error when getStageReadiness rejects outright', async () => {
+    installStudioMock({
+      getStageReadiness: vi.fn().mockRejectedValue(new Error('ENOENT: file deleted mid-read')),
+    })
+    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    // Before the fix this hangs forever on the connecting checklist — no composer, no message
+    // list, no error — strictly worse than the pre-spec-0018 behaviour.
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    expect(screen.queryByTestId('connecting-checklist')).toBeNull()
+    expect(screen.getByText('ENOENT: file deleted mid-read')).toBeTruthy()
+  })
+})
+
+describe('ChatPanel — findings #3 and #4: connectingSteps\' "Loading <file>" and "Reading <project>" steps', () => {
+  it('"Reading <project>" never reads done when readiness resolved but failed (finding #4 — follows currentDocumentTitle\'s own `.ok` guard)', () => {
+    const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
+    const steps = connectingSteps(emptyState(), failed, false, status(), null)
+    expect(steps[1].done).toBe(false)
+  })
+
+  it('"Loading <file>" is never done while the chat flow (including any needed first turn) has not fully settled, even once readiness has (finding #3 — it must not depend on the always-true `initializing` flag)', () => {
+    const steps = connectingSteps(emptyState(), emptyReadiness(), /* chatSettled */ false, status(), null)
+    expect(steps[2].done).toBe(false)
+  })
+
+  it('"Loading <file>" becomes done once the chat flow has fully settled and readiness succeeded — the case the old `!initializing` condition could never reach', () => {
+    const steps = connectingSteps(emptyState(), emptyReadiness(), /* chatSettled */ true, status(), null)
+    expect(steps[2].done).toBe(true)
+  })
+
+  it('"Loading <file>" stays not-done once the chat flow has settled if readiness itself failed (finding #4\'s own follow-on: never silently done despite a failed read)', () => {
+    const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
+    const steps = connectingSteps(emptyState(), failed, /* chatSettled */ true, status(), null)
+    expect(steps[2].done).toBe(false)
   })
 })
 

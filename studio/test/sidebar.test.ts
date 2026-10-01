@@ -91,4 +91,19 @@ describe('Sidebar', () => {
   it('has no row of top tabs at all', () => {
     expect(render()).not.toContain('role="tab"')
   })
+
+  it('bounds its own height below `sm` so `nav`\'s overflow-y-auto has something to scroll against, and lifts that bound again at `sm:`+ (PR #76 review finding #1)', () => {
+    // Below `sm`, Frame.tsx stacks Sidebar/main/ChatPanel in a COLUMN (spec 0018) — this
+    // aside's cross axis there is width, not height, so without a cap of its own `nav`'s
+    // `min-h-0 flex-1 overflow-y-auto` has no bounded ancestor to size against: the full stage
+    // list would render at full content height instead of scrolling, pushing everything below
+    // it off-screen. `renderToStaticMarkup` cannot measure real pixels (no layout engine), but
+    // it CAN prove the specific class-level defect is gone: a height cap present below `sm`,
+    // explicitly lifted again at `sm:`+ so the original row-stretch behaviour is unchanged.
+    const asideMatch = render().match(/<aside class="([^"]+)"/)
+    expect(asideMatch).not.toBeNull()
+    const asideClass = asideMatch![1]
+    expect(asideClass).toMatch(/\bmax-h-\[[^\]]+\]/)
+    expect(asideClass).toMatch(/\bsm:max-h-none\b/)
+  })
 })

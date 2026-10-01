@@ -135,6 +135,48 @@ describe('WorkflowTab — spec 0018: Previous/Next move between documents withou
   })
 })
 
+describe('WorkflowTab — finding #6: the viewed document resets across a stage switch, even when the two stages\' current documents share the same path string', () => {
+  it('snaps back to the NEW stage\'s current document rather than staying on a browsed-to document from the OLD stage', async () => {
+    installStudioMock()
+    // Stage A's current document is requirements.md; the person browses to epics.md via Next.
+    const readinessA = makeReadiness([
+      doc({ path: 'requirements.md', ready: false }),
+      doc({ path: 'epics.md', ready: false }),
+    ], { stageId: '1' })
+    const { rerender } = renderTab(readinessA)
+
+    const user = userEvent.setup()
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'requirements.md' })).toBeTruthy())
+    await user.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'epics.md' })).toBeTruthy())
+
+    // Switch to a DIFFERENT stage whose current document happens to be the exact string the OLD
+    // stage's current document was ('requirements.md') — `current.key` itself does not change
+    // between A and B, which is exactly the dependency the reset effect used to key on alone.
+    // Stage B also happens to have its own epics.md (done, not current) — the literal document
+    // the person was browsing in stage A would still resolve to a REAL row here, so a reset
+    // failure reads as silently staying on the wrong document rather than an obvious crash.
+    const readinessB = makeReadiness([
+      doc({ path: 'requirements.md', ready: false }),
+      doc({ path: 'epics.md', ready: true }),
+    ], { stageId: '2' })
+    rerender(
+      <WorkflowTab
+        projectPath="/tmp/project"
+        readiness={readinessB}
+        actor="Matt K"
+        busyId={null}
+        confirmError={null}
+        onToggleSignOff={() => {}}
+        onOpenDocument={() => {}}
+      />,
+    )
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'requirements.md' })).toBeTruthy())
+    expect(screen.queryByRole('heading', { name: 'epics.md' })).toBeNull()
+  })
+})
+
 describe('WorkflowTab — spec 0018: the header\'s Edit control opens the existing structured editor', () => {
   it('calls onOpenDocument with the VIEWED document\'s path, not necessarily the workflow\'s current one', async () => {
     installStudioMock()

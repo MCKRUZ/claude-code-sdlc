@@ -5,6 +5,7 @@ import {
 } from '../workflowSteps'
 import { startDocumentPolling } from '../documentPoller'
 import type { DocumentSnapshot } from '../documentSnapshot'
+import { stageHomeKey } from '../stageHomeKey'
 import { SectionCard } from './DocumentSections'
 import { SignOffQuestions } from './SignOffQuestions'
 
@@ -91,7 +92,13 @@ function CurrentStepPanel({
 }) {
   if (current?.kind === 'document') {
     return (
-      <DocumentStepPanel projectPath={projectPath} current={current} steps={steps} onOpenDocument={onOpenDocument} />
+      <DocumentStepPanel
+        projectPath={projectPath}
+        current={current}
+        steps={steps}
+        stageKey={stageHomeKey(projectPath, readiness.stageId)}
+        onOpenDocument={onOpenDocument}
+      />
     )
   }
 
@@ -123,19 +130,28 @@ function CurrentStepPanel({
  * step itself moving on, or the stage changing underneath — the same reset-on-switch pattern
  * StageHome already uses for its own tab (`stageHomeKey`). The step LIST stays exactly as spec
  * 0017 left it: its rows are not a second way to navigate here, only Previous/Next in this
- * header is. */
+ * header is.
+ *
+ * The reset effect keys on `stageKey` (`stageHomeKey(projectPath, readiness.stageId)`) ALONGSIDE
+ * `current.key`, not `current.key` alone (PR #76 review finding #6): `current.key` is just the
+ * current document's own PATH, and two different stages' (or two different projects', browsing
+ * the same profile's templates) current documents can share that exact string — when they do,
+ * switching between them leaves `current.key` unchanged, so an effect keyed on it alone never
+ * re-fires, and a document the person had browsed to in the OLD stage keeps showing even though
+ * the workflow itself has moved on underneath. */
 function DocumentStepPanel({
-  projectPath, current, steps, onOpenDocument,
+  projectPath, current, steps, stageKey, onOpenDocument,
 }: {
   projectPath: string
   current: DocumentWorkflowStep
   steps: WorkflowStep[]
+  stageKey: string
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   const documentSteps = steps.filter((s): s is DocumentWorkflowStep => s.kind === 'document')
   const [viewedKey, setViewedKey] = useState(current.key)
 
-  useEffect(() => { setViewedKey(current.key) }, [current.key])
+  useEffect(() => { setViewedKey(current.key) }, [current.key, stageKey])
 
   const viewedIndex = documentSteps.findIndex((s) => s.key === viewedKey)
   const viewed = viewedIndex >= 0 ? documentSteps[viewedIndex] : current

@@ -22,8 +22,15 @@ export function ConnectingChecklist({ steps }: { steps: ConnectingStep[] }) {
       {steps.map((step, i) => {
         const active = i === firstPendingIndex
         return (
+          // The index, not `step.label` — two of these three labels embed dynamic data (the
+          // project's name, the current document's title) that changes mid-sequence as real
+          // calls resolve. Keying by the label text means that change IS a key change, so React
+          // discards and remounts the row instead of diffing it in place, flickering the
+          // checkmark/circle exactly during the sequence this component exists to make feel
+          // smooth. The steps array is a fixed-length, fixed-order triple (see ChatPanel.tsx's
+          // own `connectingSteps`), so the index is a genuinely stable identity here.
           <li
-            key={step.label}
+            key={i}
             data-testid="connecting-step"
             data-step-done={step.done}
             className="flex items-center gap-2"

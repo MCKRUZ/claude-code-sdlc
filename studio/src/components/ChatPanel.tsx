@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus, StageReadiness } from '../../shared/types'
+import { connectingSteps } from '../chatConnectingSteps'
 import { computeWorkflowSteps } from '../workflowSteps'
 import { AiProposalCard } from './AiProposalCard'
-import { ConnectingChecklist, type ConnectingStep } from './ConnectingChecklist'
+import { ConnectingChecklist } from './ConnectingChecklist'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
  * conversation up, and spec 0018 scopes it to the stage's current document and makes the wait
@@ -29,6 +30,12 @@ export function ChatPanel({
   // which of the two states spec 0018 asks for (Connecting vs Ready) is on screen; once it drops
   // to false for a stage it never goes true again for that same stage.
   const [initializing, setInitializing] = useState(true)
+  // Independent of `initializing` on purpose (finding #3): this function is only ever called
+  // from INSIDE the `initializing` branch below, so `initializing` itself is always true at the
+  // point it would be read — a condition built on it can never observe its own completion. This
+  // flips true once the chat flow (including the model's own first turn, when one was needed)
+  // has actually finished, strictly before the `Promise.all` below also flips `initializing`.
+  const [chatSettled, setChatSettled] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -47,6 +54,7 @@ export function ChatPanel({
       setReadiness(null)
       setBusy(false)
       setInitializing(false)
+      setChatSettled(false)
       return
     }
     let cancelled = false
@@ -60,6 +68,7 @@ export function ChatPanel({
     // for the stage it was actually for, but nothing else was ever going to reset it back.
     setBusy(false)
     setInitializing(true)
+    setChatSettled(false)
 
     // Two independent real calls, run in parallel rather than chained, so the connecting
     // checklist's first two items can each complete the moment THEIR OWN call answers rather
@@ -67,6 +76,19 @@ export function ChatPanel({
     // getStageReadiness() the Documents tab and the Workflow tab already call, reused here only
     // to label which document this conversation is helping with (computeWorkflowSteps' own
     // "current" rule — never a second one invented for this panel).
+    //
+    // A THIRD/FOURTH independent getStageReadiness() call for this same stage on one screen:
+    // ensureChatStarted's own IPC handler (electron/main/index.ts) already calls it internally
+    // to decide whether to greet, and whichever of StageHome.tsx / Frame.tsx is also mounted
+    // right now calls it again for their own stage. Passing an already-fresh readiness down as
+    // a prop instead would be the right fix, but there is no single ancestor holding one here
+    // to pass: ChatPanel renders on EVERY area (settings/build/explain/closing, or with a
+    // document open for editing), none of which mount StageHome at all, and even in the
+    // 'documents' area StageHome is a conditional SIBLING of Frame via App.tsx's `children` —
+    // not an ancestor of ChatPanel — so threading its readiness down would mean lifting
+    // StageHome's fetch (and its refresh-after-sign-off-toggle responsibility) all the way up to
+    // App.tsx, a materially bigger restructuring than this fix pass's scope. Flagged as a real
+    // follow-up, not attempted here.
     const chatFlow = window.studio.getChatState(projectPath, stageId).then(async (loaded) => {
       if (cancelled) return
       setState(loaded)
@@ -78,6 +100,7 @@ export function ChatPanel({
         if (!result.ok) setError(result.error ?? 'The assistant could not start.')
         setState(result.state)
       }
+      if (!cancelled) setChatSettled(true)
     })
     const readinessFlow = window.studio.getStageReadiness(projectPath, stageId).then((r) => {
       if (!cancelled) setReadiness(r)
@@ -86,6 +109,18 @@ export function ChatPanel({
     // was needed — so the third checklist item can never read as done before the other two.
     Promise.all([chatFlow, readinessFlow]).then(() => {
       if (!cancelled) setInitializing(false)
+    }).catch((err: unknown) => {
+      // Either call is a real IPC round trip into the main process and can reject outright —
+      // confirmed reachable via electron/main/documents.ts's own TOCTOU gap (an `existsSync`
+      // check followed by an unguarded `statSync`/`readFileSync`, racing a file deleted or made
+      // unreadable between the two). Without this, `initializing` stays true forever: stuck on
+      // the connecting checklist with no composer, no message list, and no error — worse than
+      // the pre-spec-0018 behaviour. Surface it through the SAME error banner an ordinary turn
+      // failure already renders below, rather than inventing a new one, and still let
+      // `initializing` drop so the person can reach the composer.
+      if (cancelled) return
+      setInitializing(false)
+      setError(err instanceof Error ? err.message : 'The assistant could not start.')
     })
 
     return () => { cancelled = true }
@@ -152,7 +187,7 @@ export function ChatPanel({
     <aside className="flex w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:w-80">
       <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
       {initializing ? (
-        <ConnectingChecklist steps={connectingSteps(state, readiness, initializing, status, currentDocumentTitle)} />
+        <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
       ) : (
         <>
           <ChatMessageList listRef={listRef} state={state} busy={busy} onAnswer={answer} onResolveProposal={resolveProposal} />
@@ -166,23 +201,6 @@ export function ChatPanel({
       )}
     </aside>
   )
-}
-
-/** The three named checklist items (spec 0018), each tied to one real signal ChatPanel already
- * tracks — never a fake timer. See the mount effect's own comment for how `chatFlow`/
- * `readinessFlow`/`initializing` are actually sequenced. */
-function connectingSteps(
-  state: ChatState | null,
-  readiness: StageReadiness | null,
-  initializing: boolean,
-  status: ProjectStatus | null,
-  currentDocumentTitle: string | null,
-): ConnectingStep[] {
-  return [
-    { label: 'Connecting to Claude Code', done: state !== null },
-    { label: `Reading ${status?.project_name ?? 'the project'}`, done: state !== null && readiness !== null },
-    { label: `Loading ${currentDocumentTitle ?? 'the current file'}`, done: !initializing },
-  ]
 }
 
 /** `status` can be null in two DIFFERENT situations, which used to read identically (or, for
