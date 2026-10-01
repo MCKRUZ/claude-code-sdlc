@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { StageReadiness } from '../../shared/types'
+import { stageHomeKey } from '../stageHomeKey'
 
 /** What a consumer of the shared stage readiness reads: the data itself, whether a fetch is in
  * flight, and the SAME `refresh()` every consumer must call after a write — calling it from one
@@ -36,9 +37,22 @@ export function StageReadinessProvider({
   const [readiness, setReadiness] = useState<StageReadiness | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // What stage/project is actually on screen right now, readable from inside refresh()'s async
+  // continuation — the same idiom ChatPanel.tsx uses for its own handlers (`currentStageId`): a
+  // plain closure variable would only ever hold the stage refresh() was CALLED for, which is
+  // exactly the bug this guards against. Two independent `getStageReadiness` subprocess calls
+  // have no ordering guarantee — clicking stage A then stage B before A resolves can have A's
+  // reply land AFTER B's — so without this, `setReadiness(resultForA)` would silently overwrite
+  // the correct `resultForB` for every consumer reading this context.
+  const current = useRef(stageHomeKey(projectPath, stageId))
+  useEffect(() => { current.current = stageHomeKey(projectPath, stageId) }, [projectPath, stageId])
+
   const refresh = useCallback(async () => {
+    const forKey = stageHomeKey(projectPath, stageId)
     setLoading(true)
-    setReadiness(await window.studio.getStageReadiness(projectPath, stageId))
+    const result = await window.studio.getStageReadiness(projectPath, stageId)
+    if (current.current !== forKey) return // a stale reply for a stage the person already navigated away from
+    setReadiness(result)
     setLoading(false)
   }, [projectPath, stageId])
 

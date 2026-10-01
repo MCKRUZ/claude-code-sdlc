@@ -46,14 +46,14 @@ function doc(path: string, ready: boolean): StageDocument {
  * Sign-off rather than a document — the document step would mount `LiveDocumentPanel`, which
  * polls `window.studio.openDocument` on its own timer, an unrelated fetch this test has no
  * reason to mock or assert about. */
-function readinessFor(stageId: string, confirmed = false): StageReadiness {
+function readinessFor(stageId: string, confirmed = false, documents: StageDocument[] = [doc(`doc-${stageId}.md`, true)]): StageReadiness {
   return {
     ok: true,
     stageId,
     name: `stage-${stageId}`,
     display: `Phase ${stageId}: Stage ${stageId}`,
     isCurrent: stageId === '1',
-    documents: [doc(`doc-${stageId}.md`, true)],
+    documents,
     findings: [],
     judgement: [{
       id: 'q-1',
@@ -164,7 +164,12 @@ describe('Frame as the single owner of stage readiness (spec 0019)', () => {
 
     const { rerender } = renderFrame('0')
     await waitFor(() => expect(screen.getByText('Phase 0: Stage 0')).toBeTruthy())
-    expect(getStageReadiness).toHaveBeenCalledTimes(1)
+    // Two calls on first render: the viewed stage ('0', the shared fetch StageHome reads) and
+    // the project's actual current stage ('1', the sidebar's own current-stage line — see the
+    // fix for finding #2, which this '0'-is-not-current scenario exercises on every render).
+    await waitFor(() => expect(getStageReadiness).toHaveBeenCalledTimes(2))
+    expect(getStageReadiness).toHaveBeenCalledWith('/p', '0')
+    expect(getStageReadiness).toHaveBeenCalledWith('/p', '1')
 
     rerender(
       <Frame
@@ -190,23 +195,39 @@ describe('Frame as the single owner of stage readiness (spec 0019)', () => {
 
     await waitFor(() => expect(screen.getByText('Phase 2: Stage 2')).toBeTruthy())
     expect(screen.queryByText('Phase 0: Stage 0')).toBeNull()
-    expect(getStageReadiness).toHaveBeenCalledTimes(2)
-    expect(getStageReadiness).toHaveBeenNthCalledWith(2, '/p', '2')
+    // Exactly ONE more call, for the newly viewed stage ('2') — the current stage is still '1'
+    // in both renders, so the sidebar's own current-stage fetch does not re-fire.
+    expect(getStageReadiness).toHaveBeenCalledTimes(3)
+    expect(getStageReadiness).toHaveBeenNthCalledWith(3, '/p', '2')
   })
 
-  it('the sidebar never shows a VIEWED (non-current) stage\'s document count mislabeled as the CURRENT stage\'s', async () => {
-    // Viewing stage '0' (signed off) while stage '1' is the project's actual current stage —
-    // the shared fetch is for stage '0' (what StageHome is showing), which must never be
-    // read into the sidebar's "current stage" doc-count line.
-    const getStageReadiness = vi.fn().mockResolvedValue(readinessFor('0'))
+  it('the sidebar shows the TRUE current stage\'s real document count even while viewing a DIFFERENT stage — never mislabeled, never a false "In progress"', async () => {
+    // Viewing stage '0' (signed off, 1 of 1 docs) while stage '1' is the project's actual
+    // current stage (2 of 3 docs). Before spec 0019 these were two genuinely independent
+    // fetches (the sidebar's own `useCurrentStageDocs` always read the TRUE current stage), and
+    // that spec's Out-of-Scope section promises no UI-visible behavior change — so the sidebar's
+    // line must keep showing stage 1's real count, not stage 0's count mislabeled as current,
+    // and not the "In progress" placeholder (that's reserved for before real data arrives).
+    const docsByStage: Record<string, StageDocument[]> = {
+      '0': [doc('doc-0.md', true)],
+      '1': [doc('doc-1a.md', true), doc('doc-1b.md', false), doc('doc-1c.md', true)],
+    }
+    const getStageReadiness = vi.fn().mockImplementation((_projectPath: string, stageId?: string) => (
+      Promise.resolve(readinessFor(stageId ?? '1', false, docsByStage[stageId ?? '1']))
+    ))
     installStudioMock(getStageReadiness)
 
     renderFrame('0')
     await waitFor(() => expect(screen.getByText('Phase 0: Stage 0')).toBeTruthy())
 
-    // Never the (wrong) count for the viewed stage, and never any stale/placeholder count
-    // attributed to the current stage either — "In progress" is the documented fallback.
+    // Both fetches happened: the viewed stage (what StageHome reads, via the shared context) and
+    // the actual current stage (for the sidebar's own line) — stage_readiness.py answers for one
+    // stage per call, so there is no way to derive stage 1's count from stage 0's fetch alone.
+    expect(getStageReadiness).toHaveBeenCalledWith('/p', '0')
+    await waitFor(() => expect(getStageReadiness).toHaveBeenCalledWith('/p', '1'))
+
+    await waitFor(() => expect(screen.getByText('2 of 3 documents complete')).toBeTruthy())
     expect(screen.queryByText('1 of 1 documents complete')).toBeNull()
-    expect(screen.getByText('In progress')).toBeTruthy()
+    expect(screen.queryByText('In progress')).toBeNull()
   })
 })
