@@ -98,7 +98,15 @@ jobs:
 
       # `npx vitest run` rather than `npm test`, which would first run a `pretest` Vite build
       # that only the Playwright end-to-end suite needs. Same command that is run locally.
+      #
+      # This job never installs the `claude` CLI (unlike `ui` below) and is never signed in,
+      # so a live-model test has nothing to call. signOff.test.ts's own real-Claude-call block
+      # already declines on STUDIO_SKIP_LIVE_MODEL=1 — the same mechanism the `ui` job uses for
+      # chatAuthoring.spec.ts — it just needs this job to actually set it, or it tries the real
+      # call and fails with `spawn claude ENOENT` instead of skipping.
       - run: npx vitest run
+        env:
+          STUDIO_SKIP_LIVE_MODEL: '1'
 
   # The tests above never open the application. These do — they launch the real Electron
   # window and drive it, which is the only evidence that what was built actually works
