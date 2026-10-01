@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus } from '../../shared/types'
+import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus, StageReadiness } from '../../shared/types'
+import { computeWorkflowSteps } from '../workflowSteps'
 import { AiProposalCard } from './AiProposalCard'
+import { ConnectingChecklist, type ConnectingStep } from './ConnectingChecklist'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
- * conversation up. A real, multi-turn `claude` session drives a stage's documents: the
- * assistant opens on a stage with a document not yet started, structured questions render as
- * real buttons, and every proposed write is a card the person accepts, edits, or discards —
- * never a silent write. */
+ * conversation up, and spec 0018 scopes it to the stage's current document and makes the wait
+ * before it is ready legible instead of looking identical to "ready and idle". A real, multi-turn
+ * `claude` session drives a stage's documents: the assistant opens on a stage with a document not
+ * yet started, structured questions render as real buttons alongside a message in the thread
+ * (never gating the box below), and every proposed write is a card the person accepts, edits, or
+ * discards — never a silent write. */
 export function ChatPanel({
   status, projectPath, actor, stageId,
 }: {
@@ -18,7 +22,13 @@ export function ChatPanel({
   stageId: string | null
 }) {
   const [state, setState] = useState<ChatState | null>(null)
+  const [readiness, setReadiness] = useState<StageReadiness | null>(null)
   const [busy, setBusy] = useState(false)
+  // True from mount until the connecting sequence below has fully settled for THIS stage —
+  // distinct from `busy`, which also flips true/false for every ordinary turn afterward. Gates
+  // which of the two states spec 0018 asks for (Connecting vs Ready) is on screen; once it drops
+  // to false for a stage it never goes true again for that same stage.
+  const [initializing, setInitializing] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
@@ -34,11 +44,14 @@ export function ChatPanel({
   useEffect(() => {
     if (!projectPath || !stageId) {
       setState(null)
+      setReadiness(null)
       setBusy(false)
+      setInitializing(false)
       return
     }
     let cancelled = false
     setState(null)
+    setReadiness(null)
     setError(null)
     // Reset synchronously on every stage switch, not just state/error — otherwise navigating
     // away from a stage while its auto-greet is still in flight (busy=true, awaiting
@@ -46,7 +59,15 @@ export function ChatPanel({
     // in-flight call's own `if (cancelled) return` guard (below) correctly skips setBusy(false)
     // for the stage it was actually for, but nothing else was ever going to reset it back.
     setBusy(false)
-    window.studio.getChatState(projectPath, stageId).then(async (loaded) => {
+    setInitializing(true)
+
+    // Two independent real calls, run in parallel rather than chained, so the connecting
+    // checklist's first two items can each complete the moment THEIR OWN call answers rather
+    // than waiting on one another — neither is faked, and the readiness read is the exact same
+    // getStageReadiness() the Documents tab and the Workflow tab already call, reused here only
+    // to label which document this conversation is helping with (computeWorkflowSteps' own
+    // "current" rule — never a second one invented for this panel).
+    const chatFlow = window.studio.getChatState(projectPath, stageId).then(async (loaded) => {
       if (cancelled) return
       setState(loaded)
       if (loaded.messages.length === 0) {
@@ -58,6 +79,15 @@ export function ChatPanel({
         setState(result.state)
       }
     })
+    const readinessFlow = window.studio.getStageReadiness(projectPath, stageId).then((r) => {
+      if (!cancelled) setReadiness(r)
+    })
+    // "Ready" only once BOTH have fully settled — including the model's own first turn, when one
+    // was needed — so the third checklist item can never read as done before the other two.
+    Promise.all([chatFlow, readinessFlow]).then(() => {
+      if (!cancelled) setInitializing(false)
+    })
+
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- actor changing mid-conversation should not re-greet
   }, [projectPath, stageId])
@@ -70,7 +100,12 @@ export function ChatPanel({
     return <ChatPlaceholder status={status} />
   }
 
-  const hasPendingQuestion = state?.messages.some((m) => m.questions.some((q) => !q.answeredWith)) ?? false
+  // The current step's document, by the SAME rule the Workflow tab uses to pick it — null while
+  // readiness has not answered yet, or when the current step is Sign-off (nothing to name).
+  const currentDocumentTitle = readiness?.ok
+    ? computeWorkflowSteps(readiness).find((s) => s.status === 'current' && s.kind === 'document')?.title ?? null
+    : null
+
   const hasPendingProposal = state?.messages.some((m) => m.proposals.some((p) => !p.outcome)) ?? false
 
   const submit = async () => {
@@ -114,37 +149,65 @@ export function ChatPanel({
   }
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-white">
-      <ChatHeader status={status} projectOpen />
-      <ChatMessageList listRef={listRef} state={state} busy={busy} onAnswer={answer} onResolveProposal={resolveProposal} />
-      {error && (
-        <div className="border-t border-red-200 bg-red-50 px-3 py-2 text-xs text-[var(--color-command-error)]">
-          {error}
-        </div>
+    <aside className="flex w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:w-80">
+      <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
+      {initializing ? (
+        <ConnectingChecklist steps={connectingSteps(state, readiness, initializing, status, currentDocumentTitle)} />
+      ) : (
+        <>
+          <ChatMessageList listRef={listRef} state={state} busy={busy} onAnswer={answer} onResolveProposal={resolveProposal} />
+          {error && (
+            <div className="border-t border-red-200 bg-red-50 px-3 py-2 text-xs text-[var(--color-command-error)]">
+              {error}
+            </div>
+          )}
+          <ChatComposer draft={draft} setDraft={setDraft} busy={busy} hasPendingProposal={hasPendingProposal} onSubmit={submit} />
+        </>
       )}
-      <ChatComposer
-        draft={draft}
-        setDraft={setDraft}
-        busy={busy}
-        hasPendingQuestion={hasPendingQuestion}
-        hasPendingProposal={hasPendingProposal}
-        onSubmit={submit}
-      />
     </aside>
   )
+}
+
+/** The three named checklist items (spec 0018), each tied to one real signal ChatPanel already
+ * tracks — never a fake timer. See the mount effect's own comment for how `chatFlow`/
+ * `readinessFlow`/`initializing` are actually sequenced. */
+function connectingSteps(
+  state: ChatState | null,
+  readiness: StageReadiness | null,
+  initializing: boolean,
+  status: ProjectStatus | null,
+  currentDocumentTitle: string | null,
+): ConnectingStep[] {
+  return [
+    { label: 'Connecting to Claude Code', done: state !== null },
+    { label: `Reading ${status?.project_name ?? 'the project'}`, done: state !== null && readiness !== null },
+    { label: `Loading ${currentDocumentTitle ?? 'the current file'}`, done: !initializing },
+  ]
 }
 
 /** `status` can be null in two DIFFERENT situations, which used to read identically (or, for
  * the main project view, as a bare "Can see: " with nothing after it — the fallback for that
  * branch had been dropped entirely): no project is open at all, versus a project (and stage)
  * IS open but its status has not finished loading yet. `projectOpen` tells them apart so each
- * gets its own honest message rather than a blank line or the wrong explanation. */
-function ChatHeader({ status, projectOpen }: { status: ProjectStatus | null; projectOpen: boolean }) {
-  const subtitle = status
-    ? `Can see: ${status.project_name}, ${status.current_phase.display}.`
-    : projectOpen
+ * gets its own honest message rather than a blank line or the wrong explanation.
+ *
+ * The heading itself stays the literal word "Chat" (spec 0016's own e2e test locates the panel
+ * by it) — spec 0018's "scoped to the current document" shows up in the SUBTITLE instead, naming
+ * the document this conversation is helping with once readiness has answered which one that is. */
+function ChatHeader({
+  status, projectOpen, currentDocumentTitle,
+}: {
+  status: ProjectStatus | null
+  projectOpen: boolean
+  currentDocumentTitle?: string | null
+}) {
+  const subtitle = !projectOpen
+    ? 'Can see: nothing yet — open a project first.'
+    : !status
       ? 'Can see: loading…'
-      : 'Can see: nothing yet — open a project first.'
+      : currentDocumentTitle
+        ? `Helping with: ${currentDocumentTitle}`
+        : `Can see: ${status.project_name}, ${status.current_phase.display}.`
   return (
     <div className="border-b border-slate-200 px-4 py-3">
       <h2 className="text-sm font-semibold text-slate-900">Chat</h2>
@@ -155,7 +218,7 @@ function ChatHeader({ status, projectOpen }: { status: ProjectStatus | null; pro
 
 function ChatPlaceholder({ status }: { status: ProjectStatus | null }) {
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-slate-200 bg-white">
+    <aside className="flex w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:w-80">
       <ChatHeader status={status} projectOpen={false} />
       <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400">
         Open a stage to start a conversation.
@@ -193,13 +256,16 @@ function ChatMessageList({
   )
 }
 
+/** Free text stays usable at all times once the conversation is ready (spec 0018) — a pending
+ * structured question is answered by its own quick-reply chips, rendered inline in the thread
+ * (see `QuestionPrompt`), never by gating this box. Typing something that is NOT an answer to
+ * that question is just the next ordinary turn, exactly as spec 0016's chat already works. */
 function ChatComposer({
-  draft, setDraft, busy, hasPendingQuestion, hasPendingProposal, onSubmit,
+  draft, setDraft, busy, hasPendingProposal, onSubmit,
 }: {
   draft: string
   setDraft: (value: string) => void
   busy: boolean
-  hasPendingQuestion: boolean
   hasPendingProposal: boolean
   onSubmit: () => void
 }) {
@@ -213,15 +279,15 @@ function ChatComposer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit() }
           }}
-          disabled={busy || hasPendingQuestion}
-          placeholder={hasPendingQuestion ? 'Answer the question above first…' : 'Type a message…'}
+          disabled={busy}
+          placeholder="Type a message…"
           rows={2}
           className="min-w-0 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
         />
         <button
           type="button"
           onClick={onSubmit}
-          disabled={busy || hasPendingQuestion || !draft.trim()}
+          disabled={busy || !draft.trim()}
           className="shrink-0 self-end rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
         >
           Send

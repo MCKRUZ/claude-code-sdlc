@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SignOffQuestion, StageReadiness } from '../../shared/types'
-import { computeWorkflowSteps, type WorkflowStep, type WorkflowStepStatus } from '../workflowSteps'
+import type { DocumentFocus, SignOffQuestion, StageReadiness } from '../../shared/types'
+import {
+  computeWorkflowSteps, type DocumentWorkflowStep, type WorkflowStep, type WorkflowStepStatus,
+} from '../workflowSteps'
 import { startDocumentPolling } from '../documentPoller'
 import type { DocumentSnapshot } from '../documentSnapshot'
 import { SectionCard } from './DocumentSections'
@@ -28,6 +30,7 @@ export function WorkflowTab({
   busyId,
   confirmError,
   onToggleSignOff,
+  onOpenDocument,
 }: {
   projectPath: string
   readiness: StageReadiness
@@ -36,6 +39,9 @@ export function WorkflowTab({
   busyId: string | null
   confirmError: string | null
   onToggleSignOff: (question: SignOffQuestion, confirmed: boolean) => void
+  /** Opens the same structured editor the Documents tab's rows open — the document panel's own
+   * Edit control (spec 0018) reuses this exact callback, never a second write path. */
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   const steps = computeWorkflowSteps(readiness)
   const current = steps.find((s) => s.status === 'current') ?? null
@@ -50,7 +56,17 @@ export function WorkflowTab({
           what makes a locked row's absence and a done row's absence both true by construction
           rather than by care: neither status ever reaches this branch. */}
       <div className="min-w-0 flex-1">
-        <CurrentStepPanel projectPath={projectPath} current={current} readiness={readiness} actor={actor} busyId={busyId} confirmError={confirmError} onToggleSignOff={onToggleSignOff} />
+        <CurrentStepPanel
+          projectPath={projectPath}
+          current={current}
+          steps={steps}
+          readiness={readiness}
+          actor={actor}
+          busyId={busyId}
+          confirmError={confirmError}
+          onToggleSignOff={onToggleSignOff}
+          onOpenDocument={onOpenDocument}
+        />
       </div>
     </div>
   )
@@ -61,25 +77,22 @@ export function WorkflowTab({
  * stays a plain layout — this repo's "functions under 50 lines" convention (spec 0017's fix
  * pass, bug #10). */
 function CurrentStepPanel({
-  projectPath, current, readiness, actor, busyId, confirmError, onToggleSignOff,
+  projectPath, current, steps, readiness, actor, busyId, confirmError, onToggleSignOff, onOpenDocument,
 }: {
   projectPath: string
   current: WorkflowStep | null
+  steps: WorkflowStep[]
   readiness: StageReadiness
   actor: string
   busyId: string | null
   confirmError: string | null
   onToggleSignOff: (question: SignOffQuestion, confirmed: boolean) => void
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
 }) {
   if (current?.kind === 'document') {
-    if (current.document.folder) {
-      return (
-        <p className="text-sm text-slate-400">
-          {current.title} is a folder of documents — open it from the Documents tab.
-        </p>
-      )
-    }
-    return <LiveDocumentPanel key={current.document.path} projectPath={projectPath} relPath={current.document.path} />
+    return (
+      <DocumentStepPanel projectPath={projectPath} current={current} steps={steps} onOpenDocument={onOpenDocument} />
+    )
   }
 
   if (current?.kind === 'sign-off') {
@@ -98,6 +111,109 @@ function CurrentStepPanel({
   }
 
   return <p className="text-sm text-slate-400">Nothing is currently in progress on this stage.</p>
+}
+
+/** The current step, once it IS a document (spec 0018): a header (Back to Workflow / Previous /
+ * Next / Edit) above the live content.
+ *
+ * `viewedKey` is deliberately separate from `current` — Previous/Next lets a person browse an
+ * ADJACENT document in the stage's own declared order without that changing what the workflow
+ * itself considers current (`computeWorkflowSteps`'s done/current/locked stays exactly as it
+ * was). "Back to Workflow" snaps the view back to the real current step; so does the current
+ * step itself moving on, or the stage changing underneath — the same reset-on-switch pattern
+ * StageHome already uses for its own tab (`stageHomeKey`). The step LIST stays exactly as spec
+ * 0017 left it: its rows are not a second way to navigate here, only Previous/Next in this
+ * header is. */
+function DocumentStepPanel({
+  projectPath, current, steps, onOpenDocument,
+}: {
+  projectPath: string
+  current: DocumentWorkflowStep
+  steps: WorkflowStep[]
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+}) {
+  const documentSteps = steps.filter((s): s is DocumentWorkflowStep => s.kind === 'document')
+  const [viewedKey, setViewedKey] = useState(current.key)
+
+  useEffect(() => { setViewedKey(current.key) }, [current.key])
+
+  const viewedIndex = documentSteps.findIndex((s) => s.key === viewedKey)
+  const viewed = viewedIndex >= 0 ? documentSteps[viewedIndex] : current
+
+  return (
+    <div className="space-y-3">
+      <DocumentPanelHeader
+        title={viewed.title}
+        onBack={() => setViewedKey(current.key)}
+        onPrevious={() => setViewedKey(documentSteps[viewedIndex - 1].key)}
+        onNext={() => setViewedKey(documentSteps[viewedIndex + 1].key)}
+        previousDisabled={viewedIndex <= 0}
+        nextDisabled={viewedIndex === -1 || viewedIndex >= documentSteps.length - 1}
+        onEdit={() => onOpenDocument(viewed.document.path)}
+        editDisabled={viewed.document.folder}
+      />
+      {viewed.document.folder ? (
+        <p className="text-sm text-slate-400">
+          {viewed.title} is a folder of documents — open it from the Documents tab.
+        </p>
+      ) : (
+        <LiveDocumentPanel key={viewed.document.path} projectPath={projectPath} relPath={viewed.document.path} />
+      )}
+    </div>
+  )
+}
+
+/** Back to Workflow / Previous / Next / Edit — the document panel's own header (spec 0018's
+ * acceptance check). `flex-wrap` is the same accommodation spec 0017's own responsive bar held
+ * itself to: these controls do not force new horizontal overflow of their own at phone width. */
+function DocumentPanelHeader({
+  title, onBack, onPrevious, onNext, previousDisabled, nextDisabled, onEdit, editDisabled,
+}: {
+  title: string
+  onBack: () => void
+  onPrevious: () => void
+  onNext: () => void
+  previousDisabled: boolean
+  nextDisabled: boolean
+  onEdit: () => void
+  editDisabled: boolean
+}) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
+      <div className="min-w-0">
+        <button type="button" onClick={onBack} className="text-xs font-medium text-slate-500 hover:text-slate-800">
+          ← Back to Workflow
+        </button>
+        <h3 className="mt-0.5 truncate text-sm font-semibold text-slate-900">{title}</h3>
+      </div>
+      <div className="flex shrink-0 flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onPrevious}
+          disabled={previousDisabled}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
+        >
+          Previous
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={nextDisabled}
+          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
+        >
+          Next
+        </button>
+        <button
+          type="button"
+          onClick={onEdit}
+          disabled={editDisabled}
+          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
+        >
+          Edit
+        </button>
+      </div>
+    </div>
+  )
 }
 
 function StepRow({ step }: { step: WorkflowStep }) {
