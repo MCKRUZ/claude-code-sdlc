@@ -9,6 +9,13 @@ import { stageHomeKey } from '../stageHomeKey'
 export interface StageReadinessContextValue {
   readiness: StageReadiness | null
   loading: boolean
+  /** Set when the fetch itself rejected outright (a real IPC failure, not an `{ok:false}` read)
+   * — distinct from `readiness.ok === false`, which is a successful call reporting a known
+   * problem. Cleared at the start of every refresh, so a stale failure never survives a
+   * subsequent success. A consumer actively watching this stage (ChatPanel's connecting
+   * checklist) should show it; one that is merely decorative (the sidebar's doc-count line) can
+   * choose to just fall back quietly — both are reading the same one fetch, not separate ones. */
+  error: string | null
   refresh: () => Promise<void>
 }
 
@@ -36,6 +43,7 @@ export function StageReadinessProvider({
 }) {
   const [readiness, setReadiness] = useState<StageReadiness | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // What stage/project is actually on screen right now, readable from inside refresh()'s async
   // continuation — the same idiom ChatPanel.tsx uses for its own handlers (`currentStageId`): a
@@ -50,16 +58,32 @@ export function StageReadinessProvider({
   const refresh = useCallback(async () => {
     const forKey = stageHomeKey(projectPath, stageId)
     setLoading(true)
-    const result = await window.studio.getStageReadiness(projectPath, stageId)
-    if (current.current !== forKey) return // a stale reply for a stage the person already navigated away from
-    setReadiness(result)
-    setLoading(false)
+    setError(null)
+    try {
+      const result = await window.studio.getStageReadiness(projectPath, stageId)
+      if (current.current !== forKey) return // a stale reply for a stage the person already navigated away from
+      setReadiness(result)
+    } catch (err) {
+      // A real IPC round trip, and it CAN reject outright (confirmed reachable: the TOCTOU gap
+      // in electron/main/documents.ts's openDocumentUncached — ChatPanel.tsx's own comment on
+      // its former independent readiness call named the exact failure). Now that ChatPanel
+      // (spec 0018) gates its own "ready" state on this context's `loading`, an unhandled
+      // rejection here would leave every consumer's loading state stuck true forever — the same
+      // class of bug PR #76 finding #2 fixed for ChatPanel's old call, now fixed at its new,
+      // single, shared source instead. Keep whatever `readiness` already held (a stale-but-real
+      // view beats a blank one), stop loading, and record WHY — a consumer actively watching
+      // this stage needs to be able to show it, not just silently recover.
+      if (current.current !== forKey) return
+      setError(err instanceof Error ? err.message : 'Could not read this stage.')
+    } finally {
+      if (current.current === forKey) setLoading(false)
+    }
   }, [projectPath, stageId])
 
   useEffect(() => { refresh() }, [refresh])
 
   return (
-    <StageReadinessContext.Provider value={{ readiness, loading, refresh }}>
+    <StageReadinessContext.Provider value={{ readiness, loading, error, refresh }}>
       {children}
     </StageReadinessContext.Provider>
   )

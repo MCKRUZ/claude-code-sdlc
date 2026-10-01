@@ -32,7 +32,16 @@ export function Sidebar({
   const total = status.stages.length
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-slate-50">
+    // `max-h-[50vh] sm:max-h-none` — below `sm`, Frame.tsx's row becomes a COLUMN (spec 0018),
+    // so this aside's own cross axis is width, not height, and its main axis (height) sizes to
+    // CONTENT by default: nothing bounds it, so `nav`'s own `min-h-0 flex-1 overflow-y-auto`
+    // below has no bounded ancestor to size against and the full stage list renders at full
+    // content height, pushing `main`/`ChatPanel` off-screen below it. Capping height here (not
+    // in Frame.tsx) is the smaller, more honest fix: Frame.tsx only needs to know Sidebar
+    // stacks, not how tall it is allowed to be — that is this component's own concern, the same
+    // way `w-72` already is. At `sm:`+, `max-h-none` lifts the cap so the previous row-stretch
+    // behaviour (this aside taking the row's own full height) is exactly what it was before.
+    <aside className="flex max-h-[50vh] w-72 shrink-0 flex-col border-r border-slate-200 bg-slate-50 sm:max-h-none">
       <div className="border-b border-slate-200 px-4 pb-3.5 pt-4">
         <h1 className="truncate text-[15px] font-semibold tracking-tight text-slate-900">{status.project_name}</h1>
         <p className="truncate text-xs text-slate-500">{status.profile_id}</p>

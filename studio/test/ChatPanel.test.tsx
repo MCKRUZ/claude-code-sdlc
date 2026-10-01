@@ -1,9 +1,35 @@
 // @vitest-environment jsdom
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { connectingSteps } from '../src/chatConnectingSteps'
 import { ChatPanel } from '../src/components/ChatPanel'
-import type { ChatState, ChatTurnResult, ProjectStatus } from '../shared/types'
+import { StageReadinessProvider } from '../src/components/StageReadinessContext'
+import type { ChatState, ChatTurnResult, ProjectStatus, StageReadiness } from '../shared/types'
+
+/** ChatPanel now reads its readiness from spec 0019's shared context (Frame.tsx wraps it in
+ * `StageReadinessProvider` in the real app) rather than fetching its own — so every render here
+ * needs the same wrapper. Takes the `<ChatPanel .../>` element as-is (so every existing call site
+ * below only needed `render(` -> `renderChatPanel(` / `rerender(` -> stays the same, since the
+ * returned `rerender` wraps itself) and keys the Provider off the SAME projectPath/stageId props
+ * the element itself was given, falling back to a harmless default only for the one test that
+ * renders with `projectPath={null}` (the placeholder path, which never reads the context's
+ * value — see ChatPanel.tsx's own early return, right after its unconditional `useStageReadiness()`
+ * call). `window.studio.getStageReadiness` is whatever `installStudioMock()` already set up per
+ * test, same mock, just now called by the Provider instead of by ChatPanel directly. */
+function renderChatPanel(element: ReactElement<{ projectPath: string | null; stageId: string | null }>) {
+  const wrap = (el: typeof element) => (
+    <StageReadinessProvider projectPath={el.props.projectPath ?? '/p'} stageId={el.props.stageId ?? undefined}>
+      {el}
+    </StageReadinessProvider>
+  )
+  const result = render(wrap(element))
+  return {
+    ...result,
+    rerender: (nextElement: typeof element) => result.rerender(wrap(nextElement)),
+  }
+}
 
 function emptyState(): ChatState {
   return { sessionId: null, messages: [] }
@@ -18,6 +44,19 @@ function status(): ProjectStatus {
   }
 }
 
+/** The default readiness a test gets when it does not care about it: no documents at all, so
+ * `computeWorkflowSteps` lands on the trailing Sign-off step — never a document — and the
+ * connecting checklist's "Reading <project>" / header's "Helping with: <doc>" stay out of every
+ * pre-existing assertion that was written before spec 0018 added this call. */
+function emptyReadiness(): StageReadiness {
+  return {
+    ok: true, stageId: '0', name: 'discovery', display: 'Discovery', isCurrent: true,
+    documents: [], findings: [], judgement: [],
+    signOff: { status: 'pending', signedOffBy: null, completedAt: null },
+    ready: true,
+  }
+}
+
 /** A minimal, controllable stand-in for window.studio (electron/preload/index.ts's own
  * contract) — each test wires the handful of calls it needs and leaves the rest as
  * never-resolving stubs, so a component bug (a call that should not have happened) fails
@@ -25,6 +64,7 @@ function status(): ProjectStatus {
 function installStudioMock(overrides: Partial<typeof window.studio> = {}) {
   const studio = {
     getChatState: vi.fn().mockResolvedValue(emptyState()),
+    getStageReadiness: vi.fn().mockResolvedValue(emptyReadiness()),
     ensureChatStarted: vi.fn().mockResolvedValue({ ok: true, state: emptyState() } satisfies ChatTurnResult),
     sendChatMessage: vi.fn().mockResolvedValue({ ok: true, state: emptyState() } satisfies ChatTurnResult),
     answerChatQuestion: vi.fn().mockResolvedValue({ ok: true, state: emptyState() } satisfies ChatTurnResult),
@@ -44,13 +84,13 @@ afterEach(() => {
 describe('ChatPanel — item 8: the "Can see" status line always has real text', () => {
   it('shows a real placeholder message, never "Can see: " with nothing after it, when no project/stage is open', () => {
     installStudioMock()
-    render(<ChatPanel status={null} projectPath={null} actor="" stageId={null} />)
+    renderChatPanel(<ChatPanel status={null} projectPath={null} actor="" stageId={null} />)
     expect(screen.getByText('Can see: nothing yet — open a project first.')).toBeTruthy()
   })
 
   it('shows a "loading" message, never a blank line, when a project/stage ARE open but status has not arrived yet', () => {
     installStudioMock()
-    render(<ChatPanel status={null} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={null} projectPath="/p" actor="" stageId="0" />)
     expect(screen.getByText('Can see: loading…')).toBeTruthy()
     // The literal bug this regresses: an empty string after "Can see: ".
     expect(screen.queryByText('Can see:')).toBeNull()
@@ -58,8 +98,18 @@ describe('ChatPanel — item 8: the "Can see" status line always has real text',
 
   it('shows the project and stage once status has loaded', () => {
     installStudioMock()
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
+  })
+
+  it('finding #2: shows the real status line when status HAS loaded even though no stage is current (e.g. every stage signed off) — status takes precedence over projectOpen, never the "open a project first" placeholder for a project that is demonstrably already open', () => {
+    installStudioMock()
+    // Frame.tsx's currentStageId can be undefined once every stage is signed off, so stageId
+    // reaches ChatPanel as null even though `status` is fully loaded — the exact FeatureComplete
+    // scenario this regresses.
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId={null} />)
+    expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
+    expect(screen.queryByText('Can see: nothing yet — open a project first.')).toBeNull()
   })
 })
 
@@ -69,9 +119,12 @@ describe('ChatPanel — item 7: actor is dropped from the three calls that never
       getChatState: vi.fn().mockResolvedValue(emptyState()), // no messages -> ensureChatStarted runs
       ensureChatStarted: vi.fn().mockResolvedValue({ ok: true, state: emptyState() }),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
     await waitFor(() => expect(studio.ensureChatStarted).toHaveBeenCalled())
     expect(studio.ensureChatStarted).toHaveBeenCalledWith('/p', '0')
+    // The composer only renders once initializing has fully settled (spec 0018) — having been
+    // CALLED is not the same as having RESOLVED.
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
 
     const user = userEvent.setup()
     await user.type(screen.getByPlaceholderText('Type a message…'), 'hello')
@@ -91,7 +144,7 @@ describe('ChatPanel — item 7: actor is dropped from the three calls that never
       getChatState: vi.fn().mockResolvedValue(proposalState),
       resolveChatProposal: vi.fn().mockResolvedValue({ ok: true, state: proposalState }),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeTruthy())
 
     const user = userEvent.setup()
@@ -101,44 +154,41 @@ describe('ChatPanel — item 7: actor is dropped from the three calls that never
 })
 
 describe('ChatPanel — item 2: busy resets on stage switch, and a stale reply for the OLD stage is ignored', () => {
-  it('switching stages while ensureChatStarted is still in flight for the old stage does not leave the composer stuck disabled', async () => {
+  it('switching stages while ensureChatStarted is still in flight for the old stage does not leave the new stage stuck on the connecting checklist', async () => {
+    // Spec 0018 rewrite: the symptom this regression used to show as ("the composer stays
+    // disabled forever") is now "the connecting checklist never finishes" — `initializing` is
+    // the state that used to leak across a stage switch (via `busy`); the checklist is what
+    // visibly proves it was reset, the same way the disabled textarea used to.
     let resolveOldGreet: (r: ChatTurnResult) => void = () => {}
     const oldGreetPromise = new Promise<ChatTurnResult>((resolve) => { resolveOldGreet = resolve })
 
-    const studio = installStudioMock({
+    installStudioMock({
       getChatState: vi.fn().mockResolvedValue(emptyState()),
       ensureChatStarted: vi.fn().mockImplementation((_projectPath: string, stageId: string) => (
         stageId === 'old' ? oldGreetPromise : Promise.resolve({ ok: true, state: emptyState() })
       )),
     })
-    void studio
 
-    const { rerender } = render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
-    // The old stage is now busy (auto-greeting, awaiting the never-yet-resolved promise).
-    // `busy` flips to true inside the mount effect, not synchronously with the textarea's own
-    // first render — so this needs its own wait, not a bare assertion right after the element
-    // merely exists. A CI runner slow enough to observe the gap between "element rendered" and
-    // "effect ran" (macOS's, in practice) fails a synchronous check here even though the real
-    // behavior is correct.
-    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
-    await waitFor(() => {
-      expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(true)
-    })
+    const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    // 'old' is stuck connecting — its own ensureChatStarted never resolves — so the checklist
+    // stays up and the composer never appears for it.
+    await waitFor(() => expect(screen.getByTestId('connecting-checklist')).toBeTruthy())
+    expect(screen.queryByPlaceholderText('Type a message…')).toBeNull()
 
     // Navigate to a new stage BEFORE the old stage's greet resolves.
     rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="new" />)
 
-    // The composer must not stay disabled forever just because the OLD stage's request is
-    // still pending — this is the literal bug: busy was never reset on stage change.
-    await waitFor(() => {
-      expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(false)
-    })
+    // The new stage must still reach ready — this is the literal bug: it must not be held
+    // hostage by the OLD stage's never-resolving request.
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    expect(screen.queryByTestId('connecting-checklist')).toBeNull()
 
-    // Now let the stale old-stage reply arrive late. It must not resurrect busy=true (or any
-    // other state change) for the stage the person already left.
+    // Now let the stale old-stage reply arrive late. It must not resurrect the connecting
+    // checklist (or any other state change) for the stage the person already left.
     await act(async () => { resolveOldGreet({ ok: true, state: emptyState() }) })
     await new Promise((r) => setTimeout(r, 0))
-    expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(false)
+    expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy()
+    expect(screen.queryByTestId('connecting-checklist')).toBeNull()
   })
 
   it('a stale sendChatMessage reply for the OLD stage, arriving after the person switched stages, is never applied', async () => {
@@ -162,7 +212,7 @@ describe('ChatPanel — item 2: busy resets on stage switch, and a stale reply f
       sendChatMessage: vi.fn().mockImplementation(() => oldSendPromise),
     })
 
-    const { rerender } = render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
     await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
 
     const user = userEvent.setup()
@@ -191,7 +241,7 @@ describe('ChatPanel — item 1: a failed send does not lose the person\'s own me
       getChatState: vi.fn().mockResolvedValue({ ...emptyState(), messages: [{ id: 'x', role: 'assistant', text: 'hi', questions: [], proposals: [], at: '' }] }),
       sendChatMessage: vi.fn().mockResolvedValue({ ok: false, state: stateAfterFailure, error: 'the model call failed' } satisfies ChatTurnResult),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
     await waitFor(() => expect(screen.getByText('hi')).toBeTruthy())
 
     const user = userEvent.setup()
@@ -235,7 +285,7 @@ describe('ChatPanel — item 3: multiple proposals/questions in one message each
       getChatState: vi.fn().mockResolvedValue(twoProposals),
       resolveChatProposal: vi.fn().mockResolvedValue({ ok: true, state: afterAccept }),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
 
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Accept' })).toHaveLength(2))
     const user = userEvent.setup()
@@ -263,7 +313,7 @@ describe('ChatPanel — item 3: multiple proposals/questions in one message each
     const studio = installStudioMock({
       getChatState: vi.fn().mockResolvedValue(twoQuestions),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
 
     await waitFor(() => {
       expect(screen.getByText('Q1?')).toBeTruthy()
@@ -272,5 +322,239 @@ describe('ChatPanel — item 3: multiple proposals/questions in one message each
     const user = userEvent.setup()
     await act(async () => { await user.click(screen.getByRole('button', { name: 'A' })) })
     expect(studio.answerChatQuestion).toHaveBeenCalledWith('/p', '0', 'q1', 'A')
+  })
+})
+
+describe('ChatPanel — spec 0018: the connecting checklist renders a named sequence, each item driven by a real signal', () => {
+  it('each named step becomes done in the order its own real call resolves — never a timer', async () => {
+    let resolveChatState: (s: ChatState) => void = () => {}
+    const chatStatePromise = new Promise<ChatState>((resolve) => { resolveChatState = resolve })
+    let resolveReadiness: (r: StageReadiness) => void = () => {}
+    const readinessPromise = new Promise<StageReadiness>((resolve) => { resolveReadiness = resolve })
+    let resolveGreet: (r: ChatTurnResult) => void = () => {}
+    const greetPromise = new Promise<ChatTurnResult>((resolve) => { resolveGreet = resolve })
+
+    installStudioMock({
+      getChatState: vi.fn().mockReturnValue(chatStatePromise),
+      getStageReadiness: vi.fn().mockReturnValue(readinessPromise),
+      ensureChatStarted: vi.fn().mockReturnValue(greetPromise),
+    })
+
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    const stepDone = (label: string) => (
+      screen.getByText(label).closest('[data-testid="connecting-step"]')!.getAttribute('data-step-done')
+    )
+    await waitFor(() => expect(screen.getByTestId('connecting-checklist')).toBeTruthy())
+    expect(stepDone('Connecting to Claude Code')).toBe('false')
+    expect(stepDone('Reading demo')).toBe('false')
+    expect(stepDone('Loading the current file')).toBe('false')
+
+    // getChatState resolves first, with no prior messages, so ensureChatStarted is now in
+    // flight — item 1 is done; items 2 and 3 are not.
+    await act(async () => { resolveChatState(emptyState()) })
+    await waitFor(() => expect(stepDone('Connecting to Claude Code')).toBe('true'))
+    expect(stepDone('Reading demo')).toBe('false')
+    expect(stepDone('Loading the current file')).toBe('false')
+
+    // getStageReadiness resolves next (independent of the still-pending greet) — item 2 is
+    // done; item 3 cannot be, since the model's own first turn has not come back yet.
+    await act(async () => { resolveReadiness(emptyReadiness()) })
+    await waitFor(() => expect(stepDone('Reading demo')).toBe('true'))
+    expect(stepDone('Loading the current file')).toBe('false')
+    expect(screen.queryByPlaceholderText('Type a message…')).toBeNull()
+
+    // Only once the model's own first turn answers does item 3 — and readiness overall — finish.
+    await act(async () => { resolveGreet({ ok: true, state: emptyState() }) })
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    expect(screen.queryByTestId('connecting-checklist')).toBeNull()
+  })
+})
+
+describe('ChatPanel — spec 0018: free text stays usable even with a pending structured question', () => {
+  it('quick-reply chips render inline below the message that asked, and typing something else still sends normally', async () => {
+    const pendingQuestionState: ChatState = {
+      sessionId: 's',
+      messages: [{
+        id: 'm1', role: 'assistant', text: 'Pick one:',
+        questions: [{ id: 'q1', question: 'Which track?', options: ['A', 'B'] }],
+        proposals: [], at: new Date().toISOString(),
+      }],
+    }
+    const studio = installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(pendingQuestionState),
+      sendChatMessage: vi.fn().mockResolvedValue({ ok: true, state: pendingQuestionState } satisfies ChatTurnResult),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    await waitFor(() => expect(screen.getByText('Which track?')).toBeTruthy())
+    // The chip is part of the thread — never a layout that replaces or disables the text box.
+    expect(screen.getByRole('button', { name: 'A' })).toBeTruthy()
+    const input = screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement
+    expect(input.disabled).toBe(false)
+
+    const user = userEvent.setup()
+    await user.type(input, 'something unrelated to the question')
+    await act(async () => { await user.click(screen.getByRole('button', { name: 'Send' })) })
+    expect(studio.sendChatMessage).toHaveBeenCalledWith('/p', '0', 'something unrelated to the question')
+  })
+})
+
+describe('ChatPanel — finding #2: a rejected Promise.all (e.g. a readiness read racing a TOCTOU gap) never leaves `initializing` stuck forever', () => {
+  it('reaches the composer and shows an error when getStageReadiness rejects outright', async () => {
+    installStudioMock({
+      getStageReadiness: vi.fn().mockRejectedValue(new Error('ENOENT: file deleted mid-read')),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    // Before the fix this hangs forever on the connecting checklist — no composer, no message
+    // list, no error — strictly worse than the pre-spec-0018 behaviour.
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    expect(screen.queryByTestId('connecting-checklist')).toBeNull()
+    expect(screen.getByText('ENOENT: file deleted mid-read')).toBeTruthy()
+  })
+})
+
+describe('ChatPanel — finding #4 (PR #76 round 2): getChatState() itself rejecting outright reaches a sane, non-contradictory terminal UI', () => {
+  it('does not show "Starting the conversation…" forever once settled, and shows the error', async () => {
+    installStudioMock({
+      getChatState: vi.fn().mockRejectedValue(new Error('disk read failed mid-request')),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    await waitFor(() => expect(screen.getByText('disk read failed mid-request')).toBeTruthy())
+    // The literal bug: `state` stayed null forever, so ChatMessageList's unconditional
+    // `state === null` check kept rendering this — permanently, right next to the error banner
+    // saying the assistant could not start, with no way to tell it had actually, definitively
+    // failed rather than still being in progress.
+    expect(screen.queryByText('Starting the conversation…')).toBeNull()
+  })
+})
+
+describe('ChatPanel — finding (PR #76 round 3, CI correctness-review): ensureChatStarted() rejecting leaves `busy` stuck, keeping the composer disabled forever', () => {
+  it('re-enables the composer and shows the error when ensureChatStarted rejects', async () => {
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(emptyState()), // no messages -> ensureChatStarted runs
+      ensureChatStarted: vi.fn().mockRejectedValue(new Error('the model call timed out')),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+
+    // Before the fix: `busy` was set true right before awaiting ensureChatStarted, and the
+    // catch block that handles its rejection never reset it — the composer (disabled={busy})
+    // stayed disabled forever, even once the error below was showing.
+    await waitFor(() => expect(screen.getByText('the model call timed out')).toBeTruthy())
+    expect((screen.getByPlaceholderText('Type a message…') as HTMLTextAreaElement).disabled).toBe(false)
+  })
+})
+
+describe('ChatPanel — findings #3 and #4: connectingSteps\' "Loading <file>" and "Reading <project>" steps', () => {
+  it('"Reading <project>" never reads done when readiness resolved but failed (finding #4 — follows currentDocumentTitle\'s own `.ok` guard)', () => {
+    const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
+    const steps = connectingSteps(emptyState(), failed, false, status(), null)
+    expect(steps[1].done).toBe(false)
+  })
+
+  it('"Loading <file>" is never done while the chat flow (including any needed first turn) has not fully settled, even once readiness has (finding #3 — it must not depend on the always-true `initializing` flag)', () => {
+    const steps = connectingSteps(emptyState(), emptyReadiness(), /* chatSettled */ false, status(), null)
+    expect(steps[2].done).toBe(false)
+  })
+
+  it('"Loading <file>" becomes done once the chat flow has fully settled and readiness succeeded — the case the old `!initializing` condition could never reach', () => {
+    const steps = connectingSteps(emptyState(), emptyReadiness(), /* chatSettled */ true, status(), null)
+    expect(steps[2].done).toBe(true)
+  })
+
+  it('"Loading <file>" stays not-done once the chat flow has settled if readiness itself failed (finding #4\'s own follow-on: never silently done despite a failed read)', () => {
+    const failed: StageReadiness = { ...emptyReadiness(), ok: false, error: 'boom' }
+    const steps = connectingSteps(emptyState(), failed, /* chatSettled */ true, status(), null)
+    expect(steps[2].done).toBe(false)
+  })
+
+  it('finding #3: "Reading <project>" becomes done as soon as readiness resolves successfully, even when chat state has NOT arrived yet — the opposite resolution order from the mixed-order component test above, which always resolves chat state first and so could never discriminate this', () => {
+    const steps = connectingSteps(/* state */ null, emptyReadiness(), /* chatSettled */ false, status(), null)
+    expect(steps[1].done).toBe(true)
+  })
+})
+
+describe('ChatPanel — spec 0018: the header names which document it is helping with', () => {
+  it('shows "Helping with: <document>" once readiness names a current document, in place of the generic subtitle', async () => {
+    const readiness: StageReadiness = {
+      ok: true, stageId: '0', name: 'requirements', display: 'Requirements', isCurrent: true,
+      documents: [{
+        name: 'epics.md', path: 'epics.md', exists: false, folder: false, shaped: true,
+        description: undefined, findingCount: 0, ready: false,
+      }],
+      findings: [], judgement: [],
+      signOff: { status: 'pending', signedOffBy: null, completedAt: null },
+      ready: false,
+    }
+    installStudioMock({ getStageReadiness: vi.fn().mockResolvedValue(readiness) })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByText('Helping with: epics.md')).toBeTruthy())
+  })
+
+  it('falls back to the generic "Can see" subtitle when the current step is Sign-off, not a document', async () => {
+    installStudioMock() // default readiness has no documents -> the trailing Sign-off step is current
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy())
+    expect(screen.queryByText(/Helping with:/)).toBeNull()
+  })
+})
+
+function readinessWithDoc(stageId: string, docName: string): StageReadiness {
+  return {
+    ok: true, stageId, name: stageId, display: stageId, isCurrent: true,
+    documents: [{
+      name: docName, path: docName, exists: false, folder: false, shaped: true,
+      description: undefined, findingCount: 0, ready: false,
+    }],
+    findings: [], judgement: [],
+    signOff: { status: 'pending', signedOffBy: null, completedAt: null },
+    ready: false,
+  }
+}
+
+describe('ChatPanel — finding #1: cross-panel agreement during a stage switch', () => {
+  it('keeps showing the OLD stage\'s document name while the NEW stage\'s own readiness fetch is still in flight, instead of resetting to a neutral subtitle (matches StageHome/WorkflowTab\'s own stale-but-valid convention)', async () => {
+    let resolveNewReadiness: (r: StageReadiness) => void = () => {}
+    const newReadinessPromise = new Promise<StageReadiness>((resolve) => { resolveNewReadiness = resolve })
+
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(emptyState()),
+      getStageReadiness: vi.fn().mockImplementation((_projectPath: string, stageId?: string) => (
+        stageId === 'new' ? newReadinessPromise : Promise.resolve(readinessWithDoc('old', 'old-doc.md'))
+      )),
+    })
+
+    const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    await waitFor(() => expect(screen.getByText('Helping with: old-doc.md')).toBeTruthy())
+
+    rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="new" />)
+
+    // StageReadinessContext never nulls `readiness` on a switch (by design) — the document panel
+    // (StageHome/WorkflowTab) keeps showing the OLD stage's content until the new fetch resolves.
+    // The chat header must agree, not revert to the generic "Can see" line while the real document
+    // panel beside it is still showing `old-doc.md`.
+    expect(screen.getByText('Helping with: old-doc.md')).toBeTruthy()
+
+    await act(async () => { resolveNewReadiness(readinessWithDoc('new', 'new-doc.md')) })
+    await waitFor(() => expect(screen.getByText('Helping with: new-doc.md')).toBeTruthy())
+  })
+})
+
+describe('ChatPanel — finding #5 (PR #76 round 2): the same mobile height cap Sidebar.tsx already has', () => {
+  it('bounds its own height below `sm` (two stacked siblings now share the budget with Sidebar\'s own 50vh cap), and lifts the bound again at `sm:`+', () => {
+    installStudioMock()
+    const { container } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    const aside = container.querySelector('aside')
+    expect(aside).not.toBeNull()
+    // Sidebar.tsx's own fix used `max-h-[50vh] sm:max-h-none` for a SINGLE capped sibling. With
+    // ChatPanel now also capped, giving it the same 50vh would let Sidebar (50vh) + ChatPanel
+    // (50vh) sum to the full viewport height in the worst case, squeezing the main document panel
+    // — spec 0018's actual reason for existing on this screen — down to nothing. ChatPanel gets a
+    // smaller share (35vh) so the two capped siblings can never together exceed 85vh, always
+    // leaving the document panel real room.
+    expect(aside!.className).toMatch(/\bmax-h-\[35vh\]/)
+    expect(aside!.className).toMatch(/\bsm:max-h-none\b/)
   })
 })

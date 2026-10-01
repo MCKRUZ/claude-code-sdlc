@@ -98,6 +98,7 @@ export function StageHome({
           busyId={busyId}
           confirmError={confirmError}
           onToggleSignOff={toggle}
+          onOpenDocument={onOpenDocument}
         />
       ) : (
         <DocumentsTab

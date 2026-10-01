@@ -58,6 +58,7 @@ function render(readiness: StageReadiness) {
     busyId: null,
     confirmError: null,
     onToggleSignOff: () => {},
+    onOpenDocument: () => {},
   }))
 }
 
@@ -181,5 +182,40 @@ describe('WorkflowTab (spec 0017)', () => {
     // since only a real layout engine can prove a scrollbar does or does not appear.
     const html = render(makeReadiness([doc({ path: 'requirements.md', ready: false })]))
     expect(html).toMatch(/class="flex flex-col gap-6 sm:flex-row"/)
+  })
+
+  describe('the document panel header (spec 0018)', () => {
+    it('shows Back to Workflow, Previous and Next, with Previous disabled on the first required document', () => {
+      const readiness = makeReadiness([
+        doc({ path: 'a.md', ready: false }),
+        doc({ path: 'b.md', ready: false }),
+        doc({ path: 'c.md', ready: false }),
+      ])
+      const html = render(readiness)
+      expect(html).toContain('Back to Workflow')
+      // Matched on `disabled=""` immediately after `type="button"` — React's own static-markup
+      // spelling for a true boolean attribute — rather than a bare substring search for
+      // "disabled", which Tailwind's own `disabled:opacity-40` class name would also match on
+      // a button that is NOT disabled at all.
+      expect(html).toMatch(/<button type="button" disabled=""[^>]*>Previous<\/button>/)
+      expect(html).toMatch(/<button type="button"[^>]*>Next<\/button>/)
+      expect(html).not.toMatch(/<button type="button" disabled=""[^>]*>Next<\/button>/)
+    })
+
+    it('disables Next, not Previous, when the current (and therefore first-viewed) document is the stage\'s last', () => {
+      const readiness = makeReadiness([
+        doc({ path: 'a.md', ready: true }),
+        doc({ path: 'b.md', ready: true }),
+        doc({ path: 'c.md', ready: false }),
+      ])
+      const html = render(readiness)
+      expect(html).toMatch(/<button type="button" disabled=""[^>]*>Next<\/button>/)
+      expect(html).not.toMatch(/<button type="button" disabled=""[^>]*>Previous<\/button>/)
+    })
+
+    it('the header does not force new horizontal overflow of its own at phone width (flex-wrap)', () => {
+      const html = render(makeReadiness([doc({ path: 'a.md', ready: false }), doc({ path: 'b.md', ready: false })]))
+      expect(html).toMatch(/class="flex flex-wrap items-center justify-between gap-2/)
+    })
   })
 })
