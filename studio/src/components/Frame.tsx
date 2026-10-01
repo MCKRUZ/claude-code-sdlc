@@ -116,7 +116,10 @@ function FrameBody({
 
   return (
     <div className="flex h-screen flex-col bg-slate-50">
-      <div className="flex min-h-0 flex-1">
+      {/* Column below sm, row at sm+ — spec 0018's document panel and chat need to stack at
+          phone width, and Sidebar/main/ChatPanel are unconditional row siblings here rather
+          than inside WorkflowTab, so the wrap has to happen at this level. */}
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         <Sidebar
           status={status}
           area={area}
