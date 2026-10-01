@@ -5,6 +5,7 @@ import type {
 import { matchesSection } from '../../shared/sections'
 import { SectionCard } from './DocumentSections'
 import { TemplateGapsNotice } from './TemplateGapsNotice'
+import { useStageReadiness } from './StageReadinessContext'
 
 /** Reading and editing one document.
  *
@@ -29,6 +30,16 @@ export function DocumentView({
   onBack: () => void
   onShowHistory: () => void
 }) {
+  // StageHome (and the sidebar's doc-count line, and the Workflow tab) all read the ONE shared
+  // fetch Frame.tsx's StageReadinessProvider owns (spec 0019) — keyed on [projectPath, stageId],
+  // never on anything that happens while a document is open. DocumentView is rendered as that
+  // same Provider's descendant (Frame's `children`, exactly like StageHome — see App.tsx), so it
+  // can read this context directly and refresh it itself. Without this, saving a field here
+  // leaves the shared readiness holding whatever it read before this document was ever opened:
+  // the pre-existing gap `StageHome.tsx`'s own pre-0019 `useCurrentStageDocs` had too, now
+  // closed here since it lives in the shared context this spec introduced.
+  const { refresh: refreshReadiness } = useStageReadiness()
+
   /** The section the reader was sent to, resolved once the document is open. Held as the
    * section KEY rather than the plugin's reported name, because that is what the rendered
    * cards are addressed by. */
@@ -132,7 +143,20 @@ export function DocumentView({
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <button type="button" onClick={onBack} className="mb-1 text-xs text-slate-500 hover:text-slate-800">
+          <button
+            type="button"
+            onClick={() => {
+              // Fire-and-forget, not awaited: the person already asked to leave, so navigation
+              // happens immediately. The refresh updates the shared context in the background —
+              // StageHome only blanks its screen on `loading` while it has no `readiness` yet
+              // (see StageHome.tsx), which is never true here since reaching this screen at all
+              // required a readiness fetch to have already completed. It just silently swaps in
+              // the current data once the fetch resolves, with no flash the person would notice.
+              void refreshReadiness()
+              onBack()
+            }}
+            className="mb-1 text-xs text-slate-500 hover:text-slate-800"
+          >
             ← Back to the stage
           </button>
           <h2 className="text-base font-semibold text-slate-900">{relPath.split('/').pop()}</h2>
