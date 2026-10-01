@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus, StageReadiness } from '../../shared/types'
+import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus } from '../../shared/types'
 import { connectingSteps } from '../chatConnectingSteps'
 import { computeWorkflowSteps } from '../workflowSteps'
 import { AiProposalCard } from './AiProposalCard'
 import { ConnectingChecklist } from './ConnectingChecklist'
+import { useStageReadiness } from './StageReadinessContext'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
  * conversation up, and spec 0018 scopes it to the stage's current document and makes the wait
@@ -23,7 +24,17 @@ export function ChatPanel({
   stageId: string | null
 }) {
   const [state, setState] = useState<ChatState | null>(null)
-  const [readiness, setReadiness] = useState<StageReadiness | null>(null)
+  // The one shared getStageReadiness read for this stage (spec 0019's StageReadinessProvider,
+  // which Frame.tsx wraps this panel in) — not a fetch of its own. Used only to label which
+  // document this conversation is helping with (computeWorkflowSteps' own "current" rule) and
+  // to gate the connecting checklist's "Reading" step; never written to.
+  const { readiness: sharedReadiness, loading: readinessLoading, error: readinessError } = useStageReadiness()
+  // `connectingSteps()` reads "not yet known" as `null` (see chatConnectingSteps.ts) — while the
+  // shared fetch is in flight for THIS stage, present it as not-yet-known even if it still holds
+  // an older stage's data (the Provider does not clear `readiness` to null on a stage switch,
+  // only after the new fetch resolves), so the checklist never shows "Reading" as done before
+  // the CURRENT stage's data has actually arrived.
+  const readiness = readinessLoading ? null : sharedReadiness
   const [busy, setBusy] = useState(false)
   // True from mount until the connecting sequence below has fully settled for THIS stage —
   // distinct from `busy`, which also flips true/false for every ordinary turn afterward. Gates
@@ -51,7 +62,6 @@ export function ChatPanel({
   useEffect(() => {
     if (!projectPath || !stageId) {
       setState(null)
-      setReadiness(null)
       setBusy(false)
       setInitializing(false)
       setChatSettled(false)
@@ -59,7 +69,6 @@ export function ChatPanel({
     }
     let cancelled = false
     setState(null)
-    setReadiness(null)
     setError(null)
     // Reset synchronously on every stage switch, not just state/error — otherwise navigating
     // away from a stage while its auto-greet is still in flight (busy=true, awaiting
@@ -70,26 +79,13 @@ export function ChatPanel({
     setInitializing(true)
     setChatSettled(false)
 
-    // Two independent real calls, run in parallel rather than chained, so the connecting
-    // checklist's first two items can each complete the moment THEIR OWN call answers rather
-    // than waiting on one another — neither is faked, and the readiness read is the exact same
-    // getStageReadiness() the Documents tab and the Workflow tab already call, reused here only
-    // to label which document this conversation is helping with (computeWorkflowSteps' own
-    // "current" rule — never a second one invented for this panel).
-    //
-    // A THIRD/FOURTH independent getStageReadiness() call for this same stage on one screen:
-    // ensureChatStarted's own IPC handler (electron/main/index.ts) already calls it internally
-    // to decide whether to greet, and whichever of StageHome.tsx / Frame.tsx is also mounted
-    // right now calls it again for their own stage. Passing an already-fresh readiness down as
-    // a prop instead would be the right fix, but there is no single ancestor holding one here
-    // to pass: ChatPanel renders on EVERY area (settings/build/explain/closing, or with a
-    // document open for editing), none of which mount StageHome at all, and even in the
-    // 'documents' area StageHome is a conditional SIBLING of Frame via App.tsx's `children` —
-    // not an ancestor of ChatPanel — so threading its readiness down would mean lifting
-    // StageHome's fetch (and its refresh-after-sign-off-toggle responsibility) all the way up to
-    // App.tsx, a materially bigger restructuring than this fix pass's scope. Flagged as a real
-    // follow-up, not attempted here.
-    const chatFlow = window.studio.getChatState(projectPath, stageId).then(async (loaded) => {
+    // The readiness half of "ready" is now the shared read spec 0019's StageReadinessProvider
+    // already owns (see `sharedReadiness`/`readinessLoading` above) — Frame.tsx wraps this panel
+    // in it alongside StageHome, so this effect only drives the CHAT half. This used to also run
+    // its own independent getStageReadiness() call in parallel (a 3rd/4th redundant read for the
+    // same stage on one screen, alongside StageHome's and ensureChatStarted's own internal one) —
+    // that duplication is exactly what spec 0019 removed; see StageReadinessContext.tsx.
+    window.studio.getChatState(projectPath, stageId).then(async (loaded) => {
       if (cancelled) return
       setState(loaded)
       if (loaded.messages.length === 0) {
@@ -101,31 +97,31 @@ export function ChatPanel({
         setState(result.state)
       }
       if (!cancelled) setChatSettled(true)
-    })
-    const readinessFlow = window.studio.getStageReadiness(projectPath, stageId).then((r) => {
-      if (!cancelled) setReadiness(r)
-    })
-    // "Ready" only once BOTH have fully settled — including the model's own first turn, when one
-    // was needed — so the third checklist item can never read as done before the other two.
-    Promise.all([chatFlow, readinessFlow]).then(() => {
-      if (!cancelled) setInitializing(false)
     }).catch((err: unknown) => {
-      // Either call is a real IPC round trip into the main process and can reject outright —
-      // confirmed reachable via electron/main/documents.ts's own TOCTOU gap (an `existsSync`
-      // check followed by an unguarded `statSync`/`readFileSync`, racing a file deleted or made
-      // unreadable between the two). Without this, `initializing` stays true forever: stuck on
-      // the connecting checklist with no composer, no message list, and no error — worse than
-      // the pre-spec-0018 behaviour. Surface it through the SAME error banner an ordinary turn
-      // failure already renders below, rather than inventing a new one, and still let
-      // `initializing` drop so the person can reach the composer.
+      // A real IPC round trip into the main process and can reject outright — the same
+      // TOCTOU-class gap StageReadinessContext.tsx's own `refresh()` guards against. Surface it
+      // through the same error banner an ordinary turn failure already renders, and still let
+      // `chatSettled` flip so this half can't get stuck — the checklist's "Loading" step depends
+      // on BOTH halves below, so a readiness-side failure (handled separately, in the context
+      // itself) still correctly keeps that step from reading done.
       if (cancelled) return
-      setInitializing(false)
       setError(err instanceof Error ? err.message : 'The assistant could not start.')
+      setChatSettled(true)
     })
 
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- actor changing mid-conversation should not re-greet
   }, [projectPath, stageId])
+
+  // "Ready" only once BOTH halves have settled — the chat flow above (including the model's own
+  // first turn, when one was needed) AND the shared readiness read — so the checklist's third
+  // item can never read as done before the other two. `chatSettled` is reset to false at the top
+  // of the effect above on every stage switch, and `readinessLoading` already reflects the
+  // CURRENT stage (StageReadinessProvider is keyed the same way), so this needs no stage guard
+  // of its own — it can only read both true once both genuinely belong to the stage on screen.
+  useEffect(() => {
+    if (chatSettled && !readinessLoading) setInitializing(false)
+  }, [chatSettled, readinessLoading])
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
@@ -191,9 +187,13 @@ export function ChatPanel({
       ) : (
         <>
           <ChatMessageList listRef={listRef} state={state} busy={busy} onAnswer={answer} onResolveProposal={resolveProposal} />
-          {error && (
+          {/* A chat-turn failure takes priority when both are set — it's the more recent, more
+              actionable one; the shared readiness error is what proves this panel isn't silently
+              stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
+              now owned by StageReadinessContext.tsx — see its own error field). */}
+          {(error ?? readinessError) && (
             <div className="border-t border-red-200 bg-red-50 px-3 py-2 text-xs text-[var(--color-command-error)]">
-              {error}
+              {error ?? readinessError}
             </div>
           )}
           <ChatComposer draft={draft} setDraft={setDraft} busy={busy} hasPendingProposal={hasPendingProposal} onSubmit={submit} />

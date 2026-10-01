@@ -14,6 +14,7 @@ import { render, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { WorkflowTab } from '../src/components/WorkflowTab'
 import { DocumentView } from '../src/components/DocumentView'
+import { StageReadinessProvider } from '../src/components/StageReadinessContext'
 import type { DocumentSection, OpenDocumentResult, StageDocument, StageReadiness } from '../shared/types'
 
 const SECTIONS: DocumentSection[] = [
@@ -64,6 +65,10 @@ function installStudioMock() {
   const studio = {
     openDocument: vi.fn().mockResolvedValue(docResult()),
     getDocumentChanges: vi.fn().mockResolvedValue([]),
+    // DocumentView reads spec 0019's shared StageReadinessProvider now (it refreshes this on
+    // Back, see DocumentView.tsx) — never used by this test's own assertions, just needed so
+    // the Provider wrapping it below has something to resolve.
+    getStageReadiness: vi.fn().mockResolvedValue(makeReadiness([doc({ path: 'requirements.md' })])),
   }
   // @ts-expect-error - test double, not the full StudioApi surface
   window.studio = studio
@@ -104,7 +109,9 @@ describe('the Workflow tab\'s live document panel and the Documents tab render i
     await waitFor(() => expect(workflowContainer.querySelector('[data-testid="live-document-panel"]')).toBeTruthy())
 
     const { container: documentViewContainer } = render(
-      <DocumentView projectPath="/p" relPath="requirements.md" actor="Matt K" onBack={() => {}} onShowHistory={() => {}} />,
+      <StageReadinessProvider projectPath="/p" stageId="1">
+        <DocumentView projectPath="/p" relPath="requirements.md" actor="Matt K" onBack={() => {}} onShowHistory={() => {}} />
+      </StageReadinessProvider>,
     )
     await waitFor(() => expect(documentViewContainer.querySelector('[data-section-key="Overview"]')).toBeTruthy())
 

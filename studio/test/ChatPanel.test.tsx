@@ -1,10 +1,35 @@
 // @vitest-environment jsdom
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connectingSteps } from '../src/chatConnectingSteps'
 import { ChatPanel } from '../src/components/ChatPanel'
+import { StageReadinessProvider } from '../src/components/StageReadinessContext'
 import type { ChatState, ChatTurnResult, ProjectStatus, StageReadiness } from '../shared/types'
+
+/** ChatPanel now reads its readiness from spec 0019's shared context (Frame.tsx wraps it in
+ * `StageReadinessProvider` in the real app) rather than fetching its own — so every render here
+ * needs the same wrapper. Takes the `<ChatPanel .../>` element as-is (so every existing call site
+ * below only needed `render(` -> `renderChatPanel(` / `rerender(` -> stays the same, since the
+ * returned `rerender` wraps itself) and keys the Provider off the SAME projectPath/stageId props
+ * the element itself was given, falling back to a harmless default only for the one test that
+ * renders with `projectPath={null}` (the placeholder path, which never reads the context's
+ * value — see ChatPanel.tsx's own early return, right after its unconditional `useStageReadiness()`
+ * call). `window.studio.getStageReadiness` is whatever `installStudioMock()` already set up per
+ * test, same mock, just now called by the Provider instead of by ChatPanel directly. */
+function renderChatPanel(element: ReactElement<{ projectPath: string | null; stageId: string | null }>) {
+  const wrap = (el: typeof element) => (
+    <StageReadinessProvider projectPath={el.props.projectPath ?? '/p'} stageId={el.props.stageId ?? undefined}>
+      {el}
+    </StageReadinessProvider>
+  )
+  const result = render(wrap(element))
+  return {
+    ...result,
+    rerender: (nextElement: typeof element) => result.rerender(wrap(nextElement)),
+  }
+}
 
 function emptyState(): ChatState {
   return { sessionId: null, messages: [] }
@@ -59,13 +84,13 @@ afterEach(() => {
 describe('ChatPanel — item 8: the "Can see" status line always has real text', () => {
   it('shows a real placeholder message, never "Can see: " with nothing after it, when no project/stage is open', () => {
     installStudioMock()
-    render(<ChatPanel status={null} projectPath={null} actor="" stageId={null} />)
+    renderChatPanel(<ChatPanel status={null} projectPath={null} actor="" stageId={null} />)
     expect(screen.getByText('Can see: nothing yet — open a project first.')).toBeTruthy()
   })
 
   it('shows a "loading" message, never a blank line, when a project/stage ARE open but status has not arrived yet', () => {
     installStudioMock()
-    render(<ChatPanel status={null} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={null} projectPath="/p" actor="" stageId="0" />)
     expect(screen.getByText('Can see: loading…')).toBeTruthy()
     // The literal bug this regresses: an empty string after "Can see: ".
     expect(screen.queryByText('Can see:')).toBeNull()
@@ -73,7 +98,7 @@ describe('ChatPanel — item 8: the "Can see" status line always has real text',
 
   it('shows the project and stage once status has loaded', () => {
     installStudioMock()
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
   })
 })
@@ -84,7 +109,7 @@ describe('ChatPanel — item 7: actor is dropped from the three calls that never
       getChatState: vi.fn().mockResolvedValue(emptyState()), // no messages -> ensureChatStarted runs
       ensureChatStarted: vi.fn().mockResolvedValue({ ok: true, state: emptyState() }),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
     await waitFor(() => expect(studio.ensureChatStarted).toHaveBeenCalled())
     expect(studio.ensureChatStarted).toHaveBeenCalledWith('/p', '0')
     // The composer only renders once initializing has fully settled (spec 0018) — having been
@@ -109,7 +134,7 @@ describe('ChatPanel — item 7: actor is dropped from the three calls that never
       getChatState: vi.fn().mockResolvedValue(proposalState),
       resolveChatProposal: vi.fn().mockResolvedValue({ ok: true, state: proposalState }),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     await waitFor(() => expect(screen.getByRole('button', { name: 'Accept' })).toBeTruthy())
 
     const user = userEvent.setup()
@@ -134,7 +159,7 @@ describe('ChatPanel — item 2: busy resets on stage switch, and a stale reply f
       )),
     })
 
-    const { rerender } = render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
     // 'old' is stuck connecting — its own ensureChatStarted never resolves — so the checklist
     // stays up and the composer never appears for it.
     await waitFor(() => expect(screen.getByTestId('connecting-checklist')).toBeTruthy())
@@ -177,7 +202,7 @@ describe('ChatPanel — item 2: busy resets on stage switch, and a stale reply f
       sendChatMessage: vi.fn().mockImplementation(() => oldSendPromise),
     })
 
-    const { rerender } = render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
+    const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
     await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
 
     const user = userEvent.setup()
@@ -206,7 +231,7 @@ describe('ChatPanel — item 1: a failed send does not lose the person\'s own me
       getChatState: vi.fn().mockResolvedValue({ ...emptyState(), messages: [{ id: 'x', role: 'assistant', text: 'hi', questions: [], proposals: [], at: '' }] }),
       sendChatMessage: vi.fn().mockResolvedValue({ ok: false, state: stateAfterFailure, error: 'the model call failed' } satisfies ChatTurnResult),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
     await waitFor(() => expect(screen.getByText('hi')).toBeTruthy())
 
     const user = userEvent.setup()
@@ -250,7 +275,7 @@ describe('ChatPanel — item 3: multiple proposals/questions in one message each
       getChatState: vi.fn().mockResolvedValue(twoProposals),
       resolveChatProposal: vi.fn().mockResolvedValue({ ok: true, state: afterAccept }),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
 
     await waitFor(() => expect(screen.getAllByRole('button', { name: 'Accept' })).toHaveLength(2))
     const user = userEvent.setup()
@@ -278,7 +303,7 @@ describe('ChatPanel — item 3: multiple proposals/questions in one message each
     const studio = installStudioMock({
       getChatState: vi.fn().mockResolvedValue(twoQuestions),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="matt" stageId="0" />)
 
     await waitFor(() => {
       expect(screen.getByText('Q1?')).toBeTruthy()
@@ -305,7 +330,7 @@ describe('ChatPanel — spec 0018: the connecting checklist renders a named sequ
       ensureChatStarted: vi.fn().mockReturnValue(greetPromise),
     })
 
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
 
     const stepDone = (label: string) => (
       screen.getByText(label).closest('[data-testid="connecting-step"]')!.getAttribute('data-step-done')
@@ -350,7 +375,7 @@ describe('ChatPanel — spec 0018: free text stays usable even with a pending st
       getChatState: vi.fn().mockResolvedValue(pendingQuestionState),
       sendChatMessage: vi.fn().mockResolvedValue({ ok: true, state: pendingQuestionState } satisfies ChatTurnResult),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
 
     await waitFor(() => expect(screen.getByText('Which track?')).toBeTruthy())
     // The chip is part of the thread — never a layout that replaces or disables the text box.
@@ -370,7 +395,7 @@ describe('ChatPanel — finding #2: a rejected Promise.all (e.g. a readiness rea
     installStudioMock({
       getStageReadiness: vi.fn().mockRejectedValue(new Error('ENOENT: file deleted mid-read')),
     })
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
 
     // Before the fix this hangs forever on the connecting checklist — no composer, no message
     // list, no error — strictly worse than the pre-spec-0018 behaviour.
@@ -417,13 +442,13 @@ describe('ChatPanel — spec 0018: the header names which document it is helping
       ready: false,
     }
     installStudioMock({ getStageReadiness: vi.fn().mockResolvedValue(readiness) })
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     await waitFor(() => expect(screen.getByText('Helping with: epics.md')).toBeTruthy())
   })
 
   it('falls back to the generic "Can see" subtitle when the current step is Sign-off, not a document', async () => {
     installStudioMock() // default readiness has no documents -> the trailing Sign-off step is current
-    render(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
     await waitFor(() => expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy())
     expect(screen.queryByText(/Helping with:/)).toBeNull()
   })
