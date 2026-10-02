@@ -13,6 +13,7 @@ import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPull
 import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } from './documents'
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
+import { createProjectFolder } from './newProject'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
@@ -159,9 +160,13 @@ function registerIpcHandlers() {
 
   ipcMain.handle('studio:pickFolder', async () => {
     if (!win) return null
-    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    // createDirectory adds the "New Folder" button to the macOS dialog; Windows' folder dialog
+    // already has one.
+    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? null : result.filePaths[0]
   })
+
+  ipcMain.handle('studio:createProject', (_event, parent: string, name: string) => createProjectFolder(parent, name))
 
   ipcMain.handle('studio:hasSdlcProject', (_event, projectPath: string) => hasSdlcProject(projectPath))
 

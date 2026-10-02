@@ -13,6 +13,7 @@ const studio: StudioApi = {
   setToolOverride: (kind, path) => ipcRenderer.invoke('studio:setToolOverride', kind, path),
 
   pickFolder: () => ipcRenderer.invoke('studio:pickFolder'),
+  createProject: (parent, name) => ipcRenderer.invoke('studio:createProject', parent, name),
   hasSdlcProject: (projectPath) => ipcRenderer.invoke('studio:hasSdlcProject', projectPath),
   openProject: (projectPath) => ipcRenderer.invoke('studio:openProject', projectPath),
 
