@@ -1,0 +1,36 @@
+template: build-handoff
+version: "1.0"
+description: "What the Build loop needs to start: the state of the walking skeleton and rails, the first specs in the backlog, what is carried forward, and where to begin."
+
+sections:
+  - heading: State at handoff
+    fields:
+      - label: State at handoff
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The dev URL the walking skeleton is deployed to, whether the rails are proven on real PRs, and the HIGH-risk spec that ran the full loop
+
+  - heading: Ready backlog (first specs into the loop)
+    fields:
+      - label: Ready backlog (first specs into the loop)
+        anchor: section
+        type: table
+        required: true
+        guidance: The first specs into the loop, each with its risk tier and which outcome it moves
+
+  - heading: Carried forward
+    fields:
+      - label: Carried forward
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Open questions with owners and due dates, and the constraints locked in Foundation; the risk-tier map and cadence plan are referenced, not repeated
+
+  - heading: First-week focus
+    fields:
+      - label: First-week focus
+        anchor: section
+        type: longtext
+        required: true
+        guidance: What the loop tackles first and why, sequenced by which spec moves the success metric soonest
