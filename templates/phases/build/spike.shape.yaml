@@ -1,0 +1,69 @@
+template: spike
+version: "1.0"
+description: "A time-boxed investigation of one unknown that blocks a spec - the written finding is the deliverable, the code is thrown away."
+
+# NOTE: a spike lives at spikes/NNNN-name.md in the TARGET repo, not under .sdlc/artifacts/. It is
+# created by scripts/new_spike.py, which fills the frontmatter and the "# Spike NNNN" title; the
+# body headings below are left for the author. The frontmatter (spike, name, status, box,
+# opened_by, unblocks, created) sits above the first heading, so it is not body content and is
+# deliberately not declared here, the same choice spec.shape.yaml makes.
+#
+# required: true only on the question itself (The unknown) and the answer (Finding): a spike with
+# neither is not a spike. Everything else is filled in as the spike runs and stays optional.
+#
+# Three sections are ONE field each, not several:
+#   What was tried, Consequences - the template writes their items as list entries
+#                 (`- **Tested against:** ...`) and an inline field needs its label to start its
+#                 own line.
+#   Finding     - its "**Survived?**" line has no colon inside the bold, so the library cannot
+#                 anchor it as a labelled field. Splitting the section would hide the verdict
+#                 from a form, so the whole section is edited as one block.
+
+sections:
+  - heading: The unknown
+    fields:
+      - label: The unknown
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The specific thing nobody knows, stated so an answer would be recognisable - a question, not "look into X"
+
+  - heading: Why it can't be specced yet
+    fields:
+      - label: Why it can't be specced yet
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Which acceptance check cannot be written yet, and why finding out beats guessing
+
+  - heading: What was tried
+    fields:
+      - label: What was tried
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What it was tested against, the method, and what was observed - enough that the next person does not repeat it
+
+  - heading: Finding
+    fields:
+      - label: Finding
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The assumption, whether it survived (yes, no, partially, still unknown), what is now known, and what it would take to know more
+
+  - heading: Consequences
+    fields:
+      - label: Consequences
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The decision-list item answered, the specs now writable, any ADR impact, and any new risk surfaced
+
+  - heading: Disposal
+    fields:
+      - label: Disposal
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Confirm the spike branch is deleted, anything worth keeping is written here, and the file is committed

@@ -1,0 +1,72 @@
+template: user-journey
+version: "1.0"
+description: "The path one kind of user takes through one channel to reach their goal, including every place they can fail or walk away."
+
+# required: true only on what a journey is meaningless without: who is travelling (persona), where
+# it ends (goal), the happy path, and the failure and abandon paths (the template calls those
+# first-class, not an afterthought). Entry point, channel and traceability are context. Channel
+# notes and open questions may legitimately be empty, so they stay optional.
+#
+# Channel notes is ONE longtext field: the template writes it as list entries
+# (`- **Visual (`ag-ui`):** ...`) and an inline field needs its label to start its own line.
+
+sections:
+  - heading: Journey identity
+    fields:
+      - label: Channel
+        anchor: inline
+        type: text
+        required: false
+        guidance: The channel this journey runs on (web, voice or chat), or a dash for channel-agnostic
+      - label: Persona
+        anchor: inline
+        type: text
+        required: true
+        guidance: Who is travelling this journey
+      - label: Entry point
+        anchor: inline
+        type: text
+        required: false
+        guidance: Where the persona starts - a call, a link, a message or a screen
+      - label: Goal / outcome
+        anchor: inline
+        type: text
+        required: true
+        guidance: What done looks like for the persona
+      - label: Traces to
+        anchor: inline
+        type: text
+        required: false
+        guidance: The feature-brief row, user story and spec this journey supports
+
+  - heading: Happy path
+    fields:
+      - label: Happy path
+        anchor: section
+        type: table
+        required: true
+        guidance: The step-by-step route when nothing goes wrong - what the persona does, how the system responds, and how we know each step landed
+
+  - heading: Failure & abandon paths
+    fields:
+      - label: Failure & abandon paths
+        anchor: section
+        type: table
+        required: true
+        guidance: Every place the journey can break, stall or be walked away from, with the recovery and where an undecided question goes
+
+  - heading: Channel notes
+    fields:
+      - label: Channel notes
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The notes that apply to this journey's channel - states and approval for web, fallback-to-human for voice, threading and escalation for chat
+
+  - heading: Open questions → decision-log
+    fields:
+      - label: Open questions
+        anchor: section
+        type: table
+        required: false
+        guidance: Questions the journey cannot resolve without a human decision, each with an owner and a decision-log reference

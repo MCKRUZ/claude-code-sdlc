@@ -1,0 +1,77 @@
+template: surface-layout
+version: "1.0"
+description: "How a screen, phone call or chat is laid out for the user - screens for web, a turn-by-turn script for voice, a message flow for chat."
+
+# required: true only on what applies to EVERY channel: the channel itself and the states table.
+# The three layout sections are alternatives (the template says to fill the one that matches and
+# delete the others), so none of their fields can be required - a web-only document legitimately
+# has no voice script. A document may omit any of those three sections entirely.
+#
+# Voice and chat sections are ONE longtext field each: the layout there IS a code-fenced script
+# surrounded by a few lines of explanation, edited together.
+
+sections:
+  - heading: Surface identity
+    fields:
+      - label: Channel
+        anchor: inline
+        type: text
+        required: true
+        guidance: The channel this surface is on (web, voice or chat)
+      - label: Persona
+        anchor: inline
+        type: text
+        required: false
+        guidance: Who uses this surface
+      - label: Traces to
+        anchor: inline
+        type: text
+        required: false
+        guidance: The feature-brief row and spec this layout supports
+      - label: Hi-fi link
+        anchor: inline
+        type: text
+        required: false
+        guidance: A link to the prototype or Figma design, or none
+
+  - heading: Visual channel (`ag-ui`) — screens
+    fields:
+      - label: Screens
+        anchor: section
+        type: table
+        required: false
+        guidance: Each screen with its purpose, key elements and the loading, empty and error states it renders
+      - label: Wireframe / layout sketch
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: A text sketch of the primary screen - regions, the main action, and the confidence or approval control
+      - label: Navigation flow
+        anchor: labeled_block
+        type: longtext
+        required: false
+        guidance: How the persona moves from one screen to the next
+
+  - heading: Voice channel — turn-by-turn script
+    fields:
+      - label: Voice script
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The call as a system-and-caller script, with where barge-in, low-confidence reprompts and fallback to a human apply
+
+  - heading: Chat channel — message flow
+    fields:
+      - label: Chat flow
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The conversation as a user-and-agent script, with threading across gaps, typing cues and where escalation is offered
+
+  - heading: States & edge rendering
+    fields:
+      - label: States & edge rendering
+        anchor: section
+        type: table
+        required: true
+        guidance: What the persona sees while loading, when there is no data, and on error, with the recovery they are offered

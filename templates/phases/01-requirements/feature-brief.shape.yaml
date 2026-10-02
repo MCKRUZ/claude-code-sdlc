@@ -1,0 +1,59 @@
+template: feature-brief
+version: "1.0"
+description: "How one epic becomes a slice of user value: the outcome, the channels it reaches, the data it touches, and the specs that build it."
+
+# required: true marks the three sections a feature brief is meaningless without - the business
+# outcome, the feature itself, and the spec decomposition that turns it into buildable work. The
+# other three are discipline-owned detail that is often legitimately thin on a small feature.
+# Every heading carries its owner and sign-off note exactly as the template writes it.
+# The decomposition table is the first table in its section; the section also holds a paragraph
+# before it and an italic note after it.
+
+sections:
+  - heading: "Outcome — owner: Bizreq · signs at gate"
+    fields:
+      - label: Outcome
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The business result this feature moves, tracing to its needs and requirements
+
+  - heading: "Feature — owner: Product · signs at gate"
+    fields:
+      - label: Feature
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One coherent slice of user value described end to end, and the epic and story it realizes
+
+  - heading: "Channels × personas — owner: Product + Design · signs at gate"
+    fields:
+      - label: Channels and personas
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Each channel and persona pair this feature reaches, with what that surface does for that persona
+
+  - heading: "Per-channel experience — owner: Design · signs at gate"
+    fields:
+      - label: Per-channel experience
+        anchor: section
+        type: longtext
+        required: false
+        guidance: For each channel, the experience at a glance - the flow, the confirmation, and the fallback
+
+  - heading: "Data touchpoints — owner: Data · signs at gate"
+    fields:
+      - label: Data touchpoints
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The records and sources this feature reads or writes, with any personal data called out
+
+  - heading: "Spec decomposition — owner: Product · one channel per spec"
+    fields:
+      - label: Spec decomposition
+        anchor: section
+        type: table
+        required: true
+        guidance: One row per spec with its channel, persona, proposed risk tier and what it traces to
