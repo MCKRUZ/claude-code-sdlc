@@ -13,6 +13,19 @@ Usage:
   document_shape_cli.py next-number  --doc <path.md> --shape <path.shape.yaml> [--section H]
   document_shape_cli.py add-instance --doc <path.md> --shape <path.shape.yaml> [--section H]
                                      [--number N] [--title TEXT]
+  document_shape_cli.py add-row      --doc <path.md> (--shape S --section H --field L | --table-index N)
+                                     (--cells JSON | --cells-file PATH)
+                                     [--id-column COL --id-pattern "BR-%02d"]
+
+`add-row` appends ONE row to a markdown table (spec 0020), addressed either by the shape (a
+`table`-typed field of a section — the first table inside that field) or, with no shape at all,
+by position (`--table-index N`, the Nth table in the document, code fences skipped). The second
+form exists because several discipline documents (business rules, golden scenarios, the decision
+log) are a preamble and one table with no `## ` heading, which a shape cannot anchor to — and real
+projects' copies of them have none either. `--cells` maps column header -> value; an id column is
+filled with the next free id, found by scanning the WHOLE document (prose included) so an id is
+never reused. A row made only of `[bracketed]` template placeholders is replaced by the first real
+row. Everything outside the table's data rows is untouched, line endings included.
 
 `next-number` and `add-instance` exist for the repeating blocks a document grows over time
 (`### FR-001`, `### FR-002`, ...). Numbers come from the library's own next_free_number(), which
@@ -38,6 +51,7 @@ call, so it does not use the rest of this plugin's "advisory, always exit 0" con
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -283,6 +297,208 @@ def cmd_add_instance(args) -> dict:
     return {"written": True, "path": str(doc_path), "id": instance_id, "number": number}
 
 
+# --- add-row -------------------------------------------------------------------------------
+
+_SEPARATOR_CELL_RE = re.compile(r"^:?-+:?$")
+# A `[bracketed]` or `<angle>` placeholder span — but not a markdown link, `[text](url)`, nor a real
+# HTML tag such as `<br>`, both of which are content.
+_PLACEHOLDER_SPAN_RE = re.compile(
+    r"\[[^\]]+\](?!\()"
+    r"|<(?!/?(?:br|b|i|u|p|em|strong|code|span|sub|sup|hr|a|img|div)\b)[^<>\n]+>",
+    re.IGNORECASE,
+)
+_FENCE_RE = re.compile(r"^[ \t]*(```|~~~)")
+_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
+
+
+def _split_cells(line: str) -> list[str]:
+    """A table line's cells, honouring `\\|` as a literal pipe inside a cell."""
+    body = line.strip()
+    if body.startswith("|"):
+        body = body[1:]
+    if body.endswith("|") and not body.endswith("\\|"):
+        body = body[:-1]
+    return [c.strip() for c in _UNESCAPED_PIPE_RE.split(body)]
+
+
+def _is_separator_line(line: str) -> bool:
+    cells = _split_cells(line)
+    return bool(cells) and all(_SEPARATOR_CELL_RE.match(c) for c in cells)
+
+
+def _is_placeholder_row(line: str) -> bool:
+    """A template's stand-in row. Real templates keep a genuine id and status in it (`DL-01 | [the
+    open question] | [owner] | ... | open`), so "every cell is bracketed" would miss them; instead a
+    row is a placeholder when MORE THAN HALF its non-empty cells hold a `[bracketed]` or `<angle>`
+    span. Exactly half is not enough: `| BR-01 | [to confirm] |` and a half-filled decision are real
+    rows that mention a bracket, and treating them as stand-ins deleted them (found by the
+    correctness review of spec 0020)."""
+    cells = [c for c in _split_cells(line) if c]
+    marked = sum(1 for c in cells if _PLACEHOLDER_SPAN_RE.search(c))
+    return marked > 0 and marked * 2 > len(cells)
+
+
+def _line_spans(text: str, start: int, end: int):
+    """(start, end) of each line in [start, end), the line ending included in the span."""
+    pos = start
+    while pos < end:
+        newline = text.find("\n", pos, end)
+        stop = newline + 1 if newline != -1 else end
+        yield pos, stop
+        pos = stop
+
+
+def _find_tables(text: str, start: int, end: int) -> list[dict]:
+    """Markdown tables in [start, end), code fences skipped. Each: its header cells, where its
+    data rows begin, and every data row's span (line ending included)."""
+    lines = list(_line_spans(text, start, end))
+    content = [text[s:e].rstrip("\r\n") for s, e in lines]
+    tables, in_fence, i = [], False, 0
+    while i < len(lines):
+        if _FENCE_RE.match(content[i]):
+            in_fence = not in_fence
+        elif (not in_fence and content[i].lstrip().startswith("|") and i + 1 < len(lines)
+              and content[i + 1].lstrip().startswith("|") and _is_separator_line(content[i + 1])):
+            rows, j = [], i + 2
+            while j < len(lines) and content[j].lstrip().startswith("|"):
+                rows.append(lines[j])
+                j += 1
+            tables.append({"header": _split_cells(content[i]), "data_start": lines[i + 1][1], "rows": rows})
+            i = j
+            continue
+        i += 1
+    return tables
+
+
+def _load_cells(args) -> dict:
+    raw = getattr(args, "cells", None)
+    path = getattr(args, "cells_file", None)
+    if raw is None and path is None:
+        raise CliError("give the row's values with --cells (JSON) or --cells-file")
+    if raw is None:
+        try:
+            with open(path, encoding="utf-8") as f:
+                raw = f.read()
+        except OSError as e:
+            raise CliError(f"cannot read --cells-file: {e}") from e
+    try:
+        cells = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise CliError(f"--cells is not valid JSON: {e}") from e
+    if not isinstance(cells, dict):
+        raise CliError("--cells must be a JSON object mapping column name to value")
+    return cells
+
+
+def _clean_cell(value) -> str:
+    """One table cell: a newline cannot live inside a markdown table row, and an unescaped pipe
+    would split the cell in two."""
+    text = re.sub(r"\s*[\r\n]+\s*", " ", str(value)).strip()
+    return _UNESCAPED_PIPE_RE.sub(r"\\|", text)
+
+
+def _resolve_table(text: str, args) -> dict:
+    shape_given = any(getattr(args, name, None) for name in ("shape", "section", "field"))
+    index_given = getattr(args, "table_index", None) is not None
+    if shape_given == index_given:
+        raise CliError("give either --shape with --section and --field, or --table-index (not both, not neither)")
+
+    if index_given:
+        tables = _find_tables(text, 0, len(text))
+        if not tables:
+            raise CliError("this document has no table")
+        if args.table_index >= len(tables) or args.table_index < 0:
+            raise CliError(f"this document has only {len(tables)} table(s); index {args.table_index} is out of range")
+        return tables[args.table_index]
+
+    if not (args.shape and args.section and args.field):
+        raise CliError("--shape, --section and --field go together")
+    shape = load_shape(Path(args.shape))
+    result = ds.read_document(text, shape)
+    if not result["matched"]:
+        raise CliError("document does not match its shape, so there is no table field to add to: " + "; ".join(result["warnings"]))
+    block = next((b for b in result["blocks"] if b["kind"] == "section" and b["heading"] == args.section), None)
+    if block is None:
+        raise CliError(f"section {args.section!r} not found in this document")
+    field = block["fields"].get(args.field)
+    if field is None:
+        raise CliError(f"field {args.field!r} not found in section {args.section!r}")
+    if field["type"] != "table":
+        raise CliError(f"field {args.field!r} is a {field['type']} field, not a table")
+    tables = _find_tables(text, field["start"], field["end"])
+    if not tables:
+        raise CliError(f"field {args.field!r} contains no table")
+    return tables[0]
+
+
+def cmd_add_row(args) -> dict:
+    """Append one row to a table, through write_document() as a single exact span so every byte
+    outside the table's data rows is untouched. See the module docstring for the contract."""
+    doc_path = Path(args.doc)
+    text = read_doc_text(doc_path)
+    cells = _load_cells(args)
+    table = _resolve_table(text, args)
+    header = table["header"]
+
+    unknown = [name for name in cells if name not in header]
+    if unknown:
+        raise CliError(f"unknown column(s) {unknown}; this table has: {', '.join(header)}")
+    if not any(str(v).strip() for v in cells.values()):
+        raise CliError("every value is empty, so there is no row to add")
+
+    rows = table["rows"]
+    # Rows are removed ONLY when the caller asked, and only from a table that is nothing BUT
+    # stand-ins (a fresh template). A table with any real row in it is never touched: deleting a
+    # person's row on a heuristic is the one failure this verb must not have.
+    all_placeholders = bool(rows) and all(_is_placeholder_row(text[s:e].rstrip("\r\n")) for s, e in rows)
+    placeholders = list(rows) if getattr(args, "replace_placeholders", False) and all_placeholders else []
+    id_column, id_pattern = getattr(args, "id_column", None), getattr(args, "id_pattern", None)
+    row_id = None
+    values = {name: _clean_cell(v) for name, v in cells.items()}
+    if id_column or id_pattern:
+        if not (id_column and id_pattern):
+            raise CliError("--id-column and --id-pattern go together (the pattern says what an id looks like, e.g. BR-%02d)")
+        if id_column not in header:
+            raise CliError(f"id column {id_column!r} is not in this table; it has: {', '.join(header)}")
+        if id_column in cells:
+            raise CliError(f"the {id_column!r} column is allocated automatically; do not also supply it in --cells")
+        # Ids that appear only in a placeholder row about to be removed were never really used:
+        # a fresh template's first real rule is BR-01, not BR-04.
+        scan_text = text
+        for s, e in reversed(placeholders):
+            scan_text = scan_text[:s] + scan_text[e:]
+        try:
+            row_id = id_pattern % ds.next_free_number(scan_text, id_pattern)
+        except (ds.ShapeError, TypeError, ValueError) as e:
+            raise CliError(f"cannot allocate an id from pattern {id_pattern!r}: {e}") from e
+        values[id_column] = row_id
+
+    eol = _detect_eol(text)
+    new_row = "| " + " | ".join(values.get(name, "") for name in header) + " |"
+
+    kept = [(s, e) for s, e in rows if (s, e) not in placeholders]
+    region_start = table["data_start"]
+    region_end = rows[-1][1] if rows else region_start
+    # The only line that can lack a line ending is the document's last one.
+    original_last_has_eol = region_end == 0 or text[region_end - 1] == "\n"
+    previous_end = kept[-1][1] if kept else region_start
+    previous_has_eol = previous_end == 0 or text[previous_end - 1] == "\n"
+
+    new_region = (
+        "".join(text[s:e] for s, e in kept)
+        + ("" if previous_has_eol else eol)
+        + new_row
+        + (eol if original_last_has_eol else "")
+    )
+    new_text = ds.write_document(text, [(region_start, region_end, new_region)])
+    with open(doc_path, "w", encoding="utf-8", newline="") as f:
+        f.write(new_text)
+    return {
+        "written": True, "path": str(doc_path), "row": len(kept) + 1, "id": row_id,
+        "replaced_placeholders": len(rows) - len(kept),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Read/write a document against its shape (JSON over stdio)")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -310,6 +526,20 @@ def main() -> int:
     p_add.add_argument("--number", type=int, help="Use this number instead of the next free one")
     p_add.add_argument("--title", default="", help="Title text after the id in the heading")
 
+    p_row = sub.add_parser("add-row", help="Append one row to a table (by shape field, or by table position)")
+    p_row.add_argument("--doc", required=True)
+    p_row.add_argument("--shape", help="Shape file (with --section and --field)")
+    p_row.add_argument("--section", help="Heading of the section holding the table field")
+    p_row.add_argument("--field", help="Label of the table-typed field")
+    p_row.add_argument("--table-index", type=int, dest="table_index", help="Address the Nth table in the document instead (0-based)")
+    p_row.add_argument("--cells", help="JSON object: column header -> value")
+    p_row.add_argument("--cells-file", dest="cells_file", help="Path to a JSON file holding the cells (avoids shell quoting)")
+    p_row.add_argument("--id-column", dest="id_column", help="Column to fill with the next free id")
+    p_row.add_argument("--id-pattern", dest="id_pattern", help='What an id looks like, e.g. "BR-%%02d"')
+    p_row.add_argument("--replace-placeholders", action="store_true", dest="replace_placeholders",
+                       help="If EVERY data row is a template placeholder, replace them with this row "
+                            "(never removes anything from a table that has a real row)")
+
     args = parser.parse_args()
 
     handlers = {
@@ -317,6 +547,7 @@ def main() -> int:
         "write": cmd_write,
         "next-number": cmd_next_number,
         "add-instance": cmd_add_instance,
+        "add-row": cmd_add_row,
     }
 
     try:

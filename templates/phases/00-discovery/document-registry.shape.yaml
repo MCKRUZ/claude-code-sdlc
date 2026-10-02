@@ -1,0 +1,51 @@
+template: document-registry
+version: "1.0"
+description: "The index of every client document read during intake, with sizes, topics, how the documents cluster and which ones refer to each other."
+
+# How `required` was chosen: only the Document Index is required - it is the registry, and every
+# DOC-NNN reference elsewhere in the project resolves through it. The corpus totals, clusters,
+# cross-references and usage guide are derived or explanatory, so they are optional.
+# Topic Clusters and Cross-Reference Map each hold a line of prose followed by their table; the
+# field is the whole section body, so the prose and the table are edited together.
+# Not shaped: the Generated and Intake Path lines above the first "## " heading.
+
+sections:
+  - heading: Document Corpus Summary
+    fields:
+      - label: Document Corpus Summary
+        anchor: section
+        type: table
+        required: false
+        guidance: Total documents, total estimated tokens, file types and the index budget
+
+  - heading: Document Index
+    fields:
+      - label: Document Index
+        anchor: section
+        type: table
+        required: true
+        guidance: One row per document - DOC-NNN id, filename, type, estimated tokens, key topics and a link to its summary
+
+  - heading: Topic Clusters
+    fields:
+      - label: Topic Clusters
+        anchor: section
+        type: table
+        required: false
+        guidance: Documents grouped by detected theme - the cluster name, the DOC-NNN ids in it and a description
+
+  - heading: Cross-Reference Map
+    fields:
+      - label: Cross-Reference Map
+        anchor: section
+        type: table
+        required: false
+        guidance: Which documents reference each other - for each document, what it references and what references it
+
+  - heading: Usage Guide
+    fields:
+      - label: Usage Guide
+        anchor: section
+        type: longtext
+        required: false
+        guidance: How Phase 1 requirements cite these documents by DOC-NNN id and where to find the full summary and original

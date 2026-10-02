@@ -1,0 +1,83 @@
+template: workshop-brief
+version: "1.0"
+description: "The one-page pre-read for the outcome workshop: what the documents say, where they disagree, what nobody has written down, and the decisions the room must make."
+
+# How `required` was chosen: the four sections that carry the workshop's substance (the claims,
+# the contradictions, the open questions, the decisions) and the agenda are required - a brief
+# without them gives the room nothing to work on. The corpus summary and the three appendices
+# are supporting material, so they are optional.
+# Not shaped: the When/where, Runs, Attendees, Facilitator and Pre-reading lines sit above the
+# first "## " heading, and a field must live inside a section, so they stay editable as free text.
+
+sections:
+  - heading: What we read
+    fields:
+      - label: What we read
+        anchor: section
+        type: longtext
+        required: false
+        guidance: How many documents the client provided and the 3-5 load-bearing ones, each with its DOC-NNN id and one clause on why it matters
+
+  - heading: What the documents say
+    fields:
+      - label: What the documents say
+        anchor: section
+        type: longtext
+        required: true
+        guidance: 3-6 factual claims that frame the session, each ending with its DOC-NNN reference - claims, not conclusions
+
+  - heading: Where the documents disagree
+    fields:
+      - label: Where the documents disagree
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The top 3-5 contradictions by severity as a numbered list, each ending in its resolving question and its CON-NN id
+
+  - heading: What nobody has written down
+    fields:
+      - label: What nobody has written down
+        anchor: section
+        type: longtext
+        required: true
+        guidance: 8-12 workshop-routed questions, grouped by agenda block, each ending with its Q-NN id
+
+  - heading: Decisions we need from the room
+    fields:
+      - label: Decisions we need from the room
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The 3-5 things the room must leave having decided, as a numbered list
+
+  - heading: Agenda
+    fields:
+      - label: Agenda
+        anchor: section
+        type: table
+        required: true
+        guidance: One row per agenda block with its time and the output the block must produce
+
+  - heading: "Appendix A: Full question list"
+    fields:
+      - label: Appendix A
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The full question list, or a link to question-list.md
+
+  - heading: "Appendix B: Contradiction detail"
+    fields:
+      - label: Appendix B
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The full contradiction detail, or a link to contradiction-list.md
+
+  - heading: "Appendix C: Document registry"
+    fields:
+      - label: Appendix C
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The document registry index table, or a link to document-registry.md

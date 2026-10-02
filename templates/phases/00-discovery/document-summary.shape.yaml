@@ -1,0 +1,53 @@
+template: document-summary
+version: "1.0"
+description: "A condensed summary of one client document - what it is, the requirements and terms in it, and how it bears on the project."
+
+# How `required` was chosen: the overview and the extractable requirements are required - the
+# template itself ranks them first when the summary must fit a token budget, and Phase 1
+# traceability depends on the requirements. Everything else is optional.
+# Key Information is one field because its Purpose / Audience / Scope lines are "- **Label:**"
+# list items, which an inline field cannot anchor to.
+# Not shaped: the doc_id / filename / type / source_path / estimated_tokens / created frontmatter
+# and the "# DOC-NNN: filename" title sit above the first "## " heading, and a field must live
+# inside a section, so they stay editable as free text.
+
+sections:
+  - heading: Document Overview
+    fields:
+      - label: Document Overview
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One paragraph on what the document is and what it says
+
+  - heading: Key Information
+    fields:
+      - label: Key Information
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Three bullets - the document's purpose (why it exists), its audience, and its scope (what it covers)
+
+  - heading: Extractable Requirements
+    fields:
+      - label: Extractable Requirements
+        anchor: section
+        type: longtext
+        required: true
+        guidance: A bullet per requirement or constraint in this document that should inform Phase 1
+
+  - heading: Key Terms & Definitions
+    fields:
+      - label: Key Terms & Definitions
+        anchor: section
+        type: table
+        required: false
+        guidance: Domain terms this document defines that the project should use consistently, each with its definition
+
+  - heading: Relevance to Project
+    fields:
+      - label: Relevance to Project
+        anchor: section
+        type: longtext
+        required: false
+        guidance: How this document relates to the project

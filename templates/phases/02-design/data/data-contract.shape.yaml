@@ -1,0 +1,53 @@
+template: data-contract
+version: "1.0"
+description: "The data fields a feature reads or writes - where each comes from and whether it is personal data, since personal data can only raise a spec's risk tier."
+
+# required: true only on the content the contract is meaningless without - which feature it is for
+# (the identity line), the Fields table itself, and the PII summary that says what to do about it.
+# The channel, the owner and the consumers table are context, so they stay optional.
+#
+# PII summary is ONE longtext field, not four: the template writes its four items as list entries
+# (`- **PII fields:** ...`) and an inline field needs its label to start its own line.
+
+sections:
+  - heading: Contract identity
+    fields:
+      - label: Feature / spec
+        anchor: inline
+        type: text
+        required: true
+        guidance: The feature id and spec this contract belongs to
+      - label: Channel
+        anchor: inline
+        type: text
+        required: false
+        guidance: The channel this applies to, or a dash for logic shared across channels
+      - label: Owner
+        anchor: inline
+        type: text
+        required: false
+        guidance: The person from the Data discipline who owns this contract
+
+  - heading: Fields
+    fields:
+      - label: Fields
+        anchor: section
+        type: table
+        required: true
+        guidance: Every field the feature reads or writes - its type, system of record, whether it is personal data (no, customer-linked or YES), and how it is handled
+
+  - heading: PII summary
+    fields:
+      - label: PII summary
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Which fields are personal data, how each was classified, the masking or encryption expected downstream, and whether it raises the spec's risk tier
+
+  - heading: Consumers & writers
+    fields:
+      - label: Consumers & writers
+        anchor: section
+        type: table
+        required: false
+        guidance: For each field, which components or surfaces read it and which write it
