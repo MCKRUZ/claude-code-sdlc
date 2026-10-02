@@ -37,6 +37,7 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:combineWithClaude', projectPath, localText, remoteText),
 
   getStageReadiness: (projectPath, stageId) => ipcRenderer.invoke('studio:getStageReadiness', projectPath, stageId),
+  gatherPipelineEvidence: (projectPath) => ipcRenderer.invoke('studio:gatherPipelineEvidence', projectPath),
   setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
     ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),
   signOffStage: (projectPath, stageId, signedBy, disciplineSignoffs) =>

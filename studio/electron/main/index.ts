@@ -14,6 +14,7 @@ import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } f
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
 import { createProjectFolder } from './newProject'
+import { gatherPipelineEvidence } from './pipelineEvidence'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
@@ -258,6 +259,14 @@ function registerIpcHandlers() {
       }
     }
     return getStageReadiness(projectPath, scriptsDir, stageId)
+  })
+
+  ipcMain.handle('studio:gatherPipelineEvidence', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { ok: false, error: 'claude-code-sdlc plugin scripts not found', rails: [], proofsNeeded: [] }
+    }
+    return gatherPipelineEvidence(projectPath, scriptsDir)
   })
 
   ipcMain.handle(

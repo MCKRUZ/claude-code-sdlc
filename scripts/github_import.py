@@ -40,7 +40,11 @@ def run_gh(args: list[str], cwd: str) -> str:
     """Shell out to `gh`, returning stdout. Never raises anything but GitHubImportError."""
     try:
         result = subprocess.run(
-            ["gh", *args], cwd=cwd, capture_output=True, text=True, timeout=60,
+            # `gh` writes UTF-8. `text=True` alone decodes with the platform's default codec
+            # (cp1252 on Windows), which cannot read the emoji and curly quotes real PR comments
+            # carry — one such comment crashed the reader thread and left stdout as None.
+            ["gh", *args], cwd=cwd, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=60,
         )
     except FileNotFoundError as e:
         raise GitHubImportError("The `gh` CLI is not installed or not on PATH.") from e

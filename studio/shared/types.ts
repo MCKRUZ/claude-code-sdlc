@@ -462,6 +462,52 @@ export interface ChatTurnResult {
   error?: string
 }
 
+// --- Pipeline evidence (Foundation) --------------------------------------------------------
+
+/** How a delivery rail stands, as pipeline_proof.py classifies it from GitHub's own history.
+ * NO_DATA is its own state on purpose: a local hook GitHub cannot see, or a history that could
+ * not be read, is never reported as "never fired" or as a zero. */
+export type PipelineRailStatus = 'PROVEN' | 'RAN_UNPROVEN' | 'NEVER_FIRED' | 'BROKEN' | 'NO_DATA'
+
+export interface PipelineEvidenceLink {
+  label: string
+  url: string
+}
+
+export interface PipelineRail {
+  rail: string
+  status: PipelineRailStatus
+  reason: string
+  /** Null when the history could not be read — never a fabricated zero. */
+  runs: number | null
+  red: number | null
+  evidence: PipelineEvidenceLink[]
+}
+
+export interface PipelineProofNeeded {
+  rail: string
+  proof: string
+  touches: string
+}
+
+export interface PipelineEvidenceResult {
+  ok: boolean
+  error?: string
+  repo?: string
+  gatheredAt?: string
+  rails: PipelineRail[]
+  proofsNeeded: PipelineProofNeeded[]
+  /** Whether GitHub is actually enforcing the required checks, and a one-line reason. */
+  protection?: {
+    state: 'enforcing' | 'not_enforcing' | 'none' | 'unreadable'
+    detail: string
+  }
+  /** Merges since enforcement began that had no approval; null when that could not be known. */
+  unapprovedMerges?: number | null
+  /** Repo-relative path of the document the evidence was written to. */
+  wrote?: string
+}
+
 /** What the model is doing mid-turn, pushed to the chat panel while a turn runs so a long wait
  * reads as progress rather than a hang. Scoped to a project + stage because turns for different
  * stages can overlap; the panel shows only the one it is on. */
@@ -963,6 +1009,10 @@ export interface StudioApi {
 
   // --- Documents (spec 0010) ---
   getStageReadiness(projectPath: string, stageId?: string): Promise<StageReadiness>
+  /** Reads GitHub's own history (read-only: nothing is opened, merged or changed) to say which
+   * delivery rails have actually fired, and writes the result to pipeline-proof.md. Needs the
+   * `gh` CLI signed in on this machine; says so plainly when it is not. */
+  gatherPipelineEvidence(projectPath: string): Promise<PipelineEvidenceResult>
   /** Sign off a stage and advance the phase — the general version of `advanceAfterDeclaration`.
    * Checks the gates, confirms every judgement question, drafts and validates a frozen-layer
    * summary, then advances. `stage` on a refusal names exactly where it stopped. */

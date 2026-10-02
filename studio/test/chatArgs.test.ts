@@ -200,6 +200,19 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toMatch(/label: <exact text>/)
   })
 
+  // Regression: asked for evidence about the repository's delivery pipeline, the assistant (which
+  // cannot run commands) wrote a prompt for the person to paste into a SEPARATE Claude session.
+  // Studio has a button for exactly this on the Foundation stage; the person should never have to
+  // leave the app for it.
+  it('points the person to Studio\'s own pipeline-evidence button rather than sending them to another session', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '3', stageDisplay: 'Foundation',
+    })
+    expect(prompt).toContain('Gather pipeline evidence')
+    expect(prompt).toMatch(/pipeline-proof\.md/)
+    expect(prompt).toMatch(/do not write (them )?a prompt/i)
+  })
+
   it('tells the model a single reply may call ProposeWrite or AskStructuredQuestion more than once', () => {
     const prompt = buildSystemPrompt({
       projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',
