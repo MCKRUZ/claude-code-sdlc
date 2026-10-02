@@ -10,8 +10,8 @@
 // seen" side effect on open would do it), so marking a document seen is a separate, explicit
 // call the UI makes when the person dismisses the changes banner.
 
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join, relative, sep } from 'node:path'
+import { constants, copyFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { dirname, join, relative, sep } from 'node:path'
 import { pluginIsBehind } from '../../shared/pluginContract'
 import { documentNotFoundError } from '../../shared/documentErrors'
 import { runPluginScript } from './project'
@@ -274,6 +274,47 @@ async function openDocumentUncached(
     sections: toSections(text, result, meta),
     pluginBehind: pluginIsBehind(result.contract),
   }
+}
+
+/** Starts a document nobody has begun, as a copy of the plugin's own template for it — the same
+ * path mirroring `findShapeForPath` uses (`.sdlc/artifacts/<phase-dir>/<name>.md` is
+ * `templates/phases/<phase-dir>/<name>.md`). Needed because a stage whose documents are authored
+ * through chat has no other way to write its first one: a field write opens the document first,
+ * and a missing file is a refusal, not a creation.
+ *
+ * Never overwrites: a document that already exists is left exactly as it is. Only artifact
+ * documents are started this way — a spec is scaffolded by its own command, with an allocated id. */
+export function ensureDocumentFromTemplate(
+  projectPath: string,
+  pluginScriptsDir: string,
+  relPath: string,
+): { ok: boolean; created?: boolean; error?: string } {
+  let full: string
+  try {
+    full = docPath(projectPath, relPath)
+  } catch (err) {
+    return { ok: false, error: (err as Error).message }
+  }
+  if (existsSync(full)) return { ok: true, created: false }
+
+  const m = relPath.replace(/\\/g, '/').match(/^\.sdlc\/artifacts\/([^/]+)\/([^/]+\.md)$/)
+  const template = m && m[1] !== '..' && m[1] !== '.'
+    ? join(pluginScriptsDir, '..', 'templates', 'phases', m[1], m[2])
+    : null
+  if (!template || !existsSync(template)) {
+    return { ok: false, error: `There is no template for ${relPath}, so it cannot be started here.` }
+  }
+
+  try {
+    mkdirSync(dirname(full), { recursive: true })
+    // COPYFILE_EXCL: if the file appeared since the check above (a teammate's sync, a second
+    // window), leave it alone rather than replace someone's content with the blank template.
+    copyFileSync(template, full, constants.COPYFILE_EXCL)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'EEXIST') return { ok: true, created: false }
+    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+  }
+  return { ok: true, created: true }
 }
 
 /** Writes ONE field, through the shape library, and returns the re-read document so the caller
