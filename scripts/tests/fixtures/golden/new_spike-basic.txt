@@ -1,0 +1,8 @@
+exit: 0
+--- stdout ---
+Spike created: <REPO>/spikes/0001-carrier-idempotency.md
+  Box: 1 working day   Opened by: @priya-n
+  Branch: spike/0001-carrier-idempotency   (spike-guard blocks any PR from it — by design)
+  Next: state the unknown, run the experiment, then WRITE THE FINDING.
+  The code is deleted; this file is the deliverable.
+--- stderr ---

@@ -1,0 +1,4 @@
+exit: 1
+--- stdout ---
+Error: --box must not be empty. A spike is bounded or it is unsupervised building.
+--- stderr ---

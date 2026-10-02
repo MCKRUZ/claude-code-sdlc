@@ -1,0 +1,43 @@
+exit: 0
+--- stdout ---
+Harness upgrade: DRY RUN (no changes made; re-run with --apply)
+target: <REPO>
+payload plugin version: unknown  (installed: unknown)
+
+IDENTICAL (28) - current file matches the new pristine; --apply refreshes the manifest entry
+  .claude/agents/code-reviewer.md
+  .claude/agents/ux-reviewer.md
+  .claude/hooks/stop-gate.sh
+  .claude/rules/clean-architecture.md
+  .claude/rules/testing.md
+  .claude/settings.json
+  .claude/skills/spec/SKILL.md
+  .github/CODEOWNERS
+  .github/RAILS.md
+  .github/dependency-exceptions.md
+  .github/eval-bypasses.md
+  .github/profile/rubrics/grader.md
+  .github/rails-telemetry.schema.json
+  .github/rulesets/main.json
+  .github/workflows/ci.yml
+  .mcp.json
+  ALERTS.md
+  CLAUDE.md
+  INCIDENT-PLAYBOOK.md
+  ONBOARDING.md
+  ROLLBACK.md
+  docs/harness.md
+  eval-datasets/cases.jsonl
+  infra/main.bicep
+  prompts/review.md
+  scripts/rails/diff-anchors.sh
+  specs/spec-template.md
+  spikes/spike-template.md
+
+Totals: 28 path(s): 28 IDENTICAL
+
+NEXT ACTIONS:
+  - Merge each <file>.harness-new into its file by hand, then DELETE the .harness-new sibling.
+  - CLAUDE.md carries the SDLC section /sdlc-setup appended, so it typically reports ADAPTED or
+    CONFLICT: merge its stack-standards section deliberately; never wholesale-replace the file.
+--- stderr ---

@@ -13,6 +13,7 @@ so ids stay stable and gap-free even when specs are authored across many session
 """
 
 import argparse
+import json
 import re
 import sys
 from datetime import datetime, timezone
@@ -24,6 +25,18 @@ TEMPLATE_PATH = PLUGIN_ROOT / "templates" / "phases" / "build" / "spec.md"
 VALID_RISK = ("HIGH", "MEDIUM", "LOW")
 SPEC_FILE_RE = re.compile(r"^(\d{4})-")
 SLUG_RE = re.compile(r"[^a-z0-9]+")
+
+
+def die(message: str, json_mode: bool = False):
+    """Print an error and exit 1. With --json stdout must stay empty (it is a JSON-only channel),
+    so the message goes to stderr; without it, the message goes to stdout exactly as it always did."""
+    print(message, file=sys.stderr if json_mode else sys.stdout)
+    sys.exit(1)
+
+
+def repo_relative(path: Path, repo_root: Path) -> str:
+    """Forward-slash path relative to the repo root, so output never carries a machine path."""
+    return path.relative_to(repo_root).as_posix()
 
 
 def slugify(name: str) -> str:
@@ -47,8 +60,7 @@ def resolve_repo_root(args) -> Path:
     if args.state:
         state_path = Path(args.state)
         if not state_path.exists():
-            print(f"Error: State file not found: {state_path}")
-            sys.exit(1)
+            die(f"Error: State file not found: {state_path}", getattr(args, "json", False))
         # state_path = <repo>/.sdlc/state.yaml -> repo root is two levels up
         return state_path.resolve().parent.parent
     return Path(args.repo).resolve()
@@ -76,15 +88,13 @@ def render_spec(template: str, spec_id: str, name: str, risk: str, source: str,
 
 
 def create_spec(repo_root: Path, name: str, risk: str, source: str,
-                 owner: str = "", team: str = "") -> Path:
+                 owner: str = "", team: str = "", json_mode: bool = False) -> Path:
     if not TEMPLATE_PATH.exists():
-        print(f"Error: Spec template not found: {TEMPLATE_PATH}")
-        sys.exit(1)
+        die(f"Error: Spec template not found: {TEMPLATE_PATH}", json_mode)
 
     slug = slugify(name)
     if not slug:
-        print("Error: --name produced an empty slug. Use a descriptive name.")
-        sys.exit(1)
+        die("Error: --name produced an empty slug. Use a descriptive name.", json_mode)
 
     specs_dir = repo_root / "specs"
     specs_dir.mkdir(parents=True, exist_ok=True)
@@ -92,8 +102,7 @@ def create_spec(repo_root: Path, name: str, risk: str, source: str,
 
     out_path = specs_dir / f"{spec_id}-{slug}.md"
     if out_path.exists():
-        print(f"Error: Spec already exists: {out_path}")
-        sys.exit(1)
+        die(f"Error: Spec already exists: {out_path}", json_mode)
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     out_path.write_text(
@@ -112,15 +121,22 @@ def main():
     parser.add_argument("--source", default="—", help="Originating story / REQ-id (default: —)")
     parser.add_argument("--owner", default="", help="Code-host handle of the accountable owner (e.g. @priya-n)")
     parser.add_argument("--team", default="", help="Team this spec belongs to")
+    parser.add_argument("--json", action="store_true",
+                        help="Print one JSON document {path, id, name, risk} instead of the text summary")
     args = parser.parse_args()
 
     risk = args.risk.strip().upper()
     if risk not in VALID_RISK:
-        print(f"Error: --risk must be one of {', '.join(VALID_RISK)} (got '{args.risk}')")
-        sys.exit(1)
+        die(f"Error: --risk must be one of {', '.join(VALID_RISK)} (got '{args.risk}')", args.json)
 
     repo_root = resolve_repo_root(args)
-    out_path = create_spec(repo_root, args.name, risk, args.source, args.owner, args.team)
+    out_path = create_spec(repo_root, args.name, risk, args.source, args.owner, args.team, args.json)
+
+    if args.json:
+        spec_id, _, slug = out_path.stem.partition("-")
+        print(json.dumps({"path": repo_relative(out_path, repo_root), "id": spec_id,
+                          "name": slug, "risk": risk}))
+        return
 
     print(f"Spec created: {out_path}")
     print(f"  Risk tier: {risk}")

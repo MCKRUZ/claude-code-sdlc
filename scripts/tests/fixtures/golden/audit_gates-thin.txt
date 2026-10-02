@@ -1,0 +1,32 @@
+exit: 0
+--- stdout ---
+Gate Effectiveness Audit
+========================================
+
+Project: Thin Project
+Profile: fixture-profile
+
+Completed phases: 1
+
+WARNING: Fewer than 3 phases completed. Audit results may not be representative.
+
+## Gate Summary
+
+| Gate | Runs | Passed | Failed | Manual | Fail Rate |
+|------|------|--------|--------|--------|-----------|
+| integrity | 1 | 1 | 0 | 0 | 0% |
+| completeness | 1 | 0 | 1 | 0 | 100% |
+
+## Always-Pass Gates (candidates for tightening or removal)
+
+  - integrity: passed 1x across phases [0]
+
+## High-Fail Gates (>50% failure rate — possible process issues)
+
+  - completeness: failed 1/1 (100%)
+
+## Recommendations
+
+- 1 gate(s) never failed. Consider whether they add value or can be tightened.
+- 1 gate(s) fail more than half the time. Review whether thresholds are realistic or the process needs adjustment.
+--- stderr ---

@@ -1,0 +1,7 @@
+exit: 0
+--- stdout ---
+Spec created: <REPO>/specs/0001-duplicate-claim-409.md
+  Risk tier: HIGH
+  Next: fill the body (Goal, Why, Scope, Acceptance Checks, plans), then validate:
+    uv run scripts/check_spec.py --spec <REPO>/specs/0001-duplicate-claim-409.md
+--- stderr ---

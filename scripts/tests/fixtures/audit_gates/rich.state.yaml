@@ -1,0 +1,25 @@
+project_name: Fixture Project
+profile_id: fixture-profile
+phases:
+  "0":
+    status: completed
+    gate_results:
+      integrity: {passed: true}
+      completeness: {passed: false}
+      compliance: {passed: true}
+  "1":
+    status: completed
+    gate_results:
+      integrity: {passed: true}
+      completeness: {passed: false}
+      metrics: {passed: false, override: true, justification: "client waived the metric"}
+  "2":
+    status: completed
+    gate_results:
+      - {gate: integrity, passed: true}
+      - {gate: completeness, passed: true}
+      - {gate: quality, passed: null}
+  "3":
+    status: in-progress
+    gate_results:
+      integrity: {passed: true}
