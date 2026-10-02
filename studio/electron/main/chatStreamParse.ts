@@ -104,3 +104,64 @@ export function parseStreamJsonToMessages(lines: string[]): ChatMessage[] {
 
   return messages
 }
+
+// --- live activity ------------------------------------------------------------------------
+
+const baseName = (path: string): string => path.split(/[\\/]/).filter(Boolean).pop() ?? path
+
+/** Plain-words label for one content block — what a person watching the chat wants to know the
+ * model is doing, never a raw tool name. Unknown tools read as the generic "Working" so a new
+ * tool can never leak an identifier into the UI. */
+function describeBlock(block: RawContentBlock): string | null {
+  if (block.type === 'text') return block.text ? 'Writing a reply' : null
+  if (block.type === 'thinking') return 'Thinking'
+  if (block.type !== 'tool_use') return null
+  const input = block.input ?? {}
+  switch (block.name) {
+    case 'Read':
+      return typeof input.file_path === 'string' && input.file_path
+        ? `Reading ${baseName(input.file_path)}`
+        : 'Reading a file'
+    case 'Grep':
+    case 'Glob':
+      return 'Searching the project'
+    case 'Task': {
+      const type = typeof input.subagent_type === 'string' ? input.subagent_type.split(':').pop() : ''
+      return type ? `Asking the ${type} sub-agent` : 'Asking a sub-agent'
+    }
+    case PROPOSE_WRITE:
+      return typeof input.document === 'string' && input.document
+        ? `Drafting a change to ${input.document}`
+        : 'Drafting a change'
+    case ASK_QUESTION:
+      return 'Preparing a question'
+    default:
+      return 'Working'
+  }
+}
+
+/** What the model is doing right now, read from the stream-json stdout accumulated SO FAR —
+ * the label shown in place of a bare "Thinking…" while a turn runs. Each assistant line is one
+ * completed message, so this reports the last thing the model started (the tool it called or the
+ * reply it began), not a token-level view. A trailing half-written line (stdout is chunked
+ * arbitrarily) simply fails to parse and is skipped in favour of the last complete one. Null when
+ * nothing describable has arrived yet. */
+export function describeLatestActivity(stdoutSoFar: string): string | null {
+  const lines = stdoutSoFar.split('\n')
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim()
+    if (!trimmed || trimmed[0] !== '{') continue
+    let entry: RawStreamEntry
+    try {
+      entry = JSON.parse(trimmed)
+    } catch {
+      continue
+    }
+    if (entry.type !== 'assistant' || !entry.message?.content?.length) continue
+    for (let b = entry.message.content.length - 1; b >= 0; b--) {
+      const label = describeBlock(entry.message.content[b])
+      if (label) return label
+    }
+  }
+  return null
+}

@@ -33,7 +33,7 @@ import {
   getSpecReadiness, getSpecStatus, transitionSpec,
 } from './board'
 import { handOff } from './handoff'
-import type { ClashChoice, DraftOutcome } from '../../shared/types'
+import type { ChatActivity, ClashChoice, DraftOutcome } from '../../shared/types'
 
 /** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
  * while open"). */
@@ -672,6 +672,7 @@ function registerIpcHandlers() {
       stageDisplay,
       claudePath: settings.claudePathOverride ?? 'claude',
       execPath: process.execPath,
+      onActivity: (label) => sendToWindow('studio:chatActivity', { projectPath, stageId, label } satisfies ChatActivity),
     }
   }
 

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ConsoleEntry, StudioApi, SyncState } from '../../shared/types'
+import type { ChatActivity, ConsoleEntry, StudioApi, SyncState } from '../../shared/types'
 
 // The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
 // no arbitrary command execution — every call here maps to exactly one narrow main-process
@@ -110,6 +110,11 @@ const studio: StudioApi = {
   },
 
   getChatState: (projectPath, stageId) => ipcRenderer.invoke('studio:getChatState', projectPath, stageId),
+  onChatActivity: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, activity: ChatActivity) => callback(activity)
+    ipcRenderer.on('studio:chatActivity', handler)
+    return () => ipcRenderer.off('studio:chatActivity', handler)
+  },
   ensureChatStarted: (projectPath, stageId) =>
     ipcRenderer.invoke('studio:ensureChatStarted', projectPath, stageId),
   sendChatMessage: (projectPath, stageId, text) =>

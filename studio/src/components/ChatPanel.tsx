@@ -3,6 +3,7 @@ import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus 
 import { connectingSteps } from '../chatConnectingSteps'
 import { computeWorkflowSteps } from '../workflowSteps'
 import { AiProposalCard } from './AiProposalCard'
+import { ChatActivityLine } from './ChatActivityLine'
 import { ConnectingChecklist } from './ConnectingChecklist'
 import { useStageReadiness } from './StageReadinessContext'
 
@@ -214,7 +215,7 @@ export function ChatPanel({
         <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
       ) : (
         <>
-          <ChatMessageList listRef={listRef} state={state} busy={busy} startError={error} onAnswer={answer} onResolveProposal={resolveProposal} />
+          <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} onAnswer={answer} onResolveProposal={resolveProposal} />
           {/* A chat-turn failure takes priority when both are set — it's the more recent, more
               actionable one; the shared readiness error is what proves this panel isn't silently
               stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
@@ -280,11 +281,13 @@ function ChatPlaceholder({ status }: { status: ProjectStatus | null }) {
 }
 
 function ChatMessageList({
-  listRef, state, busy, startError, onAnswer, onResolveProposal,
+  listRef, state, busy, projectPath, stageId, startError, onAnswer, onResolveProposal,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>
   state: ChatState | null
   busy: boolean
+  projectPath: string
+  stageId: string
   /** Set when the chat flow has definitively failed to start (finding #4, PR #76 round 2) — swaps
    * the empty-session message below for one that admits the failure, rather than the "already
    * started" copy that branch normally shows for an ordinary, no-error empty session. */
@@ -307,8 +310,8 @@ function ChatMessageList({
           <MessageBubble key={message.id} message={message} busy={busy} onAnswer={onAnswer} onResolveProposal={onResolveProposal} />
         ))
       )}
-      {busy && state !== null && state.messages.length > 0 && (
-        <p className="text-xs text-slate-400">Thinking…</p>
+      {busy && state !== null && state.messages.length > 0 && projectPath && stageId && (
+        <ChatActivityLine projectPath={projectPath} stageId={stageId} />
       )}
     </div>
   )
