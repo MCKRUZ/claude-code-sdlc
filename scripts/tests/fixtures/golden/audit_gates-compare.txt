@@ -1,0 +1,73 @@
+exit: 0
+--- stdout ---
+Gate Effectiveness Audit
+========================================
+
+Project: Fixture Project
+Profile: fixture-profile
+
+Completed phases: 3
+
+## Gate Summary
+
+| Gate | Runs | Passed | Failed | Manual | Fail Rate |
+|------|------|--------|--------|--------|-----------|
+| integrity | 4 | 4 | 0 | 0 | 0% |
+| completeness | 3 | 1 | 2 | 0 | 67% |
+| compliance | 1 | 1 | 0 | 0 | 0% |
+| metrics | 1 | 0 | 1 | 0 | 100% |
+| quality | 1 | 0 | 0 | 1 | 0% |
+
+## Always-Pass Gates (candidates for tightening or removal)
+
+  - integrity: passed 4x across phases [0, 1, 2, 3]
+  - compliance: passed 1x across phases [0]
+
+## High-Fail Gates (>50% failure rate — possible process issues)
+
+  - completeness: failed 2/3 (67%)
+  - metrics: failed 1/1 (100%)
+
+## Override History
+
+| Gate | Phase | Justification |
+|------|-------|---------------|
+| metrics | 1 | client waived the metric |
+
+## Recommendations
+
+- 2 gate(s) never failed. Consider whether they add value or can be tightened.
+- 2 gate(s) fail more than half the time. Review whether thresholds are realistic or the process needs adjustment.
+- 1 override(s) recorded. Review whether overridden gates should be relaxed or better enforced.
+
+========================================
+Gate Effectiveness Audit
+========================================
+
+Project: Thin Project
+Profile: fixture-profile
+
+Completed phases: 1
+
+WARNING: Fewer than 3 phases completed. Audit results may not be representative.
+
+## Gate Summary
+
+| Gate | Runs | Passed | Failed | Manual | Fail Rate |
+|------|------|--------|--------|--------|-----------|
+| integrity | 1 | 1 | 0 | 0 | 0% |
+| completeness | 1 | 0 | 1 | 0 | 100% |
+
+## Always-Pass Gates (candidates for tightening or removal)
+
+  - integrity: passed 1x across phases [0]
+
+## High-Fail Gates (>50% failure rate — possible process issues)
+
+  - completeness: failed 1/1 (100%)
+
+## Recommendations
+
+- 1 gate(s) never failed. Consider whether they add value or can be tightened.
+- 1 gate(s) fail more than half the time. Review whether thresholds are realistic or the process needs adjustment.
+--- stderr ---

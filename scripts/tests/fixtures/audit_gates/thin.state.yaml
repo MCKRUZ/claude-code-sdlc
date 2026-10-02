@@ -1,0 +1,10 @@
+project_name: Thin Project
+profile_id: fixture-profile
+phases:
+  "0":
+    status: completed
+    gate_results:
+      integrity: {passed: true}
+      completeness: {passed: false}
+  "1":
+    status: in-progress

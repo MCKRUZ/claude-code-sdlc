@@ -1,0 +1,36 @@
+exit: 1
+--- stdout ---
+/sdlc-doctor — <REPO>
+
+Tools
+  [PASS] git present - /fake/bin/git
+  [PASS] gh present - /fake/bin/gh
+  [FAIL] pwsh missing - needed for: THE HOOKS — settings.json runs them through pwsh
+         fix: install PowerShell 7: https://aka.ms/powershell
+
+Harness
+  [PASS] harness installed - 1 file(s), profile test, packs cicd/github
+  [PASS] CLAUDE.md present
+  [PASS] .claude/settings.json present
+
+Hooks
+  [FAIL] Stop: stop-gate.ps1: interpreter 'pwsh' not on PATH - the hook is registered but can never run — this gate is silently absent
+         fix: install pwsh, or switch the hook to the .sh form
+
+Permissions
+  [WARN] executable bits not checked - POSIX permission bits are not meaningful on Windows
+
+Unfinished setup
+  [WARN] <<GATED_PATHS>> still unfilled - 1 file(s): .github/workflows/ci.yml
+         fix: Phase 3 — the paths that trigger the security review
+
+MCP
+  [WARN] no .mcp.json - this repo declares no MCP servers
+
+Repo secrets
+  [SKIP] --offline
+
+Branch protection
+  [SKIP] --offline
+
+2 failure(s), 3 warning(s). The harness will not fully work until the failures are fixed.

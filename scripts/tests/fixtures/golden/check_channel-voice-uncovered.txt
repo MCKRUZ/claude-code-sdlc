@@ -1,0 +1,11 @@
+exit=0
+Channel Coverage Check — 0042-voice-claim-intake.md (channel: voice)
+==================================================
+  ADVISE  [SHOULD] turn-taking — no acceptance check covers this voice dimension: The system never talks over the caller. (e.g. "The system yields the turn after each prompt and does not resume until the caller stops...")
+  ADVISE  [SHOULD] barge-in — no acceptance check covers this voice dimension: The caller can interrupt the agent at any time. (e.g. "When the caller begins speaking during TTS, output stops within 200 ms.")
+  ADVISE  [SHOULD] intent-capture — no acceptance check covers this voice dimension: The agent never acts on a silent or low-confidence guess. (e.g. "An ASR result below 0.70 confidence triggers a confirm-or-reprompt; the system never ac...")
+  ADVISE  [SHOULD] latency-budget — no acceptance check covers this voice dimension: No dead air; the caller is never left waiting silently. (e.g. "No response gap exceeds 1200 ms without a hold/filler cue; a gap over 3 s is a failure.")
+  ADVISE  [SHOULD] readback-confirmation — no acceptance check covers this voice dimension: Nothing changes state without a spoken confirmation, since there is no screen. (e.g. "Any state-changing action is read back and the caller's explicit spoken or DTMF confirm...")
+  ADVISE  [SHOULD] fallback-to-human — no acceptance check covers this voice dimension: The caller can always reach a human. (e.g. "A human is reachable at every turn; two consecutive low-confidence turns auto-offer tra...")
+==================================================
+ADVISORY — 6 of 6 'voice' dimension(s) not yet covered in ## Acceptance Checks; add a check for each (SHOULD; never blocks).

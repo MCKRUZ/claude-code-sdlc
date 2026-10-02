@@ -1,0 +1,12 @@
+exit: 0
+--- stdout ---
+Gate Effectiveness Audit
+========================================
+
+Project: Empty Project
+Profile: fixture-profile
+
+Completed phases: 4
+
+No gate results found in state.yaml.
+--- stderr ---

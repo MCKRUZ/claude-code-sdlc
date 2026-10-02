@@ -1,0 +1,58 @@
+exit: 0
+--- stdout ---
+Harness upgrade: DRY RUN (no changes made; re-run with --apply)
+target: <REPO>
+payload plugin version: unknown  (installed: unknown)
+
+IDENTICAL (24) - current file matches the new pristine; --apply refreshes the manifest entry
+  .claude/agents/ux-reviewer.md
+  .claude/settings.json
+  .claude/skills/spec/SKILL.md
+  .github/CODEOWNERS
+  .github/RAILS.md
+  .github/dependency-exceptions.md
+  .github/eval-bypasses.md
+  .github/profile/rubrics/grader.md
+  .github/rails-telemetry.schema.json
+  .github/rulesets/main.json
+  .github/workflows/ci.yml
+  .mcp.json
+  ALERTS.md
+  CLAUDE.md
+  INCIDENT-PLAYBOOK.md
+  ONBOARDING.md
+  ROLLBACK.md
+  docs/harness.md
+  eval-datasets/cases.jsonl
+  infra/main.bicep
+  prompts/review.md
+  scripts/rails/diff-anchors.sh
+  specs/spec-template.md
+  spikes/spike-template.md
+
+UPDATE (1) - untouched locally, changed upstream; --apply replaces the file
+  .claude/rules/testing.md
+
+ADAPTED (1) - adapted locally, unchanged upstream; kept as-is
+  .claude/hooks/stop-gate.sh
+
+CONFLICT (1) - changed on BOTH sides; --apply writes <file>.harness-new to merge by hand
+  .claude/rules/clean-architecture.md
+
+DELETED-LOCALLY (1) - deleted in the repo; the deletion is respected (never reinstalled)
+  .claude/agents/code-reviewer.md
+
+NEW (1) - new upstream file; --apply installs it
+  .claude/hooks/session-start.sh
+
+RETIRED (1) - dropped upstream; --apply untracks it, deleting the file is the human's call
+  .claude/agents/old-agent.md
+
+Totals: 30 path(s): 24 IDENTICAL, 1 UPDATE, 1 ADAPTED, 1 CONFLICT, 1 DELETED-LOCALLY, 1 NEW, 1 RETIRED
+
+NEXT ACTIONS:
+  - Merge each <file>.harness-new into its file by hand, then DELETE the .harness-new sibling.
+  - CLAUDE.md carries the SDLC section /sdlc-setup appended, so it typically reports ADAPTED or
+    CONFLICT: merge its stack-standards section deliberately; never wholesale-replace the file.
+  - RETIRED files stay on disk; delete them yourself once nothing references them.
+--- stderr ---

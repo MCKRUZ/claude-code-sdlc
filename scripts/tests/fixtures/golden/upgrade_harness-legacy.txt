@@ -1,0 +1,53 @@
+exit: 0
+--- stdout ---
+Harness upgrade: DRY RUN (no changes made; re-run with --apply)
+target: <REPO>
+payload plugin version: unknown
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+! LEGACY INSTALL: no .claude/harness-manifest.json in the target; adopting.
+! Every path is classified as untracked; files matching the new pristine are
+! ADOPTed, and --apply writes a fresh manifest from the ADOPT/NEW outcomes.
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+NEW (1) - new upstream file; --apply installs it
+  .claude/hooks/stop-gate.sh
+
+ADOPT (26) - untracked but matches the new pristine; --apply starts tracking it
+  .claude/agents/code-reviewer.md
+  .claude/agents/ux-reviewer.md
+  .claude/rules/clean-architecture.md
+  .claude/settings.json
+  .claude/skills/spec/SKILL.md
+  .github/CODEOWNERS
+  .github/RAILS.md
+  .github/dependency-exceptions.md
+  .github/eval-bypasses.md
+  .github/profile/rubrics/grader.md
+  .github/rails-telemetry.schema.json
+  .github/rulesets/main.json
+  .github/workflows/ci.yml
+  .mcp.json
+  ALERTS.md
+  CLAUDE.md
+  INCIDENT-PLAYBOOK.md
+  ONBOARDING.md
+  ROLLBACK.md
+  docs/harness.md
+  eval-datasets/cases.jsonl
+  infra/main.bicep
+  prompts/review.md
+  scripts/rails/diff-anchors.sh
+  specs/spec-template.md
+  spikes/spike-template.md
+
+CONFLICT-UNTRACKED (1) - untracked and diverged; --apply writes <file>.harness-new
+  .claude/rules/testing.md
+
+Totals: 28 path(s): 1 NEW, 26 ADOPT, 1 CONFLICT-UNTRACKED
+
+NEXT ACTIONS:
+  - Merge each <file>.harness-new into its file by hand, then DELETE the .harness-new sibling.
+  - CLAUDE.md carries the SDLC section /sdlc-setup appended, so it typically reports ADAPTED or
+    CONFLICT: merge its stack-standards section deliberately; never wholesale-replace the file.
+--- stderr ---

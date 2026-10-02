@@ -134,6 +134,135 @@ def check_channel_coverage(fm: dict, body: str, channels_dir: Path) -> tuple[str
     return channel, findings
 
 
+# --- machine-readable report, and the interaction-spec check (spec 0021) -----------------------
+
+# Findings that are about the descriptor or the section, not about one dimension.
+_NON_DIMENSION_CHECKS = {"descriptor", "acceptance-section"}
+_PLACEHOLDER_CELL_RE = re.compile(r"^\[.*\]$")
+
+
+def spec_report(spec_path: Path, channel: str | None, findings: list[dict], notes: list[str] | None = None) -> dict:
+    """The advisory check as data: one entry per dimension, and everything that is not about a
+    single dimension (a missing descriptor, a missing section) as a note."""
+    dimensions = [{"id": f["check"], "covered": f["passed"]} for f in findings if f["check"] not in _NON_DIMENSION_CHECKS]
+    return {
+        "spec": spec_path.name,
+        "channel": channel,
+        "bound": channel is not None,
+        "source": "spec",
+        "dimensions": dimensions,
+        "uncovered": [d["id"] for d in dimensions if not d["covered"]],
+        "advisory": True,
+        "notes": (notes or []) + [f["message"] for f in findings if f["check"] in _NON_DIMENSION_CHECKS],
+    }
+
+
+def load_channel_descriptor(channel: str, channels_dir: Path) -> tuple[dict | None, str | None]:
+    """(descriptor, note). A descriptor that is missing or unreadable is a note, never a crash."""
+    path = channels_dir / f"{channel}.yaml"
+    if not path.exists():
+        return None, f"Channel '{channel}' has no descriptor at {path}"
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8", errors="replace")) or {}, None
+    except yaml.YAMLError as e:
+        return None, f"Channel '{channel}' descriptor could not be parsed: {e}"
+
+
+def interaction_spec_channel(text: str) -> str | None:
+    """The channel an interaction spec names on its `**Channel:**` line, or None when that line
+    is still the template's `<channel>` placeholder."""
+    m = re.search(r"^\*\*Channel:\*\*[ \t]*`?([^`\r\n]*)`?", text, re.MULTILINE)
+    value = m.group(1).strip() if m else ""
+    return None if not value or "<" in value or "[" in value else value
+
+
+def _clean_cell(cell: str) -> str | None:
+    """A table cell's text, or None when it is empty or still a `[template placeholder]`."""
+    cell = cell.strip()
+    if len(cell) >= 2 and cell[0] == cell[-1] == '"':
+        cell = cell[1:-1].strip()
+    return None if not cell or _PLACEHOLDER_CELL_RE.match(cell) else cell
+
+
+def parse_interaction_rows(text: str) -> list[dict]:
+    """The rows of the interaction spec's contract table (the one whose header names the
+    "descriptor dimension"): dimension -> contract -> acceptance check. A cell that is empty or
+    still a template placeholder is None, so an unfilled row never counts as coverage."""
+    rows, header_seen = [], False
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            header_seen = False if not rows else header_seen
+            if rows:
+                break
+            continue
+        cells = [c.strip() for c in stripped.strip("|").split("|")]
+        if not header_seen:
+            header_seen = len(cells) >= 3 and "dimension" in cells[0].lower()
+            continue
+        if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+            continue
+        if len(cells) >= 3:
+            rows.append({
+                "dimension": cells[0].replace("`", "").strip().lower(),
+                "contract": _clean_cell(cells[1]),
+                "check": _clean_cell(cells[2]),
+            })
+    return rows
+
+
+def find_interaction_row(dim_id: str, rows: list[dict]) -> dict | None:
+    return next((r for r in rows if r["dimension"] and dim_id.lower() in r["dimension"]), None)
+
+
+def interaction_report(path: Path, channel_arg: str | None, channels_dir: Path) -> dict:
+    """Does this interaction spec have a real row for every dimension the channel lists?"""
+    base = {"interaction_spec": path.name, "channel": None, "bound": False, "source": "interaction-spec",
+            "dimensions": [], "uncovered": [], "advisory": True, "notes": []}
+    if not path.exists():
+        return {**base, "notes": [f"interaction spec not found: {path}"]}
+    text = path.read_text(encoding="utf-8", errors="replace")
+    channel = channel_arg or interaction_spec_channel(text)
+    if not channel:
+        return {**base, "notes": ["no channel: the document's **Channel:** line is still a placeholder; name one with --channel"]}
+    descriptor, note = load_channel_descriptor(channel, channels_dir)
+    if descriptor is None:
+        return {**base, "channel": channel, "bound": True, "notes": [note]}
+
+    rows = parse_interaction_rows(text)
+    dimensions = []
+    for dim in descriptor.get("acceptance_dimensions") or []:
+        if not isinstance(dim, dict):
+            continue
+        dim_id = str(dim.get("id", "")).strip() or "?"
+        row = find_interaction_row(dim_id, rows)
+        covered = bool(row and row["contract"])
+        dimensions.append({
+            "id": dim_id, "covered": covered,
+            "contract": row["contract"] if covered else None,
+            "acceptance_check": row["check"] if covered else None,
+        })
+    return {**base, "channel": channel, "bound": True, "dimensions": dimensions,
+            "uncovered": [d["id"] for d in dimensions if not d["covered"]]}
+
+
+def format_interaction_report(report: dict) -> str:
+    if not report["bound"] or not report["dimensions"]:
+        return "\n".join([f"Interaction Spec Coverage — {report['interaction_spec']}", "=" * 50,
+                          *(f"  NOTE    [SHOULD] {n}" for n in report["notes"]),
+                          "=" * 50, "ADVISORY — nothing to assess (advisory check — never blocks)."])
+    lines = [f"Interaction Spec Coverage — {report['interaction_spec']} (channel: {report['channel']})", "=" * 50]
+    for d in report["dimensions"]:
+        if d["covered"]:
+            lines.append(f"  COVER   [SHOULD] {d['id']} — has a contract row")
+        else:
+            lines.append(f"  ADVISE  [SHOULD] {d['id']} — no contract row covers this {report['channel']} dimension")
+    lines.append("=" * 50)
+    lines.append(f"ADVISORY — {len(report['uncovered'])} of {len(report['dimensions'])} '{report['channel']}' "
+                 f"dimension(s) have no contract row yet (SHOULD; never blocks).")
+    return "\n".join(lines)
+
+
 def log_channel_metrics(findings: list[dict], spec_path: Path, channel: str | None, sdlc_dir: Path) -> None:
     """Append a summary entry to .sdlc/metrics/channel-log.jsonl (mirrors check_spec.log_spec_metrics)."""
     metrics_dir = sdlc_dir / "metrics"
@@ -186,21 +315,39 @@ def main():
     parser = argparse.ArgumentParser(
         description="Advisory channel-coverage lint (runs beside check_spec.py; never blocks)"
     )
-    parser.add_argument("--spec", required=True, help="Path to specs/NNNN-name.md")
+    parser.add_argument("--spec", default=None, help="Path to specs/NNNN-name.md")
     parser.add_argument("--channels-dir", default=str(DEFAULT_CHANNELS_DIR),
                         help="Directory of channel descriptors (default: the plugin's channels/)")
     parser.add_argument("--state", default=None, help="Path to .sdlc/state.yaml (enables metrics logging)")
+    parser.add_argument("--interaction-spec", default=None, dest="interaction_spec",
+                        help="Check that this channel-interaction-spec.md has a contract row for every "
+                             "dimension of its channel (instead of checking a spec)")
+    parser.add_argument("--channel", default=None,
+                        help="With --interaction-spec: the channel, when the document does not name one")
+    parser.add_argument("--json", action="store_true", help="Emit the result as one JSON document")
     args = parser.parse_args()
+
+    if not args.spec and not args.interaction_spec:
+        parser.error("give --spec (check a spec) or --interaction-spec (check an interaction spec)")
+
+    if args.interaction_spec:
+        report = interaction_report(Path(args.interaction_spec), args.channel, Path(args.channels_dir))
+        print(json.dumps(report, indent=2) if args.json else format_interaction_report(report))
+        sys.exit(0)
 
     spec_path = Path(args.spec)
     if not spec_path.exists():
         # Even a missing spec is non-fatal: this check can never block the loop.
-        print(f"ADVISORY — spec not found: {spec_path} (advisory check — never blocks).")
+        if args.json:
+            print(json.dumps(spec_report(spec_path, None, [], [f"spec not found: {spec_path}"]), indent=2))
+        else:
+            print(f"ADVISORY — spec not found: {spec_path} (advisory check — never blocks).")
         sys.exit(0)
 
     fm, body = parse_frontmatter(spec_path.read_text(encoding="utf-8", errors="replace"))
     channel, findings = check_channel_coverage(fm, body, Path(args.channels_dir))
-    print(format_results(findings, spec_path, channel))
+    print(json.dumps(spec_report(spec_path, channel, findings), indent=2) if args.json
+          else format_results(findings, spec_path, channel))
 
     if args.state:
         state_path = Path(args.state)

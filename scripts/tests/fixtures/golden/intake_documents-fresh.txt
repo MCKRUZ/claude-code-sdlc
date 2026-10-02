@@ -1,0 +1,16 @@
+exit: 0
+--- stdout ---
+Document Intake Catalog — 4 documents
+============================================================
+  Intake path: <ROOT>/docs/intake
+  Total estimated tokens: ~287
+  Index budget: 5000 tokens
+  Summary budget: 750 tokens/doc
+
+  DOC-001  alpha-rfp.md                             markdown   ~      15 tokens
+  DOC-002  beta-notes.txt                           text       ~      13 tokens
+  DOC-003  delta-spec.docx                          docx       ~     101 tokens [byte_estimate]
+  DOC-004  gamma-api.md                             markdown   ~     158 tokens
+
+Catalog written to: <ROOT>/.sdlc/context/intake/catalog.json
+Next: Claude will generate per-document summaries during Phase 0 Step 0c.

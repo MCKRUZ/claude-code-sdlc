@@ -1,0 +1,33 @@
+exit: 0
+--- stdout ---
+/sdlc-doctor — <REPO>
+
+Tools
+  [PASS] git present - /fake/bin/git
+  [PASS] gh present - /fake/bin/gh
+  [PASS] pwsh present - /fake/bin/pwsh
+
+Harness
+  [PASS] harness installed - 1 file(s), profile test, packs cicd/github
+  [PASS] CLAUDE.md present
+  [PASS] .claude/settings.json present
+
+Hooks
+  [PASS] Stop: stop-gate.ps1 - registered, script present, interpreter found
+
+Permissions
+  [PASS] 1 shell script(s) executable
+
+Unfinished setup
+  [PASS] no unfilled setup tokens
+
+MCP
+  [PASS] 1 MCP server(s) declared - context7
+
+Repo secrets
+  [PASS] secret ANTHROPIC_API_KEY set - grade.yml
+
+Branch protection
+  [PASS] 1 active ruleset(s) - main
+
+All checks passed.

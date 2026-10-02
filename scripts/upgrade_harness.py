@@ -10,6 +10,9 @@ and genuine two-sided divergence becomes a CONFLICT sibling (<file>.harness-new)
 to merge; the upgrade never overwrites local work.
 
 Default is a DRY-RUN report; --apply performs the changes and refreshes the manifest.
+--json prints the dry-run report as one JSON document instead; it never applies, so combining
+it with --apply is refused (exit 2). Applying rewrites CI workflows and hooks a person must
+review, which a machine-readable mode has no business doing.
 Pass the SAME --profile the harness was installed with, or pack-composed files will look
 retired. A target without a manifest is a LEGACY install: everything is classified as
 untracked, and --apply adopts the pristine-matching files into a fresh manifest.
@@ -24,6 +27,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import tempfile
@@ -185,17 +189,36 @@ def _print_next_actions(groups: dict[str, list[str]]) -> None:
               "them.")
 
 
+def _print_json(groups: dict[str, list[str]], legacy: bool, new_version: str,
+                old_version: str | None) -> None:
+    """The dry-run report as data, in the script's own classification labels and order.
+    `counts` lists only the labels that occur, as the text report's Totals line does."""
+    print(json.dumps({
+        "mode": "dry-run",
+        "legacy": legacy,
+        "payload_version": new_version,
+        "installed_version": old_version,
+        "files": [{"path": rel, "classification": name, "detail": CLASS_NOTES[name]}
+                  for name in CLASS_ORDER for rel in groups[name]],
+        "counts": {name: len(groups[name]) for name in CLASS_ORDER if groups[name]},
+    }, indent=2))
+
+
 def upgrade(payload: Path, target: Path, profile_path: Path | None = None,
-            apply: bool = False) -> int:
-    """Run the upgrade. Every InstallError-class problem lands as a clean 'ERROR: ...' + rc 2."""
+            apply: bool = False, as_json: bool = False) -> int:
+    """Run the upgrade. Every InstallError-class problem lands as a clean 'ERROR: ...' + rc 2.
+    With as_json the same problem is also the one document on stdout, as {"error": ...}."""
     try:
-        return _upgrade(payload, target, profile_path, apply)
+        return _upgrade(payload, target, profile_path, apply, as_json)
     except InstallError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
+        if as_json:
+            print(json.dumps({"error": str(exc)}, indent=2))
         return 2
 
 
-def _upgrade(payload: Path, target: Path, profile_path: Path | None, apply: bool) -> int:
+def _upgrade(payload: Path, target: Path, profile_path: Path | None, apply: bool,
+             as_json: bool = False) -> int:
     if not target.is_dir():
         raise InstallError(f"target not found: {target}")
     try:
@@ -215,8 +238,11 @@ def _upgrade(payload: Path, target: Path, profile_path: Path | None, apply: bool
             write_manifest(target, build_manifest(payload, pristine["profile_id"],
                                                   pristine["packs"], files))
 
-    _print_report(groups, target, legacy, apply,
-                  pristine["plugin_version"], manifest.get("plugin_version") if manifest else None)
+    old_version = manifest.get("plugin_version") if manifest else None
+    if as_json:
+        _print_json(groups, legacy, pristine["plugin_version"], old_version)
+        return 0
+    _print_report(groups, target, legacy, apply, pristine["plugin_version"], old_version)
     if apply:
         print("\nAPPLIED:")
         for line in changes or ["  (manifest refreshed; no file changes)"]:
@@ -233,9 +259,14 @@ def main() -> int:
                     help="the SAME profile.yaml the harness was installed with (optional)")
     ap.add_argument("--apply", action="store_true",
                     help="perform the changes (default: dry-run report only)")
+    ap.add_argument("--json", action="store_true",
+                    help="print the dry-run report as one JSON document (never combined with "
+                         "--apply)")
     args = ap.parse_args()
+    if args.json and args.apply:
+        ap.error("--json is dry-run only and cannot be combined with --apply")
     profile = args.profile.resolve() if args.profile else None
-    return upgrade(args.payload.resolve(), args.target.resolve(), profile, args.apply)
+    return upgrade(args.payload.resolve(), args.target.resolve(), profile, args.apply, args.json)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,37 @@
+exit: 0
+--- stdout ---
+{
+  "total": 3,
+  "open": 2,
+  "overdue": 0,
+  "clock_business_days": 2,
+  "open_decisions": [
+    {
+      "id": "DL-01",
+      "decision": "Pick the auth provider",
+      "owner": "Jane",
+      "opened": "2099-01-05",
+      "due": "2099-01-07",
+      "status": "open",
+      "business_days_open": 0,
+      "clock_due": "2099-01-07",
+      "overdue": false
+    },
+    {
+      "id": "DL-03",
+      "decision": "Unscheduled thing",
+      "owner": "Mira",
+      "opened": "soon",
+      "due": "",
+      "status": "open",
+      "business_days_open": null,
+      "clock_due": null,
+      "overdue": false,
+      "opened_unparseable": true
+    }
+  ],
+  "overdue_decisions": [],
+  "log_path": "<REPO>/decision-log.md",
+  "exists": true
+}
+--- stderr ---
