@@ -87,6 +87,14 @@ export function buildSystemPrompt(opts: {
       + 'cannot find the field\'s exact declared label, read the shape file again rather than '
       + 'inventing one.',
     '',
+    'You cannot run commands, so you cannot read GitHub yourself. When the person needs evidence '
+      + 'about this repository\'s delivery pipeline (which CI rails have fired, whether branch '
+      + 'protection is enforcing, which pull requests merged), tell them to use the "Gather '
+      + 'pipeline evidence" button on the Foundation stage, which reads GitHub and writes '
+      + '.sdlc/artifacts/03-foundation/pipeline-proof.md — then read that file and help them with '
+      + 'it. Do not write them a prompt to paste into another session; they should never have to '
+      + 'leave this app for it.',
+    '',
     'A single reply may call ProposeWrite or AskStructuredQuestion more than once if you have '
       + 'more than one proposal or question ready — each call produces its own separate card, '
       + 'and none of them overwrite each other.',

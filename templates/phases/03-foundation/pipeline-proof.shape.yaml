@@ -1,0 +1,44 @@
+template: pipeline-proof
+version: "1.0"
+description: "Which delivery rails have actually fired, read from GitHub's own history, and the forced-failure proofs still needed to show each one can stop a bad change."
+
+sections:
+  - heading: Rail status
+    fields:
+      - label: Rail status
+        anchor: section
+        type: table
+        required: true
+        guidance: Each rail with its status (proven, ran-unproven, never-fired, broken, or no data), what the history shows, and the pull request or run links behind it
+
+  - heading: Branch protection
+    fields:
+      - label: Branch protection
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Whether GitHub's live ruleset is enforcing, the required checks against the checked-in ruleset, and any bypass actors
+
+  - heading: Merge history
+    fields:
+      - label: Merge history
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Merged pull requests split at the moment the ruleset went live, and any post-enforcement merge without an approval
+
+  - heading: Proofs still needed
+    fields:
+      - label: Proofs still needed
+        anchor: section
+        type: longtext
+        required: false
+        guidance: For each rail not yet proven, the forced failure that would prove it and the file it would touch
+
+  - heading: Forced-failure proofs
+    fields:
+      - label: Forced-failure proofs
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per rail proven by forced failure, with what was planted, what caught it, and the pull request or run URL

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { DocumentFocus, SignOffQuestion } from '../../shared/types'
 import { stageHomeKey } from '../stageHomeKey'
 import { DocumentsTab } from './DocumentsTab'
+import { PipelineEvidencePanel } from './PipelineEvidencePanel'
 import { SignOffPanel } from './SignOffPanel'
 import { WorkflowTab } from './WorkflowTab'
 import { useStageReadiness } from './StageReadinessContext'
@@ -109,6 +110,13 @@ export function StageHome({
           onOpenDocument={onOpenDocument}
           onToggle={toggle}
         />
+      )}
+
+      {/* Foundation closes only when the delivery rails are PROVEN, not merely present; this is
+          where a person finds out which have fired, without leaving the app. Keyed on the project
+          so one project's evidence never shows under another. */}
+      {tab === 'workflow' && readiness.name === 'foundation' && (
+        <PipelineEvidencePanel key={projectPath} projectPath={projectPath} onOpenDocument={onOpenDocument} />
       )}
 
       {/* The action itself — sign off and advance — is a whole-stage decision, not a tab's

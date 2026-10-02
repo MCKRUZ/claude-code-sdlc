@@ -290,3 +290,25 @@ class TestCollectEvents:
 
         with pytest.raises(GitHubImportError, match="no network"):
             collect_events(".", "2026-09-01")
+
+
+class TestRunGhDecoding:
+    """Found by running the pipeline-evidence gatherer against a real repository: PR comments
+    carry characters (emoji, curly quotes, non-Latin names) that Windows' default codec cannot
+    decode. `text=True` alone reads `gh`'s UTF-8 output with that codec, so a single such comment
+    crashed the reader thread and left stdout as None. No fixture in memory can show this."""
+
+    def test_reads_gh_output_as_utf_8_whatever_the_platform_default_codec_is(self, monkeypatch):
+        import sys
+        from github_import import run_gh
+
+        real_run = subprocess.run
+        payload = "grader \u2705 \u00fcn\u00ef \u201cquoted\u201d \U0001F680"
+
+        def fake_gh(cmd, **kwargs):
+            # Stand in for `gh`: emit UTF-8 bytes, and honour exactly the decoding kwargs run_gh passed.
+            child = [sys.executable, "-c", f"import sys; sys.stdout.buffer.write({payload!r}.encode('utf-8'))"]
+            return real_run(child, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_gh)
+        assert run_gh(["pr", "view", "1"], cwd=".") == payload
