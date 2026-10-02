@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus } from '../../shared/types'
 import { connectingSteps } from '../chatConnectingSteps'
 import { computeWorkflowSteps } from '../workflowSteps'
 import { AiProposalCard } from './AiProposalCard'
 import { ChatActivityLine } from './ChatActivityLine'
+import { ChatResizeHandle } from './ChatResizeHandle'
 import { ConnectingChecklist } from './ConnectingChecklist'
+import { MarkdownView } from './MarkdownView'
+import { CHAT_MIN_WIDTH, useChatWidth } from '../chatWidth'
 import { useStageReadiness } from './StageReadinessContext'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
@@ -40,6 +43,11 @@ export function ChatPanel({
   // the fetch settled. Showing the same stale-but-valid data here keeps every reader of this one
   // shared value telling the same story during a switch, exactly as the REST of the screen does.
   const { readiness, loading: readinessLoading, error: readinessError } = useStageReadiness()
+  // The panel's width is the person's to set (dragged, or by keyboard on the handle). Applied
+  // as a CSS variable so only the side-by-side layout uses it — below `sm` the panels stack and
+  // the panel is full width regardless.
+  const chatWidth = useChatWidth()
+  const widthStyle = { '--chat-width': `${chatWidth.width}px` } as CSSProperties
   const [busy, setBusy] = useState(false)
   // True once the chat flow (including the model's own first turn, when one was needed) has
   // actually finished for THIS stage — reset to false at the top of the mount effect below on
@@ -146,7 +154,7 @@ export function ChatPanel({
   }, [state?.messages.length])
 
   if (!projectPath || !stageId) {
-    return <ChatPlaceholder status={status} />
+    return <ChatPlaceholder status={status} style={widthStyle} />
   }
 
   // The current step's document, by the SAME rule the Workflow tab uses to pick it — null while
@@ -209,7 +217,18 @@ export function ChatPanel({
     // down to nothing. 35vh keeps the two capped siblings' combined worst case at 85vh, always
     // leaving the document panel real room, while still giving the conversation meaningfully
     // more than a token sliver.
-    <aside className="flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-80">
+    <aside
+      style={widthStyle}
+      className="relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-[var(--chat-width)]"
+    >
+      <ChatResizeHandle
+        width={chatWidth.width}
+        min={CHAT_MIN_WIDTH}
+        max={chatWidth.max}
+        onResize={chatWidth.setWidth}
+        onCommit={chatWidth.commit}
+        onReset={chatWidth.reset}
+      />
       <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
       {initializing ? (
         <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
@@ -266,12 +285,15 @@ function ChatHeader({
   )
 }
 
-function ChatPlaceholder({ status }: { status: ProjectStatus | null }) {
+function ChatPlaceholder({ status, style }: { status: ProjectStatus | null; style: CSSProperties }) {
   return (
     // Same cap as the main panel's own `<aside>` above (finding #5) — this renders in the exact
     // same Frame.tsx sibling slot whenever no project/stage is open, so it is just as capable of
     // pushing the document panel off-screen at phone width if left uncapped.
-    <aside className="flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-80">
+    <aside
+      style={style}
+      className="flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-[var(--chat-width)]"
+    >
       <ChatHeader status={status} projectOpen={false} />
       <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400">
         Open a stage to start a conversation.
@@ -383,7 +405,12 @@ function MessageBubble({
             {message.subagentType ?? 'sub-agent'}
           </p>
         )}
-        {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+        {/* The person's own words stay exactly as typed; the assistant's and sub-agents' replies are
+            model output written in markdown, drawn through the same hardened renderer the
+            documents use (raw HTML dropped, links never clickable, images never fetched). */}
+        {message.text && (isUser
+          ? <p className="whitespace-pre-wrap break-words">{message.text}</p>
+          : <div className="break-words"><MarkdownView source={message.text} /></div>)}
 
         {/* A single reply may ask more than one structured question, or propose more than one
             write — each renders as its own card rather than only the last one reaching the
