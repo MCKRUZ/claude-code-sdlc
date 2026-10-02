@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { BoardRow, ClashChoice, ConsoleEntry, DocumentFocus, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
 import { appendConsoleEntry } from './consoleLog'
 import { ToolingIssues } from './components/ToolingIssues'
+import { NewProjectScreen } from './components/NewProjectScreen'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
 import { Frame } from './components/Frame'
@@ -21,6 +22,7 @@ type Screen =
   | { kind: 'loading' }
   | { kind: 'toolingIssues'; report: ToolingReport }
   | { kind: 'welcome' }
+  | { kind: 'newProject' }
   | { kind: 'settingUp'; projectPath: string }
   | { kind: 'project'; status: ProjectStatus; projectPath: string }
 
@@ -174,6 +176,17 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
 
   if (screen.kind === 'toolingIssues') {
     return <ToolingIssues report={screen.report} onOverride={handleOverride} />
+  }
+
+  if (screen.kind === 'newProject') {
+    return (
+      <NewProjectScreen
+        onCancel={() => setScreen({ kind: 'welcome' })}
+        // The new folder has no .sdlc yet, so opening it lands in the same setup wizard an
+        // existing folder without one goes through — one path, not a second one for new projects.
+        onCreated={(projectPath) => { void openPath(projectPath) }}
+      />
+    )
   }
 
   if (screen.kind === 'settingUp') {
@@ -332,7 +345,12 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
           {error}
         </div>
       )}
-      <WelcomeScreen recentProjects={recentProjects} onPickFolder={handlePickFolder} onOpenRecent={openPath} />
+      <WelcomeScreen
+        recentProjects={recentProjects}
+        onPickFolder={handlePickFolder}
+        onNewProject={() => { setError(null); setScreen({ kind: 'newProject' }) }}
+        onOpenRecent={openPath}
+      />
     </>
   )
 }

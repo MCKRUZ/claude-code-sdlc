@@ -972,6 +972,10 @@ export interface StudioApi {
   setToolOverride(kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', path: string): Promise<Settings>
 
   pickFolder(): Promise<string | null>
+  /** Makes `<parent>/<name>` and starts version tracking in it, so a person with no folder yet
+   * never has to leave the app to make one. Refuses an unsafe name or a folder that already
+   * exists; the caller continues into the normal setup wizard with the returned path. */
+  createProject(parent: string, name: string): Promise<{ ok: boolean; path?: string; error?: string }>
   hasSdlcProject(projectPath: string): Promise<boolean>
   openProject(projectPath: string): Promise<OpenProjectResult>
 
