@@ -751,3 +751,25 @@ class TestSkipLeadingBlanksAndComments:
     def test_stops_at_end_if_all_blank(self):
         text = "\r\n\r\n"
         assert ds._skip_leading_blanks_and_comments(text, 0, len(text)) == len(text)
+
+
+class TestIdsPastTheNominalWidth:
+    """Found by the correctness review of spec 0020: `%02d` produced a regex of exactly two digits with no
+    upper bound, so once `BR-100` existed it matched as `10`, the maximum stayed 99, and the next
+    allocation was `BR-100` again — a duplicate id. printf's width is a MINIMUM, so the pattern
+    must accept more digits than it."""
+
+    def test_an_id_past_the_width_is_read_whole_and_the_next_one_follows_it(self):
+        assert ds.next_free_number("BR-99 and BR-100", "BR-%02d") == 101
+
+    def test_the_same_holds_for_a_wider_pattern(self):
+        assert ds.next_free_number("FR-999 FR-1000", "FR-%03d") == 1001
+
+    def test_the_regex_captures_all_the_digits(self):
+        assert ds.pattern_to_regex("FR-%03d").search("### FR-1000: title").group(1) == "1000"
+
+    def test_the_width_is_still_a_minimum_so_a_shorter_number_is_not_an_id(self):
+        assert ds.pattern_to_regex("FR-%03d").search("FR-12") is None
+
+    def test_an_unpadded_pattern_is_unchanged(self):
+        assert ds.next_free_number("FR-7 FR-120", "FR-%d") == 121

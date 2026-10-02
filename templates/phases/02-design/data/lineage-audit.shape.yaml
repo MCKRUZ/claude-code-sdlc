@@ -1,0 +1,56 @@
+template: lineage-audit
+version: "1.0"
+description: "Where each piece of data comes from and goes to, how long it is kept, and what record is kept of who touched it."
+
+# required: true only on the Lineage section (the source-to-sink path is the reason this document
+# exists) and the feature it covers. Retention and the audit trail are real design content but a
+# document can be useful without them yet, so they stay optional.
+#
+# Two sections are LONGTEXT rather than table/list-per-line, deliberately:
+#   Lineage     - it holds a one-line flow diagram in a code fence AND the table; the field is the
+#                 whole section, so both are edited together.
+#   Audit trail - the template writes its three items as list entries (`- **Recorded on access /
+#                 change:** ...`), and an inline field needs its label to start its own line.
+
+sections:
+  - heading: Lineage identity
+    fields:
+      - label: Feature / spec
+        anchor: inline
+        type: text
+        required: true
+        guidance: The feature id and spec this lineage belongs to
+      - label: Channel
+        anchor: inline
+        type: text
+        required: false
+        guidance: The channel this applies to, or a dash for logic shared across channels
+      - label: Owner
+        anchor: inline
+        type: text
+        required: false
+        guidance: The person from the Data discipline who owns this document
+
+  - heading: Lineage
+    fields:
+      - label: Lineage
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The source-to-sink path as a one-line flow, then a table of each data element's source, transforms, sinks and whether it is personal data
+
+  - heading: Retention & handling
+    fields:
+      - label: Retention & handling
+        anchor: section
+        type: table
+        required: false
+        guidance: For each data element - how long it is kept, how it is protected at rest, and what causes it to be deleted
+
+  - heading: Audit trail
+    fields:
+      - label: Audit trail
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What is recorded when data is accessed or changed, any named approvals captured, and who may read sinks that hold personal data

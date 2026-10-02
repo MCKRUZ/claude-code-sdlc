@@ -1,0 +1,66 @@
+template: data-readiness
+version: "1.0"
+description: "Whether the data a feature needs is actually available, clean and complete enough to build on - every gap is advice, never a block."
+
+# required: true only where the document is meaningless without it: the feature it assesses, the
+# availability table, and the verdict. Gaps are legitimately empty when the data is ready, and the
+# PII section can say "none", so those stay optional. Identity details beyond the feature are context.
+#
+# PII & risk-tier impact is ONE longtext field: the template writes it as list entries
+# (`- **PII present:** ...`) and an inline field needs its label to start its own line.
+
+sections:
+  - heading: Readiness identity
+    fields:
+      - label: Feature / spec
+        anchor: inline
+        type: text
+        required: true
+        guidance: The feature id and spec whose data is being assessed
+      - label: Channel
+        anchor: inline
+        type: text
+        required: false
+        guidance: The channel this applies to, or a dash for logic shared across channels
+      - label: Owner
+        anchor: inline
+        type: text
+        required: false
+        guidance: The person from the Data discipline who owns this assessment
+      - label: Sources assessed
+        anchor: inline
+        type: text
+        required: false
+        guidance: The systems of record that were checked
+
+  - heading: Availability & quality
+    fields:
+      - label: Availability & quality
+        anchor: section
+        type: table
+        required: true
+        guidance: Per data source - is it available (yes, partial, no), how complete and clean is it, and how that was assessed
+
+  - heading: Gaps
+    fields:
+      - label: Gaps
+        anchor: section
+        type: table
+        required: false
+        guidance: Each shortfall found, what it breaks for the feature, how serious it is (advisory), and the decision-log item that tracks it
+
+  - heading: PII & risk-tier impact
+    fields:
+      - label: PII & risk-tier impact
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Whether personal data is present and which specs it pushes to a higher risk tier
+
+  - heading: Readiness verdict
+    fields:
+      - label: Readiness verdict
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One paragraph - ready as-is, ready with the listed gaps tracked, or not ready until a source is instrumented

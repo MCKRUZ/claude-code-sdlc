@@ -1,0 +1,39 @@
+template: contradiction-list
+version: "1.0"
+description: "Every place two of the client's documents disagree, each quoted from both sources with the question that would settle it."
+
+# How `required` was chosen: the contradiction entry itself is required - a list with no entries
+# has nothing to take to the workshop. The summary counts and the resolution log are
+# bookkeeping, so they are optional.
+# Each "### CON-NN" entry is ONE field (its whole bullet body) rather than one field per bullet:
+# the entry's lines are "- **Type:** ..." list items, which an inline field cannot anchor to, and
+# the two "Source" labels carry data (the document id and section), so they cannot match exactly.
+# Not shaped: the Generated / Corpus / Status lines above the first "## " heading.
+
+sections:
+  - heading: Summary
+    fields:
+      - label: Summary
+        anchor: section
+        type: table
+        required: false
+        guidance: How many contradictions there are at each severity - blocks-outcome, shapes-design, minor
+
+  - heading: Contradictions
+    repeats: true
+    numbering:
+      pattern: "CON-%02d"
+    fields:
+      - label: Contradiction
+        anchor: section
+        type: longtext
+        required: true
+        guidance: "The entry as a bullet list - type (fact, scope, assumption or terminology), severity (blocks-outcome, shapes-design or minor), both quoted sources, why it matters, the question for the room, and the resolution (open, or the answer, who and the date)"
+
+  - heading: Resolution Log
+    fields:
+      - label: Resolution Log
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per resolved contradiction - who resolved it, the answer and the date; every blocks-outcome entry must be resolved or accepted as a risk before Phase 0 exits
