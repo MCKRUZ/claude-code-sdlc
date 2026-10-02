@@ -60,10 +60,17 @@ def _replace_frontmatter_line(text: str, field: str, value: str) -> str:
     Not `spec_transition.set_frontmatter_field`: its `.*$` pattern also consumes the `\\r` of a
     CRLF line, which would leave a bare LF in the middle of a Windows file."""
     end = text.find("\n---", 3)
+    if end == -1:
+        raise BindError("the spec's frontmatter block is never closed (no second `---` line), so it cannot be edited safely")
     block, rest = text[:end], text[end:]
-    pattern = re.compile(rf"^{re.escape(field)}:[^\r\n]*", re.MULTILINE)
+    # Replace only the VALUE: the template annotates these lines (`channel: ""  # optional — ...`),
+    # and that comment, the spacing before it and the line ending all stay.
+    pattern = re.compile(
+        rf"""^({re.escape(field)}:[ \t]*)(?:"(?:[^"\\]|\\.)*"|'[^']*'|[^#\r\n]*?)(?=[ \t]*(?:#[^\r\n]*)?\r?$)""",
+        re.MULTILINE,
+    )
     if pattern.search(block):
-        block = pattern.sub(lambda _m: f"{field}: {value}", block, count=1)
+        block = pattern.sub(lambda m: m.group(1) + value, block, count=1)
     else:
         eol = "\r\n" if "\r\n" in block else "\n"
         block = block.rstrip("\r\n") + eol + f"{field}: {value}"

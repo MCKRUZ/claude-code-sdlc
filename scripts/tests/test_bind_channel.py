@@ -256,3 +256,27 @@ class TestCli:
         spec.write_text(SPEC.read_text(encoding="utf-8"), encoding="utf-8")
         assert run_cli("--spec", str(spec), "--channel", "voice", "--repo", str(repo)).returncode == 0
         assert "When the caller speaks during a prompt" in spec.read_text(encoding="utf-8")
+
+
+class TestFrontmatterEdgeCases:
+    """Closing the advisories from the correctness review of this PR."""
+
+    def test_the_templates_inline_comment_survives_on_the_lines_that_are_rewritten(self, tmp_path):
+        path = make_spec(tmp_path)
+        bind(path, "voice", CHANNELS)
+        text = raw(path)
+        assert next(l for l in text.splitlines() if l.startswith("channel:")).endswith("# optional — delivery surface (see channels/); blank = channel-agnostic")
+        assert next(l for l in text.splitlines() if l.startswith("harness_context:")).endswith("# the ONE existing pattern this change reuses (DoR requires this named)")
+
+    def test_a_value_with_no_comment_after_it_is_still_replaced_cleanly(self, tmp_path):
+        path = make_spec(tmp_path, mutate=lambda t: t.replace('channel: ""              # optional — delivery surface (see channels/); blank = channel-agnostic', 'channel: ""', 1))
+        bind(path, "voice", CHANNELS)
+        assert "channel: 'voice'\n" in raw(path)
+
+    def test_a_spec_whose_frontmatter_is_never_closed_is_refused_and_left_alone(self, tmp_path):
+        path = tmp_path / "broken.md"
+        path.write_text('---\nspec: "0042"\nchannel: ""\n\n# no closing fence\n\n## Acceptance Checks\n- [ ] x\n', encoding="utf-8")
+        before = path.read_bytes()
+        with pytest.raises(BindError, match="frontmatter"):
+            bind(path, "voice", CHANNELS)
+        assert path.read_bytes() == before

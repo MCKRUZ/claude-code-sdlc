@@ -147,3 +147,20 @@ class TestInteractionSpec:
 class TestArguments:
     def test_one_of_spec_or_interaction_spec_is_required(self):
         assert run("--json").returncode == 2
+
+
+class TestRowMatchingIsExactNotSubstring:
+    """A dimension must not take another dimension's contract row as its own coverage just because
+    its id is a substring of that row's dimension name (review of spec 0021)."""
+
+    def test_latency_does_not_borrow_the_latency_budget_row(self):
+        from check_channel import find_interaction_row, parse_interaction_rows
+        text = INTERACTION.read_text(encoding="utf-8")
+        rows = parse_interaction_rows(text)
+        assert find_interaction_row("latency", rows) is None
+        assert find_interaction_row("latency-budget", rows) is not None
+
+    def test_a_row_naming_the_dimension_exactly_still_matches_with_backticks_and_case(self):
+        from check_channel import find_interaction_row
+        rows = [{"dimension": "barge-in", "contract": "c", "check": "k"}]
+        assert find_interaction_row("Barge-In", rows) is rows[0]

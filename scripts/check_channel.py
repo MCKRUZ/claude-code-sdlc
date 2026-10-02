@@ -212,7 +212,10 @@ def parse_interaction_rows(text: str) -> list[dict]:
 
 
 def find_interaction_row(dim_id: str, rows: list[dict]) -> dict | None:
-    return next((r for r in rows if r["dimension"] and dim_id.lower() in r["dimension"]), None)
+    """The row for a dimension, matched on the whole id. A bare substring would let `latency` take
+    the `latency-budget` row as its own coverage."""
+    token = re.compile(rf"(?<![\w-]){re.escape(dim_id.strip().lower())}(?![\w-])")
+    return next((r for r in rows if r["dimension"] and token.search(r["dimension"])), None)
 
 
 def interaction_report(path: Path, channel_arg: str | None, channels_dir: Path) -> dict:
