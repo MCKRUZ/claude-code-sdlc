@@ -284,11 +284,14 @@ def _clean(value: str) -> str:
 
 
 class _Table:
-    def __init__(self, cols: dict[str, int], width: int, rows: list[int]):
+    def __init__(self, cols: dict[str, int], width: int, rows: list[int], separator: int):
         self.cols = cols      # column name -> cell index
         self.width = width    # number of header cells
         self.rows = rows      # indexes into `lines` of the data rows
-        self.last = rows[-1] if rows else -1
+        # Where a new row goes after: the last data row, or — for a table with a header and no
+        # rows yet — the separator line. (It was -1, which indexed the END of the file and wrote
+        # the row above the document's title.)
+        self.last = rows[-1] if rows else separator
 
 
 def _find_table(lines: list[str]) -> _Table:
@@ -314,7 +317,7 @@ def _find_table(lines: list[str]) -> _Table:
                     + ", ".join(h or "(blank)" for h in header)
                     + "; need columns starting " + ", ".join(DECISION_COLUMNS) + ")")
             rows = [k for k in range(i + 2, j) if not _is_separator(_split_row(lines[k]))]
-            return _Table(cols, len(header), rows)
+            return _Table(cols, len(header), rows, separator=i + 1)
         i = j
     raise LogError("no decision table (| id | decision | owner | opened | due | status |) found in the log")
 

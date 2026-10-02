@@ -385,3 +385,39 @@ def test_open_accepts_phase_without_storing_it(tmp_path):
     log = make_log(tmp_path, REAL_LOG)
     assert run(open_args() + ["--phase", "requirements"], tmp_path).returncode == 0
     assert "requirements" not in log.read_text(encoding="utf-8")
+
+
+# --- open: a table with a header and no rows (found by the correctness review of spec 0021) ---
+
+def test_open_on_a_header_only_table_puts_the_row_in_the_table_not_at_the_top_of_the_file(tmp_path):
+    log = "# Decision log\n\n" + HEADER + "\nNotes below.\n"
+    path = make_log(tmp_path, log)
+    run(open_args() + ["--json"], tmp_path)
+    text = path.read_text(encoding="utf-8")
+    assert text.startswith("# Decision log\n\n| id ")                      # nothing was written above the title
+    assert text.index("| DL-01 |") > text.index("|-------|")                # the row follows the separator
+    assert text.index("| DL-01 |") < text.index("Notes below.")             # and precedes what came after the table
+    assert ids_in_rows(path) == ["DL-01"]                                   # the report can see it
+
+
+def test_open_on_a_header_only_table_at_the_end_of_the_file(tmp_path):
+    path = make_log(tmp_path, "# Log\n\n" + HEADER.rstrip("\n"))              # no trailing newline either
+    run(open_args() + ["--json"], tmp_path)
+    assert ids_in_rows(path) == ["DL-01"]
+    assert path.read_text(encoding="utf-8").startswith("# Log\n\n| id ")
+
+
+def test_after_opening_into_a_header_only_table_decide_finds_it_and_the_next_open_follows(tmp_path):
+    path = make_log(tmp_path, "# Log\n\n" + HEADER + "\nNotes.\n")
+    run(open_args() + ["--json"], tmp_path)
+    assert run(["decide", "--repo", ".", "--id", "DL-01", "--by", "Ann", "--resolution", "Fail closed"], tmp_path).returncode == 0
+    assert json.loads(run(open_args("Another") + ["--json"], tmp_path).stdout)["id"] == "DL-02"
+    assert ids_in_rows(path) == ["DL-01", "DL-02"]
+
+
+def test_the_same_holds_for_a_crlf_log(tmp_path):
+    path = make_log(tmp_path, "# Log\n\n" + HEADER + "\nNotes.\n", eol="\r\n")
+    run(open_args() + ["--json"], tmp_path)
+    data = path.read_bytes()
+    assert data.startswith(b"# Log\r\n\r\n| id ") and data.count(b"\n") == data.count(b"\r\n")
+    assert ids_in_rows(path) == ["DL-01"]

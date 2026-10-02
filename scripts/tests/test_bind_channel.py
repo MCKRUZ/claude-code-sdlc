@@ -280,3 +280,12 @@ class TestFrontmatterEdgeCases:
         with pytest.raises(BindError, match="frontmatter"):
             bind(path, "voice", CHANNELS)
         assert path.read_bytes() == before
+
+
+def test_a_field_missing_from_a_crlf_specs_frontmatter_is_appended_with_a_crlf_line_ending(tmp_path):
+    path = make_spec(tmp_path, newline="\r\n", mutate=lambda t: t.replace('harness_context: ""      # the ONE existing pattern this change reuses (DoR requires this named)\n', "", 1))
+    assert "harness_context" not in frontmatter(raw(path))
+    bind(path, "voice", CHANNELS)
+    data = path.read_bytes()
+    assert data.count(b"\n") == data.count(b"\r\n")
+    assert frontmatter(raw(path))["harness_context"] == "voice turn pipeline"

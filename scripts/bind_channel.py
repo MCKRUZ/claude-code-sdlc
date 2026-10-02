@@ -73,7 +73,9 @@ def _replace_frontmatter_line(text: str, field: str, value: str) -> str:
         block = pattern.sub(lambda m: m.group(1) + value, block, count=1)
     else:
         eol = "\r\n" if "\r\n" in block else "\n"
-        block = block.rstrip("\r\n") + eol + f"{field}: {value}"
+        # `rest` begins at the closing fence's "\n"; in a CRLF file the "\r" before it belongs to
+        # the new line, or the appended field would end in a bare LF.
+        block = block.rstrip("\r\n") + eol + f"{field}: {value}" + ("\r" if eol == "\r\n" else "")
     return block + rest
 
 
