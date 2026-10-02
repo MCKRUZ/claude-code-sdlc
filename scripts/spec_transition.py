@@ -120,14 +120,18 @@ def set_frontmatter_field(text: str, field: str, value: str, add_if_missing: boo
             f"second line would be read as a different field entirely.", "bad_value")
 
     fm_block, rest = _split_frontmatter(text)
-    pattern = rf"^{re.escape(field)}:.*$"
+    # `[^\r\n]*`, not `.*$`: in a CRLF file `.` also matches the "\r", so the old pattern swallowed
+    # it and left a bare LF in the middle of an otherwise-CRLF file.
+    pattern = rf"^{re.escape(field)}:[^\r\n]*"
     if not re.search(pattern, fm_block, flags=re.MULTILINE):
         if not add_if_missing:
             raise TransitionError(f"Spec frontmatter has no `{field}` field", "malformed")
         # Appended to the end of the block, which is where a reader looks for a field that was
         # added later anyway.
         eol = "\r\n" if "\r\n" in fm_block else "\n"
-        return fm_block.rstrip("\r\n") + eol + f"{field}: {value}" + rest
+        # `rest` starts at the closing fence's "\n"; in a CRLF file the "\r" before it belongs to
+        # the line just appended, or that line would end in a bare LF.
+        return fm_block.rstrip("\r\n") + eol + f"{field}: {value}" + ("\r" if eol == "\r\n" else "") + rest
     # A LAMBDA replacement, not a template string: re.sub expands `\n`, `\1` and friends inside
     # a replacement template, so a literal backslash in a value would become something else
     # entirely (and `\` at the end raises). A callable returns the string as written.
