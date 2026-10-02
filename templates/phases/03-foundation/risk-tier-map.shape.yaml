@@ -1,0 +1,40 @@
+template: risk-tier-map
+version: "1.0"
+description: "The HIGH, MEDIUM and LOW taxonomy this project's Build loop uses to route review depth, and the repository paths that always fire the security workflow."
+
+# Every field is required: false. This document was already judged complete before it had a
+# shape; a shape exists here so it can be shown and edited by section, not to change what counts
+# as complete.
+
+sections:
+  - heading: HIGH
+    fields:
+      - label: HIGH
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What lands in the HIGH tier, what it triggers (tight permissions, full checking ladder, security review, named sign-off), and this project's concrete files and areas
+
+  - heading: MEDIUM
+    fields:
+      - label: MEDIUM
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What lands in the MEDIUM tier, what it triggers, and this project's concrete examples
+
+  - heading: LOW
+    fields:
+      - label: LOW
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What lands in the LOW tier, what it triggers, and this project's concrete examples
+
+  - heading: Gated paths (path-triggered security workflow)
+    fields:
+      - label: Gated paths
+        anchor: section
+        type: checklist
+        required: false
+        guidance: The repository paths that fire the security workflow on any pull request touching them, regardless of tier
