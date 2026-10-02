@@ -23,7 +23,7 @@
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { rawStdout, runCommand } from './commandRunner'
-import { openDocument, setField } from './documents'
+import { ensureDocumentFromTemplate, openDocument, setField } from './documents'
 import { recordDraftOutcome } from './drafts'
 import { getChatState, saveChatState } from './settings'
 import { matchesSection, sectionInstanceKey } from '../../shared/sections'
@@ -261,6 +261,11 @@ export async function ipcResolveChatProposal(
   let instance: string | undefined
 
   if (outcome !== 'discarded') {
+    // A stage's documents are authored through chat, so the first accepted proposal for one that
+    // has not been started has to start it — from the plugin's own template — or that write could
+    // never land. A no-op for a document that already exists.
+    const started = ensureDocumentFromTemplate(ctx.projectPath, ctx.pluginScriptsDir, relPath)
+    if (!started.ok) return { ok: false, state, error: started.error ?? `Could not start ${relPath}.` }
     const doc = await openDocument(ctx.projectPath, ctx.pluginScriptsDir, relPath)
     if (!doc.ok) return { ok: false, state, error: doc.error ?? `Could not open ${relPath}.` }
     const section = doc.sections.find((s) => matchesSection(s.key, s.heading, reportedSection))

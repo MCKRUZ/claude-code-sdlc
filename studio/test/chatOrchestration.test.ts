@@ -17,6 +17,8 @@ vi.mock('../electron/main/documents', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../electron/main/documents')>()),
   openDocument: vi.fn(),
   setField: vi.fn(),
+  // Existing tests below use document paths that are not real; the default is "already exists".
+  ensureDocumentFromTemplate: vi.fn(() => ({ ok: true, created: false })),
 }))
 vi.mock('../electron/main/drafts', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../electron/main/drafts')>()),
@@ -24,7 +26,7 @@ vi.mock('../electron/main/drafts', async (importOriginal) => ({
 }))
 
 import { runCommand } from '../electron/main/commandRunner'
-import { openDocument, setField } from '../electron/main/documents'
+import { ensureDocumentFromTemplate, openDocument, setField } from '../electron/main/documents'
 import { recordDraftOutcome } from '../electron/main/drafts'
 import { initSettingsPath, saveChatState } from '../electron/main/settings'
 import { ipcResolveChatProposal, ipcSendChatMessage, type ChatContext } from '../electron/main/chat'
@@ -287,5 +289,75 @@ describe('runChatTurn — live activity for the chat panel', () => {
     })
     const result = await ipcSendChatMessage(baseCtx(join(userDataDir, 'project')), 'hello')
     expect(result.ok).toBe(true)
+  })
+})
+
+describe('ipcResolveChatProposal — a document nobody has started yet', () => {
+  let userDataDir: string
+  const proposalId = 'p-new'
+  const doc = '.sdlc/artifacts/03-foundation/foundation-report.md'
+
+  beforeEach(() => {
+    userDataDir = mkdtempSync(join(tmpdir(), 'chat-orchestration-start-'))
+    initSettingsPath(userDataDir)
+    vi.mocked(openDocument).mockReset()
+    vi.mocked(setField).mockReset()
+    vi.mocked(recordDraftOutcome).mockReset()
+    vi.mocked(ensureDocumentFromTemplate).mockClear()
+    saveChatState(join(userDataDir, 'project'), '3', {
+      sessionId: 's',
+      messages: [{
+        id: 'm1', role: 'assistant', text: '', questions: [], at: new Date().toISOString(),
+        proposals: [{ id: proposalId, document: doc, section: 'Infrastructure', field: 'Infrastructure', value: 'v' }],
+      }],
+    })
+  })
+
+  afterEach(() => {
+    rmSync(userDataDir, { recursive: true, force: true })
+  })
+
+  const openOk: OpenDocumentResult = {
+    ok: true, path: doc, shaped: true, warnings: [],
+    sections: [{
+      kind: 'section', key: 'Infrastructure', heading: 'Infrastructure', start: 0, end: 10, text: '...',
+      fields: { Infrastructure: { label: 'Infrastructure', value: '', start: 0, end: 0, type: 'checklist', required: true, anchor: 'section', empty: true } },
+    }],
+  }
+
+  it('starts the document from its template before opening it, so the first accepted proposal can land', async () => {
+    vi.mocked(openDocument).mockResolvedValue(openOk)
+    vi.mocked(setField).mockResolvedValue(openOk)
+    vi.mocked(recordDraftOutcome).mockResolvedValue({ ok: true })
+    const ctx = { ...baseCtx(join(userDataDir, 'project')), stageId: '3' }
+
+    const result = await ipcResolveChatProposal(ctx, proposalId, 'accepted', 'v', 'matt')
+
+    expect(result.ok).toBe(true)
+    expect(ensureDocumentFromTemplate).toHaveBeenCalledWith(ctx.projectPath, ctx.pluginScriptsDir, doc)
+    expect(vi.mocked(ensureDocumentFromTemplate).mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(openDocument).mock.invocationCallOrder[0])
+  })
+
+  it('when the document cannot be started, says why, writes nothing and leaves the proposal pending', async () => {
+    vi.mocked(ensureDocumentFromTemplate).mockReturnValueOnce({ ok: false, error: 'There is no template for x.' })
+    const ctx = { ...baseCtx(join(userDataDir, 'project')), stageId: '3' }
+
+    const result = await ipcResolveChatProposal(ctx, proposalId, 'accepted', 'v', 'matt')
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('There is no template for x.')
+    expect(setField).not.toHaveBeenCalled()
+    expect(result.state.messages[0].proposals[0].outcome).toBeUndefined()
+  })
+
+  it('does not start a document just to discard a proposal for it', async () => {
+    vi.mocked(recordDraftOutcome).mockResolvedValue({ ok: true })
+    const ctx = { ...baseCtx(join(userDataDir, 'project')), stageId: '3' }
+
+    const result = await ipcResolveChatProposal(ctx, proposalId, 'discarded', '', 'matt')
+
+    expect(result.ok).toBe(true)
+    expect(ensureDocumentFromTemplate).not.toHaveBeenCalled()
   })
 })

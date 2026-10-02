@@ -1,0 +1,44 @@
+template: foundation-report
+version: "1.0"
+description: "Evidence that the factory is built and one part is already moving through it: the harness, the rails, the infrastructure and the walking skeleton running in the client dev environment."
+
+sections:
+  - heading: "Harness installed & adapted"
+    fields:
+      - label: Harness installed & adapted
+        anchor: section
+        type: checklist
+        required: true
+        guidance: Whether CLAUDE.md is adapted to the client, .claude/ is in place, specs/ is established, and who on the Setup Owner's side reviewed it (never the Setup Owner alone)
+
+  - heading: "The rails (CI/CD pipeline)"
+    fields:
+      - label: The rails (CI/CD pipeline)
+        anchor: section
+        type: longtext
+        required: true
+        guidance: For each workflow (ci, grader, correctness, security, deploy-dev) whether it was proven by a forced failure, plus branch protection and the Stop hook demonstration
+
+  - heading: Infrastructure
+    fields:
+      - label: Infrastructure
+        anchor: section
+        type: checklist
+        required: true
+        guidance: Whether the dev environment is provisioned from code and HIGH-risk reviewed, and that secrets live in the client's vault
+
+  - heading: Walking skeleton
+    fields:
+      - label: Walking skeleton
+        anchor: section
+        type: checklist
+        required: true
+        guidance: Whether the Phase 2 definition is met, it is deployed through the real pipeline, a HIGH-risk spec ran the full Build loop, and the outcome metric is measurable in dev
+
+  - heading: Sign-off
+    fields:
+      - label: Sign-off
+        anchor: section
+        type: text
+        required: false
+        guidance: The named human on each side (pod and client) who signs this report off
