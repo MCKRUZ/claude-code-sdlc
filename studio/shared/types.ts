@@ -462,6 +462,16 @@ export interface ChatTurnResult {
   error?: string
 }
 
+/** What the model is doing mid-turn, pushed to the chat panel while a turn runs so a long wait
+ * reads as progress rather than a hang. Scoped to a project + stage because turns for different
+ * stages can overlap; the panel shows only the one it is on. */
+export interface ChatActivity {
+  projectPath: string
+  stageId: string
+  /** Plain words ("Reading requirements.md"), never a raw tool name. */
+  label: string
+}
+
 /** The ONLY surface the renderer gets — see electron/preload/index.ts. Both the preload
  * script's implementation and the renderer's `window.studio` typing point at this one
  * interface, so they can never silently drift apart. */
@@ -1062,6 +1072,9 @@ export interface StudioApi {
   /** Reads the stage's chat state without ever starting the model — used on mount so opening
    * a stage that already has a conversation shows it without a network call. */
   getChatState(projectPath: string, stageId: string): Promise<ChatState>
+  /** Live "what is the assistant doing" updates for any chat turn in flight. Returns an
+   * unsubscribe function. Carries no turn result — that still arrives through the invoke below. */
+  onChatActivity(callback: (activity: ChatActivity) => void): () => void
   /** Starts the conversation if it has never been started AND the stage has a document not yet
    * begun — the assistant's own opening message, never a blank box waiting on the person.
    * A no-op (returns the existing state unchanged) on a stage whose documents are all already

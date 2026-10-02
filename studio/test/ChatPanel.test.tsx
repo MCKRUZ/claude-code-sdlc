@@ -64,6 +64,7 @@ function emptyReadiness(): StageReadiness {
 function installStudioMock(overrides: Partial<typeof window.studio> = {}) {
   const studio = {
     getChatState: vi.fn().mockResolvedValue(emptyState()),
+    onChatActivity: vi.fn().mockReturnValue(() => {}),
     getStageReadiness: vi.fn().mockResolvedValue(emptyReadiness()),
     ensureChatStarted: vi.fn().mockResolvedValue({ ok: true, state: emptyState() } satisfies ChatTurnResult),
     sendChatMessage: vi.fn().mockResolvedValue({ ok: true, state: emptyState() } satisfies ChatTurnResult),
@@ -556,5 +557,35 @@ describe('ChatPanel — finding #5 (PR #76 round 2): the same mobile height cap 
     // leaving the document panel real room.
     expect(aside!.className).toMatch(/\bmax-h-\[35vh\]/)
     expect(aside!.className).toMatch(/\bsm:max-h-none\b/)
+  })
+})
+
+describe('ChatPanel — a running turn shows what the assistant is doing, not a bare "Thinking…"', () => {
+  it('shows the live activity line (with a running clock) while a turn is in flight, and removes it when the reply lands', async () => {
+    let resolveSend: (r: ChatTurnResult) => void = () => {}
+    const sendPromise = new Promise<ChatTurnResult>((resolve) => { resolveSend = resolve })
+    const existing: ChatState = {
+      sessionId: 's', messages: [{ id: 'a1', role: 'assistant', text: 'hi', questions: [], proposals: [], at: '' }],
+    }
+    let emit: (a: { projectPath: string; stageId: string; label: string }) => void = () => {}
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(existing),
+      sendChatMessage: vi.fn().mockImplementation(() => sendPromise),
+      onChatActivity: vi.fn().mockImplementation((cb: typeof emit) => { emit = cb; return () => {} }),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    expect(screen.queryByTestId('chat-activity')).toBeNull()
+
+    const user = userEvent.setup()
+    await user.type(screen.getByPlaceholderText('Type a message…'), 'hello')
+    await act(async () => { await user.click(screen.getByRole('button', { name: 'Send' })) })
+
+    expect(screen.getByTestId('chat-activity').textContent).toBe('Thinking… 0s')
+    act(() => emit({ projectPath: '/p', stageId: '0', label: 'Reading requirements.md' }))
+    expect(screen.getByTestId('chat-activity').textContent).toMatch(/^Reading requirements\.md… \d+s$/)
+
+    await act(async () => { resolveSend({ ok: true, state: existing }) })
+    expect(screen.queryByTestId('chat-activity')).toBeNull()
   })
 })

@@ -29,7 +29,7 @@ import { getChatState, saveChatState } from './settings'
 import { matchesSection, sectionInstanceKey } from '../../shared/sections'
 import { buildChatArgs } from './chatArgs'
 import { mcpConfigPath } from './chatMcpConfig'
-import { parseStreamJsonToMessages } from './chatStreamParse'
+import { describeLatestActivity, parseStreamJsonToMessages } from './chatStreamParse'
 import { readPluginName } from './chatArgs'
 import type { ChatMessage, ChatState, ChatTurnResult, DraftOutcome } from '../../shared/types'
 
@@ -48,6 +48,8 @@ export interface RunTurnContext {
   stageId: string
   stageDisplay: string
   execPath: string
+  /** Called with a plain-words label each time what the model is doing changes mid-turn. */
+  onActivity?: (label: string) => void
 }
 
 export interface RunTurnResult {
@@ -79,16 +81,24 @@ export async function runChatTurn(
   // claudePath overrides the resolved binary name only — args/cwd already fully built above.
   const resolvedCommand = ctx.claudePath || command
 
+  let lastLabel: string | null = null
   const entry = await runCommand(resolvedCommand, args, cwd, {
     // A truthy onChunk is what turns on runCommand's own live "pending" broadcast
     // (commandRunner.ts) — the SAME channel (commandRunner's onConsoleEntry, forwarded by
     // index.ts to 'studio:consoleEntry') every other command's entries reach the renderer
-    // through, carrying the real id/command/args/cwd. Nothing here needs to observe the
-    // chunks itself, so this is intentionally a no-op: a second, bespoke broadcast used to
-    // live in index.ts (ChatContext.onConsoleStream), duplicating that path with a hardcoded
-    // 'chat-stream' id that runCommand's own finish() never resolves — a permanent "still
-    // running" ghost entry in the console. Deleted; this is the one channel now.
-    onChunk: () => {},
+    // through, carrying the real id/command/args/cwd. The console half needs nothing from the
+    // chunks: a second, bespoke broadcast used to live in index.ts (ChatContext.onConsoleStream),
+    // duplicating that path with a hardcoded 'chat-stream' id that runCommand's own finish()
+    // never resolves — a permanent "still running" ghost entry in the console. Deleted; this is
+    // the one channel now. What the chunks ARE read for is the chat panel's "what is it doing"
+    // label, sent only when it changes (chunks arrive far more often than the activity does).
+    onChunk: (stdoutSoFar) => {
+      const label = describeLatestActivity(stdoutSoFar)
+      if (label && label !== lastLabel) {
+        lastLabel = label
+        ctx.onActivity?.(label)
+      }
+    },
   })
 
   if (!entry.ok) {
@@ -118,6 +128,7 @@ export interface ChatContext {
   stageDisplay: string
   claudePath: string
   execPath: string
+  onActivity?: (label: string) => void
 }
 
 function pluginRootFromScriptsDir(pluginScriptsDir: string): string {
@@ -134,6 +145,7 @@ function turnContext(ctx: ChatContext): RunTurnContext {
     stageId: ctx.stageId,
     stageDisplay: ctx.stageDisplay,
     execPath: ctx.execPath,
+    onActivity: ctx.onActivity,
   }
 }
 

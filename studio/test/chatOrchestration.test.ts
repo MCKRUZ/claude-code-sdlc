@@ -240,3 +240,52 @@ describe('ipcResolveChatProposal — instance key parity with DocumentView.tsx\'
     expect(untouched?.outcome).toBeUndefined()
   })
 })
+
+describe('runChatTurn — live activity for the chat panel', () => {
+  let userDataDir: string
+
+  beforeEach(() => {
+    userDataDir = mkdtempSync(join(tmpdir(), 'chat-activity-'))
+    initSettingsPath(userDataDir)
+    vi.mocked(runCommand).mockReset()
+  })
+
+  afterEach(() => {
+    rmSync(userDataDir, { recursive: true, force: true })
+  })
+
+  const readLine = JSON.stringify({
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'requirements.md' } }] },
+  })
+  const grepLine = JSON.stringify({
+    type: 'assistant',
+    message: { role: 'assistant', content: [{ type: 'tool_use', id: 't2', name: 'Grep', input: { pattern: 'x' } }] },
+  })
+
+  it('reports each distinct step once, even though stdout chunks arrive far more often than steps change', async () => {
+    vi.mocked(runCommand).mockImplementation(async (_cmd, _args, _cwd, opts) => {
+      // Four chunks, as runCommand would deliver them: the stdout accumulated so far, each time.
+      opts?.onChunk?.(readLine.slice(0, 20)) // half-written line: nothing describable yet
+      opts?.onChunk?.(readLine + '\n')
+      opts?.onChunk?.(readLine + '\n') // same step again
+      opts?.onChunk?.(readLine + '\n' + grepLine + '\n')
+      return { id: '1', command: 'claude', args: [], cwd: '', startedAt: '', durationMs: 0, exitCode: 0, ok: true, stdout: '', stderr: '' }
+    })
+    const labels: string[] = []
+    const ctx: ChatContext = { ...baseCtx(join(userDataDir, 'project')), onActivity: (l) => labels.push(l) }
+
+    await ipcSendChatMessage(ctx, 'hello')
+
+    expect(labels).toEqual(['Reading requirements.md', 'Searching the project'])
+  })
+
+  it('works unchanged when no one is listening (onActivity is optional)', async () => {
+    vi.mocked(runCommand).mockImplementation(async (_cmd, _args, _cwd, opts) => {
+      opts?.onChunk?.(readLine + '\n')
+      return { id: '1', command: 'claude', args: [], cwd: '', startedAt: '', durationMs: 0, exitCode: 0, ok: true, stdout: '', stderr: '' }
+    })
+    const result = await ipcSendChatMessage(baseCtx(join(userDataDir, 'project')), 'hello')
+    expect(result.ok).toBe(true)
+  })
+})
