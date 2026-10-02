@@ -329,11 +329,13 @@ def _is_separator_line(line: str) -> bool:
 def _is_placeholder_row(line: str) -> bool:
     """A template's stand-in row. Real templates keep a genuine id and status in it (`DL-01 | [the
     open question] | [owner] | ... | open`), so "every cell is bracketed" would miss them; instead a
-    row is a placeholder when at least half its non-empty cells hold a `[bracketed span]`. A real
-    row with one bracket in it (`| BR-02 | [to confirm] | Bob |`) stays."""
+    row is a placeholder when MORE THAN HALF its non-empty cells hold a `[bracketed]` or `<angle>`
+    span. Exactly half is not enough: `| BR-01 | [to confirm] |` and a half-filled decision are real
+    rows that mention a bracket, and treating them as stand-ins deleted them (found by the
+    correctness review of spec 0020)."""
     cells = [c for c in _split_cells(line) if c]
     marked = sum(1 for c in cells if _PLACEHOLDER_SPAN_RE.search(c))
-    return marked > 0 and marked * 2 >= len(cells)
+    return marked > 0 and marked * 2 > len(cells)
 
 
 def _line_spans(text: str, start: int, end: int):
@@ -445,7 +447,11 @@ def cmd_add_row(args) -> dict:
         raise CliError("every value is empty, so there is no row to add")
 
     rows = table["rows"]
-    placeholders = [(s, e) for s, e in rows if _is_placeholder_row(text[s:e].rstrip("\r\n"))]
+    # Rows are removed ONLY when the caller asked, and only from a table that is nothing BUT
+    # stand-ins (a fresh template). A table with any real row in it is never touched: deleting a
+    # person's row on a heuristic is the one failure this verb must not have.
+    all_placeholders = bool(rows) and all(_is_placeholder_row(text[s:e].rstrip("\r\n")) for s, e in rows)
+    placeholders = list(rows) if getattr(args, "replace_placeholders", False) and all_placeholders else []
     id_column, id_pattern = getattr(args, "id_column", None), getattr(args, "id_pattern", None)
     row_id = None
     values = {name: _clean_cell(v) for name, v in cells.items()}
@@ -530,6 +536,9 @@ def main() -> int:
     p_row.add_argument("--cells-file", dest="cells_file", help="Path to a JSON file holding the cells (avoids shell quoting)")
     p_row.add_argument("--id-column", dest="id_column", help="Column to fill with the next free id")
     p_row.add_argument("--id-pattern", dest="id_pattern", help='What an id looks like, e.g. "BR-%%02d"')
+    p_row.add_argument("--replace-placeholders", action="store_true", dest="replace_placeholders",
+                       help="If EVERY data row is a template placeholder, replace them with this row "
+                            "(never removes anything from a table that has a real row)")
 
     args = parser.parse_args()
 

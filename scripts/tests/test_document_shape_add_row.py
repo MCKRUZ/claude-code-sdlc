@@ -194,21 +194,59 @@ class TestPlaceholders:
         "| [BR-NN] | [the rule] | [owner] |\n",
     )
 
-    def test_a_template_placeholder_row_is_replaced_by_the_first_real_row(self, tmp_path, shape_path):
+    # The contract, after the correctness review of this PR found the first version deleted real rows:
+    #   * NOTHING is ever removed unless the caller passes --replace-placeholders;
+    #   * and even then only when EVERY data row is a placeholder (a fresh template) — a table with
+    #     a single real row in it is never touched;
+    #   * a row is a placeholder only when MORE THAN HALF its non-empty cells hold a [bracketed]
+    #     or <angle> span.
+
+    def test_a_fresh_templates_placeholder_row_is_replaced_by_the_first_real_row_when_asked(self, tmp_path, shape_path):
         doc = make_doc(tmp_path, self.PLACEHOLDER_DOC)
-        result = add(doc, shape_path, {"Rule": "Real", "Owner": "Ann"}, id_column="ID", id_pattern="BR-%02d")
+        result = add(doc, shape_path, {"Rule": "Real", "Owner": "Ann"}, id_column="ID", id_pattern="BR-%02d",
+                     replace_placeholders=True)
         text = read_raw(doc)
         assert "[BR-NN]" not in text
         assert "| BR-08 | Real | Ann |" in text
         assert result["replaced_placeholders"] == 1 and result["row"] == 1
 
-    def test_real_rows_are_kept_byte_for_byte_when_a_placeholder_is_removed(self, tmp_path, shape_path):
+    def test_without_the_flag_a_placeholder_row_is_left_exactly_where_it_is(self, tmp_path, shape_path):
+        doc = make_doc(tmp_path, self.PLACEHOLDER_DOC)
+        result = add(doc, shape_path, {"Rule": "Real", "Owner": "Ann"}, id_column="ID", id_pattern="BR-%02d")
+        text = read_raw(doc)
+        assert "| [BR-NN] | [the rule] | [owner] |\n| BR-08 | Real | Ann |" in text
+        assert result["replaced_placeholders"] == 0 and result["row"] == 2
+
+    def test_a_table_with_any_real_row_loses_nothing_even_with_the_flag(self, tmp_path, shape_path):
         mixed = DOC.replace("| BR-02 | Second | Bob |\n", "| BR-02 | Second | Bob |\n| [BR-NN] | [rule] | [owner] |\n")
         doc = make_doc(tmp_path, mixed)
-        add(doc, shape_path, {"ID": "BR-03", "Rule": "Third", "Owner": "Cy"})
+        before = read_raw(doc)
+        result = add(doc, shape_path, {"ID": "BR-03", "Rule": "Third", "Owner": "Cy"}, replace_placeholders=True)
+        assert result["replaced_placeholders"] == 0
+        assert read_raw(doc).replace("| BR-03 | Third | Cy |\n", "", 1) == before
+
+    def test_a_real_row_that_mentions_a_bracket_is_never_deleted_in_a_two_column_table(self, tmp_path, shape_path):
+        # The review's first reproduction: one bracketed cell of two is HALF, not a majority.
+        two_col = "# Demo\n\n## Rules\n\n| ID | Rule |\n|----|------|\n| BR-01 | [to confirm] |\n\n## Notes\n\nTail.\n"
+        doc = make_doc(tmp_path, two_col)
+        result = add(doc, shape_path, {"Rule": "z"}, id_column="ID", id_pattern="BR-%02d", replace_placeholders=True)
         text = read_raw(doc)
-        assert "| BR-01 | First | Ann |\n| BR-02 | Second | Bob |\n| BR-03 | Third | Cy |\n" in text
-        assert "[BR-NN]" not in text
+        assert "| BR-01 | [to confirm] |" in text and "| BR-02 | z |" in text
+        assert result["replaced_placeholders"] == 0
+
+    def test_a_half_filled_decision_row_is_never_deleted(self, tmp_path):
+        # The review's second reproduction: 3 of 6 cells bracketed is half, not a majority.
+        log = ("# Log\n\n| id | decision | owner | opened | due | status |\n|----|----|----|----|----|----|\n"
+               "| DL-02 | Which DB? | [name/role] | [YYYY-MM-DD] | [YYYY-MM-DD] | open |\n")
+        doc = make_doc(tmp_path, log)
+        result = add_by_table(doc, {"decision": "Another"}, id_column="id", id_pattern="DL-%02d", replace_placeholders=True)
+        assert "| DL-02 | Which DB? |" in read_raw(doc)
+        assert result["replaced_placeholders"] == 0 and result["id"] == "DL-03"
+
+    def test_an_id_in_a_row_that_was_not_removed_still_counts_as_used(self, tmp_path):
+        log = ("# Log\n\n| id | decision |\n|----|----|\n| DL-05 | [tbd] |\n| DL-06 | Real one |\n")
+        doc = make_doc(tmp_path, log)
+        assert add_by_table(doc, {"decision": "x"}, id_column="id", id_pattern="DL-%02d", replace_placeholders=True)["id"] == "DL-07"
 
     def test_no_placeholder_means_none_reported(self, tmp_path, shape_path):
         assert add(make_doc(tmp_path), shape_path, {"ID": "BR-03", "Rule": "x"})["replaced_placeholders"] == 0
@@ -216,8 +254,17 @@ class TestPlaceholders:
     def test_a_row_with_one_real_cell_is_not_a_placeholder(self, tmp_path, shape_path):
         partly = DOC.replace("| BR-02 | Second | Bob |", "| BR-02 | [to confirm] | Bob |")
         doc = make_doc(tmp_path, partly)
-        add(doc, shape_path, {"ID": "BR-03", "Rule": "x"})
+        add(doc, shape_path, {"ID": "BR-03", "Rule": "x"}, replace_placeholders=True)
         assert "| BR-02 | [to confirm] | Bob |" in read_raw(doc)
+
+    def test_the_process_form_accepts_the_flag(self, tmp_path, shape_path):
+        doc = make_doc(tmp_path, self.PLACEHOLDER_DOC)
+        r = subprocess.run([sys.executable, str(CLI_PATH), "add-row", "--doc", str(doc), "--shape", str(shape_path),
+                            "--section", "Rules", "--field", "Rules", "--cells", json.dumps({"Rule": "x"}),
+                            "--id-column", "ID", "--id-pattern", "BR-%02d", "--replace-placeholders"],
+                           capture_output=True, text=True, encoding="utf-8")
+        assert r.returncode == 0, r.stderr
+        assert json.loads(r.stdout)["replaced_placeholders"] == 1
 
 
 class TestCells:
@@ -406,7 +453,7 @@ class TestDocumentAddressed:
 
     def test_the_template_placeholder_row_is_replaced(self, tmp_path):
         doc = make_doc(tmp_path, HEADINGLESS)
-        result = add_by_table(doc, {"decision": "Real"}, id_column="id", id_pattern="DL-%02d")
+        result = add_by_table(doc, {"decision": "Real"}, id_column="id", id_pattern="DL-%02d", replace_placeholders=True)
         assert "[the open question]" not in read_raw(doc) and result["replaced_placeholders"] == 1
 
     def test_everything_outside_the_table_rows_is_untouched(self, tmp_path):
@@ -501,7 +548,7 @@ def table_lines(text):
 ])
 def test_a_fresh_copy_of_each_heading_less_template_takes_its_first_real_row(tmp_path, name, cells, id_column, pattern, expected_id):
     doc, original = fresh_copy(tmp_path, name)
-    result = add_by_table(doc, cells, id_column=id_column, id_pattern=pattern)
+    result = add_by_table(doc, cells, id_column=id_column, id_pattern=pattern, replace_placeholders=True)
     text = read_raw(doc)
     assert result["id"] == expected_id
     assert result["replaced_placeholders"] >= 1
@@ -520,7 +567,7 @@ def test_a_fresh_feature_brief_takes_a_row_through_its_shape(tmp_path):
         doc=str(doc), shape=str(shape), section=heading, field="Spec decomposition", table_index=None,
         cells=json.dumps({"Spec name": "claims-status-page", "Channel": "ag-ui", "Persona": "Claimant",
                           "Proposed risk": "MEDIUM", "Traces to": "FR-004"}),
-        cells_file=None, id_column=None, id_pattern=None))
+        cells_file=None, id_column=None, id_pattern=None, replace_placeholders=True))
     text = read_raw(doc)
     assert result["replaced_placeholders"] == 2 and result["row"] == 1
     assert "| claims-status-page | ag-ui | Claimant | MEDIUM | FR-004 |" in text

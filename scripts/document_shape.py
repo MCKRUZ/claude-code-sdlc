@@ -125,7 +125,9 @@ def pattern_to_regex(numbering_pattern: str) -> re.Pattern:
     width = m.group(1)
     prefix = re.escape(numbering_pattern[: m.start()])
     suffix = re.escape(numbering_pattern[m.end() :])
-    digits = rf"\d{{{width}}}" if width else r"\d+"
+    # printf's width is a MINIMUM (`%02d` of 100 is "100"), so a number past it must still be read
+    # whole: `\d{2}` alone read BR-100 as BR-10, the maximum stayed 99, and BR-100 was issued twice.
+    digits = rf"\d{{{width},}}" if width else r"\d+"
     return re.compile(prefix + f"({digits})" + suffix)
 
 
