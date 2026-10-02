@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -587,5 +587,69 @@ describe('ChatPanel — a running turn shows what the assistant is doing, not a 
 
     await act(async () => { resolveSend({ ok: true, state: existing }) })
     expect(screen.queryByTestId('chat-activity')).toBeNull()
+  })
+})
+
+describe('ChatPanel — replies are drawn as formatted text, and the panel can be widened', () => {
+  const at = new Date().toISOString()
+  const markdownReply = "**It's cheaper.** About $11.68/month.\n\n- first point\n- second point"
+
+  function stateWith(messages: Array<{ role: 'assistant' | 'user' | 'subagent'; text: string }>): ChatState {
+    return {
+      sessionId: 's',
+      messages: messages.map((m, i) => ({ id: `m${i}`, role: m.role, text: m.text, questions: [], proposals: [], at })),
+    }
+  }
+
+  async function renderWith(messages: Array<{ role: 'assistant' | 'user' | 'subagent'; text: string }>) {
+    installStudioMock({ getChatState: vi.fn().mockResolvedValue(stateWith(messages)) })
+    const view = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    return view
+  }
+
+  it('shows an assistant reply\'s bold and bullets as formatting, never as raw asterisks and dashes', async () => {
+    const { container } = await renderWith([{ role: 'assistant', text: markdownReply }])
+    expect(container.querySelector('strong')?.textContent).toBe("It's cheaper.")
+    expect(container.querySelectorAll('li')).toHaveLength(2)
+    expect(container.textContent).not.toContain('**')
+  })
+
+  it('formats a sub-agent\'s reply the same way', async () => {
+    const { container } = await renderWith([{ role: 'subagent', text: markdownReply }])
+    expect(container.querySelector('strong')).not.toBeNull()
+  })
+
+  it('leaves what the PERSON typed exactly as typed — their asterisks are theirs', async () => {
+    const { container } = await renderWith([{ role: 'user', text: '**not bold**' }])
+    expect(container.querySelector('strong')).toBeNull()
+    expect(screen.getByText('**not bold**')).toBeTruthy()
+  })
+
+  it('treats model output as untrusted: raw HTML is dropped and a link never becomes an anchor', async () => {
+    const { container } = await renderWith([{ role: 'assistant', text: 'hi <script>window.pwned = 1</script><img src="http://evil.example/x.png"> [click](http://evil.example)' }])
+    expect(container.querySelector('script')).toBeNull()
+    expect(container.querySelector('img')).toBeNull()
+    expect(container.querySelector('a')).toBeNull()
+    expect(screen.getByText('click')).toBeTruthy()
+  })
+
+  it('starts at the default width, and a resize by keyboard changes it and is remembered', async () => {
+    localStorage.clear()
+    const { container } = await renderWith([{ role: 'assistant', text: 'hello' }])
+    const aside = container.querySelector('aside') as HTMLElement
+    expect(aside.style.getPropertyValue('--chat-width')).toBe('380px')
+
+    fireEvent.keyDown(screen.getByRole('separator'), { key: 'ArrowLeft' })
+    expect(aside.style.getPropertyValue('--chat-width')).toBe('404px')
+    expect(localStorage.getItem('studio.chatWidth')).toBe('404')
+    localStorage.clear()
+  })
+
+  it('opens at the width the person left it at', async () => {
+    localStorage.setItem('studio.chatWidth', '520')
+    const { container } = await renderWith([{ role: 'assistant', text: 'hello' }])
+    expect((container.querySelector('aside') as HTMLElement).style.getPropertyValue('--chat-width')).toBe('520px')
+    localStorage.clear()
   })
 })
