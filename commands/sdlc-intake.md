@@ -31,10 +31,11 @@ workflow wrapped as one command, so no one runs the cataloger script by hand.
 > are highest priority for understanding the project? (3) Any to skip?" Adjust before proceeding.
 
 5. **Generate per-document summaries:** For each document (respecting `max_documents`), ordered
-   by human-indicated priority: read the content, write a summary following the
-   `document-summary.md` template to `.sdlc/context/intake/DOC-NNN-{slug}.md`, targeting
-   `summary_budget_tokens`. For any document over ~100K tokens, chunk it (first and last 10%
-   plus section headers) and flag the summary as a partial extraction.
+   by human-indicated priority, spawn the `document-summarizer` agent (subagent type
+   `claude-code-sdlc:document-summarizer`) with the document's path and `DOC-NNN` id. It writes the
+   summary following the `document-summary.md` template to `.sdlc/context/intake/DOC-NNN-{slug}.md`,
+   targeting `summary_budget_tokens`, and flags a partial extraction for any document over ~100K
+   tokens. Relay its result; do not rewrite its summaries.
 
 6. **Generate the registry and index:** Run the registry mode, which writes both from the catalog
    and the summaries that exist:
