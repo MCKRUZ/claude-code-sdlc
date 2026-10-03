@@ -215,6 +215,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--lock", action="store_true",
         help="Freeze DOC-NNN ids: set locked=true in catalog.json",
     )
+    parser.add_argument(
+        "--registry", action="store_true",
+        help="Write the document registry and the session-start index from the catalog and the "
+        "summaries that exist (reads the catalog, never changes it)",
+    )
     return parser
 
 
@@ -223,6 +228,9 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if not (args.state or args.repo or args.docs):
         parser.error("one of --state, --repo or --docs is required")
+    if args.registry and (args.skip or args.priority or args.lock or args.rescan or args.docs):
+        parser.error("--registry builds from the existing catalog; it cannot be combined with "
+                     "--skip, --priority, --lock, --rescan or --docs")
     return args
 
 
@@ -438,9 +446,26 @@ def print_changes(args, catalog: dict, lock_changed: bool) -> None:
         print("Catalog locked." if lock_changed else "Catalog already locked.")
 
 
+def registry_mode(args: argparse.Namespace, sdlc_dir: Path | None) -> None:
+    """--registry: build the registry and index from the catalog on disk, then exit."""
+    import intake_registry
+
+    catalog_path = sdlc_dir / "context" / "intake" / "catalog.json" if sdlc_dir else None
+    if catalog_path is None or not catalog_path.exists():
+        fail("no catalog to build a registry from; run intake first")
+    result = intake_registry.build(sdlc_dir, read_catalog(catalog_path), estimate_tokens_from_text)
+    if args.json:
+        emit_json(result)
+    else:
+        print(intake_registry.format_report(result))
+
+
 def main() -> None:
     args = parse_args()
     sdlc_dir, project_root = locate_project(args)
+    if args.registry:
+        registry_mode(args, sdlc_dir)
+        return
     provisional = sdlc_dir is None
     catalog_path = (
         sdlc_dir / "context" / "intake" / "catalog.json" if sdlc_dir else None
