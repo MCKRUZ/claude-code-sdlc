@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
-  ActivityCheckResult, DocumentFocus, StageActivity, StageReadiness, StartActivityResult,
+  ActivityCheckResult, DocumentFocus, StageActivity, StageDocument, StageReadiness, StartActivityResult,
 } from '../../shared/types'
 import { CHECK_CONTROLS, PANEL_CONTROLS } from '../../shared/activityControls'
 import { sendChatTurn, useChatAvailable } from '../chatBridge'
@@ -9,6 +9,7 @@ import { IntakePanel } from './IntakePanel'
 import { NarrativeCoveragePanel } from './NarrativeCoveragePanel'
 import { PhaseReportPanel } from './PhaseReportPanel'
 import { ReviewStandingPanel } from './ReviewStandingPanel'
+import { useDraftJob, type DraftJobApi } from './useDraftJob'
 
 /** "Also in this stage" (spec 0024): the optional things a person can do here, as the plugin
  * declares them, each with the ONE control its kind gets — start the documents (create), run a
@@ -19,15 +20,19 @@ import { ReviewStandingPanel } from './ReviewStandingPanel'
  * Draws nothing at all — no heading — when the plugin declared nothing to draw, so an older
  * plugin leaves the tab exactly as it was. */
 export function ActivitiesPanel({
-  projectPath, readiness, onOpenDocument, onRefresh,
+  projectPath, readiness, actor = '', onOpenDocument, onRefresh,
 }: {
   projectPath: string
   readiness: StageReadiness
+  /** Who is signed in; a kept or discarded model draft is recorded under this name. */
+  actor?: string
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
   /** Re-reads the stage's readiness after an action changed the project. */
   onRefresh?: () => Promise<void>
 }) {
   const rows = computeActivityRows(readiness)
+  // One model job at a time, shared by the summaries and the review so each knows the other is busy.
+  const draft = useDraftJob(projectPath)
   // A broken declaration is the plugin's to describe; it must never take the document steps with it.
   const warning = readiness.warnings && readiness.warnings.length > 0 ? readiness.warnings.join(' ') : null
   if (readiness.activities === undefined || (rows.length === 0 && warning === null)) return null
@@ -46,6 +51,9 @@ export function ActivitiesPanel({
             projectPath={projectPath}
             stageId={readiness.stageId}
             stageDisplay={readiness.display}
+            documents={readiness.documents}
+            draft={draft}
+            actor={actor}
             onOpenDocument={onOpenDocument}
             onRefresh={onRefresh}
           />
@@ -59,6 +67,9 @@ interface RowContext {
   projectPath: string
   stageId: string
   stageDisplay: string
+  documents: StageDocument[]
+  draft: DraftJobApi
+  actor: string
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
   onRefresh?: () => Promise<void>
 }
@@ -87,9 +98,9 @@ function ActivityRowView({ row, ...context }: { row: ActivityRow } & RowContext)
 
 /** A panel activity keeps its panel once done (a done intake still shows its frozen catalogue), but
  * only when the installed plugin can supply what the panel reads. Blocked rows never reach here. */
-function PanelOrReason({ row, projectPath, stageId }: { row: ActivityRow } & RowContext) {
+function PanelOrReason({ row, ...context }: { row: ActivityRow } & RowContext) {
   if (row.disabledReason) return <DisabledReason reason={row.disabledReason} />
-  return <ActivityPanel id={row.activity.id} projectPath={projectPath} stageId={stageId} />
+  return <ActivityPanel id={row.activity.id} {...context} />
 }
 
 function DisabledReason({ reason }: { reason: string }) {
@@ -97,12 +108,14 @@ function DisabledReason({ reason }: { reason: string }) {
 }
 
 /** Keyed by project and stage, so moving to another one starts the panel fresh. */
-function ActivityPanel({ id, projectPath, stageId }: { id: string; projectPath: string; stageId: string }) {
+function ActivityPanel({ id, projectPath, stageId, documents, draft, actor }: { id: string } & RowContext) {
   const key = `${projectPath}|${stageId}`
   if (id === 'phase-report') return <PhaseReportPanel key={key} projectPath={projectPath} stageId={stageId} />
   if (id === 'intake') return <IntakePanel key={key} projectPath={projectPath} />
-  if (id === 'enhance') return <NarrativeCoveragePanel key={key} projectPath={projectPath} stageId={stageId} />
-  return <ReviewStandingPanel key={key} projectPath={projectPath} />
+  if (id === 'enhance') {
+    return <NarrativeCoveragePanel key={key} projectPath={projectPath} stageId={stageId} documents={documents} draft={draft} actor={actor} />
+  }
+  return <ReviewStandingPanel key={key} projectPath={projectPath} stageId={stageId} draft={draft} actor={actor} />
 }
 
 function ActivityControl({

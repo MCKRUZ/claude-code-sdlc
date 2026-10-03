@@ -62,6 +62,7 @@ export function WorkflowTab({
           key={stageHomeKey(projectPath, readiness.stageId)}
           projectPath={projectPath}
           readiness={readiness}
+          actor={actor}
           onOpenDocument={onOpenDocument}
           onRefresh={onRefresh}
         />

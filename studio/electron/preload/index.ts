@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ChatActivity, ConsoleEntry, StudioApi, SyncState } from '../../shared/types'
+import type { ChatActivity, ConsoleEntry, DraftProgressEvent, StudioApi, SyncState } from '../../shared/types'
 
 // The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
 // no arbitrary command execution — every call here maps to exactly one narrow main-process
@@ -47,6 +47,16 @@ const studio: StudioApi = {
   getNarrativeCoverage: (projectPath, stageId) => ipcRenderer.invoke('studio:getNarrativeCoverage', projectPath, stageId),
   getReviewStanding: (projectPath) => ipcRenderer.invoke('studio:getReviewStanding', projectPath),
   runStrictReviewCheck: (projectPath) => ipcRenderer.invoke('studio:runStrictReviewCheck', projectPath),
+  startDraft: (projectPath, request) => ipcRenderer.invoke('studio:startDraft', projectPath, request),
+  cancelDraft: () => ipcRenderer.invoke('studio:cancelDraft'),
+  getDraftState: (projectPath) => ipcRenderer.invoke('studio:getDraftState', projectPath),
+  keepDraft: (projectPath, jobId, actor) => ipcRenderer.invoke('studio:keepDraft', projectPath, jobId, actor),
+  discardDraft: (projectPath, jobId, actor) => ipcRenderer.invoke('studio:discardDraft', projectPath, jobId, actor),
+  onDraftProgress: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, progress: DraftProgressEvent) => callback(progress)
+    ipcRenderer.on('studio:draftProgress', handler)
+    return () => ipcRenderer.off('studio:draftProgress', handler)
+  },
   setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
     ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),
   signOffStage: (projectPath, stageId, signedBy, disciplineSignoffs) =>
