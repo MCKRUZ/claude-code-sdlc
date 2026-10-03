@@ -8,6 +8,7 @@ import { ChatResizeHandle } from './ChatResizeHandle'
 import { ConnectingChecklist } from './ConnectingChecklist'
 import { MarkdownView } from './MarkdownView'
 import { CHAT_MIN_WIDTH, useChatWidth } from '../chatWidth'
+import { registerChatSender, type ChatSendResult } from '../chatBridge'
 import { useStageReadiness } from './StageReadinessContext'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
@@ -149,6 +150,17 @@ export function ChatPanel({
   // `initializing` has not yet caught up.
   const initializing = !chatSettled || readinessLoading
 
+  // The Workflow tab's "Talk it through" asks this panel to send one turn through the SAME path a
+  // typed message takes. The registered function is stable per chat-capable state and reads the
+  // latest `sendText` through a ref, since that is defined below the early return.
+  const composerRef = useRef<HTMLTextAreaElement>(null)
+  const sendTextRef = useRef<((text: string) => Promise<ChatSendResult>) | null>(null)
+  const canChat = Boolean(projectPath && stageId)
+  useEffect(() => {
+    if (!canChat) return
+    return registerChatSender((text) => sendTextRef.current?.(text) ?? Promise.resolve({ sent: false, reason: 'The chat is not open.' }))
+  }, [canChat])
+
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [state?.messages.length])
@@ -165,15 +177,13 @@ export function ChatPanel({
 
   const hasPendingProposal = state?.messages.some((m) => m.proposals.some((p) => !p.outcome)) ?? false
 
-  const submit = async () => {
-    const text = draft.trim()
-    if (!text || busy) return
+  const sendText = async (text: string): Promise<ChatSendResult> => {
+    if (busy) return { sent: false, reason: 'The chat is busy with another message. Try again in a moment.' }
     const forStage = stageId
-    setDraft('')
     setBusy(true)
     setError(null)
     const result = await window.studio.sendChatMessage(projectPath, stageId, text)
-    if (currentStageId.current !== forStage) return // the person moved on; this reply is now stale
+    if (currentStageId.current !== forStage) return { sent: true } // the person moved on; this reply is now stale
     setBusy(false)
     // Always render the result, success or failure: on failure, `result.state` still carries
     // the message the person just sent (chat.ts persists it even when the turn itself fails) —
@@ -181,6 +191,21 @@ export function ChatPanel({
     // despite having been genuinely submitted.
     setState(result.state)
     if (!result.ok) setError(result.error ?? 'The assistant could not respond.')
+    return { sent: true }
+  }
+
+  const submit = async () => {
+    const text = draft.trim()
+    if (!text || busy) return
+    setDraft('')
+    await sendText(text)
+  }
+
+  sendTextRef.current = async (text) => {
+    if (initializing) return { sent: false, reason: 'The chat is still connecting. Try again in a moment.' }
+    composerRef.current?.focus()
+    composerRef.current?.scrollIntoView?.({ block: 'nearest' })
+    return sendText(text)
   }
 
   const answer = async (questionId: string, option: string) => {
@@ -244,7 +269,7 @@ export function ChatPanel({
               {error ?? readinessError}
             </div>
           )}
-          <ChatComposer draft={draft} setDraft={setDraft} busy={busy} hasPendingProposal={hasPendingProposal} onSubmit={submit} />
+          <ChatComposer inputRef={composerRef} draft={draft} setDraft={setDraft} busy={busy} hasPendingProposal={hasPendingProposal} onSubmit={submit} />
         </>
       )}
     </aside>
@@ -344,8 +369,9 @@ function ChatMessageList({
  * (see `QuestionPrompt`), never by gating this box. Typing something that is NOT an answer to
  * that question is just the next ordinary turn, exactly as spec 0016's chat already works. */
 function ChatComposer({
-  draft, setDraft, busy, hasPendingProposal, onSubmit,
+  inputRef, draft, setDraft, busy, hasPendingProposal, onSubmit,
 }: {
+  inputRef: React.RefObject<HTMLTextAreaElement | null>
   draft: string
   setDraft: (value: string) => void
   busy: boolean
@@ -356,6 +382,7 @@ function ChatComposer({
     <div className="border-t border-slate-200 p-3">
       <div className="flex gap-2">
         <textarea
+          ref={inputRef}
           data-testid="chat-composer-input"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

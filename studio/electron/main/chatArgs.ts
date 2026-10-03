@@ -95,6 +95,10 @@ export function buildSystemPrompt(opts: {
       + 'it. Do not write them a prompt to paste into another session; they should never have to '
       + 'leave this app for it.',
     '',
+    'A user message that begins "[Studio]" names the document and step the person has just '
+      + 'opened in the app: treat it as the current step, and as the brief for the discipline '
+      + 'sub-agent that owns it, instead of redirecting them back to the interview.',
+    '',
     'A single reply may call ProposeWrite or AskStructuredQuestion more than once if you have '
       + 'more than one proposal or question ready — each call produces its own separate card, '
       + 'and none of them overwrite each other.',

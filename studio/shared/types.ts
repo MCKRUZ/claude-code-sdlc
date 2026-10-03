@@ -326,9 +326,77 @@ export interface SignOffQuestion {
   confirmation: { actor: string; ts: string } | null
 }
 
+/** One optional thing a person can do in a stage, as `stage_readiness.py` reports it (spec 0023):
+ * the plugin declares the list and computes the status, Studio only draws it (spec 0024). */
+export type ActivityKind = 'run' | 'create' | 'check' | 'draft' | 'talk'
+export type ActivityStatus = 'done' | 'available' | 'blocked'
+
+export interface StageActivity {
+  id: string
+  label: string
+  /** The slash command this belongs to (commands/<command>.md), or null. */
+  command: string | null
+  kind: ActivityKind
+  optional: boolean
+  /** Repo-relative files a `create` activity starts from templates. */
+  creates: string[]
+  after: string[]
+  status: ActivityStatus
+  /** A plain sentence when `blocked`, otherwise null. */
+  reason: string | null
+}
+
+/** What starting a `create` activity did: which files it wrote and which already existed (and
+ * were left exactly as they were). `opened` is the file the editor should open first. */
+export interface StartActivityResult {
+  ok: boolean
+  created: string[]
+  existing: string[]
+  opened?: string
+  error?: string
+}
+
+/** The result of one of the two checks the Workflow tab can run (spec 0024). `has_data` false
+ * is "nothing to check yet" and never reads as "no problems" or as a zero count. */
+export type ActivityCheckResult =
+  | { ok: false; error: string }
+  | {
+      ok: true
+      check: 'rules-check'
+      hasData: boolean
+      notes: string[]
+      findings: Array<{ subject: string; message: string }>
+    }
+  | {
+      ok: true
+      check: 'data-check'
+      hasData: boolean
+      notes: string[]
+      fieldCount: number
+      piiCount: number
+      piiFields: string[]
+      riskImplication: string | null
+    }
+
+/** A stage's own guidance file from the plugin (its `definition`), as text. */
+export interface StageGuide {
+  ok: boolean
+  markdown?: string
+  error?: string
+}
+
 export interface StageReadiness {
   ok: boolean
   stageId: string
+  /** Absent from a plugin that predates activities (spec 0023): then nothing extra is drawn. */
+  activities?: StageActivity[]
+  /** The plugin's phase definition path, relative to the plugin root (e.g. "phases/00-discovery.md"). */
+  definition?: string | null
+  /** The plugin's own warnings about this stage's readiness (e.g. a broken activities declaration). */
+  warnings?: string[]
+  /** What the installed plugin says it can do (generate_status.py --json); absent from a plugin
+   * that predates it. Used to disable a control with a reason instead of letting it fail. */
+  capabilities?: string[]
   /** The registry's own phase name (e.g. "discovery"), not the human-facing `display`. */
   name: string
   display: string
@@ -1009,6 +1077,13 @@ export interface StudioApi {
 
   // --- Documents (spec 0010) ---
   getStageReadiness(projectPath: string, stageId?: string): Promise<StageReadiness>
+  /** Starts every file a `create` activity declares from the plugin's template for it — never
+   * overwriting one that exists — and says which were created. Spec 0024. */
+  startActivity(projectPath: string, stageId: string, activityId: string): Promise<StartActivityResult>
+  /** Runs one of the Workflow tab's two checks (`rules-check`, `data-check`) and returns it parsed. */
+  runActivityCheck(projectPath: string, activityId: string): Promise<ActivityCheckResult>
+  /** Reads a stage's guidance file from the plugin (the `definition` path readiness reports). */
+  getStageGuide(definition: string): Promise<StageGuide>
   /** Reads GitHub's own history (read-only: nothing is opened, merged or changed) to say which
    * delivery rails have actually fired, and writes the result to pipeline-proof.md. Needs the
    * `gh` CLI signed in on this machine; says so plainly when it is not. */
