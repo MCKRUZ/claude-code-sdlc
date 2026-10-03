@@ -38,6 +38,10 @@ const ALLOWLIST_PATTERNS: RegExp[] = [
   // The frozen-layer summary a phase sign-off writes. Without this a layer Studio generated
   // would sit on one machine forever — save() only ever pushes what this list allows.
   /^\.sdlc\/context\/layers\/.+$/,
+  // The reference-document catalogue and per-document summaries (spec 0026): the DOC-NNN ids a
+  // person froze are other people's ids too, so they are shared like the rest of the project.
+  // `.sdlc/reports/` is deliberately NOT here — generated report pages stay on this computer.
+  /^\.sdlc\/context\/intake\/.+$/,
   /^specs\//,
 ]
 

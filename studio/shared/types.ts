@@ -378,6 +378,93 @@ export type ActivityCheckResult =
       riskImplication: string | null
     }
 
+/** One stage report the plugin wrote (generate_phase_report.py --json). `output` is a path inside the
+ * project's .sdlc/reports/. */
+export interface PhaseReportEntry {
+  phase: string
+  phaseName: string
+  output: string
+  found: number
+  missing: number
+  total: number
+  /** Filenames of the stage's documents that were not present, in the stage's declared order. */
+  missingNames: string[]
+}
+
+export interface PhaseReportResult {
+  ok: boolean
+  error?: string
+  /** One entry for a single stage, one per stage for "all". */
+  reports: PhaseReportEntry[]
+  /** The index page `--all` writes. */
+  index?: string
+}
+
+export interface IntakeDocument {
+  id: string
+  file: string
+  type: string
+  tokens: number
+  skipped: boolean
+  /** Position in the priority order, or null when none was set. */
+  priority: number | null
+}
+
+/** The reference-document catalogue (intake_documents.py --json). `locked` means the DOC-NNN ids
+ * are frozen and the script refuses further skip / priority / rescan changes. */
+export interface IntakeCatalogue {
+  ok: boolean
+  error?: string
+  documents: IntakeDocument[]
+  locked: boolean
+  priorityOrder: string[]
+  totals: { documents: number; estimatedTokens: number; activeDocuments: number }
+}
+
+/** What to change in the catalogue in one call; omit everything to just (re)read it. */
+export interface IntakeChange {
+  skip?: string[]
+  priority?: string[]
+  lock?: boolean
+}
+
+export interface NarrativeArtifact {
+  name: string
+  /** "present" when a .narrative.md companion exists, otherwise "none". */
+  status: 'none' | 'present'
+  /** True/false when it could be judged, null when it could not (no git history). */
+  stale: boolean | null
+}
+
+/** Which of a stage's documents have a plain-language summary (narrative_status.py --json).
+ * `hasData` false is "no documents in this stage yet" and never reads as "0 of 0". */
+export interface NarrativeCoverage {
+  ok: boolean
+  error?: string
+  hasData: boolean
+  notes: string[]
+  withNarrative: number
+  total: number
+  artifacts: NarrativeArtifact[]
+}
+
+/** The standing picture of review findings (record_findings.py report --json). */
+export interface ReviewStanding {
+  ok: boolean
+  error?: string
+  tracked: number
+  openDebt: number
+  fixedClaimMismatches: number
+}
+
+/** `record_findings.py report --strict`: exit 2 is a RESULT (a finding marked fixed whose file
+ * never changed), so it arrives here as ok:true with a count, not as an error. */
+export interface StrictCheckResult {
+  ok: boolean
+  error?: string
+  mismatches: number
+}
+
 /** A stage's own guidance file from the plugin (its `definition`), as text. */
 export interface StageGuide {
   ok: boolean
@@ -1084,6 +1171,16 @@ export interface StudioApi {
   runActivityCheck(projectPath: string, activityId: string): Promise<ActivityCheckResult>
   /** Reads a stage's guidance file from the plugin (the `definition` path readiness reports). */
   getStageGuide(definition: string): Promise<StageGuide>
+  /** Writes a stage's HTML report (or every stage's, when `all`) through generate_phase_report.py. */
+  exportPhaseReport(projectPath: string, stageId: string, all: boolean): Promise<PhaseReportResult>
+  /** Opens a generated report in the default program. Refuses anything outside
+   * `<project>/.sdlc/reports/`. */
+  openReport(projectPath: string, reportPath: string): Promise<{ ok: boolean; error?: string }>
+  /** Reads (and, with a change, updates) the reference-document catalogue. */
+  runIntake(projectPath: string, change?: IntakeChange): Promise<IntakeCatalogue>
+  getNarrativeCoverage(projectPath: string, stageId: string): Promise<NarrativeCoverage>
+  getReviewStanding(projectPath: string): Promise<ReviewStanding>
+  runStrictReviewCheck(projectPath: string): Promise<StrictCheckResult>
   /** Reads GitHub's own history (read-only: nothing is opened, merged or changed) to say which
    * delivery rails have actually fired, and writes the result to pipeline-proof.md. Needs the
    * `gh` CLI signed in on this machine; says so plainly when it is not. */

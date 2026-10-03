@@ -87,8 +87,9 @@ test.describe('[spec 0024] activities and the Guide tab, in the real window', ()
     await expect(page.getByTestId('activities-panel')).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole('heading', { name: 'Also in this stage' })).toBeVisible()
     for (const id of ['data', 'data-check', 'experience', 'coach']) await expect(row(id)).toHaveCount(1)
-    // Draft (review, enhance) and run (phase-report) have no control yet, so they are not drawn.
-    for (const id of ['review', 'enhance', 'phase-report']) await expect(row(id)).toHaveCount(0)
+    // Spec 0026 gave review, enhance and phase-report their panels, so Design draws all of its
+    // declared activities now (spec 0024 held these three back until they had a control).
+    for (const id of ['review', 'enhance', 'phase-report']) await expect(row(id)).toHaveCount(1)
   })
 
   test('the check that needs the data contract is blocked, with the plugin\'s reason, until it exists', async () => {

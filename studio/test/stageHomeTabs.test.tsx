@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactElement } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { StageHome } from '../src/components/StageHome'
@@ -13,7 +13,7 @@ function doc(path: string, ready: boolean): StageDocument {
 
 const ACTIVITIES = [
   activity({ id: 'rules-check', kind: 'check', label: 'Business rules check' }),
-  activity({ id: 'intake', kind: 'run', label: 'Read the documents', command: 'sdlc-intake' }),
+  activity({ id: 'analysis', kind: 'run', label: 'Read the documents', command: 'sdlc-intake' }),
   activity({ id: 'data', kind: 'create', label: 'Data contract', command: 'sdlc-data' }),
 ]
 
@@ -37,6 +37,9 @@ function install(readinessFor: (stageId?: string) => StageReadiness) {
 }
 
 afterEach(() => {
+  // Unmount first: the shared cleanup runs AFTER this hook, so deleting window.studio first left
+  // a window in which a late-resolving readiness could mount a poller against a missing bridge.
+  cleanup()
   // @ts-expect-error - cleaning up the test double
   delete window.studio
 })

@@ -41,7 +41,7 @@ describe('ActivitiesPanel: which rows are drawn', () => {
   it('draws create, talk and the two named checks in declared order, and never run or draft', () => {
     draw([
       activity({ id: 'talk', kind: 'talk', label: 'Talk' }),
-      activity({ id: 'intake', kind: 'run', label: 'Intake' }),
+      activity({ id: 'analysis', kind: 'run', label: 'Analysis' }),
       activity({ id: 'data-check', kind: 'check', label: 'Data check' }),
       activity({ id: 'brief', kind: 'draft', label: 'Brief' }),
       activity({ id: 'data', kind: 'create', label: 'Data' }),
@@ -59,7 +59,7 @@ describe('ActivitiesPanel: which rows are drawn', () => {
   })
 
   it('draws nothing when every declared activity is a kind Studio has no control for', () => {
-    draw([activity({ id: 'intake', kind: 'run' }), activity({ id: 'brief', kind: 'draft' })])
+    draw([activity({ id: 'analysis', kind: 'run' }), activity({ id: 'brief', kind: 'draft' })])
     expect(screen.queryByText('Also in this stage')).toBeNull()
   })
 })
