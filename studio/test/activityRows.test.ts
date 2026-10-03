@@ -12,7 +12,7 @@ describe('computeActivityRows', () => {
     const rows = computeActivityRows(readiness({
       capabilities: ['activities', 'rules-check'],
       activities: [
-        activity({ id: 'intake', kind: 'run' }),
+        activity({ id: 'analysis', kind: 'run' }),
         activity({ id: 'brief', kind: 'draft' }),
         activity({ id: 'mystery-check', kind: 'check' }),
         activity({ id: 'rules-check', kind: 'check' }),

@@ -2,9 +2,13 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type {
   ActivityCheckResult, DocumentFocus, StageActivity, StageReadiness, StartActivityResult,
 } from '../../shared/types'
-import { CHECK_CONTROLS } from '../../shared/activityControls'
+import { CHECK_CONTROLS, PANEL_CONTROLS } from '../../shared/activityControls'
 import { sendChatTurn, useChatAvailable } from '../chatBridge'
 import { computeActivityRows, slashCommand, type ActivityRow } from '../workflowSteps'
+import { IntakePanel } from './IntakePanel'
+import { NarrativeCoveragePanel } from './NarrativeCoveragePanel'
+import { PhaseReportPanel } from './PhaseReportPanel'
+import { ReviewStandingPanel } from './ReviewStandingPanel'
 
 /** "Also in this stage" (spec 0024): the optional things a person can do here, as the plugin
  * declares them, each with the ONE control its kind gets — start the documents (create), run a
@@ -73,9 +77,32 @@ function ActivityRowView({ row, ...context }: { row: ActivityRow } & RowContext)
         {status === 'done' && <span className="shrink-0 text-xs font-medium text-[var(--color-command-ok)]">Done</span>}
       </div>
       {status === 'blocked' && <p className="mt-1 text-xs text-slate-500">{row.reason}</p>}
-      {status === 'available' && <ActivityControl activity={activity} disabledReason={row.disabledReason} {...context} />}
+      {PANEL_CONTROLS[activity.id] && status !== 'blocked' && <PanelOrReason row={row} {...context} />}
+      {!PANEL_CONTROLS[activity.id] && status === 'available' && (
+        <ActivityControl activity={activity} disabledReason={row.disabledReason} {...context} />
+      )}
     </li>
   )
+}
+
+/** A panel activity keeps its panel once done (a done intake still shows its frozen catalogue), but
+ * only when the installed plugin can supply what the panel reads. Blocked rows never reach here. */
+function PanelOrReason({ row, projectPath, stageId }: { row: ActivityRow } & RowContext) {
+  if (row.disabledReason) return <DisabledReason reason={row.disabledReason} />
+  return <ActivityPanel id={row.activity.id} projectPath={projectPath} stageId={stageId} />
+}
+
+function DisabledReason({ reason }: { reason: string }) {
+  return <p data-testid="activity-disabled-reason" className="mt-1 text-xs text-slate-500">{reason}</p>
+}
+
+/** Keyed by project and stage, so moving to another one starts the panel fresh. */
+function ActivityPanel({ id, projectPath, stageId }: { id: string; projectPath: string; stageId: string }) {
+  const key = `${projectPath}|${stageId}`
+  if (id === 'phase-report') return <PhaseReportPanel key={key} projectPath={projectPath} stageId={stageId} />
+  if (id === 'intake') return <IntakePanel key={key} projectPath={projectPath} />
+  if (id === 'enhance') return <NarrativeCoveragePanel key={key} projectPath={projectPath} stageId={stageId} />
+  return <ReviewStandingPanel key={key} projectPath={projectPath} />
 }
 
 function ActivityControl({
