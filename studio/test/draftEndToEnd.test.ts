@@ -66,7 +66,7 @@ describe.skipIf(!PLUGIN.available)('start, read the state, keep: the whole path'
     if (!started.ok) throw new Error(started.error)
     expect(started.candidate).toMatchObject({ target: NARRATIVE_REL, costUsd: 0.12, replacesExisting: false, text: '# In plain words\n\nIt works.' })
 
-    const state = await call<DraftState>('studio:getDraftState')
+    const state = await call<DraftState>('studio:getDraftState', project)
     expect(state).toEqual({ running: null, candidate: started.candidate })
     expect(() => readFileSync(join(project, NARRATIVE_REL))).toThrow() // nothing on disk yet
 
@@ -77,7 +77,7 @@ describe.skipIf(!PLUGIN.available)('start, read the state, keep: the whole path'
     const kept = await call<KeepDraftResult>('studio:keepDraft', project, started.candidate.jobId, 'Matt K')
     expect(kept).toEqual({ ok: true, written: NARRATIVE_REL })
     expect(readFileSync(join(project, NARRATIVE_REL), 'utf-8')).toBe('# In plain words\n\nIt works.\n')
-    expect(await call<DraftState>('studio:getDraftState')).toEqual({ running: null, candidate: null })
+    expect(await call<DraftState>('studio:getDraftState', project)).toEqual({ running: null, candidate: null })
   })
 
   it('cancels a running job through the cancel channel', async () => {
@@ -86,10 +86,10 @@ describe.skipIf(!PLUGIN.available)('start, read the state, keep: the whole path'
 
     const run = call<StartDraftResult>('studio:startDraft', project, { kind: 'enhance', stageId: '1', document: SOURCE_REL })
     for (let i = 0; i < 100 && !fake.hasRun(); i++) await new Promise((r) => setTimeout(r, 50))
-    expect((await call<DraftState>('studio:getDraftState')).running?.label).toBe('requirements.narrative.md')
+    expect((await call<DraftState>('studio:getDraftState', project)).running?.label).toBe('requirements.narrative.md')
 
     expect(await call('studio:cancelDraft')).toEqual({ ok: true })
     expect(await run).toMatchObject({ ok: false, cancelled: true })
-    expect(await call<DraftState>('studio:getDraftState')).toEqual({ running: null, candidate: null })
+    expect(await call<DraftState>('studio:getDraftState', project)).toEqual({ running: null, candidate: null })
   })
 })

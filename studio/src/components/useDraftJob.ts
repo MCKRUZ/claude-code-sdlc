@@ -86,7 +86,7 @@ export function useDraftJob(projectPath: string): DraftJobApi {
 
   const sync = useCallback(async (path: string) => {
     try {
-      const main = await window.studio.getDraftState()
+      const main = await window.studio.getDraftState(path)
       if (isLive(path)) adopt(main)
     } catch {
       // Main could not say; the screen stays as it is and the next progress event or poll tries again.

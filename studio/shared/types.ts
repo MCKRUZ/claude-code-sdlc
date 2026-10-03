@@ -1252,7 +1252,8 @@ export interface StudioApi {
   /** Runs a model job (summary or review) and resolves with the candidate. Nothing is written. */
   startDraft(projectPath: string, request: DraftRequest): Promise<StartDraftResult>
   cancelDraft(): Promise<{ ok: boolean }>
-  getDraftState(): Promise<DraftState>
+  /** What THIS project has running or waiting; another project's draft is never shown here. */
+  getDraftState(projectPath: string): Promise<DraftState>
   /** Writes the waiting candidate (audited, allowlist-checked) and records it as accepted. */
   keepDraft(projectPath: string, jobId: string, actor: string): Promise<KeepDraftResult>
   /** Drops the waiting candidate, writes nothing, and records it as discarded. */

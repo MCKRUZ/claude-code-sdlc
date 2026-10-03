@@ -22,6 +22,13 @@ function setup(over: Record<string, unknown> = {}, project = '/p') {
 }
 
 describe('useDraftJob: recovery and subscription', () => {
+  it('asks main about the project it is showing, and again about the new one after a switch', async () => {
+    const { studio, rerender } = setup({}, '/a')
+    await waitFor(() => expect(studio.getDraftState).toHaveBeenCalledWith('/a'))
+    rerender({ path: '/b' })
+    await waitFor(() => expect(studio.getDraftState).toHaveBeenCalledWith('/b'))
+  })
+
   it('starts idle, asks main what is going on, and unsubscribes on unmount', async () => {
     const unsubscribe = vi.fn()
     const { studio, result, unmount } = setup({ onDraftProgress: vi.fn().mockReturnValue(unsubscribe) })

@@ -2,6 +2,7 @@
  * that is not a real number is "unknown" rather than $0.00, and every failure is ONE plain line. Run
  * against the stand-in `claude` (test/fixtures/fake-claude.mjs), never the live model. */
 
+import { realpathSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseAgentStream, runAgent } from '../electron/main/agentRun'
 import { claudeWorkingDirectory } from '../electron/main/claudeAssist'
@@ -69,7 +70,8 @@ describe('runAgent against the stand-in claude', () => {
     const { fake, promise } = run('success')
     await promise
     const seen = fake.recorded()
-    expect(seen.cwd.toLowerCase()).toBe(claudeWorkingDirectory().toLowerCase())
+    // realpath on both sides: macOS reports a temp directory as /private/var/... for /var/...
+    expect(realpathSync.native(seen.cwd).toLowerCase()).toBe(realpathSync.native(claudeWorkingDirectory()).toLowerCase())
     expect(seen.argv).toContain('--tools')
     expect(seen.argv.slice(-3)).toEqual(['-p', '--', 'p'])
   })

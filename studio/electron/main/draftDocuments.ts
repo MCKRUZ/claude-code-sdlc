@@ -35,21 +35,36 @@ export interface DraftDeps {
 interface RunningJob {
   job: DraftJob
   controller: AbortController
+  /** The project the job was started for (see `sameProject`). */
+  project: string
 }
 
 let running: RunningJob | null = null
 let candidate: DraftCandidate | null = null
+/** The project the waiting candidate was drafted from. A candidate holds the text made from THAT
+ * project's documents, so it may only be shown to, kept in, or discarded from that project. */
+let candidateProject = ''
 let deciding = false
+
+/** Two spellings of one folder ("/p" and "/p/.") are the same project; two folders are not. */
+const projectKey = (projectPath: string) => resolve(projectPath)
+const sameProject = (a: string, b: string) => projectKey(a) === projectKey(b)
 
 /** Test-only: forget any job and candidate. A running job's process is not touched. */
 export function resetDraftStateForTests(): void {
   running = null
   candidate = null
+  candidateProject = ''
   deciding = false
 }
 
-export function getDraftState(): DraftState {
-  return { running: running?.job ?? null, candidate }
+/** What this project has running or waiting. Another project's job and candidate are not shown: after
+ * a project switch its screen must not adopt them, or Keep would write them into the wrong project. */
+export function getDraftState(projectPath: string): DraftState {
+  return {
+    running: running && sameProject(running.project, projectPath) ? running.job : null,
+    candidate: candidate && sameProject(candidateProject, projectPath) ? candidate : null,
+  }
 }
 
 export function cancelDraft(): { ok: boolean } {
@@ -87,7 +102,7 @@ export async function startDraft(
   if ('error' in plan) return { ok: false, error: plan.error }
 
   const job = newJob(plan)
-  const active: RunningJob = { job, controller: new AbortController() }
+  const active: RunningJob = { job, controller: new AbortController(), project: projectKey(projectPath) }
   running = active
   candidate = null
   const progress = startProgress(job, deps.send)
@@ -113,6 +128,7 @@ export async function startDraft(
       costUsd: result.costUsd,
       replacesExisting: existsSync(resolve(projectPath, plan.target)),
     }
+    candidateProject = projectKey(projectPath)
     return { ok: true, candidate }
   } finally {
     progress.stop()
@@ -124,9 +140,10 @@ export async function startDraft(
 
 type Waiting = { candidate: DraftCandidate } | { error: string }
 
-function waiting(jobId: unknown, actor: unknown): Waiting {
+function waiting(projectPath: string, jobId: unknown, actor: unknown): Waiting {
   if (typeof actor !== 'string' || !actor.trim()) return { error: 'Say who is deciding, so the record can name them.' }
   if (!candidate || candidate.jobId !== jobId) return { error: 'That draft is no longer waiting.' }
+  if (!sameProject(candidateProject, projectPath)) return { error: 'That draft belongs to another project, so it cannot be kept or discarded here.' }
   if (deciding) return { error: 'That draft is already being decided.' }
   return { candidate }
 }
@@ -134,9 +151,9 @@ function waiting(jobId: unknown, actor: unknown): Waiting {
 /** Runs one decision on the waiting candidate. The candidate is cleared only when the decision ended
  * the draft; a refusal leaves it in place so the person can still discard it. */
 async function decide<T extends { ok: boolean }>(
-  jobId: unknown, actor: unknown, act: (c: DraftCandidate, who: string) => Promise<T>,
+  projectPath: string, jobId: unknown, actor: unknown, act: (c: DraftCandidate, who: string) => Promise<T>,
 ): Promise<T | { ok: false; error: string }> {
-  const found = waiting(jobId, actor)
+  const found = waiting(projectPath, jobId, actor)
   if ('error' in found) return { ok: false, error: found.error }
   deciding = true
   try {
@@ -149,13 +166,13 @@ async function decide<T extends { ok: boolean }>(
 }
 
 export function keepDraft(projectPath: string, scriptsDir: string, jobId: unknown, actor: unknown): Promise<KeepDraftResult> {
-  return decide(jobId, actor, (c, who) => keepCandidate(projectPath, scriptsDir, c, who))
+  return decide(projectPath, jobId, actor, (c, who) => keepCandidate(projectPath, scriptsDir, c, who))
 }
 
 export function discardDraft(
   projectPath: string, scriptsDir: string, jobId: unknown, actor: unknown,
 ): Promise<{ ok: boolean; error?: string; warning?: string }> {
-  return decide(jobId, actor, (c, who) => discardCandidate(projectPath, scriptsDir, c, who))
+  return decide(projectPath, jobId, actor, (c, who) => discardCandidate(projectPath, scriptsDir, c, who))
 }
 
 // --- registration ----------------------------------------------------------------------------
@@ -175,7 +192,7 @@ export function registerDraftHandlers(
     return startDraft(projectPath, scriptsDir, request, { claudePath: getClaudePath(), send: sendToWindow, launch })
   })
   ipcMain.handle('studio:cancelDraft', () => cancelDraft())
-  ipcMain.handle('studio:getDraftState', () => getDraftState())
+  ipcMain.handle('studio:getDraftState', (_event, projectPath: string) => getDraftState(projectPath))
   ipcMain.handle('studio:keepDraft', async (_event, projectPath: string, jobId: string, actor: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
     return scriptsDir ? keepDraft(projectPath, scriptsDir, jobId, actor) : { ok: false, error: NO_PLUGIN }

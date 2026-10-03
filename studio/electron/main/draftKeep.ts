@@ -13,8 +13,8 @@
 //   4. Record it: the change (`created` or `revised`; the script has no "drafted" event) and the draft
 //      outcome. A failure of either is a warning, never a reason to lose the document just written.
 
-import { createHash } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { createHash, randomUUID } from 'node:crypto'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { recordDraftOutcome } from './drafts'
 import { runPluginScript } from './project'
@@ -72,11 +72,19 @@ async function captureExisting(projectPath: string, scriptsDir: string, target: 
   return isCaptured(projectPath, scriptsDir, target, current)
 }
 
-function writeWhole(full: string, text: string): void {
+/** Writes the whole file by way of a temp file beside it. The temp name is random and created
+ * exclusively (`wx`): a predictable name could be pre-planted as a link in a repository, and a plain
+ * write would follow it out of the project. A temp file is never left behind, whatever fails. */
+export function writeWhole(full: string, text: string): void {
   mkdirSync(dirname(full), { recursive: true })
-  const temp = `${full}.${process.pid}.tmp`
-  writeFileSync(temp, text, 'utf-8')
-  renameSync(temp, full)
+  const temp = `${full}.${randomUUID()}.tmp`
+  try {
+    writeFileSync(temp, text, { encoding: 'utf-8', flag: 'wx' })
+    renameSync(temp, full)
+  } catch (err) {
+    rmSync(temp, { force: true })
+    throw err
+  }
 }
 
 async function recordChange(

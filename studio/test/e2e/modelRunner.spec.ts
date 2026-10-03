@@ -96,7 +96,7 @@ test.describe('[spec 0027] the model-run controls, in the real window', () => {
     await expect(page.getByTestId('draft-running')).toHaveCount(0)
     await expect(page.getByTestId('candidate-view')).toHaveCount(0)
     expect(readdirSync(discovery()).sort()).toEqual(['constitution.md'])
-    const state = await page.evaluate(() => window.studio.getDraftState())
+    const state = await page.evaluate((p) => window.studio.getDraftState(p), project)
     expect(state).toEqual({ running: null, candidate: null })
   })
 

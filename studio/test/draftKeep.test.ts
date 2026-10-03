@@ -55,7 +55,7 @@ describe.skipIf(!PLUGIN.available)('Keep and Discard against the real plugin scr
 
       expect(result).toEqual({ ok: true, written: NARRATIVE_REL })
       expect(readFileSync(join(project, NARRATIVE_REL), 'utf-8')).toBe('# Requirements, in plain words\n\nIt must exist.\n')
-      expect(getDraftState().candidate).toBeNull()
+      expect(getDraftState(project).candidate).toBeNull()
 
       const change = jsonl(project, 'artifact-log.jsonl').filter((e) => e.artifact === NARRATIVE_REL)
       expect(change.at(-1)).toMatchObject({ event: 'created', actor: 'Matt K', reason: 'Drafted by Claude' })
@@ -109,7 +109,7 @@ describe.skipIf(!PLUGIN.available)('Keep and Discard against the real plugin scr
       expect(await keepDraft(project, PLUGIN.scriptsDir, candidate.jobId, undefined)).toMatchObject({ ok: false })
 
       expect(differences(before, snapshot(project))).toEqual([])
-      expect(getDraftState().candidate?.jobId).toBe(candidate.jobId) // still waiting
+      expect(getDraftState(project).candidate?.jobId).toBe(candidate.jobId) // still waiting
     })
 
     it('cannot keep the same draft twice', async () => {
@@ -188,7 +188,7 @@ describe.skipIf(!PLUGIN.available)('Keep and Discard against the real plugin scr
       expect(result.ok).toBe(false)
       expect(result.error).toMatch(/history first/)
       expect(readFileSync(join(project, NARRATIVE_REL), 'utf-8')).toBe('precious hand-written text\n')
-      expect(getDraftState().candidate?.jobId).toBe(candidate.jobId) // the person can still discard it
+      expect(getDraftState(project).candidate?.jobId).toBe(candidate.jobId) // the person can still discard it
     })
 
     it('reports a discard whose outcome could not be recorded, without failing it', async () => {
@@ -196,7 +196,7 @@ describe.skipIf(!PLUGIN.available)('Keep and Discard against the real plugin scr
       breakLedgers()
       const result = await discardDraft(project, PLUGIN.scriptsDir, candidate.jobId, 'Matt K')
       expect(result).toMatchObject({ ok: true, warning: expect.stringMatching(/not recorded/) })
-      expect(getDraftState().candidate).toBeNull()
+      expect(getDraftState(project).candidate).toBeNull()
     })
   })
 

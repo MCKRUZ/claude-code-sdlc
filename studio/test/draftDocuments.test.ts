@@ -59,7 +59,7 @@ describe.skipIf(!PLUGIN.available)('model jobs against a real project and the st
       expect(result).toMatchObject({ error: expect.stringMatching(line) })
       expect((result as { error: string }).error.split('\n')).toHaveLength(1)
       expect(fake.hasRun()).toBe(false)
-      expect(getDraftState()).toEqual({ running: null, candidate: null })
+      expect(getDraftState(project)).toEqual({ running: null, candidate: null })
       expect(differences(before, snapshot(project))).toEqual([])
     })
 
@@ -175,11 +175,11 @@ describe.skipIf(!PLUGIN.available)('model jobs against a real project and the st
 
       expect(second).toMatchObject({ ok: false, error: 'Already drafting requirements.narrative.md' })
       expect((second as { running?: { target: string } }).running?.target).toBe(NARRATIVE_REL)
-      expect(getDraftState().running?.label).toBe('requirements.narrative.md')
+      expect(getDraftState(project).running?.label).toBe('requirements.narrative.md')
 
       cancelDraft()
       expect(await first).toMatchObject({ ok: false, cancelled: true })
-      expect(getDraftState().running).toBeNull()
+      expect(getDraftState(project).running).toBeNull()
     })
 
     it('pushes progress while it runs, with the job id and the elapsed time', async () => {
@@ -215,7 +215,7 @@ describe.skipIf(!PLUGIN.available)('model jobs against a real project and the st
         try { process.kill(pid, 0); await new Promise((r) => setTimeout(r, 50)) } catch { alive = false }
       }
       expect(alive).toBe(false)
-      expect(getDraftState()).toEqual({ running: null, candidate: null })
+      expect(getDraftState(project)).toEqual({ running: null, candidate: null })
       expect(differences(before, snapshot(project))).toEqual([]) // no file, and no ledger line either
     })
 
@@ -229,7 +229,7 @@ describe.skipIf(!PLUGIN.available)('model jobs against a real project and the st
       const result = await startDraft(project, PLUGIN.scriptsDir, enhance(), deps(fake))
       expect(result).toMatchObject({ ok: false })
       expect((result as { error: string }).error.split('\n')).toHaveLength(1)
-      expect(getDraftState().candidate).toBeNull()
+      expect(getDraftState(project).candidate).toBeNull()
       expect(differences(before, snapshot(project))).toEqual([])
     })
 
@@ -242,7 +242,7 @@ describe.skipIf(!PLUGIN.available)('model jobs against a real project and the st
       const result = await discardDraft(project, PLUGIN.scriptsDir, started.candidate.jobId, 'Matt K')
 
       expect(result).toEqual({ ok: true })
-      expect(getDraftState().candidate).toBeNull()
+      expect(getDraftState(project).candidate).toBeNull()
       expect(differences(before, snapshot(project))).toEqual(['.sdlc/metrics/draft-log.jsonl'])
       expect(existsSync(join(project, NARRATIVE_REL))).toBe(false)
     })
