@@ -81,11 +81,13 @@ def phase_artifacts(phase_id) -> list[tuple[str, str]]:
     meta = pm.get_phase(phase_id)
     if meta is None:
         return []
-    required = meta.get("artifacts", {}).get("required", [])
+    # The registry declares an entry as a bare filename or as a mapping (`path`, `root`,
+    # `required_for`); phase_model reads both. No project type is known here, so a type-specific
+    # entry is listed rather than silently dropped — the same fail-closed rule the gates use.
     return [
-        (fn, _artifact_label(fn))
-        for fn in required
-        if not fn.endswith("-report.html")
+        (a.name, _artifact_label(a.name))
+        for a in pm.required_artifacts(meta)
+        if not a.name.endswith("-report.html")
     ]
 
 
@@ -1457,12 +1459,18 @@ def _generate_index(
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+def _json_result(result: dict) -> dict:
+    """The result as JSON prints it: the output path with forward slashes on every platform."""
+    return {**result, "output": Path(result["output"]).as_posix()}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate SDLC phase HTML report")
     parser.add_argument("--state", required=True, type=Path, help="Path to .sdlc/state.yaml")
     parser.add_argument("--phase", type=str, help="Phase id (e.g. 0, 1, build, 7, close). Defaults to current phase.")
     parser.add_argument("--output", type=Path, help="Output HTML file path.")
     parser.add_argument("--all", action="store_true", dest="all_phases", help="Generate reports for all phases and write an index.html summary.")
+    parser.add_argument("--json", action="store_true", help="Print the result as one JSON document instead of text")
     args = parser.parse_args()
 
     if not args.state.exists():
@@ -1478,13 +1486,17 @@ def main() -> int:
             default_output = args.state.parent / "reports" / f"{pm.artifact_dirname(phase_id)}-report.html"
             result = generate_report(args.state, phase_id, default_output)
             results.append(result)
-            status = "[ok]" if result["missing"] == 0 else f"[!!] {result['missing']} missing"
-            print(f"  {_phase_badge(phase_id)}: {result['phase_name']} - {status} -> {result['output']}")
-        print(f"\n{len(results)} reports generated.")
+            if not args.json:
+                status = "[ok]" if result["missing"] == 0 else f"[!!] {result['missing']} missing"
+                print(f"  {_phase_badge(phase_id)}: {result['phase_name']} - {status} -> {result['output']}")
 
         # Generate index.html
         index_path = args.state.parent / "reports" / "index.html"
         _generate_index(args.state, results, index_path)
+        if args.json:
+            print(json.dumps({"reports": [_json_result(r) for r in results], "index": index_path.as_posix()}, indent=2))
+            return 0
+        print(f"\n{len(results)} reports generated.")
         print(f"\nProject index written to: {index_path}")
         return 0
 
@@ -1503,6 +1515,10 @@ def main() -> int:
     )
 
     result = generate_report(args.state, phase_id, output_path)
+
+    if args.json:
+        print(json.dumps(_json_result(result), indent=2))
+        return 0
 
     print(f"\n{_phase_badge(phase_id)}: {result['phase_name']} Report")
     print("-" * 50)
