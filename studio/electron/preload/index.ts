@@ -41,6 +41,12 @@ const studio: StudioApi = {
   startActivity: (projectPath, stageId, activityId) => ipcRenderer.invoke('studio:startActivity', projectPath, stageId, activityId),
   runActivityCheck: (projectPath, activityId) => ipcRenderer.invoke('studio:runActivityCheck', projectPath, activityId),
   getStageGuide: (definition) => ipcRenderer.invoke('studio:getStageGuide', definition),
+  exportPhaseReport: (projectPath, stageId, all) => ipcRenderer.invoke('studio:exportPhaseReport', projectPath, stageId, all),
+  openReport: (projectPath, reportPath) => ipcRenderer.invoke('studio:openReport', projectPath, reportPath),
+  runIntake: (projectPath, change) => ipcRenderer.invoke('studio:runIntake', projectPath, change),
+  getNarrativeCoverage: (projectPath, stageId) => ipcRenderer.invoke('studio:getNarrativeCoverage', projectPath, stageId),
+  getReviewStanding: (projectPath) => ipcRenderer.invoke('studio:getReviewStanding', projectPath),
+  runStrictReviewCheck: (projectPath) => ipcRenderer.invoke('studio:runStrictReviewCheck', projectPath),
   setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
     ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),
   signOffStage: (projectPath, stageId, signedBy, disciplineSignoffs) =>

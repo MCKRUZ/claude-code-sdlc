@@ -31,18 +31,30 @@ export const CHECK_CONTROLS: Readonly<Record<string, CheckControl>> = {
   },
 }
 
+/** Activities that get a small panel of their own (spec 0026), keyed by activity id: they are `run`
+ * or `draft` kinds whose deterministic part Studio can show, so the id decides, not the kind. A
+ * `draft` activity here shows only its read-only picture until the model-run button arrives. */
+export const PANEL_CONTROLS: Readonly<Record<string, { capability: string }>> = {
+  'phase-report': { capability: 'phase-report-json' },
+  intake: { capability: 'intake-modes' },
+  enhance: { capability: 'narrative-status' },
+  // `record_findings.py report --json` predates activities, so any plugin that declares them has it.
+  review: { capability: 'activities' },
+}
+
 /** Starting documents from templates needs the plugin to know about activities at all. */
 export const CREATE_CAPABILITY = 'activities'
 
 /** The `capabilities` entry an activity needs, or null when Studio draws no control for it. */
 export function capabilityFor(activity: StageActivity): string | null {
+  if (PANEL_CONTROLS[activity.id]) return PANEL_CONTROLS[activity.id].capability
   if (activity.kind === 'create') return CREATE_CAPABILITY
   if (activity.kind === 'talk') return CREATE_CAPABILITY
   if (activity.kind === 'check') return CHECK_CONTROLS[activity.id]?.capability ?? null
   return null
 }
 
-/** True when Studio has a control for this activity (create, talk, or one of the two checks). */
+/** True when Studio has a control for this activity (create, talk, one of the two checks, or one of the four panels). */
 export function isDrawn(activity: StageActivity): boolean {
   return capabilityFor(activity) !== null
 }
