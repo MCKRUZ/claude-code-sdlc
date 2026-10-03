@@ -40,6 +40,7 @@ CAPABILITIES: dict[str, dict] = {
     "rules-check": {"script": "rules_check.py", "flags": ["--repo", "--json"]},
     "data-contract-summary": {"script": "data_contract.py", "argv": ["summary"], "flags": ["--repo", "--json"]},
     "narrative-status": {"script": "narrative_status.py", "flags": ["--all-phases", "--json"]},
+    "phase-report-json": {"script": "generate_phase_report.py", "flags": ["--json", "--all"]},
 }
 
 

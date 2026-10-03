@@ -1,0 +1,15 @@
+exit: 0
+--- stdout ---
+
+Phase 0: Discovery Report
+--------------------------------------------------
+  [--] constitution.md
+  [--] problem-statement.md
+  [--] success-criteria.md
+  [--] constraints.md
+  [--] phase1-handoff.md
+
+0/5 artifacts present
+
+Report written to: .sdlc/reports/00-discovery-report.html
+--- stderr ---
