@@ -38,6 +38,9 @@ const studio: StudioApi = {
 
   getStageReadiness: (projectPath, stageId) => ipcRenderer.invoke('studio:getStageReadiness', projectPath, stageId),
   gatherPipelineEvidence: (projectPath) => ipcRenderer.invoke('studio:gatherPipelineEvidence', projectPath),
+  startActivity: (projectPath, stageId, activityId) => ipcRenderer.invoke('studio:startActivity', projectPath, stageId, activityId),
+  runActivityCheck: (projectPath, activityId) => ipcRenderer.invoke('studio:runActivityCheck', projectPath, activityId),
+  getStageGuide: (definition) => ipcRenderer.invoke('studio:getStageGuide', definition),
   setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
     ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),
   signOffStage: (projectPath, stageId, signedBy, disciplineSignoffs) =>
