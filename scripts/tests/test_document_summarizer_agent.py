@@ -32,7 +32,7 @@ def test_it_follows_the_template_and_the_budget_in_the_order_the_spec_fixes():
     _, body = agent_parts()
     assert "templates/phases/00-discovery/document-summary.md" in body
     assert "summary_budget_tokens" in body and "750" in body
-    cut = body[body.index("cut in this order"):].split("\n", 1)[0]
+    cut = body[body.index("cut in this order"):].split(" Never cut", 1)[0]  # just that sentence
     assert cut.index("Relevance to Project") < cut.index("Key Terms") < cut.index("Extractable Requirements")
     assert "Never cut the Overview" in body
 
