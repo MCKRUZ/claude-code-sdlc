@@ -179,6 +179,14 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toMatch(/AskStructuredQuestion.*END YOUR TURN/s)
   })
 
+  it('tells the model how to treat a [Studio] message: the current step, not a reason to redirect', () => {
+    const prompt = buildSystemPrompt({
+      projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',
+    })
+    expect(prompt).toContain('begins "[Studio]"')
+    expect(prompt).toMatch(/instead of redirecting them back/)
+  })
+
   it('states plainly that Edit, Write and Bash are not available', () => {
     const prompt = buildSystemPrompt({
       projectPath: 'p', pluginRoot: 'r', pluginName: 'n', stageId: '0', stageDisplay: 'D',

@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react'
 import type { DocumentFocus, SignOffQuestion } from '../../shared/types'
 import { stageHomeKey } from '../stageHomeKey'
 import { DocumentsTab } from './DocumentsTab'
+import { GuideTab } from './GuideTab'
 import { PipelineEvidencePanel } from './PipelineEvidencePanel'
 import { SignOffPanel } from './SignOffPanel'
 import { WorkflowTab } from './WorkflowTab'
 import { useStageReadiness } from './StageReadinessContext'
 
-type StageTab = 'workflow' | 'documents'
+type StageTab = 'workflow' | 'documents' | 'guide'
 
 // Duplicated from App.tsx/SignOffPanel.tsx rather than imported — neither exports it, and this
 // file follows the pattern already established there rather than introducing a new shared type
@@ -19,7 +20,7 @@ interface Opening {
   subtitle?: string
 }
 
-/** The stage's home page: a title, then a Workflow / Documents tab pair, in that order, in the
+/** The stage's home page: a title, then a Workflow / Documents / Guide tab row, in that order, in the
  * same tab-bar location on every stage (spec 0017).
  *
  * Workflow — a step-by-step guide to the stage, its steps' status derived from the exact same
@@ -89,6 +90,7 @@ export function StageHome({
       <div role="tablist" aria-label="Stage view" className="flex gap-1 border-b border-slate-200">
         <TabButton label="Workflow" active={tab === 'workflow'} onClick={() => setTab('workflow')} />
         <TabButton label="Documents" active={tab === 'documents'} onClick={() => setTab('documents')} />
+        <TabButton label="Guide" active={tab === 'guide'} onClick={() => setTab('guide')} />
       </div>
 
       {tab === 'workflow' ? (
@@ -100,7 +102,10 @@ export function StageHome({
           confirmError={confirmError}
           onToggleSignOff={toggle}
           onOpenDocument={onOpenDocument}
+          onRefresh={refresh}
         />
+      ) : tab === 'guide' ? (
+        <GuideTab readiness={readiness} />
       ) : (
         <DocumentsTab
           readiness={readiness}

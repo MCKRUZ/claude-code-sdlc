@@ -16,11 +16,19 @@ export interface CheckControl {
   capability: string
   /** The button text. */
   button: string
+  /** The document the check reads, so its result can take a person to it. */
+  document: string
 }
 
 export const CHECK_CONTROLS: Readonly<Record<string, CheckControl>> = {
-  'rules-check': { capability: 'rules-check', button: 'Check rules' },
-  'data-check': { capability: 'data-contract-summary', button: 'Check personal data' },
+  'rules-check': {
+    capability: 'rules-check', button: 'Check rules',
+    document: '.sdlc/artifacts/01-requirements/business-rules.md',
+  },
+  'data-check': {
+    capability: 'data-contract-summary', button: 'Check personal data',
+    document: '.sdlc/artifacts/02-design/data/data-contract.md',
+  },
 }
 
 /** Starting documents from templates needs the plugin to know about activities at all. */

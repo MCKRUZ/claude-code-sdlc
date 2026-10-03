@@ -276,6 +276,21 @@ async function openDocumentUncached(
   }
 }
 
+const ARTIFACTS_PREFIX = '.sdlc/artifacts/'
+
+/** The template a document is started from, mirroring scripts/activities_model.py `template_for`:
+ * `.sdlc/artifacts/<phase>/<rest>.md` is `templates/phases/<phase>/<rest>.md` (rest may nest), and
+ * a review report, which is written into whichever phase was reviewed, shares one template. */
+function templateFor(pluginScriptsDir: string, relPath: string): string | null {
+  const normalized = relPath.replace(/\\/g, '/')
+  if (!normalized.startsWith(ARTIFACTS_PREFIX) || !normalized.endsWith('.md')) return null
+  const segments = normalized.slice(ARTIFACTS_PREFIX.length).split('/')
+  if (segments.length < 2 || segments.some((s) => s === '' || s === '.' || s === '..')) return null
+  const pluginRoot = join(pluginScriptsDir, '..')
+  if (segments[segments.length - 1] === 'review-report.md') return join(pluginRoot, 'templates', 'review-report.md')
+  return join(pluginRoot, 'templates', 'phases', ...segments)
+}
+
 /** Starts a document nobody has begun, as a copy of the plugin's own template for it — the same
  * path mirroring `findShapeForPath` uses (`.sdlc/artifacts/<phase-dir>/<name>.md` is
  * `templates/phases/<phase-dir>/<name>.md`). Needed because a stage whose documents are authored
@@ -297,10 +312,7 @@ export function ensureDocumentFromTemplate(
   }
   if (existsSync(full)) return { ok: true, created: false }
 
-  const m = relPath.replace(/\\/g, '/').match(/^\.sdlc\/artifacts\/([^/]+)\/([^/]+\.md)$/)
-  const template = m && m[1] !== '..' && m[1] !== '.'
-    ? join(pluginScriptsDir, '..', 'templates', 'phases', m[1], m[2])
-    : null
+  const template = templateFor(pluginScriptsDir, relPath)
   if (!template || !existsSync(template)) {
     return { ok: false, error: `There is no template for ${relPath}, so it cannot be started here.` }
   }

@@ -18,7 +18,8 @@
  * construction rather than by convention.
  */
 
-import type { StageDocument, StageReadiness } from '../shared/types'
+import type { ActivityStatus, StageActivity, StageDocument, StageReadiness } from '../shared/types'
+import { capabilityFor, isDrawn } from '../shared/activityControls'
 
 export type WorkflowStepStatus = 'done' | 'current' | 'locked'
 
@@ -83,4 +84,48 @@ export function computeWorkflowSteps(readiness: StageReadiness): WorkflowStep[] 
   })
 
   return steps
+}
+
+/** One optional activity to draw under the step list (spec 0024). */
+export interface ActivityRow {
+  activity: StageActivity
+  status: ActivityStatus
+  /** The plugin's own sentence, unchanged, when `blocked`. */
+  reason: string | null
+  /** Why the control is disabled even though the activity itself is not blocked: the installed
+   * plugin lacks what the control needs. Null when the control can be used. */
+  disabledReason: string | null
+}
+
+/** The activity rows to draw under the document steps, in the plugin's declared order.
+ *
+ * Empty when the plugin emitted no `activities` key at all (an older plugin): the tab is then
+ * exactly what it was before spec 0024. Only activities Studio has a control for are drawn
+ * (`isDrawn`); the rest are listed in the Guide tab instead. This never touches
+ * `computeWorkflowSteps`: activities are optional and never gate a stage. */
+export function computeActivityRows(readiness: StageReadiness): ActivityRow[] {
+  if (readiness.activities === undefined) return []
+  return readiness.activities
+    .filter(isDrawn)
+    .map((activity) => ({
+      activity,
+      status: activity.status,
+      reason: activity.reason,
+      disabledReason: missingCapabilityReason(activity, readiness.capabilities),
+    }))
+}
+
+/** `capabilities` undefined means the plugin cannot say what it supports. The presence of the
+ * `activities` key already proves it knows create and talk, but a check's script may be absent,
+ * so only checks are treated as missing then. */
+function missingCapabilityReason(activity: StageActivity, capabilities: string[] | undefined): string | null {
+  const needed = capabilityFor(activity)
+  if (needed === null) return null
+  const missing = capabilities === undefined ? activity.kind === 'check' : !capabilities.includes(needed)
+  return missing ? `needs a newer plugin: lacks ${needed}` : null
+}
+
+/** A plugin command as a person types it: the plugin declares `sdlc-rules`, people read `/sdlc-rules`. */
+export function slashCommand(command: string): string {
+  return command.startsWith('/') ? command : `/${command}`
 }

@@ -6,6 +6,7 @@ import {
 import { startDocumentPolling } from '../documentPoller'
 import type { DocumentSnapshot } from '../documentSnapshot'
 import { stageHomeKey } from '../stageHomeKey'
+import { ActivitiesPanel } from './ActivitiesPanel'
 import { SectionCard } from './DocumentSections'
 import { SignOffQuestions } from './SignOffQuestions'
 
@@ -32,6 +33,7 @@ export function WorkflowTab({
   confirmError,
   onToggleSignOff,
   onOpenDocument,
+  onRefresh,
 }: {
   projectPath: string
   readiness: StageReadiness
@@ -43,15 +45,27 @@ export function WorkflowTab({
   /** Opens the same structured editor the Documents tab's rows open — the document panel's own
    * Edit control (spec 0018) reuses this exact callback, never a second write path. */
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  /** Re-reads the stage after an activity changed the project (starting documents). */
+  onRefresh?: () => Promise<void>
 }) {
   const steps = computeWorkflowSteps(readiness)
   const current = steps.find((s) => s.status === 'current') ?? null
 
   return (
     <div className="flex flex-col gap-6 sm:flex-row">
-      <ol className="space-y-2 sm:w-72 sm:shrink-0">
-        {steps.map((step) => <StepRow key={step.key} step={step} />)}
-      </ol>
+      <div className="sm:w-72 sm:shrink-0">
+        <ol className="space-y-2">
+          {steps.map((step) => <StepRow key={step.key} step={step} />)}
+        </ol>
+        {/* Keyed on stage + project so one stage's result line never shows under another. */}
+        <ActivitiesPanel
+          key={stageHomeKey(projectPath, readiness.stageId)}
+          projectPath={projectPath}
+          readiness={readiness}
+          onOpenDocument={onOpenDocument}
+          onRefresh={onRefresh}
+        />
+      </div>
 
       {/* The ONLY place any step's real content appears — never inside a step's own row. That is
           what makes a locked row's absence and a done row's absence both true by construction

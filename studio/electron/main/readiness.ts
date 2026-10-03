@@ -11,10 +11,13 @@
 // links to the field it refers to, and silently dropping the un-linkable ones would technically
 // satisfy that while hiding exactly the fields most in need of attention.
 
+import { join } from 'node:path'
 import { runPluginScript } from './project'
 import { matchesSection } from '../../shared/sections'
 import { openDocument } from './documents'
-import type { ReadinessFinding, SignOffQuestion, StageDocument, StageReadiness } from '../../shared/types'
+import type {
+  ReadinessFinding, SignOffQuestion, StageActivity, StageDocument, StageReadiness,
+} from '../../shared/types'
 
 interface RawFinding {
   section: string
@@ -44,6 +47,10 @@ interface RawReadiness {
   judgement?: SignOffQuestion[]
   blocking_count: number
   ready: boolean
+  /** Absent from a plugin that predates activities (spec 0023) — then none are drawn. */
+  activities?: StageActivity[]
+  definition?: string | null
+  warnings?: string[]
 }
 
 function emptyReadiness(error: string): StageReadiness {
@@ -117,6 +124,32 @@ export async function setJudgementConfirmation(
   return { ok: true }
 }
 
+/** What each plugin says it can do, read once per plugin for the life of the process. A plugin
+ * does not change while Studio runs, and readiness is polled, so a call per poll would spawn a
+ * subprocess for an answer that cannot differ. Only a read that RAN is remembered: a failed one
+ * is retried on the next poll rather than pinned for the session. */
+const capabilitiesByPlugin = new Map<string, Promise<string[] | undefined>>()
+
+async function readCapabilities(projectPath: string, pluginScriptsDir: string): Promise<string[] | undefined> {
+  const entry = await runPluginScript(pluginScriptsDir, 'generate_status.py', [
+    '--state', join(projectPath, '.sdlc', 'state.yaml'), '--json',
+  ])
+  if (!entry.ok) throw new Error('generate_status.py did not run')
+  const caps = (JSON.parse(entry.stdout) as { capabilities?: unknown }).capabilities
+  return Array.isArray(caps) && caps.every((c) => typeof c === 'string') ? caps : undefined
+}
+
+function getCapabilities(projectPath: string, pluginScriptsDir: string): Promise<string[] | undefined> {
+  const cached = capabilitiesByPlugin.get(pluginScriptsDir)
+  if (cached) return cached
+  const read = readCapabilities(projectPath, pluginScriptsDir).catch(() => {
+    capabilitiesByPlugin.delete(pluginScriptsDir)
+    return undefined
+  })
+  capabilitiesByPlugin.set(pluginScriptsDir, read)
+  return read
+}
+
 export async function getStageReadiness(
   projectPath: string,
   pluginScriptsDir: string,
@@ -152,6 +185,9 @@ export async function getStageReadiness(
     findings.push(...(await locate(projectPath, pluginScriptsDir, artifact)))
   }
 
+  // Capabilities only gate activities, so a plugin that declares none is never asked.
+  const capabilities = raw.activities ? await getCapabilities(projectPath, pluginScriptsDir) : undefined
+
   return {
     ok: true,
     stageId: raw.stage.id,
@@ -171,5 +207,11 @@ export async function getStageReadiness(
       completedAt: raw.sign_off.completed_at,
     },
     ready: raw.ready,
+    // Each key is present only when the plugin emitted it: an old plugin leaves them undefined,
+    // which the tab reads as "draw nothing extra", where an empty list would read as "none".
+    ...(raw.activities ? { activities: raw.activities } : {}),
+    ...(raw.definition !== undefined ? { definition: raw.definition } : {}),
+    ...(raw.warnings ? { warnings: raw.warnings } : {}),
+    ...(capabilities ? { capabilities } : {}),
   }
 }

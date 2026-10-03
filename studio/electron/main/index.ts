@@ -15,6 +15,7 @@ import { confirmRestore, diffVersions, getVersionText, listVersions, previewRest
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
 import { createProjectFolder } from './newProject'
 import { gatherPipelineEvidence } from './pipelineEvidence'
+import { registerActivityHandlers } from './activities'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
 import {
@@ -268,6 +269,7 @@ function registerIpcHandlers() {
     }
     return gatherPipelineEvidence(projectPath, scriptsDir)
   })
+  registerActivityHandlers(ipcMain, resolvePluginScriptsDir)
 
   ipcMain.handle(
     'studio:setJudgementConfirmation',
