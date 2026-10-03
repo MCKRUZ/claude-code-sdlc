@@ -33,6 +33,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import activities_model  # noqa: E402
 import check_document_completeness as cdc  # noqa: E402
 import document_shape as ds  # noqa: E402
 import phase_model as pm  # noqa: E402
@@ -172,7 +173,9 @@ def assess(repo_root: Path, phase_id: str | None) -> dict:
     stage_id = pm.normalize_id(phase_def["id"])
     judgement = judgement_items(repo_root, stage_id, state)
 
-    return {
+    activities, warnings = declared_activities(repo_root, stage_id)
+
+    result = {
         "stage": {
             "id": pm.normalize_id(phase_def["id"]),
             "name": phase_def.get("name"),
@@ -187,7 +190,27 @@ def assess(repo_root: Path, phase_id: str | None) -> dict:
         "confirmed_count": sum(1 for i in judgement if i["confirmation"]),
         "blocking_count": len(blocking),
         "ready": not blocking,
+        "activities": activities,
+        "definition": phase_def.get("definition"),
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result
+
+
+def declared_activities(repo_root: Path, stage_id: str) -> tuple[list[dict], list[str]]:
+    """The stage's activities, or none plus a warning when the declaration cannot be used.
+
+    A broken `phases/activities.yaml` must not take the readiness report down with it: the
+    documents and sign-off are still true, so only the activity list is withheld."""
+    try:
+        data = activities_model.load()
+        problems = activities_model.validate(data)
+        if problems:
+            return [], [f"activities declaration is invalid: {problems[0]}"]
+        return activities_model.evaluate(repo_root, stage_id, data), []
+    except activities_model.ActivitiesError as e:
+        return [], [f"activities declaration unavailable: {e}"]
 
 
 def format_report(result: dict) -> str:
