@@ -465,6 +465,74 @@ export interface StrictCheckResult {
   mismatches: number
 }
 
+/** The model jobs Studio can run (spec 0027): a plain-language summary of one document, or a review
+ * of one stage. The agent behind each is fixed in the main process, never chosen by the renderer. */
+export type DraftKind = 'enhance' | 'review'
+export type ReviewMode = 'council' | 'adversarial' | 'edge-cases' | 'all'
+
+export interface DraftRequest {
+  kind: DraftKind
+  stageId: string
+  /** `enhance`: the repo-relative source document (under `.sdlc/artifacts/`) to summarise. */
+  document?: string
+  /** `review`: which lens to review through. */
+  mode?: ReviewMode
+}
+
+/** A job that is running now. `label` is what to call it on screen ("requirements.narrative.md"). */
+export interface DraftJob {
+  id: string
+  kind: DraftKind
+  stageId: string
+  /** Repo-relative file Keep would write. */
+  target: string
+  label: string
+  startedAt: number
+}
+
+/** What a finished run produced, waiting for Keep or Discard. Nothing is on disk yet. */
+export interface DraftCandidate {
+  jobId: string
+  kind: DraftKind
+  stageId: string
+  target: string
+  text: string
+  /** The run's own reported cost, or null when it reported none (never shown as $0.00). */
+  costUsd: number | null
+  /** True when Keep would replace a file that already exists. */
+  replacesExisting: boolean
+}
+
+/** Resolves when the run ends. `running` is set when a second start was refused because one is
+ * already going; `cancelled` when the person stopped it. */
+export type StartDraftResult =
+  | { ok: true; candidate: DraftCandidate }
+  | { ok: false; error: string; cancelled?: boolean; running?: DraftJob }
+
+/** For a screen that was closed and reopened mid-run: what is running and what is waiting. */
+export interface DraftState {
+  running: DraftJob | null
+  candidate: DraftCandidate | null
+}
+
+export interface DraftProgressEvent {
+  jobId: string
+  /** What the model is doing right now ("Reading requirements.md"), or null before it has started. */
+  activity: string | null
+  elapsedMs: number
+}
+
+export interface KeepDraftResult {
+  ok: boolean
+  error?: string
+  /** The repo-relative file written. */
+  written?: string
+  /** `review` only: whether `record_findings.py record` found a Gate Results table to record. */
+  findingsRecorded?: boolean
+  /** A non-fatal note, e.g. the draft ledger line could not be written. The document IS written. */
+  warning?: string
+}
+
 /** A stage's own guidance file from the plugin (its `definition`), as text. */
 export interface StageGuide {
   ok: boolean
@@ -1181,6 +1249,15 @@ export interface StudioApi {
   getNarrativeCoverage(projectPath: string, stageId: string): Promise<NarrativeCoverage>
   getReviewStanding(projectPath: string): Promise<ReviewStanding>
   runStrictReviewCheck(projectPath: string): Promise<StrictCheckResult>
+  /** Runs a model job (summary or review) and resolves with the candidate. Nothing is written. */
+  startDraft(projectPath: string, request: DraftRequest): Promise<StartDraftResult>
+  cancelDraft(): Promise<{ ok: boolean }>
+  getDraftState(): Promise<DraftState>
+  /** Writes the waiting candidate (audited, allowlist-checked) and records it as accepted. */
+  keepDraft(projectPath: string, jobId: string, actor: string): Promise<KeepDraftResult>
+  /** Drops the waiting candidate, writes nothing, and records it as discarded. */
+  discardDraft(projectPath: string, jobId: string, actor: string): Promise<{ ok: boolean; error?: string; warning?: string }>
+  onDraftProgress(callback: (event: DraftProgressEvent) => void): () => void
   /** Reads GitHub's own history (read-only: nothing is opened, merged or changed) to say which
    * delivery rails have actually fired, and writes the result to pipeline-proof.md. Needs the
    * `gh` CLI signed in on this machine; says so plainly when it is not. */
