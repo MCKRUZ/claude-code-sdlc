@@ -96,6 +96,29 @@ export function rawStdout(entry: ConsoleEntry): string {
   return (entry as { [RAW_OUTPUT]?: { stdout: string } })[RAW_OUTPUT]?.stdout ?? entry.stdout
 }
 
+// Whether a command ended because its caller aborted it (RunCommandOptions.signal) rather than failing
+// on its own. Carried the same way as RAW_OUTPUT, and for the same reason: ConsoleEntry is the shape
+// the window renders, and "cancelled" is a fact for the code that asked, not a column for the console.
+const CANCELLED = Symbol('cancelledByCaller')
+
+/** True when the command was stopped by its caller's AbortSignal. Anything else that ends with
+ * ok:false is a failure. */
+export function wasCancelled(entry: ConsoleEntry): boolean {
+  return (entry as { [CANCELLED]?: true })[CANCELLED] === true
+}
+
+/** Stops a child that was aborted. On Windows `child.kill()` ends only the process it started, and a
+ * model run is a tree (the CLI, its hooks, anything a hook launched), so the whole tree goes with
+ * `taskkill /T /F`. The only argument is the child's numeric pid, which Node itself assigned. */
+function killChildTree(child: ChildProcessWithoutNullStreams): void {
+  if (process.platform === 'win32' && typeof child.pid === 'number') {
+    const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
+    killer.on('error', () => child.kill())
+    return
+  }
+  child.kill()
+}
+
 // Windows installs of git and gh from scoop, npm or Chocolatey are batch shims, and a batch
 // file can only be started through the command interpreter — so tooling.ts resolves those to
 // `cmd.exe /c <shim>`. That hands the interpreter the arguments, and it re-reads them:
@@ -141,6 +164,10 @@ export interface RunCommandOptions {
    * and still applies to the final entry. Never called after the command finishes; the final
    * ConsoleEntry from the returned promise is always the complete, authoritative record. */
   onChunk?: (stdoutSoFarRedacted: string) => void
+  /** Aborting kills the child (its whole process tree on Windows) and records a failed entry that
+   * `wasCancelled()` recognises. Already aborted on entry: nothing is started, and the same entry is
+   * recorded. Every other guarantee is unchanged: the stop is in the console like any other outcome. */
+  signal?: AbortSignal
 }
 
 // A chunk-by-chunk broadcast for every stdout byte would flood the IPC channel to the
@@ -173,6 +200,8 @@ export function runCommand(
     let settled = false
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined
     let lastStreamedAt = 0
+    let cancelled = false
+    let onAbort: (() => void) | undefined
 
     const finish = (exitCode: number | null, extraStderr?: string) => {
       // A timeout kill() triggers 'close' too — without this guard that would record and
@@ -180,6 +209,7 @@ export function runCommand(
       if (settled) return
       settled = true
       if (timeoutHandle) clearTimeout(timeoutHandle)
+      if (onAbort) opts?.signal?.removeEventListener('abort', onAbort)
 
       const fullStdout = redact(stdout)
       const fullStderr = redact(extraStderr ? `${stderr}\n${extraStderr}`.trim() : stderr)
@@ -199,6 +229,7 @@ export function runCommand(
       // corrupt someone's work, which is far worse than the memory it costs.
       const entry: ConsoleEntry = { ...base, stdout: fullStdout, stderr: fullStderr }
       Object.defineProperty(entry, RAW_OUTPUT, { value: { stdout }, enumerable: true })
+      if (cancelled) Object.defineProperty(entry, CANCELLED, { value: true, enumerable: true })
 
       // The LOG gets a bounded copy. It is for a person reading a panel, and it is the part
       // that accumulates for as long as the app is open.
@@ -225,6 +256,12 @@ export function runCommand(
       }
     }
 
+    if (opts?.signal?.aborted) {
+      cancelled = true
+      finish(null, 'Cancelled before it started.')
+      return
+    }
+
     const env = opts?.env ? { ...process.env, ...opts.env } : undefined
 
     // spawn() usually reports a bad command through the 'error' event below, asynchronously —
@@ -247,6 +284,15 @@ export function runCommand(
         child.kill()
         finish(null, `Timed out after ${opts.timeoutMs}ms with no response.`)
       }, opts.timeoutMs)
+    }
+
+    if (opts?.signal) {
+      onAbort = () => {
+        cancelled = true
+        killChildTree(child)
+        finish(null, 'Cancelled.')
+      }
+      opts.signal.addEventListener('abort', onAbort, { once: true })
     }
 
     // Decoded as a stream, not chunk by chunk: a multi-byte character (an em dash, a curly quote)

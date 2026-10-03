@@ -19,6 +19,7 @@ import { registerActivityHandlers } from './activities'
 import { registerActivityRunHandlers } from './activityRuns'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
+import { registerDraftHandlers } from './draftDocuments'
 import {
   ipcAnswerChatQuestion, ipcEnsureChatStarted, ipcResolveChatProposal, ipcSendChatMessage,
   readChatState, type ChatContext,
@@ -272,6 +273,7 @@ function registerIpcHandlers() {
   })
   registerActivityHandlers(ipcMain, resolvePluginScriptsDir)
   registerActivityRunHandlers(ipcMain, resolvePluginScriptsDir)
+  registerDraftHandlers(ipcMain, resolvePluginScriptsDir, sendToWindow, () => loadSettings().claudePathOverride)
 
   ipcMain.handle(
     'studio:setJudgementConfirmation',
