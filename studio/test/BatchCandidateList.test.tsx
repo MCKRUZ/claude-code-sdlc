@@ -155,6 +155,14 @@ describe('BatchCandidateList: the finished list', () => {
     expect(studio.keepBatch).not.toHaveBeenCalled()
   })
 
+  it('counts only the results that existed: a run that failed produced nothing to discard', async () => {
+    const mixed = [batchCandidate(1), batchCandidate(2, { status: 'failed', text: '', error: 'Claude did not return a complete summary.' }), batchCandidate(3)]
+    const { studio } = await shown(finished(mixed))
+    fireEvent.click(button('Discard all'))
+    await screen.findByText('Discarded 2 results.')
+    expect(studio.discardBatch).toHaveBeenCalledWith('/p', 'batch-1', '@matt')
+  })
+
   it('names the file written and the file not written when only one of the pair was kept', async () => {
     const pair = [batchCandidate(1, { id: 'a', label: 'contradiction-list.md', target: '.sdlc/artifacts/00-discovery/contradiction-list.md' }),
       batchCandidate(2, { id: 'b', label: 'question-list.md', target: '.sdlc/artifacts/00-discovery/question-list.md' })]

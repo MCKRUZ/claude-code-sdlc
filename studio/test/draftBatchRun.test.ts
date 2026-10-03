@@ -2,7 +2,7 @@
  * and in what order, that they never overlap, what one failing run does, what a cancel keeps, what the cost
  * line says, and that nothing reaches the project while any of it happens. */
 
-import { rmSync } from 'node:fs'
+import { realpathSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { claudeWorkingDirectory } from '../electron/main/claudeAssist'
@@ -91,7 +91,8 @@ describe.skipIf(!PLUGIN.available)('the summarise job', () => {
         + 'You cannot save files in this session: do not try. '
         + 'Reply with ONLY the complete markdown text of the summary file, starting at its first --- line.',
       ])
-      expect(logged.cwd).toBe(claudeWorkingDirectory())
+      // realpath both sides: macOS reports a temp directory as /private/var/... for /var/...
+      expect(realpathSync.native(logged.cwd)).toBe(realpathSync.native(claudeWorkingDirectory()))
     }
   })
 

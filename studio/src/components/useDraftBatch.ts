@@ -177,7 +177,8 @@ export function useDraftBatch(projectPath: string): DraftBatchApi {
       : await window.studio.discardBatch(path, jobId, actor, ids)
     if (live.current !== path) return
     if (!result.ok) { setActionError(result.error || 'The results could not be discarded.'); return }
-    const count = ids === undefined ? waiting.length : ids.length
+    // A failed run produced nothing, so it is not a discarded result (the ledger records only ready ones).
+    const count = ids === undefined ? waiting.filter((c) => c.status === 'ready').length : ids.length
     setOutcome((prev) => ({
       saved: prev?.saved ?? null,
       failed: [],
