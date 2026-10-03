@@ -15,6 +15,7 @@ import yaml
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).parent))
+import capabilities
 import phase_model as pm
 
 
@@ -180,6 +181,7 @@ def status_json(state: dict, sdlc_dir: Path) -> dict:
             "display": current_def["display"] if current_def else "Unknown",
         },
         "stages": stages,
+        "capabilities": capabilities.list_capabilities(),
     }
 
 

@@ -1,0 +1,200 @@
+# What a person can do in each phase, beyond the documents it requires (spec 0023).
+#
+# This is the plugin's own declaration; SDLC Studio draws it instead of keeping a second list of
+# its own, so adding a command here needs no Studio change. It lives in a file of its own, not in
+# phase-registry.yaml, because the registry and phase_model.py are protected core.
+#
+# Each activity:
+#   id          unique within its phase
+#   label       a plain sentence a project manager would recognise (this is what is shown)
+#   command     the slash command this step belongs to (commands/<command>.md), or null
+#   kind        run    — a script reads or writes something and reports the result
+#               create — start documents from their templates, then fill them in the editor
+#               check  — validate what has been written, advisory
+#               draft  — one model-run step whose result a person keeps or discards
+#               talk   — open the stage chat; no script
+#   creates     files the activity starts (their templates must exist)
+#   after       activities in the same phase this one follows (ordering only)
+#   optional    default true — these never gate a phase; required documents live in the registry
+#   requires    what must hold before it is offered: {profile: dotted.key} | {activity: id} | {file: path}
+#   done_when   how it is known to be finished: {exists: path} | {exists_all: [paths]}
+#               | {json: {file, key, equals}} — absent means it is never "done", only available
+#
+# Status is computed by activities_model.py: done, else blocked (with the reason), else available.
+
+"0":
+  - id: intake
+    label: "Catalogue the reference documents"
+    command: sdlc-intake
+    kind: run
+    requires: {profile: documentation.intake_path}
+    done_when: {json: {file: .sdlc/context/intake/catalog.json, key: locked, equals: true}}
+
+  - id: brief
+    label: "Prepare the workshop brief"
+    command: sdlc-brief
+    kind: create
+    creates: [.sdlc/artifacts/00-discovery/workshop-brief.md]
+    after: [intake]
+    requires: {activity: intake}
+    done_when: {exists: .sdlc/artifacts/00-discovery/workshop-brief.md}
+
+  - id: review
+    label: "Review this stage's documents"
+    command: sdlc-review
+    kind: draft
+    creates: [.sdlc/artifacts/00-discovery/review-report.md]
+    done_when: {exists: .sdlc/artifacts/00-discovery/review-report.md}
+
+  - id: enhance
+    label: "Write plain-language summaries for stakeholders"
+    command: sdlc-enhance
+    kind: draft
+
+  - id: phase-report
+    label: "Export this stage's report"
+    command: sdlc-phase-report
+    kind: run
+
+  - id: coach
+    label: "Talk it through"
+    command: sdlc-coach
+    kind: talk
+
+"1":
+  - id: feature-brief
+    label: "Break an epic into features and specs"
+    command: sdlc-feature
+    kind: create
+    creates: [.sdlc/artifacts/01-requirements/feature-brief.md]
+    done_when: {exists: .sdlc/artifacts/01-requirements/feature-brief.md}
+
+  - id: rules
+    label: "Write the business rules and golden scenarios"
+    command: sdlc-rules
+    kind: create
+    creates:
+      - .sdlc/artifacts/01-requirements/business-rules.md
+      - .sdlc/artifacts/01-requirements/golden-scenarios.md
+    done_when:
+      exists_all:
+        - .sdlc/artifacts/01-requirements/business-rules.md
+        - .sdlc/artifacts/01-requirements/golden-scenarios.md
+
+  - id: rules-check
+    label: "Check the rules against the scenarios"
+    command: sdlc-rules
+    kind: check
+    after: [rules]
+    requires: {file: .sdlc/artifacts/01-requirements/business-rules.md}
+
+  - id: review
+    label: "Review this stage's documents"
+    command: sdlc-review
+    kind: draft
+    creates: [.sdlc/artifacts/01-requirements/review-report.md]
+    done_when: {exists: .sdlc/artifacts/01-requirements/review-report.md}
+
+  - id: enhance
+    label: "Write plain-language summaries for stakeholders"
+    command: sdlc-enhance
+    kind: draft
+
+  - id: phase-report
+    label: "Export this stage's report"
+    command: sdlc-phase-report
+    kind: run
+
+  - id: coach
+    label: "Talk it through"
+    command: sdlc-coach
+    kind: talk
+
+"2":
+  - id: data
+    label: "Describe the data: contract, readiness and lineage"
+    command: sdlc-data
+    kind: create
+    creates:
+      - .sdlc/artifacts/02-design/data/data-contract.md
+      - .sdlc/artifacts/02-design/data/data-readiness.md
+      - .sdlc/artifacts/02-design/data/lineage-audit.md
+    done_when:
+      exists_all:
+        - .sdlc/artifacts/02-design/data/data-contract.md
+        - .sdlc/artifacts/02-design/data/data-readiness.md
+        - .sdlc/artifacts/02-design/data/lineage-audit.md
+
+  - id: data-check
+    label: "Check which fields hold personal data"
+    command: sdlc-data
+    kind: check
+    after: [data]
+    requires: {file: .sdlc/artifacts/02-design/data/data-contract.md}
+
+  - id: experience
+    label: "Design the experience for a surface"
+    command: sdlc-experience
+    kind: create
+    creates:
+      - .sdlc/artifacts/02-design/experience/user-journey.md
+      - .sdlc/artifacts/02-design/experience/surface-layout.md
+      - .sdlc/artifacts/02-design/experience/channel-interaction-spec.md
+    after: [data]
+    done_when:
+      exists_all:
+        - .sdlc/artifacts/02-design/experience/user-journey.md
+        - .sdlc/artifacts/02-design/experience/surface-layout.md
+        - .sdlc/artifacts/02-design/experience/channel-interaction-spec.md
+
+  - id: review
+    label: "Review this stage's documents"
+    command: sdlc-review
+    kind: draft
+    creates: [.sdlc/artifacts/02-design/review-report.md]
+    done_when: {exists: .sdlc/artifacts/02-design/review-report.md}
+
+  - id: enhance
+    label: "Write plain-language summaries for stakeholders"
+    command: sdlc-enhance
+    kind: draft
+
+  - id: phase-report
+    label: "Export this stage's report"
+    command: sdlc-phase-report
+    kind: run
+
+  - id: coach
+    label: "Talk it through"
+    command: sdlc-coach
+    kind: talk
+
+"3":
+  - id: pipeline-proof
+    label: "Find out which delivery rails have actually fired"
+    command: null
+    kind: run
+    creates: [.sdlc/artifacts/03-foundation/pipeline-proof.md]
+    done_when: {exists: .sdlc/artifacts/03-foundation/pipeline-proof.md}
+
+  - id: review
+    label: "Review this stage's documents"
+    command: sdlc-review
+    kind: draft
+    creates: [.sdlc/artifacts/03-foundation/review-report.md]
+    done_when: {exists: .sdlc/artifacts/03-foundation/review-report.md}
+
+  - id: enhance
+    label: "Write plain-language summaries for stakeholders"
+    command: sdlc-enhance
+    kind: draft
+
+  - id: phase-report
+    label: "Export this stage's report"
+    command: sdlc-phase-report
+    kind: run
+
+  - id: coach
+    label: "Talk it through"
+    command: sdlc-coach
+    kind: talk
