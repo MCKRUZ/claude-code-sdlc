@@ -122,10 +122,11 @@ def set_status_and_developer(text: str, developer: str) -> str:
             "second line would be read as a different field entirely.")
 
     fm_block, rest = text[:end], text[end:]
-    fm_block = re.sub(r"^status:.*$", "status: in-flight", fm_block, count=1, flags=re.MULTILINE)
+    # `[^\r\n]*`, not `.*$`: `.` also matches the "\r" of a CRLF line and would leave a bare LF.
+    fm_block = re.sub(r"^status:[^\r\n]*", "status: in-flight", fm_block, count=1, flags=re.MULTILINE)
     # Lambda replacements, not template strings: re.sub expands `\n`, `\1` and friends inside a
     # replacement template, so a literal backslash in a handle would become something else.
-    fm_block = re.sub(r'^developer:.*$', lambda _m: f'developer: "{developer}"', fm_block,
+    fm_block = re.sub(r'^developer:[^\r\n]*', lambda _m: f'developer: "{developer}"', fm_block,
                       count=1, flags=re.MULTILINE)
     return fm_block + rest
 

@@ -35,6 +35,11 @@ CAPABILITIES: dict[str, dict] = {
     "new-spec-json": {"script": "new_spec.py", "flags": ["--json"]},
     "new-spike-json": {"script": "new_spike.py", "flags": ["--json"]},
     "pipeline-proof": {"script": "pipeline_proof.py", "flags": ["--write", "--json"]},
+    "workshop-brief": {"script": "workshop_brief.py", "argv": ["build"],
+                       "flags": ["--contradictions", "--questions", "--logistics-json", "--json"]},
+    "rules-check": {"script": "rules_check.py", "flags": ["--repo", "--json"]},
+    "data-contract-summary": {"script": "data_contract.py", "argv": ["summary"], "flags": ["--repo", "--json"]},
+    "narrative-status": {"script": "narrative_status.py", "flags": ["--all-phases", "--json"]},
 }
 
 
