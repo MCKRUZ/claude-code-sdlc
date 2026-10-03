@@ -1,6 +1,9 @@
 import { useState } from 'react'
 import type { IntakeCatalogue, IntakeChange, IntakeDocument } from '../../shared/types'
 import { messageOf, PANEL_BUTTON, PANEL_SECONDARY_BUTTON, PanelError, plural, useScopedState } from './activityPanelBits'
+import { BatchActions } from './BatchActions'
+import { BatchCandidateList } from './BatchCandidateList'
+import { useDraftBatch } from './useDraftBatch'
 
 type State =
   | { kind: 'idle' }
@@ -14,8 +17,11 @@ const INTAKE_FAILED = 'The documents could not be catalogued.'
 /** Intake (spec 0026): catalogues the reference documents through the plugin and lets a person skip
  * some, order the rest and freeze their ids. It does nothing on open — the script writes the
  * catalogue file the first time it runs, so looking at the screen must not create it. Every
- * action shows what the script returned; nothing here is guessed ahead of it. */
-export function IntakePanel({ projectPath }: { projectPath: string }) {
+ * action shows what the script returned; nothing here is guessed ahead of it. Once the ids are
+ * locked it also offers the batch model jobs and the registry (spec 0029); `actor` is who signs
+ * Keep and Discard. */
+export function IntakePanel({ projectPath, actor = '' }: { projectPath: string; actor?: string }) {
+  const batch = useDraftBatch(projectPath)
   const [state, setState, isCurrent] = useScopedState<State>(projectPath, IDLE)
   const [confirming, setConfirming] = useState(false)
   const current = state.kind === 'ready' || state.kind === 'running' ? state.catalogue : null
@@ -41,15 +47,19 @@ export function IntakePanel({ projectPath }: { projectPath: string }) {
       {state.kind === 'failed' && <PanelError message={state.message} />}
       {current && current.documents.length === 0 && <p className="text-xs text-slate-600">No reference documents found</p>}
       {current && current.documents.length > 0 && (
-        <Catalogue
-          catalogue={current}
-          busy={busy}
-          confirming={confirming}
-          onChange={run}
-          onAskLock={() => setConfirming(true)}
-          onCancelLock={() => setConfirming(false)}
-        />
+        <>
+          <Catalogue
+            catalogue={current}
+            busy={busy}
+            confirming={confirming}
+            onChange={run}
+            onAskLock={() => setConfirming(true)}
+            onCancelLock={() => setConfirming(false)}
+          />
+          <BatchActions projectPath={projectPath} locked={current.locked} batch={batch} />
+        </>
       )}
+      <BatchCandidateList batch={batch} actor={actor} />
     </div>
   )
 }
