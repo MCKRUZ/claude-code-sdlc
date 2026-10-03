@@ -24,19 +24,34 @@ import { claudeWorkingDirectory, CLAUDE_SHARED_SAFE_ARGS } from './claudeAssist'
 import { readPluginName } from './chatArgs'
 import { describeLatestActivity } from './chatStreamParse'
 import { rawStdout, redact, runCommand, wasCancelled } from './commandRunner'
-import type { DraftKind } from '../../shared/types'
+import type { BatchKind, DraftKind } from '../../shared/types'
 
-/** The only agents a model job can run. Keyed by job kind; never taken from the renderer. */
+/** The only agents a single-document model job can run. Keyed by job kind; never taken from the renderer. */
 export const AGENT_BY_KIND: Readonly<Record<DraftKind, string>> = {
   enhance: 'narrative-enhancer',
   review: 'multi-reviewer',
+}
+
+/** The agents of the batch jobs (spec 0029). A separate table so that `startDraft`, which accepts only
+ * the kinds in AGENT_BY_KIND, can never be asked for a batch job, and the reverse. */
+export const BATCH_AGENT_BY_KIND: Readonly<Record<BatchKind, string>> = {
+  summarise: 'document-summarizer',
+  analyse: 'discovery-analyst',
+}
+
+export type AgentKind = DraftKind | BatchKind
+
+function agentFor(kind: string): string | undefined {
+  if (Object.hasOwn(AGENT_BY_KIND, kind)) return AGENT_BY_KIND[kind as DraftKind]
+  if (Object.hasOwn(BATCH_AGENT_BY_KIND, kind)) return BATCH_AGENT_BY_KIND[kind as BatchKind]
+  return undefined
 }
 
 /** The complete tool surface of a model job. Write, Edit and Bash are not here and must never be. */
 export const AGENT_TOOLS = ['Read', 'Grep', 'Glob'] as const
 
 export interface AgentArgsOptions {
-  kind: DraftKind
+  kind: AgentKind
   prompt: string
   projectPath: string
   pluginRoot: string
@@ -45,12 +60,13 @@ export interface AgentArgsOptions {
 /** Pure: the single place that says what Claude may do in a model job. A test asserts its output
  * exactly, so every property above is provable without starting a process. */
 export function buildAgentArgs(opts: AgentArgsOptions): { command: string; args: string[]; cwd: string } {
-  if (!Object.hasOwn(AGENT_BY_KIND, opts.kind)) throw new Error(`Unknown model job: ${String(opts.kind)}`)
+  const agent = agentFor(opts.kind)
+  if (!agent) throw new Error(`Unknown model job: ${String(opts.kind)}`)
   const tools = AGENT_TOOLS.join(',')
   const args = [
     '--plugin-dir', opts.pluginRoot,
     '--add-dir', opts.projectPath, opts.pluginRoot,
-    '--agent', `${readPluginName(opts.pluginRoot)}:${AGENT_BY_KIND[opts.kind]}`,
+    '--agent', `${readPluginName(opts.pluginRoot)}:${agent}`,
     '--tools', tools,
     '--allowedTools', tools,
     ...CLAUDE_SHARED_SAFE_ARGS,

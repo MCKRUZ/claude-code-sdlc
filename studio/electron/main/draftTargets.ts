@@ -11,7 +11,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { AGENT_BY_KIND } from './agentRun'
 import { hasSdlcProject } from './project'
-import { resolveProjectDocument } from './projectPaths'
+import { isAllowlisted, resolveProjectDocument } from './projectPaths'
 import type { DraftKind, DraftRequest, ReviewMode } from '../../shared/types'
 
 const STAGE_ID = /^[A-Za-z0-9]{1,16}$/
@@ -42,6 +42,32 @@ export interface DraftPlan {
 }
 
 const refuse = (error: string): Refusal => ({ error })
+
+// --- what Keep may write ---------------------------------------------------------------------
+
+/** The documents a single-document model job (spec 0027) may be kept as: markdown under `.sdlc/artifacts/`. */
+export function isDraftTarget(target: string): boolean {
+  return !target.includes('..') && /^\.sdlc\/artifacts\/.+\.md$/.test(target) && isAllowlisted(target)
+}
+
+/** A reference-document summary (spec 0029). The slug is lower-case letters, digits and dashes only, so
+ * a file name chosen by whoever wrote the repository can never put anything else into a path. */
+export const INTAKE_SUMMARY_TARGET = /^\.sdlc\/context\/intake\/DOC-\d+-[a-z0-9-]+\.md$/
+
+/** The two documents one analysis produces (spec 0029). */
+export const ANALYSIS_TARGETS: readonly string[] = [
+  '.sdlc/artifacts/00-discovery/contradiction-list.md',
+  '.sdlc/artifacts/00-discovery/question-list.md',
+]
+
+/** The exact set a batch job (spec 0029) may be kept as, and nothing else. */
+export function isBatchTarget(target: string): boolean {
+  return !target.includes('..') && (INTAKE_SUMMARY_TARGET.test(target) || ANALYSIS_TARGETS.includes(target)) && isAllowlisted(target)
+}
+
+/** Everything Keep may write, across both kinds of job. */
+export const isKeepableTarget = (target: string): boolean => isDraftTarget(target) || isBatchTarget(target)
+
 const baseName = (path: string) => path.split('/').pop() ?? path
 
 // --- the stage, from the plugin's own registry -----------------------------------------------

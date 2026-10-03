@@ -533,6 +533,84 @@ export interface KeepDraftResult {
   warning?: string
 }
 
+/** The model jobs that produce several results at once (spec 0029): one summary per reference
+ * document, or the contradiction and question lists from one analysis. Like the single-document jobs,
+ * the agent behind each is fixed in the main process and no document text reaches a prompt. */
+export type BatchKind = 'summarise' | 'analyse'
+
+/** What a batch would do, for the confirmation shown before it starts. Nothing has run. */
+export type PreviewBatchResult =
+  | { ok: true; kind: BatchKind; documents: Array<{ id: string; filename: string }> }
+  | { ok: false; error: string }
+
+/** One result of a batch, waiting for Keep or Discard (nothing is on disk yet), or the reason a run
+ * produced none. */
+export interface BatchCandidate {
+  /** Stable within the batch; what Keep and Discard are asked about. */
+  id: string
+  /** Repo-relative file Keep would write. */
+  target: string
+  /** What to call it on screen ("DOC-003 · gamma-api.md" or "contradiction-list.md"). */
+  label: string
+  status: 'ready' | 'failed'
+  /** The candidate text; empty when failed. */
+  text: string
+  /** One plain line when failed. */
+  error?: string
+  /** True when Keep would replace a file that already exists. */
+  replacesExisting: boolean
+}
+
+export interface BatchJob {
+  id: string
+  kind: BatchKind
+  startedAt: number
+  /** Runs planned, runs finished (ready or failed), and the one in progress. */
+  total: number
+  done: number
+  currentLabel: string | null
+  /** The sum of the costs the runs themselves reported, or null when none reported any (never $0.00). */
+  costUsd: number | null
+  phase: 'running' | 'finished' | 'cancelled'
+}
+
+/** Everything one project has in a batch: the job (while it exists) and its candidates. Another
+ * project's batch is never shown here. */
+export interface BatchState {
+  job: BatchJob | null
+  candidates: BatchCandidate[]
+}
+
+export type StartBatchResult = { ok: true; job: BatchJob } | { ok: false; error: string; running?: BatchJob }
+
+export interface KeepBatchResult {
+  ok: boolean
+  error?: string
+  /** Candidate ids written. */
+  kept: string[]
+  /** Candidates that were not written, with why; they stay waiting. */
+  failed: Array<{ id: string; label: string; error: string }>
+  /** Non-fatal notes (a ledger line that could not be written). */
+  warnings: string[]
+}
+
+/** `intake_documents.py --registry --json`, in the shape the screen uses. */
+export interface RegistryResult {
+  ok: boolean
+  error?: string
+  registry?: string
+  index?: string
+  documents: number
+  summarised: number
+  missingSummaries: string[]
+  indexTokens: number
+  indexBudget: number
+  indexWithinBudget: boolean
+  trimmed: string[]
+  registryCreated: boolean
+  warnings: string[]
+}
+
 /** A stage's own guidance file from the plugin (its `definition`), as text. */
 export interface StageGuide {
   ok: boolean
@@ -1259,6 +1337,22 @@ export interface StudioApi {
   /** Drops the waiting candidate, writes nothing, and records it as discarded. */
   discardDraft(projectPath: string, jobId: string, actor: string): Promise<{ ok: boolean; error?: string; warning?: string }>
   onDraftProgress(callback: (event: DraftProgressEvent) => void): () => void
+  /** What a batch would do, so the person can confirm it. Starts nothing, writes nothing. */
+  previewBatch(projectPath: string, kind: BatchKind): Promise<PreviewBatchResult>
+  /** Starts a batch and returns at once; progress and candidates arrive through `onBatchState`. */
+  startBatch(projectPath: string, kind: BatchKind): Promise<StartBatchResult>
+  /** Stops after the run in progress (killing it) and keeps the candidates already finished. */
+  cancelBatch(): Promise<{ ok: boolean }>
+  /** What THIS project has in a batch; another project's is never shown. */
+  getBatchState(projectPath: string): Promise<BatchState>
+  /** Writes the named candidates (all of them when none are named), each audited and recorded accepted. */
+  keepBatch(projectPath: string, jobId: string, actor: string, candidateIds?: string[]): Promise<KeepBatchResult>
+  /** Drops the named candidates (all when none are named), writing nothing, recorded discarded. */
+  discardBatch(projectPath: string, jobId: string, actor: string, candidateIds?: string[]): Promise<{ ok: boolean; error?: string; warnings: string[] }>
+  /** Builds the document registry and the session-start index from the catalogue and the summaries. */
+  writeRegistry(projectPath: string): Promise<RegistryResult>
+  /** Pushed on every change to a batch; `projectPath` says whose it is. */
+  onBatchState(callback: (update: { projectPath: string; state: BatchState }) => void): () => void
   /** Reads GitHub's own history (read-only: nothing is opened, merged or changed) to say which
    * delivery rails have actually fired, and writes the result to pipeline-proof.md. Needs the
    * `gh` CLI signed in on this machine; says so plainly when it is not. */

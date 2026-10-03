@@ -18,8 +18,9 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, join } from 'node:path'
 import { recordDraftOutcome } from './drafts'
 import { runPluginScript } from './project'
-import { isAllowlisted, resolveProjectDocument } from './projectPaths'
-import type { DraftCandidate, DraftOutcome, KeepDraftResult } from '../../shared/types'
+import { isKeepableTarget } from './draftTargets'
+import { resolveProjectDocument } from './projectPaths'
+import type { DraftKind, DraftOutcome, KeepDraftResult } from '../../shared/types'
 
 const WHOLE_DOCUMENT = '(whole document)'
 const KEPT_REASON = 'Drafted by Claude'
@@ -31,8 +32,19 @@ const ledgerHash = (bytes: Buffer): string => `sha256:${createHash('sha256').upd
 /** The document as it will be written: exactly the candidate's text, ending in one newline. */
 export const documentText = (text: string): string => `${text.replace(/\s+$/, '')}\n`
 
-function checkTarget(projectPath: string, target: string): { full: string } | { error: string } {
-  if (target.includes('..') || !/^\.sdlc\/artifacts\/.+\.md$/.test(target) || !isAllowlisted(target)) {
+/** What Keep needs to know about one result, whichever job made it: a spec 0027 draft, or one candidate
+ * of a spec 0029 batch (which has no `kind`, and no findings to record). */
+export interface KeepSubject {
+  target: string
+  text: string
+  kind?: DraftKind
+}
+
+/** Decides which targets a caller will write. Keep checks it again at the moment of writing. */
+export type TargetPermit = (target: string) => boolean
+
+function checkTarget(projectPath: string, target: string, permit: TargetPermit): { full: string } | { error: string } {
+  if (!permit(target)) {
     return { error: `${target} is not a document Studio may write a draft to.` }
   }
   try {
@@ -114,14 +126,15 @@ const joinWarnings = (warnings: Array<string | null>): string | undefined => {
 /** Writes the candidate. Returns ok:false (nothing written) for a refused target or an unconfirmed
  * capture of the file being replaced; otherwise ok:true, with a warning for anything unrecorded. */
 export async function keepCandidate(
-  projectPath: string, scriptsDir: string, candidate: DraftCandidate, actor: string,
+  projectPath: string, scriptsDir: string, candidate: KeepSubject, actor: string, permit: TargetPermit = isKeepableTarget,
 ): Promise<KeepDraftResult> {
-  const checked = checkTarget(projectPath, candidate.target)
+  const checked = checkTarget(projectPath, candidate.target, permit)
   if ('error' in checked) return { ok: false, error: checked.error }
   const { full } = checked
 
   const existed = existsSync(full)
-  if (existed && !(await captureExisting(projectPath, scriptsDir, candidate.target, actor))) {
+  // A target that is a folder, or a file that cannot be read, cannot be captured: the same refusal.
+  if (existed && !(await captureExisting(projectPath, scriptsDir, candidate.target, actor).catch(() => false))) {
     return { ok: false, error: `The existing ${candidate.target.split('/').pop()} could not be saved to its history first, so it was not replaced.` }
   }
 
@@ -144,7 +157,7 @@ export async function keepCandidate(
 }
 
 async function recordOutcome(
-  projectPath: string, scriptsDir: string, candidate: DraftCandidate, outcome: DraftOutcome, actor: string, charsKept: number,
+  projectPath: string, scriptsDir: string, candidate: KeepSubject, outcome: DraftOutcome, actor: string, charsKept: number,
 ): Promise<string | null> {
   const result = await recordDraftOutcome(
     projectPath, scriptsDir, candidate.target, WHOLE_DOCUMENT, outcome, actor, candidate.text.length, charsKept,
@@ -154,7 +167,7 @@ async function recordOutcome(
 
 /** Writes nothing. Records that the draft was offered and not kept. */
 export async function discardCandidate(
-  projectPath: string, scriptsDir: string, candidate: DraftCandidate, actor: string,
+  projectPath: string, scriptsDir: string, candidate: KeepSubject, actor: string,
 ): Promise<{ ok: boolean; error?: string; warning?: string }> {
   const warning = await recordOutcome(projectPath, scriptsDir, candidate, 'discarded', actor, 0)
   return { ok: true, ...(warning ? { warning } : {}) }
