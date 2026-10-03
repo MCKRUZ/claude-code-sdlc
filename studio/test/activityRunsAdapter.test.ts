@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { join, resolve } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 
 vi.mock('../electron/main/project', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../electron/main/project')>()),
@@ -16,6 +16,9 @@ import type { ConsoleEntry } from '../shared/types'
 const run = vi.mocked(runPluginScript)
 
 const PROJECT = resolve('/work/proj')
+// What the plugin prints for an absolute output path: the project's own, with forward slashes. Built
+// from PROJECT so it is absolute on every platform (a literal `C:/...` is relative on macOS and Linux).
+const REPORTS = `${PROJECT.split(sep).join('/')}/.sdlc/reports`
 const SCRIPTS = resolve('/plugin/scripts')
 const STATE = join(PROJECT, '.sdlc', 'state.yaml')
 
@@ -39,7 +42,7 @@ const FAILURES: Array<[string, () => ConsoleEntry]> = [
 // --- phase report -----------------------------------------------------------------------------
 
 const REPORT = {
-  phase: '0', phase_name: 'Discovery', output: 'C:/proj/.sdlc/reports/00-discovery-report.html',
+  phase: '0', phase_name: 'Discovery', output: `${REPORTS}/00-discovery-report.html`,
   found: 3, missing: 2, total: 5, exit_criteria: 4,
   artifacts: { 'constitution.md': true, 'problem-statement.md': false, 'success-criteria.md': true, 'constraints.md': false, 'phase1-handoff.md': true },
 }
@@ -55,7 +58,7 @@ describe('exportPhaseReport', () => {
   })
 
   it('with "all" runs --all --json and no --phase', async () => {
-    run.mockResolvedValue(json({ reports: [REPORT], index: 'C:/proj/.sdlc/reports/index.html' }))
+    run.mockResolvedValue(json({ reports: [REPORT], index: `${REPORTS}/index.html` }))
     await exportPhaseReport(PROJECT, SCRIPTS, '0', true)
     expect(run).toHaveBeenCalledWith(SCRIPTS, 'generate_phase_report.py', ['--state', STATE, '--all', '--json'])
   })
@@ -65,7 +68,7 @@ describe('exportPhaseReport', () => {
     const r = await exportPhaseReport(PROJECT, SCRIPTS, '0', false)
     expect(r.ok).toBe(true)
     expect(r.reports).toEqual([{
-      phase: '0', phaseName: 'Discovery', output: resolve('C:/proj/.sdlc/reports/00-discovery-report.html'),
+      phase: '0', phaseName: 'Discovery', output: resolve(`${REPORTS}/00-discovery-report.html`),
       found: 3, missing: 2, total: 5, missingNames: ['problem-statement.md', 'constraints.md'],
     }])
   })
@@ -79,13 +82,13 @@ describe('exportPhaseReport', () => {
   it('maps "all" to one entry per stage plus the index page', async () => {
     run.mockResolvedValue(json({
       reports: [REPORT, { ...REPORT, phase: 'close', phase_name: 'Close', found: 0, missing: 1, total: 1, artifacts: { 'final-handoff-report.md': false } }],
-      index: 'C:/proj/.sdlc/reports/index.html',
+      index: `${REPORTS}/index.html`,
     }))
     const r = await exportPhaseReport(PROJECT, SCRIPTS, '0', true)
     expect(r.ok).toBe(true)
     expect(r.reports.map((x) => x.phase)).toEqual(['0', 'close'])
     expect(r.reports[1].missingNames).toEqual(['final-handoff-report.md'])
-    expect(r.index).toBe(resolve('C:/proj/.sdlc/reports/index.html'))
+    expect(r.index).toBe(resolve(`${REPORTS}/index.html`))
   })
 
   it('refuses a stage id that is not a plain id, without running anything', async () => {

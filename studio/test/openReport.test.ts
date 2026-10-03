@@ -24,7 +24,9 @@ describe('openReport', () => {
   let open: ReturnType<typeof vi.fn<(path: string) => Promise<string>>>
 
   beforeEach(() => {
-    root = realpathSync(mkdtempSync(join(tmpdir(), 'open-report-')))
+    // `.native`, because that is what openReport resolves with: plain realpathSync keeps a Windows 8.3
+    // short name (RUNNER~1) that the native form expands, and the two would then never compare equal.
+    root = realpathSync.native(mkdtempSync(join(tmpdir(), 'open-report-')))
     project = join(root, 'project')
     reports = join(project, '.sdlc', 'reports')
     mkdirSync(reports, { recursive: true })
