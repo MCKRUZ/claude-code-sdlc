@@ -202,7 +202,8 @@ def _set_status_merged(text: str) -> str:
     if end == -1:
         raise SpecStatusError("Spec frontmatter block is not closed")
     fm_block, rest = text[:end], text[end:]
-    fm_block = re.sub(r"^status:.*$", "status: merged", fm_block, count=1, flags=re.MULTILINE)
+    # `[^\r\n]*`, not `.*$`: `.` also matches the "\r" of a CRLF line and would leave a bare LF.
+    fm_block = re.sub(r"^status:[^\r\n]*", "status: merged", fm_block, count=1, flags=re.MULTILINE)
     return fm_block + rest
 
 
