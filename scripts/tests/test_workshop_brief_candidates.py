@@ -181,3 +181,16 @@ class TestBuildIsUntouched:
                      "--claims-json", "--load-bearing", "--contradictions-file", "--questions-file",
                      "--registry-file", "--output", "--force", "--json"):
             assert flag in help_text
+
+
+class TestRefusalsAreOneLine:
+    """Found by the correctness review of PR #95. Run as a script, `brief_candidates` imported a SECOND copy of
+    `workshop_brief`, so a refusal raised there was not the `BriefError` that `main()` catches, and a caller
+    (Studio shows stderr) got a Python traceback instead of one `Error:` line."""
+
+    def test_a_missing_state_file_is_one_error_line_not_a_traceback(self, tmp_path):
+        proc = run("candidates", "--state", str(tmp_path / "nope" / "state.yaml"), "--json")
+        assert proc.returncode == 1 and proc.stdout == ""
+        lines = proc.stderr.strip().splitlines()
+        assert len(lines) == 1 and lines[0].startswith("Error: state file not found")
+        assert "Traceback" not in proc.stderr

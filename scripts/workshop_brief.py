@@ -521,6 +521,9 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
         if args.verb == "candidates":
+            # Run as a script this module is `__main__`; without this, brief_candidates' own
+            # `import workshop_brief` loads a second copy whose BriefError is not the one caught below.
+            sys.modules.setdefault("workshop_brief", sys.modules[__name__])
             import brief_candidates
             result = brief_candidates.report(args)
             print(json.dumps(result, indent=2) if args.json else brief_candidates.format_report(result))
