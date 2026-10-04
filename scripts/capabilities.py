@@ -42,6 +42,7 @@ CAPABILITIES: dict[str, dict] = {
     "narrative-status": {"script": "narrative_status.py", "flags": ["--all-phases", "--json"]},
     "phase-report-json": {"script": "generate_phase_report.py", "flags": ["--json", "--all"]},
     "intake-registry": {"script": "intake_documents.py", "flags": ["--registry", "--json"]},
+    "brief-candidates": {"script": "workshop_brief.py", "argv": ["candidates"], "flags": ["--state", "--repo", "--json"]},
 }
 
 

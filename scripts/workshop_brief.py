@@ -487,7 +487,7 @@ def format_report(r: dict) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Assemble the workshop brief from a person's selections")
-    verbs = parser.add_subparsers(dest="verb", required=True, metavar="{build}")
+    verbs = parser.add_subparsers(dest="verb", required=True, metavar="{build,candidates}")
     b = verbs.add_parser("build", help="Fill the workshop-brief template with the selections")
     src = b.add_mutually_exclusive_group(required=True)
     src.add_argument("--state", help="Path to .sdlc/state.yaml (workflow mode)")
@@ -505,12 +505,29 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--output", help="Where to write the brief (default: the discovery artifacts folder)")
     b.add_argument("--force", action="store_true", help="Overwrite an existing brief")
     b.add_argument("--json", action="store_true", help="Emit the result as one JSON document")
+    c = verbs.add_parser("candidates", help="Report, read-only, what the brief can be built from (for a selection form)")
+    csrc = c.add_mutually_exclusive_group(required=True)
+    csrc.add_argument("--state", help="Path to .sdlc/state.yaml (workflow mode)")
+    csrc.add_argument("--repo", help="Repo root (standalone when it has no .sdlc/state.yaml)")
+    c.add_argument("--contradictions-file", help="Override path to contradiction-list.md")
+    c.add_argument("--questions-file", help="Override path to question-list.md")
+    c.add_argument("--registry-file", help="Override path to document-registry.md")
+    c.add_argument("--json", action="store_true", help="Emit the result as one JSON document")
+    c.set_defaults(output=None)
     return parser
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
     try:
+        if args.verb == "candidates":
+            # Run as a script this module is `__main__`; without this, brief_candidates' own
+            # `import workshop_brief` loads a second copy whose BriefError is not the one caught below.
+            sys.modules.setdefault("workshop_brief", sys.modules[__name__])
+            import brief_candidates
+            result = brief_candidates.report(args)
+            print(json.dumps(result, indent=2) if args.json else brief_candidates.format_report(result))
+            sys.exit(0)
         result = build(args)
     except BriefError as e:
         print(f"Error: {e}", file=sys.stderr)
