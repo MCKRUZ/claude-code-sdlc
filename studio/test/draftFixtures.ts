@@ -1,5 +1,7 @@
 import { vi } from 'vitest'
-import type { DraftCandidate, DraftJob, DraftState, KeepDraftResult, StartDraftResult } from '../shared/types'
+import type {
+  BatchCandidate, BatchJob, BatchState, DraftCandidate, DraftJob, DraftState, KeepBatchResult, KeepDraftResult, StartDraftResult,
+} from '../shared/types'
 
 export function draftJob(over: Partial<DraftJob> = {}): DraftJob {
   return {
@@ -47,4 +49,46 @@ export function installDraftApi(over: Record<string, unknown> = {}): Api {
 export function removeDraftApi() {
   // @ts-expect-error - cleaning up the test double
   delete window.studio
+}
+
+export function batchJob(over: Partial<BatchJob> = {}): BatchJob {
+  return {
+    id: 'batch-1', kind: 'summarise', startedAt: Date.now(), total: 3, done: 0,
+    currentLabel: null, costUsd: null, phase: 'finished', ...over,
+  }
+}
+
+export function batchCandidate(n: number, over: Partial<BatchCandidate> = {}): BatchCandidate {
+  return {
+    id: `c${n}`, target: `.sdlc/context/intake/DOC-00${n}-file-${n}.md`, label: `DOC-00${n} · file-${n}.md`,
+    status: 'ready', text: `## Summary ${n}
+
+What document ${n} says.`, replacesExisting: false, ...over,
+  }
+}
+
+export function keptResult(over: Partial<KeepBatchResult> = {}): KeepBatchResult {
+  return { ok: true, kept: [], failed: [], warnings: [], ...over }
+}
+
+/** A window.studio double with every batch call (and the catalogue call a panel needs); each can be
+ * overridden. `pushBatchState` delivers a main-process update to whoever subscribed. */
+export function installBatchApi(over: Record<string, unknown> = {}, initial: BatchState = { job: null, candidates: [] }) {
+  let listener: ((update: { projectPath: string; state: BatchState }) => void) | null = null
+  const unsubscribe = vi.fn(() => { listener = null })
+  const studio: Api = {
+    getBatchState: vi.fn().mockResolvedValue(initial),
+    previewBatch: vi.fn().mockResolvedValue({ ok: true, kind: 'summarise', documents: [] }),
+    startBatch: vi.fn().mockResolvedValue({ ok: true, job: batchJob({ phase: 'running' }) }),
+    cancelBatch: vi.fn().mockResolvedValue({ ok: true }),
+    keepBatch: vi.fn().mockResolvedValue(keptResult()),
+    discardBatch: vi.fn().mockResolvedValue({ ok: true, warnings: [] }),
+    writeRegistry: vi.fn(),
+    onBatchState: vi.fn((cb: typeof listener) => { listener = cb; return unsubscribe }),
+    ...over,
+  } as Api
+  // @ts-expect-error - test double, not the full StudioApi surface
+  window.studio = studio
+  const pushBatchState = (projectPath: string, state: BatchState) => listener?.({ projectPath, state })
+  return { studio, unsubscribe, pushBatchState }
 }

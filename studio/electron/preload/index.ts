@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { ChatActivity, ConsoleEntry, DraftProgressEvent, StudioApi, SyncState } from '../../shared/types'
+import type { BatchState, ChatActivity, ConsoleEntry, DraftProgressEvent, StudioApi, SyncState } from '../../shared/types'
 
 // The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
 // no arbitrary command execution — every call here maps to exactly one narrow main-process
@@ -56,6 +56,18 @@ const studio: StudioApi = {
     const handler = (_event: Electron.IpcRendererEvent, progress: DraftProgressEvent) => callback(progress)
     ipcRenderer.on('studio:draftProgress', handler)
     return () => ipcRenderer.off('studio:draftProgress', handler)
+  },
+  previewBatch: (projectPath, kind) => ipcRenderer.invoke('studio:previewBatch', projectPath, kind),
+  startBatch: (projectPath, kind) => ipcRenderer.invoke('studio:startBatch', projectPath, kind),
+  cancelBatch: () => ipcRenderer.invoke('studio:cancelBatch'),
+  getBatchState: (projectPath) => ipcRenderer.invoke('studio:getBatchState', projectPath),
+  keepBatch: (projectPath, jobId, actor, candidateIds) => ipcRenderer.invoke('studio:keepBatch', projectPath, jobId, actor, candidateIds),
+  discardBatch: (projectPath, jobId, actor, candidateIds) => ipcRenderer.invoke('studio:discardBatch', projectPath, jobId, actor, candidateIds),
+  writeRegistry: (projectPath) => ipcRenderer.invoke('studio:writeRegistry', projectPath),
+  onBatchState: (callback) => {
+    const handler = (_event: Electron.IpcRendererEvent, update: { projectPath: string; state: BatchState }) => callback(update)
+    ipcRenderer.on('studio:batchState', handler)
+    return () => ipcRenderer.off('studio:batchState', handler)
   },
   setJudgementConfirmation: (projectPath, stageId, questionId, confirmed, actor) =>
     ipcRenderer.invoke('studio:setJudgementConfirmation', projectPath, stageId, questionId, confirmed, actor),

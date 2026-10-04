@@ -111,7 +111,7 @@ function DisabledReason({ reason }: { reason: string }) {
 function ActivityPanel({ id, projectPath, stageId, documents, draft, actor }: { id: string } & RowContext) {
   const key = `${projectPath}|${stageId}`
   if (id === 'phase-report') return <PhaseReportPanel key={key} projectPath={projectPath} stageId={stageId} />
-  if (id === 'intake') return <IntakePanel key={key} projectPath={projectPath} />
+  if (id === 'intake') return <IntakePanel key={key} projectPath={projectPath} actor={actor} />
   if (id === 'enhance') {
     return <NarrativeCoveragePanel key={key} projectPath={projectPath} stageId={stageId} documents={documents} draft={draft} actor={actor} />
   }
