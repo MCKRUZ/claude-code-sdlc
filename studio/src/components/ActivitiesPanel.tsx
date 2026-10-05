@@ -5,6 +5,7 @@ import type {
 import { CHECK_CONTROLS, PANEL_CONTROLS } from '../../shared/activityControls'
 import { sendChatTurn, useChatAvailable } from '../chatBridge'
 import { computeActivityRows, slashCommand, type ActivityRow } from '../workflowSteps'
+import { BriefForm } from './BriefForm'
 import { IntakePanel } from './IntakePanel'
 import { NarrativeCoveragePanel } from './NarrativeCoveragePanel'
 import { PhaseReportPanel } from './PhaseReportPanel'
@@ -108,10 +109,11 @@ function DisabledReason({ reason }: { reason: string }) {
 }
 
 /** Keyed by project and stage, so moving to another one starts the panel fresh. */
-function ActivityPanel({ id, projectPath, stageId, documents, draft, actor }: { id: string } & RowContext) {
+function ActivityPanel({ id, projectPath, stageId, documents, draft, actor, onOpenDocument }: { id: string } & RowContext) {
   const key = `${projectPath}|${stageId}`
   if (id === 'phase-report') return <PhaseReportPanel key={key} projectPath={projectPath} stageId={stageId} />
   if (id === 'intake') return <IntakePanel key={key} projectPath={projectPath} actor={actor} />
+  if (id === 'brief') return <BriefForm key={key} projectPath={projectPath} actor={actor} onOpenDocument={onOpenDocument} />
   if (id === 'enhance') {
     return <NarrativeCoveragePanel key={key} projectPath={projectPath} stageId={stageId} documents={documents} draft={draft} actor={actor} />
   }
