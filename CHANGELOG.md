@@ -23,8 +23,18 @@ order* — never a second backlog, a reordering, or a gate — and fixes both se
   weekly Intent triage, made executable: NOT READY specs and why, verdicts pending with their
   business-day age, unacknowledged handoffs, overdue `DL-NN` decisions; then one spec at a time
   through `check_spec` and `/sdlc-spec`. `validate --lane eng|data` records the verdicts `ready`
-  requires; `--upstream` routes a Phase 1/2 gap through `/sdlc-revise` + `check_gates.py --phase N`
-  so the engagement never regresses a phase.
+  requires; `--upstream` fixes a Phase 1/2 gap by editing the artifact in place (human-confirmed
+  diff), recording it to the artifact ledger, re-gating that phase with `check_gates.py --phase N`
+  as information, and regenerating that phase's layer — so the engagement never regresses a phase
+  and earlier-phase artifacts can change during refinement as the normal case.
+- **Phase layers are living, not frozen.** The "frozen layer" was a prose rule nothing enforced,
+  and it contradicted refinement: a summary of artifacts that changed is a false summary. Layers
+  are now regenerated whenever a source artifact changes (refinement, `/sdlc-revise`,
+  `/sdlc-refresh`), the previous version kept as `.superseded-<date>`, the regeneration recorded as
+  `refreshed`. Sign-offs in `state.yaml` are never rewritten; the `## Locked Metrics` heading keeps
+  its name because the G5 gate reads it literally. `references/frozen-layers.md`, `SKILL.md`,
+  `/sdlc-next` step 5 and the layer template say so; file and script names keep "frozen" for
+  compatibility.
 - **Five optional spec keys, one writer.** `sprint`, `next_owner`, `eng_review`, `data_review`,
   `depends_on` — `""` by default, values are enumerations, names and spec ids only, written solely
   by `sprint.py` on files matching `^\d{4}-` (the installed `specs/spec-template.md` is never listed

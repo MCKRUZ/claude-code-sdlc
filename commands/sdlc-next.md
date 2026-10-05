@@ -55,7 +55,9 @@ Run exit gate checks for the current phase and advance to the next phase if all 
      `--discipline-signoff "Discipline:Section:Name"` per sign-off (repeatable). No sign-offs → no
      flags → byte-identical state. The named human signs; the agent only records what it is told.
 
-5. **Generate Frozen Layer:** After HITL sign-off, before advancing state:
+5. **Generate (or regenerate) the Phase Layer:** After HITL sign-off, before advancing state. The
+   layer is a living summary — the same procedure regenerates it later whenever a source artifact
+   changes (see `references/frozen-layers.md`, "Living, not frozen"):
    1. Read ALL artifacts in `.sdlc/artifacts/{NN}-{phase-name}/`
    2. Read the frozen layer template from `${CLAUDE_PLUGIN_ROOT}/templates/frozen-layer.md`
    3. Condense all artifact content into the template structure, targeting 1500–2000 tokens:
@@ -63,7 +65,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
       - Summarize constraints, risks, and key outcomes
       - Fill the traceability footer mapping each source artifact to sections extracted
       - Fill YAML frontmatter with phase metadata and estimated token count (word_count × 1.3)
-   4. If a frozen layer already exists for this phase (from a prior completion), rename it to `{name}.superseded` before writing the new one
+   4. If a layer already exists for this phase (from a prior completion or a refinement refresh), rename it to `{name}.superseded-<YYYYMMDD>` before writing the new one — history is kept, the hook loads only the current file
    5. Write the frozen layer to `.sdlc/context/layers/phase{N}-{name}.md`
    6. Validate:
       ```bash

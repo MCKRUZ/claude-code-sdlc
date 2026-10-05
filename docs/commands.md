@@ -837,7 +837,7 @@ It never approves anything itself, never assigns a tier, never answers a decisio
 | `--spec <id \| path>` | Refine one spec: `check_spec.py` (+ `check_channel.py` when a channel is bound), propose fixes to vague lines, surface silent decisions to the spec's Decision List or to `.sdlc/decision-log.md` as `DL-NN` (owner + 2-day clock), propose the risk tier, propose `depends_on` when the spec's Scope or Delegation Plan names files, contracts or ids another slated spec introduces, then hand the edit to `/sdlc-spec --spec` | tier confirmed; dependencies confirmed; decisions owned by a named human; `status: ready` flipped only after READY and a human's yes |
 | `--sprint S07` | **Batch mode:** load the Phase 0–2 context once (constitution, frozen layers, `requirements.md`, `epics.md`, `business-rules.md`, `design-doc.md`, `adr-registry.md`, `api-contracts.md`, `data/data-contract.md`, `risk-tier-map.md`) and check every slated spec against it — mechanically (DoR, `source:` ids resolve, cited upstream artifacts not stale via `audit_artifacts.py report --json` (a `source` artifact in the stale list is a gap), tier vs `risk-tier-map.md`, channel dimensions) and by judgment (the `multi-reviewer` lenses fanned out across specs). One agenda, then fixes one spec at a time | as above, per spec |
 | `validate --spec N --lane eng\|data --verdict accepted\|returned\|n-a --by <name> [--reason]` | Records the independent verdict (`sprint.py verdict`). `returned` sends the spec back to refinement with the reason; `n-a` is allowed only from Data and only with a reason | the named lead |
-| `--upstream --spec N` | The no-regression path: pick the upstream artifact (`FR-…`, `BR-…`, `ADR-…`) → `/sdlc-revise <id>` → `check_gates.py --phase N` re-gates that phase → the spec re-enters refinement with its `DL-NN` link. `current_phase` never moves | which artifact; confirm the re-gate |
+| `--upstream --spec N` | The no-regression path: pick the upstream artifact (`FR-…`, `BR-…`, `ADR-…`), edit it **in place** (human-confirmed diff), record it with `audit_artifacts.py record --event revised`, re-gate that phase with `check_gates.py --phase N` as information, **regenerate that phase's layer** (recorded as `refreshed`), then the spec re-enters refinement. A `DL-NN` is opened only for a product decision or a Phase 0 change. `current_phase` never moves | which artifact; the diff; who made it |
 | `--repo <path>` | Standalone, same degradation as `/sdlc-sprint` (no `.sdlc/` needed; missing engagement context noted) | — |
 
 ### Internal Flow
@@ -869,7 +869,9 @@ Writes spec bodies only through `/sdlc-spec --spec`; writes `eng_review` / `data
 | `track_decisions.py --json` | Open / overdue `DL-NN` decisions |
 | `check_spec.py` (+ `check_channel.py`) | The DoR verdict and vague-line lint per spec (advisory channel lint when bound) |
 | `audit_artifacts.py report --json` | Staleness of the upstream artifacts a spec cites (batch mode: a spec whose `source` artifact is in the stale list is flagged and routed to `--upstream`) |
-| `check_gates.py --phase N` | Re-gate the phase an upstream fix touched (`--upstream` path only) |
+| `check_gates.py --phase N` | Re-gate the phase an upstream fix touched, as information (`--upstream` path only) |
+| `audit_artifacts.py record --event revised \| refreshed` | Record the in-place upstream edit, and the regenerated phase layer (`--upstream` path only) |
+| `validate_frozen_layer.py --phase N` | Validate the regenerated phase layer (`--upstream` path only) |
 
 ### Error Scenarios
 

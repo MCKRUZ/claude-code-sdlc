@@ -11,7 +11,16 @@ source_artifacts: ${SOURCE_ARTIFACTS}
 estimated_tokens: ${ESTIMATED_TOKENS}  # word_count × 1.3
 ---
 
-# Phase ${PHASE_ID}: ${PHASE_NAME} — Frozen Layer
+# Phase ${PHASE_ID}: ${PHASE_NAME} — Phase Layer
+
+<!--
+  A living summary of this phase's artifacts as they are NOW — not a lock on them. When a source
+  artifact changes later (refinement, /sdlc-revise, /sdlc-refresh), this layer is regenerated and
+  the previous version is kept as phase{N}-{name}.md.superseded-<YYYYMMDD>. The `## Locked Metrics`
+  heading is read literally by the G5 gate; "locked" means carried forward and re-checked.
+  See references/frozen-layers.md.
+-->
+
 
 ## Decision
 

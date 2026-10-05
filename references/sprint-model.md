@@ -161,7 +161,8 @@ tracked: velocity, story points, PR count, lines of code.*
 | Guarantee | How the layer keeps it |
 |---|---|
 | Refinement runs in **any phase** where specs exist | no sprint verb reads `current_phase`; standalone `--repo` mode needs no `.sdlc/` at all |
-| An upstream gap is fixed **without regressing the phase** | `/sdlc-refine --upstream` routes through `/sdlc-revise` and `check_gates.py --phase N`; `current_phase` never moves |
+| An upstream gap is fixed **without regressing the phase** | `/sdlc-refine --upstream` edits the Phase 1/2 artifact in place (human-confirmed diff), records it to the artifact ledger, re-gates that phase with `check_gates.py --phase N` as information, and regenerates that phase's layer; `current_phase` never moves |
+| Earlier-phase artifacts are **expected to change** during refinement, and layers follow them | Phase layers are living summaries, not locks: regenerated when a source changes, previous version kept as `.superseded-<date>`, regeneration recorded as `refreshed` (see `references/frozen-layers.md`) |
 | A sprint is **never a gate and never gated** | every read verb exits 0; `ready` and `close` check only the slate, never G1–G7; nothing writes `.sdlc/state.yaml` |
 | Leaving Build stays a **human declaration** | `close` never suggests advancing; `/sdlc-next` gains one advisory line |
 | The protected core is **byte-for-byte unchanged** | `check_spec.py`, `check_gates.py`, `advance_phase.py`, `phase_model.py`, the registry, `new_spec.py`, `scorecard.py`, `harness/**`, `/sdlc-coach`, `/sdlc-spec` are imported from, never edited |

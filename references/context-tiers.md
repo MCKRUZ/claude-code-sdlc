@@ -8,7 +8,7 @@ The SDLC plugin uses a 3-tier context architecture to manage token budget across
 |------|------|-------------|-------------|--------|
 | 1 | Foundation | Always (session start) | ~500 tokens | state.yaml + profile.yaml + constitution.md |
 | 1.5 | Intake Index | Session start (when available) | ~5K tokens (configurable) | `.sdlc/context/intake/index.md` |
-| 2 | Frozen Layers | Session start (recent 3) | ~2K per layer | `.sdlc/context/layers/` |
+| 2 | Phase Layers (living summaries) | Session start (recent 3) | ~2K per layer | `.sdlc/context/layers/` |
 | 3 | Reference | On-demand | Unbounded | `references/` directory in plugin |
 
 ## Tier 1: Foundation (Always Loaded)
@@ -43,7 +43,7 @@ This tier exists only when document intake was performed during Phase 0. Project
 - `.sdlc/context/intake/catalog.json` (metadata, not loaded)
 - `.sdlc/context/intake/DOC-NNN-*.md` (on-demand)
 
-## Tier 2: Frozen Layers (Per-Phase)
+## Tier 2: Phase Layers (Per-Phase, living — regenerated when their sources change)
 
 Loaded automatically by the session-start hook for the **most recent 3 completed phases**. Contains condensed phase summaries with locked metrics, constraints, and key decisions.
 

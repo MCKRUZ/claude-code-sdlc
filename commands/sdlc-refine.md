@@ -9,7 +9,8 @@ It never approves anything itself, never assigns a tier, never answers a decisio
 
 Refinement runs in **any phase** where specs exist — Foundation onward, and mid-Build for the *next*
 sprint. A gap that lives in a Phase 1 or 2 artifact is fixed through `--upstream` without regressing the
-phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
+phase: the artifact is edited in place, the change is recorded, and that phase's layer is refreshed.
+The lifecycle and the ready rule are in `references/sprint-model.md`.
 
 ## Instructions
 
@@ -27,7 +28,7 @@ phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
    spec (step 4); `--sprint SNN` → batch over the slate (step 5); `validate` → record a verdict
    (step 6); `--upstream --spec <id>` → the no-regression path (step 7).
 
-3. **Agenda (default) — read-only composition, writes nothing.** Two reads:
+3. **Agenda (default) — read-only composition, writes nothing.** Three reads:
    ```bash
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py status \
      --state .sdlc/state.yaml --json
@@ -36,6 +37,11 @@ phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
    uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/track_decisions.py \
      --state .sdlc/state.yaml --json
    ```
+   ```bash
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py report \
+     --state .sdlc/state.yaml --json
+   ```
+   (The third is skipped silently when its JSON has `has_history: false` — no artifact ledger yet.)
    If the status JSON's `sprint` is `null`, say "no sprint — `/sdlc-sprint new` to open one" and
    render only the decisions block. Otherwise compose, in this order:
    - **NOT READY specs** — from `readiness.gaps`: per spec, its gap lines against the ready rule (DoR
@@ -43,6 +49,12 @@ phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
      dependency cycle or unmerged dependency outside the slate). These are the meeting's work items.
    - **Vague-line hits** — for each NOT READY spec, run `check_spec.py` (step 4a) and list its
      ADVISE findings: acceptance checks that might be wishes rather than checks.
+   - **Upstream drift** — from the `audit_artifacts.py report` JSON: a slated spec whose `source:`
+     artifact is in the stale list, or a Phase 1/2 artifact a slated spec cites that changed after
+     the spec did. Each is a candidate for step 7 (edit the artifact in place during refinement).
+   - **Stale layers** — same read: a `context/layers/phase*` entry in the stale list means that
+     phase's summary no longer matches its artifacts. Refresh it (step 7.4) before the sprint is
+     readied, so the next session starts from a true summary.
    - **Verdicts pending** — `verdicts_pending` with `since_business_days` (reads `no data` when the
      spec was slated by hand and the ledger has no line). Flag any beyond the review-turnaround
      target if `cadence-plan.md` sets one; otherwise print `no target set`.
@@ -175,29 +187,61 @@ phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
      Data verdict is required until Data itself records `n-a`.
    - The verdict lands in `eng_review:` / `data_review:` and on the ledger; `sprint.py ready` reads it.
 
-7. **`--upstream --spec N` — the no-regression path.** The gap is not in the spec but in a Phase 1
-   or 2 artifact the spec builds on (a requirement, a business rule, an ADR, a contract).
+7. **`--upstream --spec N` — revise the upstream artifact in place, without regressing the phase.**
+   The gap is not in the spec but in a Phase 1 or 2 artifact it builds on (a requirement, an epic, a
+   business rule, an ADR, a contract, the data contract). Changing those during refinement is the
+   normal case, not an exception — so the change happens here, lightly, with the record kept.
 
    > **HITL GATE:** `AskUserQuestion`: "Which upstream artifact needs the change — `FR-012`, `BR-04`,
    > `ADR-004`, …?" Never guess the artifact.
 
    Then, in order:
-   1. **`/sdlc-revise <id>`** — the owning discipline proposes the wording, a named human decides it,
-      the change ledger and a `DL-NN` decision-log row record the why.
-   2. **Re-gate that phase only** — dirty-tracking re-validates the changed artifact:
+   1. **Propose the edit as a diff.** Read the artifact, draft the minimal change (the sharpened FR
+      wording, the added business-rule row, the ADR consequence line) and show it before/after.
+      > **HITL GATE:** "Apply this change to `requirements.md` (FR-012)? Who is making it — <name>?"
+      A named human says yes; then edit the artifact in place. Phase 0 artifacts
+      (`problem-statement.md`, `success-criteria.md`, `constraints.md`) may be changed the same way,
+      but a Phase 0 change is a steering decision: it always gets a `DL-NN` row (7.2) and the Product
+      lead's name.
+   2. **Record the change** — the artifact ledger carries who, what and why:
+      ```bash
+      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py record \
+        --state .sdlc/state.yaml --artifact .sdlc/artifacts/01-requirements/requirements.md \
+        --target FR-012 --event revised --actor "<name>" --reason "<what changed and why>"
+      ```
+      Add `--decision-ref DL-NN` only when the change *is* a product decision someone else owns (open
+      the row as in step 4c) or when it touches Phase 0. A clarification needs no decision row.
+      Changes raised *outside* refinement still use `/sdlc-revise`, which adds the impact preview and
+      the discipline interview; this path is the light one for gaps refinement itself found.
+   3. **Re-gate that phase — as information, never as a block:**
       ```bash
       uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/check_gates.py \
         --state .sdlc/state.yaml --phase 1
       ```
-      Use the phase the artifact belongs to (`1` for requirements, `2` for design). This is a check,
-      not a transition: `current_phase` **never moves**, and no frozen layer is rewritten here — if the
-      re-gate shows a frozen-layer delta, the `.superseded` convention in `/sdlc-next` handles it the
-      next time that phase's layer is regenerated.
-
-      > **HITL GATE:** Show the re-gate result and ask before continuing: "Phase 1 re-gate PASS. Return
-      > 0007 to refinement with `DL-NN`?"
-   3. **Back to refinement** — the spec re-enters step 4 with its `DL-NN` link cited on its Decision
-      List, so the next reader sees why the upstream moved.
+      Use the phase the artifact belongs to (`0`, `1` or `2`). Dirty-tracking re-validates only the
+      changed file. A MUST failure (a placeholder left behind, a broken reference) becomes an agenda
+      item for this spec, not a stop. This is a check, not a transition: `current_phase` **never
+      moves**.
+   4. **Refresh that phase's layer.** `.sdlc/context/layers/phase{N}-{name}.md` summarises the
+      artifacts that just changed, so regenerate it now rather than let it drift: rename the current
+      file to `phase{N}-{name}.md.superseded-<YYYYMMDD>` (the session hook's `phase*.md` glob ignores
+      it), re-condense from the current artifacts with `${CLAUDE_PLUGIN_ROOT}/templates/frozen-layer.md`
+      exactly as `/sdlc-next` step 5 does, validate:
+      ```bash
+      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/validate_frozen_layer.py \
+        --state .sdlc/state.yaml --phase 1
+      ```
+      and record the refresh so the staleness view closes:
+      ```bash
+      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/audit_artifacts.py record \
+        --state .sdlc/state.yaml --artifact .sdlc/context/layers/phase1-requirements.md \
+        --event refreshed --actor "<name>" --reason "regenerated after FR-012 revision"
+      ```
+      Layers are living summaries, not locks — see `references/frozen-layers.md`.
+   5. **Back to refinement** — the spec re-enters step 4; its `source:` still points at the revised
+      id, and its Decision List cites the `DL-NN` if one was opened. Standalone mode (`--repo`): edit
+      and record the same way (`--repo` on `audit_artifacts.py`); skip the re-gate and the layer
+      refresh (no `.sdlc/state.yaml`) and say so in the report.
 
 8. **Report:**
    ```
@@ -220,8 +264,9 @@ phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
   `multi-reviewer` council lenses over every slated spec, one agenda, fixes one spec at a time.
 - `validate --spec N --lane eng|data --verdict accepted|returned|pending|n-a --by <name> [--reason]`:
   record an independent verdict (`n-a`: data lane only, reason required).
-- `--upstream --spec N`: route a Phase 1/2 artifact fix through `/sdlc-revise` and a phase-scoped
-  `check_gates.py --phase N`, never moving `current_phase`.
+- `--upstream --spec N`: revise a Phase 1/2 (or, as a steering decision, Phase 0) artifact in place
+  during refinement — human-confirmed diff, `audit_artifacts.py record`, an advisory
+  `check_gates.py --phase N`, and a refresh of that phase's layer — never moving `current_phase`.
 - `--repo <path>`: standalone mode — no `.sdlc/state.yaml`; upstream checks and the phase re-gate are
   skipped and the agenda header says so.
 
@@ -234,9 +279,12 @@ phase. The lifecycle and the ready rule are in `references/sprint-model.md`.
   a tier, never answers a decision. A `--by` that reads as an AI or automation is refused (exit 2).
 - **`status` is still hand-moved.** READY is a precondition for flipping it, not a trigger; no script
   writes it. `check_spec.py` and `check_gates.py` are byte-for-byte unchanged by this layer.
-- **Never regress a phase.** `--upstream` changes the artifact through `/sdlc-revise`, re-gates that
-  phase with `check_gates.py --phase N`, and returns to refinement — `current_phase` does not move.
-  Neither this command nor `/sdlc-sprint` reads `current_phase` to decide whether it may run.
+- **Never regress a phase — and never freeze one either.** `--upstream` edits the Phase 1/2 artifact
+  in place (a named human confirms the diff), records it to the artifact ledger, re-gates that phase
+  with `check_gates.py --phase N` as information, refreshes that phase's layer, and returns to
+  refinement — `current_phase` does not move. Changing an earlier phase's artifact during refinement
+  is the normal case; the record (ledger + re-gate + refreshed layer) is what keeps it honest, not a
+  lock. Neither this command nor `/sdlc-sprint` reads `current_phase` to decide whether it may run.
 - **No activity metrics, no per-person numbers.** The agenda shows counts of specs, ages of waits in
   business days, and owners' names on the items they hold — never velocity, points, estimates, effort,
   hours, PR count, or lines of code, and nothing aggregated by person. Empty blocks read `no data`.
