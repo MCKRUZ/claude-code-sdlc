@@ -30,6 +30,35 @@ BASH_HOOK = HOOKS_DIR / "sdlc-session-start.sh"
 PS1_HOOK = HOOKS_DIR / "sdlc-session-start.ps1"
 PWSH = shutil.which("pwsh")
 
+
+def _bash() -> str | None:
+    """The bash that can actually run the hook (mirrors test_review_gate_hook.py).
+
+    On Windows, PATH's `bash` is System32's WSL shim, which on CI runners (no distro
+    installed) prints "Windows Subsystem for Linux has no installed distributions" and
+    exits 1 — it never runs the script at all. Git Bash is the bash a real Windows
+    install executes hooks with, so resolve it explicitly and never fall back to the shim.
+    """
+    if os.name != "nt":
+        return shutil.which("bash")
+    for var in ("ProgramFiles", "ProgramFiles(x86)"):
+        base = os.environ.get(var)
+        if base and (Path(base) / "Git" / "bin" / "bash.exe").is_file():
+            return str(Path(base) / "Git" / "bin" / "bash.exe")
+    git = shutil.which("git")
+    if git:  # <git-root>/cmd/git.exe -> <git-root>/bin/bash.exe
+        cand = Path(git).parent.parent / "bin" / "bash.exe"
+        if cand.is_file():
+            return str(cand)
+    found = shutil.which("bash")
+    return None if found and "system32" in found.lower() else found
+
+
+BASH = _bash()
+pytestmark = pytest.mark.skipif(
+    BASH is None, reason="sdlc-session-start.sh needs bash (Git Bash on Windows)"
+)
+
 SPRINT_TAG = "[SDLC-SPRINT]"
 PHASE_TAG = "[SDLC-PHASE]"
 REFINE_CLAUSE = "Refinement for the next sprint runs alongside — /sdlc-refine; the board is /sdlc-sprint."
@@ -88,7 +117,7 @@ def _run(cmd: list[str], project: Path) -> subprocess.CompletedProcess:
 
 
 def run_bash(project: Path) -> subprocess.CompletedProcess:
-    return _run(["bash", str(BASH_HOOK)], project)
+    return _run([BASH, str(BASH_HOOK)], project)
 
 
 def run_pwsh(project: Path) -> subprocess.CompletedProcess:
@@ -284,7 +313,9 @@ def test_hook_sources_are_lf_only_and_free_of_json_readers():
     sh = BASH_HOOK.read_bytes()
     ps1 = PS1_HOOK.read_bytes()
 
-    assert b"\r" not in sh and b"\r" not in ps1
+    # Only the shell script must be LF (.gitattributes forces `*.sh text eol=lf`; bash chokes on
+    # CRLF). The .ps1 is left to the platform default and legitimately checks out CRLF on Windows.
+    assert b"\r" not in sh
     for needle in (b"jq", b"python", b"session-handoff", b"Session Handoff", b"PYEOF"):
         assert needle not in sh, needle
     for needle in (b"ConvertFrom-Json", b"session-handoff", b"Session Handoff"):
