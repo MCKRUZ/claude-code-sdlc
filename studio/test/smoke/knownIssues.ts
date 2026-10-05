@@ -22,28 +22,22 @@ export interface KnownIssue {
 
 export const KNOWN_ISSUES: KnownIssue[] = [
   {
-    kind: 'error-showing',
-    detail: /^Sync error$/,
-    problem: 'A project with no shared repository (every brand-new project) shows a red "Sync error" in the sidebar on every screen, and the reason is only in a hover tooltip.',
-    fix: 'Treat "no shared repository yet" as its own calm state ("Saved on this computer only") with one sentence on how to connect one, and keep the red error for a sync that actually failed.',
-  },
-  {
     kind: 'leaked-internals',
     detail: /^raw-tool-message/,
     problem: 'When the GitHub CLI is not signed in, its own instructions are shown word for word on the Build board and in Settings ("set the GH_TOKEN environment variable… Example: env: GH_TOKEN: ${{ github.token }}"). Found by the CI run, where it is never signed in; a person who has not run "gh auth login" would see the same.',
     fix: 'Say it in Studio\'s words ("Studio cannot read your code host yet. Sign in to GitHub, then come back") and keep the tool\'s own text behind a "details" fold or in the Console.',
   },
   {
-    kind: 'error-showing',
-    detail: /failed after [\d.]+s\.$|^EXIT \d+$/,
-    problem: 'The Console lists the background sync and connection checks as failures every time they run in a project with no shared repository, in red, with a bare "EXIT 128".',
-    fix: 'Same root as the sidebar message: report "no shared repository" as a state, not as a failed command, and show what the exit code meant in words.',
-  },
-  {
     kind: 'control-without-name',
     detail: /^<input> near "/,
     problem: 'In the document editor, each field\'s text box has no label of its own: its caption sits beside it but is not tied to it, so a screen reader announces an unnamed edit box.',
     fix: 'Associate each caption with its input (a label element or aria-labelledby) in FieldEditor.',
+  },
+  {
+    kind: 'error-showing',
+    detail: /python(\.exe)? failed after [\d.]+s\.$|^EXIT 1$/,
+    problem: 'The Console lists, in red, the failed read behind the Edit-on-a-missing-document error below ("python … failed", "EXIT 1").',
+    fix: 'Goes away with that fix: once a missing document is started from its template, there is no failing read to log.',
   },
   {
     kind: 'error-showing',

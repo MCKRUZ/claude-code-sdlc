@@ -186,6 +186,8 @@ export interface PullResult {
   arrivedChanges: ArrivedChange[]
   entries: ConsoleEntry[]
   error?: string
+  /** True when there was no shared repository to pull from. `ok` is true: nothing went wrong. */
+  noRemote?: boolean
 }
 
 export type ClashChoice = 'local' | 'remote' | 'combined'
@@ -801,6 +803,8 @@ export type SyncState =
   | { kind: 'waitingForApproval'; approver: string }
   | { kind: 'waitingForChecks' }
   | { kind: 'error'; message: string }
+  /** No shared repository is configured yet (every new project). A state, not a failure. */
+  | { kind: 'localOnly' }
 
 // --- Chat authoring (spec 0016) ---------------------------------------------------------
 //
