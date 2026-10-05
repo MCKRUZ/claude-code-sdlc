@@ -60,9 +60,5 @@ def test_a_frontmatter_that_is_not_a_mapping_is_reported_as_unusable(tmp_path, t
 
 
 def test_a_correct_layer_still_passes_the_type_checks(tmp_path):
-    (tmp_path / ".sdlc").mkdir()
-    result = validate(tmp_path / "ok", f"{GOOD}\nsource_artifacts: [constitution.md]") if False else None
-    root = tmp_path / "ok"
-    root.mkdir()
-    result = validate(root, f"{GOOD}\nsource_artifacts: [constitution.md]")
+    result = validate(tmp_path, f"{GOOD}\nsource_artifacts: [constitution.md]")
     assert "must be" not in result.stdout and "Traceback" not in result.stderr
