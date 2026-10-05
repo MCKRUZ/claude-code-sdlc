@@ -148,8 +148,18 @@ eval_gate:
 dependency_scan:
   enabled: true
   # -> <<CI_DEPENDENCY_SCAN_CMD>>
+  # Same repair as the python profile's, for the same reason. `npm audit` exits non-zero when
+  # it FINDS something, so the `|| true` is necessary — but on its own it also hid a missing
+  # lockfile or a wrong working directory, leaving "no advisories" and "never looked"
+  # indistinguishable. npm reports how many dependencies it examined, so the scan now says so
+  # and fails when the answer is none.
+  # The outer ( ) is load-bearing — see the note in packs/stacks/python/ci-profile.yaml. This
+  # command is spliced textually into `if ! <command> > findings.tsv; then`, and a bare
+  # multi-statement list there inverts the gate.
   command: >-
-    (npm audit --json || true) | jq -r '.vulnerabilities[]? | . as $v | ($v.via[]? | select(type=="object") | [$v.severity, $v.name, $v.range, .url] | @tsv)' | sort -u
+    ( D="${RUNNER_TEMP:-/tmp}/dep-scan-node.json"; { npm audit --json > "$D" || true; };
+    { jq -e '(.metadata.dependencies.total // 0) > 0' "$D" >/dev/null 2>&1 || { echo "npm audit examined no dependencies, so a clean result here would mean the scan did not run rather than that the project is clean. Check that package-lock.json is present in the working directory." >&2; false; }; }
+    && jq -r '.vulnerabilities[]? | . as $v | ($v.via[]? | select(type=="object") | [$v.severity, $v.name, $v.range, .url] | @tsv)' "$D" | sort -u )
   # -> <<CI_DEPENDENCY_BLOCK_SEVERITIES>>. npm's scale is info/low/moderate/high/critical.
   block_severities: "high,critical"
 

@@ -62,10 +62,23 @@ consumes:
 # wildcard was NEVER supported per Microsoft's own docs — the action was simply lax since 2022. This
 # kit ships no global.json, but a client repo with a wildcard one will fail at Setup toolchain. The
 # fix is theirs: spell the full version (`10.0.100`) or use rollForward.
+# PYTHON MAPS TO setup-uv, NOT setup-python, AND THAT IS THE WHOLE POINT. Every command in
+# packs/stacks/python/ci-profile.yaml is a `uv` command — restore, build, test, lint, the eval
+# gate and the dependency scan. setup-python installs Python and NOT uv, so each of those
+# commands failed with "command not found" in a client repo. Most fail loudly and would be
+# caught on first use; the dependency scan did not, because its `|| true` turned a missing
+# binary into an empty report and an empty report reads as "no advisories". That scan reported
+# clean over zero packages in this kit's own reference repo until 2026-09-25.
+#
+# setup-uv's `python-version` input sets UV_PYTHON (verified against the action's own
+# action.yml: "The version of Python to set UV_PYTHON to"), so the declared
+# ci-profile.toolchain.version is still honoured — it now pins the interpreter uv resolves
+# rather than one placed on PATH. Safe because no emitted workflow in this pack invokes
+# `python` or `pip` directly; every command goes through the stack seam.
 toolchain_map:
   dotnet: { action: "actions/setup-dotnet@v6", input: "dotnet-version" }
   node:   { action: "actions/setup-node@v7",   input: "node-version" }
-  python: { action: "actions/setup-python@v6", input: "python-version" }
+  python: { action: "astral-sh/setup-uv@v8.3.2", input: "python-version" }
 
 # Overlay map: pack-relative source -> repo destination. Workflows land in
 # .github/workflows/; the rails guide lands at .github/RAILS.md.
