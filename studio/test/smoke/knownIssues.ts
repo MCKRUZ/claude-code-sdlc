@@ -22,6 +22,12 @@ export interface KnownIssue {
 
 export const KNOWN_ISSUES: KnownIssue[] = [
   {
+    kind: 'error-showing',
+    detail: /Talked to the code host — failed after [\d.]+s\.$|^EXIT 4$/,
+    problem: 'When the code host (GitHub) is not signed in, the Console lists each attempt to reach it in red, with a bare "EXIT 4". The record is honest; what is missing is anything outside the Console telling the person to sign in.',
+    fix: 'Show one calm line where the person is working ("Sign in to GitHub to see live status") and keep the red entries as the log they are.',
+  },
+  {
     kind: 'leaked-internals',
     detail: /^raw-tool-message/,
     problem: 'When the GitHub CLI is not signed in, its own instructions are shown word for word on the Build board and in Settings ("set the GH_TOKEN environment variable… Example: env: GH_TOKEN: ${{ github.token }}"). Found by the CI run, where it is never signed in; a person who has not run "gh auth login" would see the same.',

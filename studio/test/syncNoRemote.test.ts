@@ -40,8 +40,12 @@ function localOnlyProject(): string {
   return project
 }
 
+// Only git: whether `gh` is signed in is a fact about the machine (it is not, in CI) and has
+// nothing to do with whether this project has a remote.
 const failedGit = (project: string) =>
-  getConsoleLog().filter((e) => e.cwd === project && !e.ok).map((e) => `${e.command} ${e.args.join(' ')}`)
+  getConsoleLog()
+    .filter((e) => e.cwd === project && !e.ok && /(^|[\\/])git(\.exe)?$/i.test(e.command))
+    .map((e) => `${e.command} ${e.args.join(' ')}`)
 
 afterAll(() => {
   for (const ws of made) rmSync(ws, { recursive: true, force: true })
