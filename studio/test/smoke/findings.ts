@@ -51,7 +51,11 @@ const LEAKS: { kind: string; pattern: RegExp }[] = [
   { kind: 'object-to-string', pattern: /\[object Object\]/ },
   // Only a value standing alone ("Owner: null"), not the word in a sentence ("null paths").
   { kind: 'null', pattern: /(^|:\s)null\s*($|[,.)])/m },
-  { kind: 'template-placeholder', pattern: /\$\{[^}]*\}/ },
+  // `${name}` is a template left unfilled. `${{ ... }}` is a GitHub Actions expression, which is
+  // never a placeholder of Studio's own.
+  { kind: 'template-placeholder', pattern: /\$\{(?!\{)[^}]*\}/ },
+  // Text a command-line tool wrote for its own users, passed through as it came.
+  { kind: 'raw-tool-message', pattern: /\bGH_TOKEN\b|\bgh auth login\b/ },
   { kind: 'stack-trace', pattern: /Traceback \(most recent|\bat Object\.|\bat async \w+|TypeError:|ReferenceError:|SyntaxError:/ },
   { kind: 'filesystem-error', pattern: /\b(ENOENT|EPERM|EACCES|EBUSY|EEXIST)\b/ },
   { kind: 'local-path', pattern: /\b[A-Za-z]:\\(Users|Windows|Program Files)\b|(^|\s)\/(Users|home)\/[a-z]/ },

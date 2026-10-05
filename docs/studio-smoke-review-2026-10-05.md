@@ -5,7 +5,7 @@ What a person finds when they use Studio for the first time and a few days in, f
 sizes (1280, 1024 and 640 px wide), clicked every read-only control, and used a stand-in for the live model.
 
 Everything below was observed in the real window against the real plugin. Nothing here has been fixed yet.
-The first eight are already recorded in `studio/test/smoke/knownIssues.ts`, so the suite reports them without
+The first nine are already recorded in `studio/test/smoke/knownIssues.ts`, so the suite reports them without
 failing; fixing one means deleting its entry.
 
 ## Bugs, most serious first
@@ -30,6 +30,11 @@ failing; fixing one means deleting its entry.
 7. **"Run the review" can be pressed with nothing to review** and answers with a red error.
 8. **The document editor's text boxes have no accessible name.** The caption sits beside each box but is not tied
    to it, so a screen reader announces an unnamed edit box. Nine fields on a requirements document.
+
+9. **When the GitHub CLI is not signed in, its own instructions are shown word for word** on the Build board and in
+   Settings: "…set the GH_TOKEN environment variable. Example: env: GH_TOKEN: ${{ github.token }}". Found by the
+   CI run, where it is never signed in (my machine is, so my own runs never showed it). A person who has not run
+   `gh auth login` would see the same kind of text.
 
 ## Rough edges seen only by looking
 

@@ -28,6 +28,12 @@ export const KNOWN_ISSUES: KnownIssue[] = [
     fix: 'Treat "no shared repository yet" as its own calm state ("Saved on this computer only") with one sentence on how to connect one, and keep the red error for a sync that actually failed.',
   },
   {
+    kind: 'leaked-internals',
+    detail: /^raw-tool-message/,
+    problem: 'When the GitHub CLI is not signed in, its own instructions are shown word for word on the Build board and in Settings ("set the GH_TOKEN environment variable… Example: env: GH_TOKEN: ${{ github.token }}"). Found by the CI run, where it is never signed in; a person who has not run "gh auth login" would see the same.',
+    fix: 'Say it in Studio\'s words ("Studio cannot read your code host yet. Sign in to GitHub, then come back") and keep the tool\'s own text behind a "details" fold or in the Console.',
+  },
+  {
     kind: 'error-showing',
     detail: /failed after [\d.]+s\.$|^EXIT \d+$/,
     problem: 'The Console lists the background sync and connection checks as failures every time they run in a project with no shared repository, in red, with a bare "EXIT 128".',

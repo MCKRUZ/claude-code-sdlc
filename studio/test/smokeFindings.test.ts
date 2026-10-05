@@ -43,6 +43,15 @@ describe('the smoke suite judges what a person would notice', () => {
     expect(kinds({ text: `${CLEAN.text} Location C:\\Users\\sam\\projects` })).toEqual(['warn:shows-full-path'])
   })
 
+  it('does not mistake a GitHub Actions expression for an unfilled template', () => {
+    expect(leaks('Example: env: X: ${{ github.token }}').join('|')).not.toContain('template-placeholder')
+  })
+
+  it('flags a command-line tool\'s own instructions passed through to the screen', () => {
+    expect(leaks('Set the GH_TOKEN environment variable.').join('|')).toContain('raw-tool-message')
+    expect(leaks('To get started, please run: gh auth login').join('|')).toContain('raw-tool-message')
+  })
+
   it('does not call a sentence about an undefined term a leak', () => {
     expect(leaks('the word "respond" is undefined here')).toEqual([])
     expect(leaks('Signed off by undefined')).not.toEqual([])
