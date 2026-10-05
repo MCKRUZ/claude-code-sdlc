@@ -83,7 +83,7 @@ export const KNOWN_ISSUES: KnownIssue[] = [
   },
   {
     kind: 'scrolls-sideways',
-    detail: /Chat/,
+    detail: /<aside> "Chat/,
     problem: 'At the narrowest window (640 px), the chat panel is wider than the space left, and the whole page scrolls sideways.',
     fix: 'Stack the chat under the content from 640 px down, or give the window a minimum width that fits the three columns.',
   },

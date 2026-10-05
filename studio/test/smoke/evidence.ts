@@ -160,7 +160,7 @@ export class SmokeRun {
 }
 
 function slug(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
+  return text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 160)
 }
 
 /** One problem is one row, however many screens or sizes it shows on: a sidebar message that appears

@@ -57,7 +57,7 @@ function tidy(workspace: string): void {
 }
 
 test.describe('[smoke] a first-time user starts a project', () => {
-  test.skip(!PLUGIN.root, 'needs a plugin checkout beside this repo')
+  test.skip(!PLUGIN.root || !existsSync(PLUGIN.python), 'needs a plugin checkout beside this repo')
   test.describe.configure({ mode: 'serial' })
 
   let app: ElectronApplication
