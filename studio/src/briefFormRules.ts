@@ -1,3 +1,4 @@
+import { inTheRoom } from '../shared/briefLimits'
 import type { BriefCandidatesResult, BriefQuestion, BriefSelections } from '../shared/types'
 import type { BriefFormState } from './briefFormStore'
 
@@ -5,7 +6,7 @@ export type BriefCandidates = Extract<BriefCandidatesResult, { ok: true }>
 
 export const MAX_TEXT = 500
 
-export const isWorkshopQuestion = (q: BriefQuestion) => q.route === 'workshop'
+export const isWorkshopQuestion = (q: BriefQuestion) => inTheRoom(q.route)
 
 const present = <T extends { id: string }>(shown: T[], ticked: string[]) => shown.filter((item) => ticked.includes(item.id))
 

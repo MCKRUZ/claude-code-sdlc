@@ -6,7 +6,7 @@
 // validate_decisions, the one-page limits); a few are stricter on purpose, as the spec says.
 // A refusal is one plain line. A value echoed in it is cut short and stripped of control characters.
 
-import { MAX_ATTENDEES, MAX_CLAIMS } from '../../shared/briefLimits'
+import { inTheRoom, isEmailedBefore, isInterview, MAX_ATTENDEES, MAX_CLAIMS, MAX_LOGISTICS_TEXT } from '../../shared/briefLimits'
 import { isRecord } from './briefRun'
 import type { BriefAttendee, BriefClaim, BriefSelections, BriefCandidatesResult } from '../../shared/types'
 
@@ -14,7 +14,7 @@ type Ready = Extract<BriefCandidatesResult, { ok: true }>
 type Checked<T> = { ok: true; value: T } | { ok: false; error: string }
 
 const MAX_TEXT = 500
-const MAX_LOGISTICS = 200
+const MAX_LOGISTICS = MAX_LOGISTICS_TEXT
 const ID_FORMS = {
   contradictions: { pattern: /^CON-\d+$/, noun: 'a contradiction id' },
   questions: { pattern: /^Q-\d+$/, noun: 'a question id' },
@@ -143,8 +143,6 @@ export function parseSelections(raw: unknown): Checked<BriefSelections> {
 // --- against the candidates ---------------------------------------------------------------------
 
 /** `workshop` is the plugin's route for the room; an empty route is treated as the room too. */
-const inTheRoom = (route: string) => route === '' || route.startsWith('workshop')
-const isPre = (route: string) => route.startsWith('pre')
 
 function unknownIds(s: BriefSelections, c: Ready): string | null {
   const known = [
@@ -164,8 +162,8 @@ function unknownIds(s: BriefSelections, c: Ready): string | null {
 function questionRoutes(s: BriefSelections, c: Ready): string | null {
   for (const id of s.questions) {
     const route = c.questions.find((q) => q.id === id)?.route ?? ''
-    if (isPre(route)) return `${id} is emailed before the workshop, not placed on the page.`
-    if (route.startsWith('interview')) return `${id} is neither in the room nor emailed.`
+    if (isEmailedBefore(route)) return `${id} is emailed before the workshop, not placed on the page.`
+    if (isInterview(route)) return `${id} is neither in the room nor emailed.`
     if (!inTheRoom(route)) return `${id} has a route Studio does not recognise.`
   }
   return null
@@ -195,5 +193,5 @@ export function checkAgainstCandidates(s: BriefSelections, c: Ready): string | n
 /** The `--questions` value: every ticked question plus every one routed pre-workshop (so the plugin
  * reports it as emailed instead), in the candidates' own order, each once. Empty when there are none. */
 export function questionIdsForBuild(s: BriefSelections, c: Ready): string[] {
-  return c.questions.filter((q) => s.questions.includes(q.id) || isPre(q.route)).map((q) => q.id)
+  return c.questions.filter((q) => s.questions.includes(q.id) || isEmailedBefore(q.route)).map((q) => q.id)
 }

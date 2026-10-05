@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { MAX_ATTENDEES } from '../../shared/briefLimits'
+import { MAX_ATTENDEES, MAX_LOGISTICS_TEXT } from '../../shared/briefLimits'
 import type { BriefAttendee, RosterPerson } from '../../shared/types'
-import { MAX_TEXT } from '../briefFormRules'
 import type { BriefFormState } from '../briefFormStore'
 import { PANEL_SECONDARY_BUTTON } from './activityPanelBits'
 import { Section, TEXT_INPUT } from './briefBits'
@@ -36,7 +35,7 @@ function Field({ label, value, onChange }: { label: string; value: string; onCha
   return (
     <div className="space-y-1 text-xs text-slate-600">
       <span>{label}</span>
-      <input aria-label={label} maxLength={MAX_TEXT} value={value} onChange={(e) => onChange(e.target.value)} className={TEXT_INPUT} />
+      <input aria-label={label} maxLength={MAX_LOGISTICS_TEXT} value={value} onChange={(e) => onChange(e.target.value)} className={TEXT_INPUT} />
     </div>
   )
 }
@@ -57,8 +56,8 @@ function Attendees({ attendees, roster, onChange }: AttendeesProps) {
       <p className="text-xs font-medium text-slate-600">Attendees</p>
       {attendees.map((a, i) => (
         <div key={i} data-testid="brief-attendee" className="flex items-center gap-2">
-          <input aria-label={`Attendee ${i + 1} name`} maxLength={MAX_TEXT} value={a.name} onChange={(e) => edit(i, { name: e.target.value })} className={TEXT_INPUT} />
-          <input aria-label={`Attendee ${i + 1} role`} maxLength={MAX_TEXT} value={a.role} onChange={(e) => edit(i, { role: e.target.value })} className={TEXT_INPUT} />
+          <input aria-label={`Attendee ${i + 1} name`} maxLength={MAX_LOGISTICS_TEXT} value={a.name} onChange={(e) => edit(i, { name: e.target.value })} className={TEXT_INPUT} />
+          <input aria-label={`Attendee ${i + 1} role`} maxLength={MAX_LOGISTICS_TEXT} value={a.role} onChange={(e) => edit(i, { role: e.target.value })} className={TEXT_INPUT} />
           <button type="button" aria-label={`Remove attendee ${i + 1}`} onClick={() => onChange(attendees.filter((_, j) => j !== i))} className={PANEL_SECONDARY_BUTTON}>
             Remove
           </button>

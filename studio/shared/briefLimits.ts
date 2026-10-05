@@ -8,3 +8,13 @@
 
 export const MAX_CLAIMS = 15
 export const MAX_ATTENDEES = 30
+
+/** The longest a logistics field or an attendee's name or role can be. */
+export const MAX_LOGISTICS_TEXT = 200
+
+// What a question's route means, as the plugin reads it (`select_questions` in workshop_brief.py): an
+// empty route counts as the workshop, and a route is matched by its start. Shared so the form that lists
+// and ticks questions and the main process that checks them cannot disagree.
+export const inTheRoom = (route: string) => route === '' || route.startsWith('workshop')
+export const isEmailedBefore = (route: string) => route.startsWith('pre')
+export const isInterview = (route: string) => route.startsWith('interview')

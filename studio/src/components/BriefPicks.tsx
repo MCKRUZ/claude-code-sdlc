@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { inTheRoom, isEmailedBefore, isInterview } from '../../shared/briefLimits'
 import type { BriefContradiction, BriefDocument, BriefQuestion } from '../../shared/types'
 import { PANEL_SECONDARY_BUTTON } from './activityPanelBits'
 import { Reason, Section } from './briefBits'
@@ -86,9 +87,9 @@ function byBlock(questions: BriefQuestion[]): Array<[string, BriefQuestion[]]> {
 }
 
 export function QuestionsSection({ items, ticked, limit, onToggle }: PickProps<BriefQuestion>) {
-  const inRoom = items.filter((q) => q.route !== 'pre-workshop')
-  const emailed = items.filter((q) => q.route === 'pre-workshop')
-  const count = inRoom.filter((q) => q.route === 'workshop' && ticked.includes(q.id)).length
+  const inRoom = items.filter((q) => !isEmailedBefore(q.route))
+  const emailed = items.filter((q) => isEmailedBefore(q.route))
+  const count = inRoom.filter((q) => inTheRoom(q.route) && ticked.includes(q.id)).length
   const full = count >= limit
   return (
     <Section title="Questions" counter={`${count} of ${limit}`} counterId="brief-questions-counter">
@@ -109,20 +110,21 @@ export function QuestionsSection({ items, ticked, limit, onToggle }: PickProps<B
 }
 
 function QuestionRow({ q, checked, full, onToggle }: { q: BriefQuestion; checked: boolean; full: boolean; onToggle: () => void }) {
-  const interview = q.route === 'interview'
+  const unusable = !inTheRoom(q.route)
+  const interview = isInterview(q.route)
   return (
     <li className={CHECKBOX_ROW}>
       <input
         type="checkbox"
         aria-label={`Include ${q.id}`}
-        checked={!interview && checked}
-        disabled={interview || (full && !checked)}
+        checked={!unusable && checked}
+        disabled={unusable || (full && !checked)}
         onChange={onToggle}
         className="mt-0.5"
       />
       <span className="text-xs text-slate-700">
         <span className="font-medium text-slate-900">{q.id}</span> {q.question}
-        {interview && <span className="block text-slate-500">Neither in the room nor emailed.</span>}
+        {unusable && <span className="block text-slate-500">{interview ? 'Neither in the room nor emailed.' : 'Its route is not one Studio recognises.'}</span>}
       </span>
     </li>
   )
