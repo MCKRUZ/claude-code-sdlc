@@ -34,6 +34,8 @@ export class SmokeRun {
   readonly visits: Visit[] = []
   readonly clicks: Click[] = []
   readonly runtimeErrors: { where: string; text: string }[] = []
+  /** The commands the Console recorded as failed, in words a person can chase: what ran and with what. */
+  readonly failedCommands: string[] = []
   private current = 'startup'
 
   constructor(readonly dir: string) {
@@ -112,6 +114,7 @@ export class SmokeRun {
   write(): void {
     writeFileSync(join(this.dir, 'observations.json'), JSON.stringify({
       findings: this.findings, visits: this.visits, clicks: this.clicks, runtimeErrors: this.runtimeErrors,
+      failedCommands: this.failedCommands,
     }, null, 2))
     writeFileSync(join(this.dir, 'report.md'), this.report())
   }
@@ -131,6 +134,9 @@ export class SmokeRun {
     ]
     if (this.runtimeErrors.length) {
       lines.push('## Runtime errors (console and uncaught)', '', ...this.runtimeErrors.map((e) => `- **${e.where}**: ${e.text}`), '')
+    }
+    if (this.failedCommands.length) {
+      lines.push('## Commands the Console recorded as failed', '', ...this.failedCommands.map((c) => `- \`${c}\``), '')
     }
     if (known.length) {
       lines.push('## Known, not yet fixed', '', '| Problem | Shown on | What fixing it looks like |', '|---|---|---|')

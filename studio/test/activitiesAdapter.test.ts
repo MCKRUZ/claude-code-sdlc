@@ -216,17 +216,18 @@ describe('startActivity', () => {
 // --- registration -----------------------------------------------------------------------------
 
 describe('registerActivityHandlers', () => {
-  it('registers the three channels the preload bridge invokes, and answers plainly when the plugin is not found', async () => {
+  it('registers the four channels the preload bridge invokes, and answers plainly when the plugin is not found', async () => {
     const handlers = new Map<string, (...args: never[]) => Promise<unknown>>()
     registerActivityHandlers(
       { handle: (channel: string, fn: never) => { handlers.set(channel, fn) } },
       async () => null,
     )
-    expect([...handlers.keys()].sort()).toEqual(['studio:getStageGuide', 'studio:runActivityCheck', 'studio:startActivity'])
+    expect([...handlers.keys()].sort()).toEqual(['studio:getStageGuide', 'studio:runActivityCheck', 'studio:startActivity', 'studio:startDocument'])
 
     const call = (channel: string, ...args: unknown[]) => (handlers.get(channel) as (...a: unknown[]) => Promise<unknown>)({}, ...args)
     expect(await call('studio:startActivity', 'p', '2', 'data')).toMatchObject({ ok: false, created: [], existing: [] })
     expect(await call('studio:runActivityCheck', 'p', 'rules-check')).toMatchObject({ ok: false })
     expect(await call('studio:getStageGuide', 'phases/x.md')).toMatchObject({ ok: false })
+    expect(await call('studio:startDocument', 'p', 'a.md')).toMatchObject({ ok: false })
   })
 })

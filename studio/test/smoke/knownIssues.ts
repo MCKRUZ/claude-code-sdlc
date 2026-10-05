@@ -41,18 +41,6 @@ export const KNOWN_ISSUES: KnownIssue[] = [
   },
   {
     kind: 'error-showing',
-    detail: /python(\.exe)? failed after [\d.]+s\.$|^EXIT 1$/,
-    problem: 'The Console lists, in red, the failed read behind the Edit-on-a-missing-document error below ("python … failed", "EXIT 1").',
-    fix: 'Goes away with that fix: once a missing document is started from its template, there is no failing read to log.',
-  },
-  {
-    kind: 'error-showing',
-    detail: /\.md does not exist$/,
-    problem: 'On a document that has not been created yet, the Edit button is offered and then fails with "<path> does not exist".',
-    fix: 'Offer "Create this document" (which starts it from its template) where Edit is shown for a document that is not there yet.',
-  },
-  {
-    kind: 'error-showing',
     detail: /chat is still connecting/i,
     problem: 'Choosing "Talk it through" (or Next/Back in a step) a few seconds after opening a project fails with "The chat is still connecting. Try again in a moment."',
     fix: 'Hold the request and send it once the chat is ready, or disable the control with a "Connecting…" label until it is.',

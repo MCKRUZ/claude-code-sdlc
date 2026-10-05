@@ -109,10 +109,27 @@ export function getStageGuide(scriptsDir: string, definition: string): StageGuid
   }
 }
 
+/** Starts ONE document from the plugin's template, for the step panel's "Start this document". Only a
+ * document Studio can start from a template, only inside the project, and never over one that is
+ * already there (`ensureDocumentFromTemplate` owns all three; this only adds the type check, because
+ * the renderer is untrusted). */
+export function startDocument(
+  projectPath: string,
+  scriptsDir: string,
+  relPath: unknown,
+): { ok: boolean; created?: boolean; error?: string } {
+  if (typeof relPath !== 'string' || relPath.trim() === '') return { ok: false, error: 'That is not a document Studio can start.' }
+  return ensureDocumentFromTemplate(projectPath, scriptsDir, relPath)
+}
+
 export function registerActivityHandlers(
   ipcMain: Pick<IpcMain, 'handle'>,
   resolvePluginScriptsDir: () => Promise<string | null>,
 ): void {
+  ipcMain.handle('studio:startDocument', async (_event, projectPath: string, relPath: unknown) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    return scriptsDir ? startDocument(projectPath, scriptsDir, relPath) : { ok: false, error: NO_PLUGIN }
+  })
   ipcMain.handle('studio:startActivity', async (_event, projectPath: string, stageId: string, activityId: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
     return scriptsDir ? startActivity(projectPath, scriptsDir, stageId, activityId) : refused(NO_PLUGIN)

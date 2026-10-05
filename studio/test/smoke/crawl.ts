@@ -18,6 +18,9 @@ export const CHANGES_SOMETHING = new RegExp(
     'save', 'restore', 'roll.?back', 'delete', 'remove', 'apply', 'summaris', 'analys', 'draft', 'gather',
     'replace', 'registry', 'skip', 'send', 'accept', 'reject', 'install', 'generate', 'enhance', 'confirm',
     'add ', 'record', 'bind', 'open folder', 'new project', 'choose', 'submit', 'defer', 'mark', 'export',
+    // A declaration, an approval, a merge or anything that publishes or undoes. ("Declare Build complete"
+    // was clicked by an early version of this list; it was refused, but only because specs were undecided.)
+    'declare', 'approve', 'merge', 'publish', 'undo', 'revert', 'clear',
     // These start or feed a model run (the smoke run also switches the live model off, as a second guard).
     'talk it through', 'run the review', 'ask ',
     'catalogue', 'write', 'set up', 'resolve', 'combine', 'pull', 'sync now', 'stop', 'cancel (the )?(run|job|batch)',

@@ -82,6 +82,7 @@ export function WorkflowTab({
           confirmError={confirmError}
           onToggleSignOff={onToggleSignOff}
           onOpenDocument={onOpenDocument}
+          onRefresh={onRefresh}
         />
       </div>
     </div>
@@ -93,7 +94,7 @@ export function WorkflowTab({
  * stays a plain layout — this repo's "functions under 50 lines" convention (spec 0017's fix
  * pass, bug #10). */
 function CurrentStepPanel({
-  projectPath, current, steps, readiness, actor, busyId, confirmError, onToggleSignOff, onOpenDocument,
+  projectPath, current, steps, readiness, actor, busyId, confirmError, onToggleSignOff, onOpenDocument, onRefresh,
 }: {
   projectPath: string
   current: WorkflowStep | null
@@ -104,6 +105,7 @@ function CurrentStepPanel({
   confirmError: string | null
   onToggleSignOff: (question: SignOffQuestion, confirmed: boolean) => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
 }) {
   if (current?.kind === 'document') {
     return (
@@ -113,6 +115,7 @@ function CurrentStepPanel({
         steps={steps}
         stageKey={stageHomeKey(projectPath, readiness.stageId)}
         onOpenDocument={onOpenDocument}
+        onRefresh={onRefresh}
       />
     )
   }
@@ -155,21 +158,43 @@ function CurrentStepPanel({
  * re-fires, and a document the person had browsed to in the OLD stage keeps showing even though
  * the workflow itself has moved on underneath. */
 function DocumentStepPanel({
-  projectPath, current, steps, stageKey, onOpenDocument,
+  projectPath, current, steps, stageKey, onOpenDocument, onRefresh,
 }: {
   projectPath: string
   current: DocumentWorkflowStep
   steps: WorkflowStep[]
   stageKey: string
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
 }) {
   const documentSteps = steps.filter((s): s is DocumentWorkflowStep => s.kind === 'document')
   const [viewedKey, setViewedKey] = useState(current.key)
+  const [starting, setStarting] = useState(false)
+  const [startError, setStartError] = useState<string | null>(null)
 
   useEffect(() => { setViewedKey(current.key) }, [current.key, stageKey])
+  // A different document is a fresh start: its predecessor's refusal does not belong to it.
+  useEffect(() => { setStartError(null) }, [viewedKey, stageKey])
 
   const viewedIndex = documentSteps.findIndex((s) => s.key === viewedKey)
   const viewed = viewedIndex >= 0 ? documentSteps[viewedIndex] : current
+
+  /** Creates the document from the plugin's template, re-reads the stage, then opens it. A refusal
+   * is shown and nothing opens. Never overwrites (the main process refuses to). */
+  const start = async () => {
+    if (starting) return
+    setStarting(true)
+    setStartError(null)
+    const result = await window.studio.startDocument(projectPath, viewed.document.path)
+    if (!result.ok) {
+      setStartError(result.error ?? 'This document could not be started.')
+      setStarting(false)
+      return
+    }
+    await onRefresh?.()
+    setStarting(false)
+    onOpenDocument(viewed.document.path)
+  }
 
   return (
     <div className="space-y-3">
@@ -182,7 +207,11 @@ function DocumentStepPanel({
         nextDisabled={viewedIndex === -1 || viewedIndex >= documentSteps.length - 1}
         onEdit={() => onOpenDocument(viewed.document.path)}
         editDisabled={viewed.document.folder}
+        // Edit on a document that is not there only ever failed; offer to start it instead.
+        onStart={!viewed.document.exists && !viewed.document.folder ? start : undefined}
+        starting={starting}
       />
+      {startError && <p role="alert" className="text-sm text-[var(--color-command-error)]">{startError}</p>}
       {viewed.document.folder ? (
         <p className="text-sm text-slate-400">
           {viewed.title} is a folder of documents — open it from the Documents tab.
@@ -198,7 +227,7 @@ function DocumentStepPanel({
  * acceptance check). `flex-wrap` is the same accommodation spec 0017's own responsive bar held
  * itself to: these controls do not force new horizontal overflow of their own at phone width. */
 function DocumentPanelHeader({
-  title, onBack, onPrevious, onNext, previousDisabled, nextDisabled, onEdit, editDisabled,
+  title, onBack, onPrevious, onNext, previousDisabled, nextDisabled, onEdit, editDisabled, onStart, starting,
 }: {
   title: string
   onBack: () => void
@@ -208,6 +237,9 @@ function DocumentPanelHeader({
   nextDisabled: boolean
   onEdit: () => void
   editDisabled: boolean
+  /** Set only for a document that does not exist yet: replaces Edit with Start this document. */
+  onStart?: () => void
+  starting: boolean
 }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
@@ -236,11 +268,11 @@ function DocumentPanelHeader({
         </button>
         <button
           type="button"
-          onClick={onEdit}
-          disabled={editDisabled}
+          onClick={onStart ?? onEdit}
+          disabled={onStart ? starting : editDisabled}
           className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
         >
-          Edit
+          {onStart ? (starting ? 'Starting…' : 'Start this document') : 'Edit'}
         </button>
       </div>
     </div>
