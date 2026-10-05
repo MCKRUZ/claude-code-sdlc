@@ -1,0 +1,181 @@
+name: Studio
+
+# SDLC Studio's own rail. Studio is the optional Electron desktop front end in studio/ — a
+# Node/TypeScript application inside a Python plugin repository — and until it was folded in
+# here its 233 tests ran on exactly one laptop and nowhere else.
+#
+#   studio  — both TypeScript projects typecheck, then the full vitest suite, on Linux,
+#             Windows and macOS. BLOCKS once added to the required checks; see the note on
+#             path filters below.
+#
+# ── WHY ONLY THIS JOB IS A CROSS-PLATFORM MATRIX ────────────────────────────
+# The `ui` job below opens a real Electron window, which on headless Linux needs xvfb; on
+# Windows and macOS GitHub's runners can open a real window natively, but proving that needs
+# its own OS-conditional steps (no xvfb-run, no Playwright system-library install) and is a
+# separate, larger piece of work than this one. Left Linux-only deliberately, not by oversight
+# — see spec 0008's acceptance-check notes.
+#
+# ── NO PATH FILTER, DELIBERATELY ─────────────────────────────────────────────
+# The obvious optimisation is `paths: [studio/**]` so this only runs when Studio changes.
+# Do not. A required check that a path filter skips never reports at all, and GitHub waits
+# for it forever — so the saving is paid for with pull requests that can never merge. The
+# job is a couple of minutes; it runs on everything and always reports.
+#
+# ── WHY IT INSTALLS PYTHON ───────────────────────────────────────────────────
+# Studio's most valuable tests drive the plugin's own scripts as real subprocesses, which
+# needs the plugin's Python environment. Those tests FAIL rather than skip when it is
+# missing (studio/test/pluginRoot.ts), because a run where they quietly skipped once
+# reported "2 passed" while 31 tests had not executed. Building the environment here is
+# what keeps this job honest rather than merely green.
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: studio-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  studio:
+    # Spec 0008's own acceptance check ("runs on Windows and macOS from the same source") had
+    # nothing checking it — every job here ran on ubuntu-latest only, despite real
+    # process.platform branches in the main process for both. Caught in this spec's audit
+    # (2026-09-26). The matrix name below becomes part of the reported check name, which is
+    # why this job's required-status-check registration changed alongside it — a rename here
+    # without that would leave every future PR waiting on a check name that no longer exists.
+    name: studio (typecheck + tests, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: studio
+        # Explicit rather than the platform default (pwsh on Windows) so the POSIX syntax
+        # below (test -x, ||, [ ]) is one script shared across all three runners, not three.
+        # GitHub-hosted Windows runners ship Git Bash for exactly this.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - uses: astral-sh/setup-uv@v8.3.2
+
+      # Studio locates the plugin as its PARENT directory, so this builds the environment
+      # exactly where studio/test/pluginRoot.ts looks for it.
+      - name: Build the plugin's Python environment
+        working-directory: .
+        run: uv sync --project scripts
+
+      - name: Confirm the plugin is actually reachable
+        working-directory: .
+        # Cheap, and it turns the most likely failure into a named one. Without this the
+        # first symptom is nine test files throwing at import time, which reads like a
+        # Studio fault rather than a missing interpreter. Two candidate paths because uv lays
+        # the venv out differently on Windows (Scripts/python.exe) than on macOS/Linux
+        # (bin/python) — the same split test/pluginRoot.ts's own venvPython() already makes.
+        run: |
+          PYTHON=scripts/.venv/bin/python
+          [ -x "$PYTHON" ] || PYTHON=scripts/.venv/Scripts/python.exe
+          test -x "$PYTHON" \
+            || { echo "::error::scripts/.venv's python is missing, so Studio's integration tests cannot run. uv sync did not put the environment where studio/test/pluginRoot.ts looks."; exit 1; }
+          "$PYTHON" --version
+
+      - run: npm ci
+
+      - run: npm run typecheck
+
+      # `npx vitest run` rather than `npm test`, which would first run a `pretest` Vite build
+      # that only the Playwright end-to-end suite needs. Same command that is run locally.
+      #
+      # This job never installs the `claude` CLI (unlike `ui` below) and is never signed in,
+      # so a live-model test has nothing to call. signOff.test.ts's own real-Claude-call block
+      # already declines on STUDIO_SKIP_LIVE_MODEL=1 — the same mechanism the `ui` job uses for
+      # chatAuthoring.spec.ts — it just needs this job to actually set it, or it tries the real
+      # call and fails with `spawn claude ENOENT` instead of skipping.
+      - run: npx vitest run
+        env:
+          STUDIO_SKIP_LIVE_MODEL: '1'
+
+  # The tests above never open the application. These do — they launch the real Electron
+  # window and drive it, which is the only evidence that what was built actually works
+  # rather than merely compiling. They existed for weeks and ran nowhere, so two timing
+  # failures sat unnoticed until somebody ran them by hand.
+  ui:
+    name: studio (the real window)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+
+      - uses: astral-sh/setup-uv@v8.3.2
+
+      - name: Build the plugin's Python environment
+        working-directory: .
+        # The window drives real documents through the plugin's real scripts; without this
+        # the suite cannot start at all.
+        run: uv sync --project scripts
+
+      - run: npm ci
+
+      # Studio REFUSES to open a project when Claude Code is not on the machine — spec 0008,
+      # and the first CI run proved it by showing "Before Studio can open a project" instead
+      # of the welcome screen. The application was right and the tests had an undeclared
+      # dependency. Installing it keeps the tests driving the real path rather than teaching
+      # them to tolerate a half-configured machine.
+      #
+      # It is never signed in here, and does not need to be: what Studio checks at startup is
+      # that the binary exists and answers `--version`. The one test that needs a real model
+      # call declines separately, below.
+      - name: Install Claude Code, which Studio requires before it will open anything
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Electron is a browser, and a browser on a headless Linux runner needs the system
+      # libraries Playwright knows about, plus a virtual display to open a window onto.
+      - name: Install the libraries a window needs
+        run: npx playwright install-deps chromium
+
+      # `vite build --mode=test` — the package's own `pretest`. Playwright launches the
+      # BUILT application, not the dev server, so this is not optional.
+      - run: npm run pretest
+
+      - name: Drive the real window
+        env:
+          # No Claude login here, and one test needs a genuine model call. It declines
+          # explicitly rather than spending two minutes timing out into the same answer.
+          STUDIO_SKIP_LIVE_MODEL: '1'
+        run: xvfb-run -a npx playwright test
+
+      # Playwright writes a snapshot of the page it was looking at when an assertion failed,
+      # and that snapshot is the whole diagnosis. It goes to a file, not to the log, so
+      # without this a red run says only which line failed — which is how CI debugging turns
+      # into guessing at a machine you cannot see.
+      - name: Keep the evidence from a failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: studio-window-failure
+          path: |
+            studio/test-results/
+            studio/test/screenshots/
+          retention-days: 7
+          if-no-files-found: ignore

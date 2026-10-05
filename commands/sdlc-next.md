@@ -33,6 +33,15 @@ Run exit gate checks for the current phase and advance to the next phase if all 
        --state .sdlc/state.yaml --phase <phase-number>
      ```
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
+   - **Confirm the sign-off questions first.** Each phase's exit gate carries questions only a person can answer, and the human ticks each one (in this conversation or in SDLC Studio — one shared record). Read where they stand:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sign_off_confirmations.py status --state .sdlc/state.yaml --json
+     ```
+     If `all_confirmed` is false, at least one question is unconfirmed: **do not ask for sign-off yet.** Show each unconfirmed question with its pre-check from `stage_readiness.py --state .sdlc/state.yaml --json` (`judgement[].hint` — what the software could see, never a verdict) and ask the human, one question at a time via `AskUserQuestion`, whether they confirm it. Only when they say yes, record it:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sign_off_confirmations.py confirm        --state .sdlc/state.yaml --question-id <id from status> --actor "<the name the human gave>"
+     ```
+     Never confirm a question yourself, never treat a hint as a yes, and never record a name the human did not give. A question the human declines stays unconfirmed and the phase does not advance; tell them what remains.
    - **Sprint slate outcome (advisory, Build only):** when the current phase is `build`, put one line
      beside the feature-complete declaration so the human declares with the last sprint's outcome in
      view. Read the most recently closed record in `.sdlc/sprints/SNN.md` (`state: closed`) and count

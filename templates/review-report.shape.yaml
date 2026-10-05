@@ -1,0 +1,34 @@
+template: review-report
+version: "1.0"
+description: "A multi-perspective review of one phase's documents: a machine-readable table of findings, a short summary, and the detail behind each finding."
+
+# One shared template for every phase (a report is written into whichever phase folder was
+# reviewed), so it lives beside frozen-layer.md rather than under a single phase.
+#
+# `required` is advisory. The findings table is the point of a review, so it is required; the
+# summary and detail are prose around it.
+
+sections:
+  - heading: Gate Results
+    fields:
+      - label: Gate Results
+        anchor: section
+        type: table
+        required: true
+        guidance: One row per finding with id, category (a kebab-case class of problem), severity, target file and line, disposition (OPEN on a fresh review) and detail; record_findings.py reads this table
+
+  - heading: Summary
+    fields:
+      - label: Summary
+        anchor: section
+        type: longtext
+        required: false
+        guidance: A two or three sentence overview of what the review found
+
+  - heading: Detail
+    fields:
+      - label: Detail
+        anchor: section
+        type: longtext
+        required: false
+        guidance: One block per finding, using the same ids as the table, with the explanation and a recommended fix

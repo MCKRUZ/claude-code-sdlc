@@ -1,0 +1,51 @@
+template: phase8-handoff
+version: "1.0"
+
+sections:
+  - heading: Documentation Summary
+    fields:
+      - label: Documentation Summary
+        anchor: section
+        type: table
+        required: true
+        guidance: All 4 artifacts listed with status and whether each was created or updated, plus completion date and approver
+
+  - heading: Operations Readiness Assessment
+    fields:
+      - label: Operations Readiness Assessment
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Explicit Yes/No/Partially answer to the 3am question, list of runbook gaps, and README new-developer test result
+
+  - heading: Documentation Gaps (Accepted)
+    fields:
+      - label: Documentation Gaps
+        anchor: section
+        type: table
+        required: false
+        guidance: Things that couldn't be documented, and why - with risk and a resolution plan for each
+
+  - heading: Deployment Checklist Preview
+    fields:
+      - label: Deployment Checklist Preview
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Pre-deployment steps confirmed by the documentation produced this phase
+
+  - heading: API Contract Deviations
+    fields:
+      - label: API Contract Deviations
+        anchor: section
+        type: table
+        required: false
+        guidance: Changes from Phase 2 API contracts documented in the api-docs.md changelog, whether each is breaking, and whether stakeholders were notified
+
+  - heading: Exit Gate Status
+    fields:
+      - label: Exit Gate Status
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Exit gate checklist for the documentation phase, plus who approved and when

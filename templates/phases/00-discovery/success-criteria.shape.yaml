@@ -1,0 +1,50 @@
+template: success-criteria
+version: "1.0"
+description: "How we will know this worked, as measurable thresholds with a named source for each number."
+
+sections:
+  - heading: Measurable Success Dimensions
+    aliases: [Measurable Dimensions]
+    repeats: true
+    numbering:
+      pattern: "Dimension %d"
+    fields:
+      - label: Dimension
+        anchor: section
+        type: longtext
+        required: true
+        guidance: What's being measured, Pass/Partial/Fail thresholds with specific numbers, and the data collection method
+
+  - heading: Non-Negotiable Requirements
+    fields:
+      - label: Non-Negotiable Requirements
+        anchor: section
+        type: checklist
+        required: true
+        guidance: At least 3 binary, specific pass/fail requirements that are absolute blockers for release
+
+  - heading: Time to Value
+    fields:
+      - label: Target delivery
+        anchor: inline
+        type: text
+        required: false
+        guidance: Phase at which stakeholders will first see value
+      - label: Full value realized
+        anchor: inline
+        type: text
+        required: false
+        guidance: When all success dimensions can be measured
+      - label: Review checkpoint
+        anchor: inline
+        type: text
+        required: false
+        guidance: Date or milestone at which we will assess against these criteria
+
+  - heading: Success Owner
+    fields:
+      - label: Success Owner
+        anchor: section
+        type: table
+        required: false
+        guidance: For each dimension, who owns measuring it and who reviews the results

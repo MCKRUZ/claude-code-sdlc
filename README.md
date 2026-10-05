@@ -149,7 +149,7 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 
 ### microsoft-enterprise
 Full enterprise stack with compliance:
-- **Stack:** C#/.NET 8, Angular 17, SQL Server, Azure
+- **Stack:** C#/.NET 10, Angular 22, SQL Server, Azure
 - **Quality:** 80% coverage minimum, 100% critical paths, TDD required
 - **Compliance:** SOC 2 gates at every phase transition
 - **Conventions:** Conventional commits, immutable patterns, no console.log
@@ -159,7 +159,7 @@ Full enterprise stack with compliance:
 
 ### ado-enterprise
 microsoft-enterprise's stack, hosted on Azure DevOps:
-- **Stack:** C#/.NET 8, Angular 17, SQL Server, Azure (identical to microsoft-enterprise)
+- **Stack:** C#/.NET 10, Angular 22, SQL Server, Azure (identical to microsoft-enterprise)
 - **Repos & CI/CD:** Azure Repos + Azure Pipelines (`.azuredevops/pipelines/`, branch policies via `az repos policy`)
 - **Quality / Compliance / Conventions:** same as microsoft-enterprise (80% coverage, TDD, SOC 2 gates)
 - **Install is platform-aware:** the harness installer ships no GitHub payload to an ADO
@@ -255,8 +255,8 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # 30 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-spike, /sdlc-sprint, /sdlc-refine, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals, /sdlc-harness, /sdlc-upgrade, /sdlc-doctor, /sdlc-revise, /sdlc-audit-artifacts, /sdlc-version, /sdlc-refresh, /sdlc-retro)
-├── agents/                  # 13 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst, feature-architect, visual-designer, conversation-designer, data-analyst, bizreq-analyst)
+├── commands/                # 32 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-spike, /sdlc-sprint, /sdlc-refine, /sdlc-handoff, /sdlc-spec-status, /sdlc-audit, /sdlc-audit-artifacts, /sdlc-channel, /sdlc-data, /sdlc-doctor, /sdlc-evals, /sdlc-experience, /sdlc-feature, /sdlc-harness, /sdlc-phase-report, /sdlc-refresh, /sdlc-retro, /sdlc-revise, /sdlc-rules, /sdlc-upgrade, /sdlc-version)
+├── agents/                  # 14 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst, document-summarizer, feature-architect, visual-designer, conversation-designer, data-analyst, bizreq-analyst)
 ├── profiles/                # Company/stack YAML profiles
 ├── channels/                # Channel descriptor library (ag-ui, voice, chat) + schema
 ├── phases/                  # Phase definitions (0,1,2,3,build,7,8,9,close)

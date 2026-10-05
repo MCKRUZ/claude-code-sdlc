@@ -2,7 +2,7 @@
 
 Installs harness/ with profiles/microsoft-enterprise/profile.yaml into a fresh git repo and
 asserts the composed OUTPUT: the exact installed tree (snapshot), the spliced CLAUDE.md, the
-merged settings.json/.mcp.json, the frontend degrade path (angular-17 -> generic ux-reviewer
+merged settings.json/.mcp.json, the frontend degrade path (angular-22 -> generic ux-reviewer
 + exactly one warning), the manifest, and that every emitted workflow parses.
 
 The tree snapshot is the drift tripwire for the whole composition. When the kit legitimately
@@ -92,13 +92,13 @@ class TestGoldenRepo:
         assert {"context7", "sequential-thinking", "playwright", "microsoft-learn"} <= servers
 
     def test_frontend_composes_the_angular_pack(self, golden_repo):
-        # The profile declares angular-17; the frontend axis installs generic then overlays the
+        # The profile declares angular-22; the frontend axis installs generic then overlays the
         # angular pack (same dest, last wins). Until the angular pack existed this degraded to the
         # generic reviewer plus a WARNING — this test used to assert exactly that.
         target, _, _ = golden_repo
         reviewer = (target / ".claude" / "agents" / "ux-reviewer.md").read_text(encoding="utf-8")
         assert "Angular" in reviewer, "angular pack did not overlay the generic reviewer"
-        assert "React" not in reviewer, "React pack composed for an angular-17 profile"
+        assert "React" not in reviewer, "React pack composed for an angular-22 profile"
 
     def test_flagship_install_is_warning_free(self, golden_repo):
         # Every axis the flagship profile declares now has a pack. A warning here means an axis

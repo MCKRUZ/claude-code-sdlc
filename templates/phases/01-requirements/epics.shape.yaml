@@ -1,0 +1,98 @@
+template: epics
+version: "1.0"
+description: "The large chunks of work the requirements group into, used to plan and sequence delivery."
+
+# EP-NNN numbering is actually shared across the P0/P1/P2 sections in the real template,
+# but only "P0 Epics — Must Ship" carries a REQUIRED marker, so only it is modeled as a
+# repeating section here — next_free_number() still scans the WHOLE document for EP-NNN
+# occurrences regardless, so allocating a new number stays correct across all three.
+# "As a / I want to / so that" use a bold-label-without-colon convention this shape format
+# doesn't recognize (only "**Label:**" is); they stay free text.
+
+sections:
+  - heading: Overview
+    fields:
+      - label: Overview
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What an epic is and how epics feed Phase 2 Design and the Build loop's E2E requirement
+
+  - heading: Epic Map
+    fields:
+      - label: Epic Map
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Epics arranged in workflow order - horizontal axis is user journey stages, vertical axis is priority (P0 at top)
+
+  - heading: P0 Epics — Must Ship
+    repeats: true
+    numbering:
+      pattern: "EP-%03d"
+    fields:
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: false
+        guidance: P0, P1, or P2
+        enum_values: [P0, P1, P2]
+      - label: Estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: Story points or T-shirt size
+      - label: Linked requirement
+        anchor: inline
+        type: text
+        required: false
+        guidance: The FR-NNN this epic traces back to
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: true
+        guidance: At least one complete Given/When/Then acceptance criterion
+
+  - heading: P1 Epics — Should Ship
+    fields:
+      - label: P1 Epics
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The EP-NNN epics that should ship, each with persona, priority, estimate, linked requirement, and acceptance criteria
+
+  - heading: P2 Epics — Nice to Have
+    fields:
+      - label: P2 Epics
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The EP-NNN epics that are nice to have, each with persona, priority, estimate, and acceptance criteria
+
+  - heading: Epic Summary
+    fields:
+      - label: Epic Summary
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per epic - ID, title, persona, priority, estimate, and the FR it links to
+      - label: Total P0 epics
+        anchor: inline
+        type: number
+        required: false
+        guidance: Count of P0 epics
+      - label: Total P1 epics
+        anchor: inline
+        type: number
+        required: false
+        guidance: Count of P1 epics
+      - label: Total P2 epics
+        anchor: inline
+        type: number
+        required: false
+        guidance: Count of P2 epics
+      - label: Total estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: Sum of all epic estimates, in points or days

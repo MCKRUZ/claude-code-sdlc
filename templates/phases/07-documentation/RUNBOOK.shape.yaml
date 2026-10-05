@@ -1,0 +1,65 @@
+template: runbook
+version: "1.0"
+
+sections:
+  - heading: Deployment Procedure
+    fields:
+      - label: Deployment Procedure
+        anchor: section
+        type: longtext
+        required: true
+        guidance: All 7 deployment steps filled in with actual commands and expected outputs, not placeholder text
+
+  - heading: Configuration Reference
+    fields:
+      - label: Configuration Reference
+        anchor: section
+        type: table
+        required: true
+        guidance: Every environment variable and secret the system uses, with type, description, example, and whether required
+
+  - heading: Failure Scenarios
+    repeats: true
+    numbering:
+      pattern: "Scenario %d"
+    fields:
+      - label: Scenario
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Symptoms, numbered diagnosis steps with actual commands, and resolution branches for each likely root cause
+
+  - heading: Common Operations
+    fields:
+      - label: Restart the Service
+        subheading: Restart the Service
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The restart command, how long to wait, and the health check that confirms it came back
+      - label: Scale Up/Down
+        subheading: Scale Up/Down
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Commands to scale to N instances and to verify the new instance count
+      - label: Run Database Migration
+        subheading: Run Database Migration
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Commands to check pending migrations, apply them, and verify they applied
+      - label: Roll Back a Deployment
+        subheading: Roll Back a Deployment
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Decision criteria for rolling back, the revert and verify commands, and what to do after rollback
+
+  - heading: Escalation Path
+    fields:
+      - label: Escalation Path
+        anchor: section
+        type: table
+        required: false
+        guidance: Who to contact for each severity, how to reach them, and the expected response time

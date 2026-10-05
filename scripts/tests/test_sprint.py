@@ -91,7 +91,8 @@ Customers wait.
 # --- helpers ------------------------------------------------------------------------------------
 
 def plugin_shape_fm(spec_id, name, risk, status, extra=""):
-    """The plugin template's frontmatter shape: status line with comment, channel, no owner."""
+    """The plugin template's frontmatter shape: status line with comment, channel, and — since
+    the DoR started requiring a named accountable owner — an `owner` (upstream 1.6.x)."""
     return (
         '---\n'
         f'spec: "{spec_id}"\n'
@@ -101,6 +102,7 @@ def plugin_shape_fm(spec_id, name, risk, status, extra=""):
         f'risk: {risk}\n'
         'source: "REQ-1"\n'
         'channel: ""\n'
+        'owner: "Priya"\n'
         'harness_context: "existing lookup pattern"\n'
         'created: "2026-09-01"\n'
         f'{extra}'
@@ -126,8 +128,8 @@ def harness_shape_fm(spec_id, name, risk, status):
 
 
 def handwritten_fm(spec_id, name, risk):
-    """A hand-written spec with no status line at all."""
-    return f'---\nspec: "{spec_id}"\nname: "{name}"\nrisk: {risk}\nharness_context: "x"\n---\n'
+    """A hand-written spec with no status line at all (but an owner, which the DoR requires)."""
+    return f'---\nspec: "{spec_id}"\nname: "{name}"\nrisk: {risk}\nowner: "Priya"\nharness_context: "x"\n---\n'
 
 
 def write_spec(repo: Path, spec_id, name, risk="MEDIUM", status="ready", fm=None, body=None, extra=""):

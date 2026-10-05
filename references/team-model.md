@@ -99,6 +99,24 @@ role. If this file is absent, that block is skipped and `/sdlc` renders exactly 
 
 ---
 
+## The roster
+
+This document is the collaboration model — prose, read by no script. A separate, optional file,
+`.sdlc/team.yaml`, is the **machine-readable** roster: real people, their code-host handles, their
+team, and which roles they may hold on a spec (`owner`, `developer`, `checker`, `lead`, `security`).
+Unlike this file, the roster **is** read at runtime — `scripts/check_spec.py` confirms a spec's
+`owner` and `team` name a real entry in it, blocking a spec whose owner isn't listed. With no roster
+present, that cross-check is skipped and the report says so, so a project without one still works.
+`scripts/validate_team.py` guards the roster's shape; a worked multi-person, multi-team example lives
+at `templates/team/team.example.yaml`.
+
+The roster is deliberately narrower than this document. It names who *may* hold a role — it never
+decides who *must* approve a given change, which stays with branch protection on the code host — and
+it carries no RACI, cadence, or discipline structure of its own. Think of it as the roll call this
+document's disciplines draw names from, not a second model.
+
+---
+
 ## Cadences and sign-off
 
 - **Discipline sign-off is captured in state.** Each discipline signs its section at the phase gate;

@@ -14,7 +14,7 @@ Look for `.sdlc/state.yaml` in the current directory.
 List available profiles from the plugin's `profiles/` directory (exclude `_schema.yaml`):
 
 Present every profile found there to the user. The current built-ins:
-- **microsoft-enterprise** — C#/.NET 8 + Angular 17 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required
+- **microsoft-enterprise** — C#/.NET 10 + Angular 22 + Azure, SOC 2 compliance, 80% coverage minimum, TDD required
 - **ado-enterprise** — microsoft-enterprise's stack on Azure Repos + Azure Pipelines (`platform: azure-devops`); same SOC 2 gates, coverage, and TDD bar
 - **ado-enterprise-python** — ado-enterprise's Python sibling: FastAPI + SQLAlchemy + React/Redux Toolkit on Azure Repos + Azure Pipelines, Container Apps, SOC 2; prompts PostgreSQL vs Azure SQL at setup
 - **starter** — Minimal profile, no compliance gates, quick start for any stack

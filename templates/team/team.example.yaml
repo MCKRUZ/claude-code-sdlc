@@ -1,0 +1,41 @@
+# Worked example of a project team roster. Copy this to <repo>/.sdlc/team.yaml and edit it —
+# handles, names and teams are fictional. Validate any change with:
+#   uv run scripts/validate_team.py .sdlc/team.yaml
+#
+# Each team needs a lead: a person on that team whose `roles` includes `lead`. A person's
+# `roles` are the roles they MAY hold on a spec (owner: accountable for intent and decisions;
+# developer: drives the agent, approves the plan; checker: non-author approval; security:
+# named sign-off on HIGH specs). This roster never decides WHO must approve a given change —
+# that stays with branch protection on the code host.
+version: "1.0"
+
+teams:
+  - name: claims
+    lead: "@priya-n"
+  - name: platform
+    lead: "@sam-oduya"
+
+people:
+  - handle: "@priya-n"
+    name: "Priya Nair"
+    team: claims
+    roles: [owner, developer, lead]
+    signs_off: ["1", "2", "build"]
+
+  - handle: "@jordan-b"
+    name: "Jordan Baptiste"
+    team: claims
+    roles: [developer, checker]
+    signs_off: ["build"]
+
+  - handle: "@sam-oduya"
+    name: "Sam Oduya"
+    team: platform
+    roles: [owner, developer, checker, lead]
+    signs_off: ["0", "1", "2", "3", "build", "7", "8", "9", "close"]
+
+  - handle: "@lin-wu"
+    name: "Lin Wu"
+    team: platform
+    roles: [developer, checker, security]
+    signs_off: ["build"]

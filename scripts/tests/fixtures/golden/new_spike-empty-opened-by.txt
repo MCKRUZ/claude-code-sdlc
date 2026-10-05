@@ -1,0 +1,4 @@
+exit: 1
+--- stdout ---
+Error: --opened-by must name a human. Claude does not decide to spike.
+--- stderr ---

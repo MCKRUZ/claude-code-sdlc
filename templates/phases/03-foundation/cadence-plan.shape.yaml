@@ -1,0 +1,48 @@
+template: cadence-plan
+version: "1.0"
+description: "The standing meetings and the two numbers that run the Build loop: the work-in-progress cap and the review-wait tripwire."
+
+# Every field is required: false. This document is read by scripts/cadence_plan.py with its own
+# parser, and it was already judged complete before it had a shape; a shape exists here so the
+# document can be shown and edited by section, not to change what counts as complete.
+
+sections:
+  - heading: The week
+    fields:
+      - label: The week
+        anchor: section
+        type: table
+        required: false
+        guidance: The standing meetings (flow check, intent triage, retro, setup review) with length, what each replaces, and its output
+
+  - heading: Client cadence
+    fields:
+      - label: Client cadence
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The steering rhythm and weekly summary; outcomes and demos only, never activity metrics
+
+  - heading: The two numbers
+    fields:
+      - label: The two numbers
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The work-in-progress cap and the review-wait tripwire, and that security-review wait is tracked separately
+
+  - heading: WIP Limits
+    fields:
+      - label: WIP Limits
+        anchor: section
+        type: table
+        required: false
+        guidance: Optional per-team work-in-progress limits and alarm hours; a team name must match an entry in .sdlc/team.yaml
+
+  - heading: Hardening passes (scheduled, not a gating phase)
+    fields:
+      - label: Hardening passes
+        anchor: section
+        type: longtext
+        required: false
+        guidance: When the mid-Build and pre-deployment hardening passes happen and what each adds

@@ -22,6 +22,7 @@ ids stay stable and gap-free across sessions. Spike ids are independent of spec 
 """
 
 import argparse
+import json
 import re
 import sys
 from datetime import datetime, timezone
@@ -29,7 +30,7 @@ from pathlib import Path
 
 # Shared with new_spec.py — imported rather than copied so the two cannot drift apart.
 from new_spec import next_spec_id as next_id
-from new_spec import resolve_repo_root, slugify
+from new_spec import die, repo_relative, resolve_repo_root, slugify
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATE_PATH = PLUGIN_ROOT / "templates" / "phases" / "build" / "spike.md"
@@ -51,12 +52,12 @@ def render_spike(template: str, spike_id: str, name: str, box: str, opened_by: s
     return out
 
 
-def create_spike(repo_root: Path, name: str, box: str, opened_by: str, unblocks: str) -> Path:
+def create_spike(repo_root: Path, name: str, box: str, opened_by: str, unblocks: str,
+                  json_mode: bool = False) -> Path:
     """Write spikes/NNNN-slug.md into repo_root and return the path."""
     slug = slugify(name)
     if not slug:
-        print("Error: --name produced an empty slug. Use a descriptive name.")
-        sys.exit(1)
+        die("Error: --name produced an empty slug. Use a descriptive name.", json_mode)
 
     spikes_dir = repo_root / "spikes"
     spikes_dir.mkdir(parents=True, exist_ok=True)
@@ -64,8 +65,7 @@ def create_spike(repo_root: Path, name: str, box: str, opened_by: str, unblocks:
 
     out_path = spikes_dir / f"{spike_id}-{slug}.md"
     if out_path.exists():
-        print(f"Error: Spike already exists: {out_path}")
-        sys.exit(1)
+        die(f"Error: Spike already exists: {out_path}", json_mode)
 
     template = TEMPLATE_PATH.read_text(encoding="utf-8")
     out_path.write_text(
@@ -92,20 +92,27 @@ def main():
         "--unblocks", default="—",
         help="What this unblocks: decision-list item id, the story that can't be made ready, or ADR-NNNN",
     )
+    parser.add_argument("--json", action="store_true",
+                        help="Print one JSON document {path, id, name, box, opened_by, unblocks} "
+                             "instead of the text summary")
     args = parser.parse_args()
 
     box = args.box.strip()
     if not box:
-        print("Error: --box must not be empty. A spike is bounded or it is unsupervised building.")
-        sys.exit(1)
+        die("Error: --box must not be empty. A spike is bounded or it is unsupervised building.", args.json)
 
     opened_by = args.opened_by.strip()
     if not opened_by:
-        print("Error: --opened-by must name a human. Claude does not decide to spike.")
-        sys.exit(1)
+        die("Error: --opened-by must name a human. Claude does not decide to spike.", args.json)
 
     repo_root = resolve_repo_root(args)
-    out_path = create_spike(repo_root, args.name, box, opened_by, args.unblocks)
+    out_path = create_spike(repo_root, args.name, box, opened_by, args.unblocks, args.json)
+
+    if args.json:
+        spike_id, _, slug = out_path.stem.partition("-")
+        print(json.dumps({"path": repo_relative(out_path, repo_root), "id": spike_id, "name": slug,
+                          "box": box, "opened_by": opened_by, "unblocks": args.unblocks}))
+        return
 
     print(f"Spike created: {out_path}")
     print(f"  Box: {box}   Opened by: {opened_by}")

@@ -1,0 +1,44 @@
+template: deployment-checklist
+version: "1.0"
+
+sections:
+  - heading: Pre-Deployment
+    aliases: [Pre-deployment gates]
+    fields:
+      - label: Pre-Deployment
+        anchor: section
+        type: longtext
+        required: true
+        guidance: All environment checks, configuration verification, stakeholder notification, and database backup steps completed and signed off
+
+  - heading: Deployment Steps
+    fields:
+      - label: Deployment Steps
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Staging and production steps each with actual commands, expected outcomes, and verification commands; the staging go/no-go decision must be explicit
+
+  - heading: Rollback Procedure
+    fields:
+      - label: Rollback Procedure
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Explicit rollback triggers, named decision authority, all rollback steps with commands, and the date the rollback was tested
+
+  - heading: Post-Deployment Verification
+    fields:
+      - label: Post-Deployment Verification
+        anchor: section
+        type: checklist
+        required: false
+        guidance: Confirm P0 smoke tests, health endpoint, key metrics, alerts, and release notes after production deploy
+
+  - heading: Sign-Off
+    fields:
+      - label: Sign-Off
+        anchor: section
+        type: table
+        required: false
+        guidance: Deployment lead, stakeholder, and on-call engineer approvals with time

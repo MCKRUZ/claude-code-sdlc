@@ -1,0 +1,81 @@
+"""The plugin's declared capabilities (spec 0023).
+
+Studio is released separately from the plugin, so it will meet plugins older than the scripts it
+wants to call. A capability list lets it hide a button and say why, rather than run the script and
+show a project manager an argument-parsing error. The list is declared, not probed (probing would
+run `--help` on a dozen scripts every time the dashboard loads) — which is only safe if a test
+proves each entry true. That is the first test class here: a capability cannot be declared that
+the script does not actually have.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+import capabilities as caps
+import generate_status as gs
+
+ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPTS = ROOT / "scripts"
+
+
+def help_text(script, argv):
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    proc = subprocess.run([sys.executable, str(SCRIPTS / script), *argv, "--help"],
+                          capture_output=True, text=True, encoding="utf-8", env=env)
+    return proc.stdout + proc.stderr
+
+
+@pytest.mark.parametrize("name", sorted(caps.CAPABILITIES))
+def test_every_declared_capability_is_true_of_its_script(name):
+    spec = caps.CAPABILITIES[name]
+    if not (SCRIPTS / spec["script"]).exists():
+        pytest.skip(f"{spec['script']} is not in this plugin, so {name} is (correctly) not reported")
+    text = help_text(spec["script"], spec.get("argv", []))
+    missing = [f for f in spec["flags"] if f not in text]
+    assert not missing, f"{name}: {spec['script']} {' '.join(spec.get('argv', []))} --help lacks {missing}"
+
+
+def test_the_activities_capability_is_true_of_stage_readiness(tmp_path):
+    (tmp_path / ".sdlc").mkdir()
+    (tmp_path / ".sdlc" / "state.yaml").write_text('current_phase: "0"\n', encoding="utf-8")
+    import stage_readiness
+    assert "activities" in stage_readiness.assess(tmp_path, "0")
+
+
+def test_the_capabilities_the_plan_depends_on_are_declared():
+    assert {"activities", "add-row", "doctor-json", "gate-audit-json", "upgrade-report-json",
+            "check-channel-json", "interaction-spec-check", "bind-channel", "decision-open",
+            "decision-decide", "intake-modes", "new-spec-json", "new-spike-json",
+            "pipeline-proof"} <= set(caps.CAPABILITIES)
+
+
+def test_the_list_is_sorted_strings():
+    listed = caps.list_capabilities()
+    assert listed == sorted(listed) and all(isinstance(c, str) for c in listed)
+
+
+def test_a_capability_whose_script_is_absent_is_omitted_not_reported(tmp_path):
+    assert caps.list_capabilities(scripts_dir=tmp_path) == []
+
+
+def test_only_the_scripts_that_exist_are_reported(tmp_path):
+    (tmp_path / "doctor.py").write_text("# stand-in\n")
+    assert caps.list_capabilities(scripts_dir=tmp_path) == ["doctor-json"]
+
+
+def test_status_json_gains_capabilities_and_keeps_every_existing_key():
+    state = {"project_name": "demo", "current_phase": "0", "phases": {}}
+    out = gs.status_json(state, Path("/nonexistent/.sdlc"))
+    assert out["capabilities"] == caps.list_capabilities()
+    without = {k: v for k, v in out.items() if k != "capabilities"}
+    assert without  # the document it always had is still there
+
+
+def test_the_markdown_dashboard_does_not_mention_capabilities():
+    state = {"project_name": "demo", "current_phase": "0", "phases": {}}
+    assert "capabilit" not in gs.generate_dashboard(state, Path("/nonexistent/.sdlc")).lower()

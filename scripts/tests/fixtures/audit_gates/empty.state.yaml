@@ -1,0 +1,11 @@
+project_name: Empty Project
+profile_id: fixture-profile
+phases:
+  "0":
+    status: completed
+  "1":
+    status: completed
+  "2":
+    status: completed
+  "3":
+    status: completed

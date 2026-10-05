@@ -166,37 +166,179 @@ def catalog_documents(
     }
 
 
-def main() -> None:
+LOCKED_MESSAGE = (
+    "catalog is locked; DOC-NNN ids are stable — edit catalog.json by hand to unlock"
+)
+
+
+class Refusal(Exception):
+    """A request the script declines to carry out (exit 1, nothing written)."""
+
+
+def _id_list(value: str) -> list[str]:
+    """argparse type: a comma-separated DOC-NNN list, with no empty elements."""
+    ids = [part.strip() for part in value.split(",")]
+    if not all(ids):
+        raise argparse.ArgumentTypeError(f"empty id in list: {value!r}")
+    return ids
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Scan and catalog external documents for SDLC intake"
     )
-    parser.add_argument("--state", required=True, help="Path to .sdlc/state.yaml")
+    where = parser.add_mutually_exclusive_group()
+    where.add_argument("--state", help="Path to .sdlc/state.yaml")
+    where.add_argument("--repo", help="Project root containing .sdlc/ (dual mode)")
+    parser.add_argument(
+        "--docs",
+        help="Catalog this folder instead of the profile's intake path. With no "
+        "--state/--repo the catalog is provisional and nothing is written.",
+    )
     parser.add_argument(
         "--rescan",
         action="store_true",
         help="Force re-cataloging even if catalog.json exists",
     )
+    parser.add_argument(
+        "--json", action="store_true", help="Print the catalog as one JSON document"
+    )
+    parser.add_argument(
+        "--skip", type=_id_list, metavar="DOC-NNN[,DOC-NNN]",
+        help="Mark documents as skipped (additive, stored in catalog.json)",
+    )
+    parser.add_argument(
+        "--priority", type=_id_list, metavar="DOC-NNN[,DOC-NNN]",
+        help="Set the priority order, highest first (stored in catalog.json)",
+    )
+    parser.add_argument(
+        "--lock", action="store_true",
+        help="Freeze DOC-NNN ids: set locked=true in catalog.json",
+    )
+    parser.add_argument(
+        "--registry", action="store_true",
+        help="Write the document registry and the session-start index from the catalog and the "
+        "summaries that exist (reads the catalog, never changes it)",
+    )
+    return parser
+
+
+def parse_args() -> argparse.Namespace:
+    parser = build_parser()
     args = parser.parse_args()
+    if not (args.state or args.repo or args.docs):
+        parser.error("one of --state, --repo or --docs is required")
+    if args.registry and (args.skip or args.priority or args.lock or args.rescan or args.docs):
+        parser.error("--registry builds from the existing catalog; it cannot be combined with "
+                     "--skip, --priority, --lock, --rescan or --docs")
+    return args
 
-    state_path = Path(args.state)
+
+def read_catalog(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_catalog(path: Path, catalog: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(catalog, f, indent=2, ensure_ascii=False)
+
+
+def fail(message: str, code: int = 1) -> None:
+    print(f"Error: {message}", file=sys.stderr)
+    sys.exit(code)
+
+
+def catalog_json(catalog: dict, provisional: bool, message: str | None = None) -> dict:
+    """Shape a catalog (or an empty result) as the --json document."""
+    skipped = list(catalog.get("skipped", []))
+    order = list(catalog.get("priority_order", []))
+    documents = []
+    for doc in catalog.get("documents", []):
+        doc_id = doc["doc_id"]
+        documents.append({
+            "id": doc_id,
+            "file": doc.get("source_path"),
+            "type": doc.get("type"),
+            "tokens": doc.get("estimated_tokens"),
+            "estimation_method": doc.get("estimation_method"),
+            "checksum": doc.get("checksum"),
+            "skipped": doc_id in skipped,
+            "priority": order.index(doc_id) + 1 if doc_id in order else None,
+        })
+    active = [d for d in documents if not d["skipped"]]
+    payload = {
+        "documents": documents,
+        "locked": bool(catalog.get("locked")),
+        "locked_at": catalog.get("locked_at"),
+        "provisional": provisional,
+        "skipped": skipped,
+        "priority_order": order,
+        "totals": {
+            "documents": len(documents),
+            "estimated_tokens": sum(d["tokens"] or 0 for d in documents),
+            "skipped_documents": len(documents) - len(active),
+            "active_documents": len(active),
+            "active_estimated_tokens": sum(d["tokens"] or 0 for d in active),
+            "index_budget_tokens": catalog.get("index_budget_tokens"),
+            "summary_budget_tokens": catalog.get("summary_budget_tokens"),
+        },
+    }
+    if message:
+        payload["message"] = message
+    return payload
+
+
+def emit_json(payload: dict) -> None:
+    print(json.dumps(payload, indent=2))
+
+
+def locate_project(args: argparse.Namespace) -> tuple[Path | None, Path | None]:
+    """Return (sdlc_dir, project_root); (None, None) when running standalone."""
+    if not (args.state or args.repo):
+        return None, None
+    if args.state:
+        state_path = Path(args.state)
+    else:
+        state_path = Path(args.repo) / ".sdlc" / "state.yaml"
     if not state_path.exists():
-        print(f"Error: State file not found: {state_path}", file=sys.stderr)
-        sys.exit(1)
+        fail(f"State file not found: {state_path}")
+    return state_path.parent, state_path.parent.parent
 
-    sdlc_dir = state_path.parent
-    profile_path = sdlc_dir / "profile.yaml"
-    if not profile_path.exists():
-        print(f"Error: Profile not found: {profile_path}", file=sys.stderr)
-        sys.exit(1)
 
-    profile = load_yaml(profile_path)
+def check_change_rules(args, sdlc_dir, existing) -> None:
+    """Refuse changes a standalone run cannot store or a locked catalog forbids."""
+    wants_change = bool(args.skip or args.priority or args.lock)
+    if sdlc_dir is None and wants_change:
+        fail("--skip, --priority and --lock edit a project catalog; pass --repo or --state")
+    if args.lock and existing is None:
+        fail("no catalog to lock; run intake first")
+    if existing and existing.get("locked") and (args.rescan or args.skip or args.priority):
+        fail(LOCKED_MESSAGE)
+
+
+def resolve_intake(args, sdlc_dir, project_root, provisional: bool) -> tuple[dict, Path]:
+    """Find the documentation config and the folder to scan (may exit)."""
+    profile = {}
+    if sdlc_dir is not None:
+        profile_path = sdlc_dir / "profile.yaml"
+        if profile_path.exists():
+            profile = load_yaml(profile_path) or {}
+        elif not args.docs:
+            fail(f"Profile not found: {profile_path}")
     doc_config = profile.get("documentation")
+    if args.docs:
+        intake_path = Path(args.docs)
+        if not intake_path.is_dir():
+            fail(f"Intake path not found: {intake_path}")
+        return doc_config or {}, intake_path
     if not doc_config:
-        print("No 'documentation' section in profile. Nothing to intake.")
+        message = "No 'documentation' section in profile. Nothing to intake."
+        if args.json:
+            emit_json(catalog_json({}, provisional, message))
+        else:
+            print(message)
         sys.exit(0)
-
-    # Resolve intake path relative to project root
-    project_root = sdlc_dir.parent
     intake_path = project_root / doc_config["intake_path"]
     if not intake_path.exists():
         print(f"Error: Intake path not found: {intake_path}", file=sys.stderr)
@@ -205,50 +347,78 @@ def main() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+    return doc_config, intake_path
 
-    # Check for existing catalog
-    catalog_path = sdlc_dir / "context" / "intake" / "catalog.json"
-    if catalog_path.exists() and not args.rescan:
-        print(f"Catalog already exists: {catalog_path}")
-        print("Use --rescan to force re-cataloging.")
-        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-        print(
-            f"  {catalog['total_documents']} documents, "
-            f"~{catalog['total_estimated_tokens']:,} estimated tokens"
-        )
-        if catalog.get("locked"):
-            print("  [LOCKED] DOC-NNN IDs are frozen. Use --rescan to override (will reassign IDs).")
-        sys.exit(0)
 
-    # Warn if rescanning a locked catalog
-    if catalog_path.exists() and args.rescan:
-        existing = json.loads(catalog_path.read_text(encoding="utf-8"))
-        if existing.get("locked"):
-            print(
-                "WARNING: Catalog is locked (Phase 0 complete). "
-                "Rescanning will reassign DOC-NNN IDs. "
-                "Phase 1 traceability references may break.",
-                file=sys.stderr,
-            )
-
-    # Scan and catalog
+def scan_catalog(doc_config, intake_path, project_root, args, provisional) -> dict:
     types = doc_config.get("types", ["pdf", "markdown", "text"])
-    max_docs = doc_config.get("max_documents", 50)
-
-    files = scan_intake_folder(intake_path, types, max_docs)
+    files = scan_intake_folder(intake_path, types, doc_config.get("max_documents", 50))
     if not files:
-        print(f"No matching documents found in {intake_path}")
-        print(f"  Scanned for types: {types}")
+        message = f"No matching documents found in {intake_path}"
+        if args.json:
+            emit_json(catalog_json({}, provisional, message))
+        else:
+            print(message)
+            print(f"  Scanned for types: {types}")
         sys.exit(2)
+    # Source paths are relative to the project when the folder sits inside it,
+    # otherwise to the folder itself (never a machine-specific absolute path).
+    inside = project_root is not None and intake_path.resolve().is_relative_to(
+        project_root.resolve()
+    )
+    return catalog_documents(
+        intake_path, files, doc_config, project_root if inside else intake_path
+    )
 
-    catalog = catalog_documents(intake_path, files, doc_config, project_root)
 
-    # Write catalog
-    catalog_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(catalog_path, "w", encoding="utf-8") as f:
-        json.dump(catalog, f, indent=2, ensure_ascii=False)
+def carry_over_decisions(old: dict, new: dict) -> None:
+    """Re-attach skip/priority to the rescanned catalog by source path (ids can shift)."""
+    old_paths = {d["doc_id"]: d.get("source_path") for d in old.get("documents", [])}
+    new_ids = {d["source_path"]: d["doc_id"] for d in new["documents"]}
+    for key in ("skipped", "priority_order"):
+        if key in old:
+            carried = (new_ids.get(old_paths.get(i)) for i in old[key])
+            new[key] = [i for i in carried if i]
 
-    # Print summary
+
+def apply_decisions(catalog: dict, skip, priority) -> bool:
+    """Store --skip/--priority in the in-memory catalog; True when anything changed."""
+    known = {d["doc_id"] for d in catalog["documents"]}
+    unknown = [i for i in (skip or []) + (priority or []) if i not in known]
+    if unknown:
+        raise Refusal(f"unknown document id(s): {', '.join(unknown)}")
+    changed = False
+    if skip:
+        merged = sorted(set(catalog.get("skipped", [])) | set(skip))
+        changed |= merged != catalog.get("skipped")
+        catalog["skipped"] = merged
+    if priority:
+        ordered = list(dict.fromkeys(priority))
+        changed |= ordered != catalog.get("priority_order")
+        catalog["priority_order"] = ordered
+    return changed
+
+
+def apply_lock(catalog: dict) -> bool:
+    if catalog.get("locked"):
+        return False
+    catalog["locked"] = True
+    catalog["locked_at"] = datetime.now(timezone.utc).isoformat()
+    return True
+
+
+def print_existing(catalog: dict, catalog_path: Path) -> None:
+    print(f"Catalog already exists: {catalog_path}")
+    print("Use --rescan to force re-cataloging.")
+    print(
+        f"  {catalog['total_documents']} documents, "
+        f"~{catalog['total_estimated_tokens']:,} estimated tokens"
+    )
+    if catalog.get("locked"):
+        print("  [LOCKED] DOC-NNN IDs are frozen; --rescan, --skip and --priority are refused.")
+
+
+def print_summary(catalog: dict, intake_path: Path) -> None:
     print(f"Document Intake Catalog — {catalog['total_documents']} documents")
     print("=" * 60)
     print(f"  Intake path: {intake_path}")
@@ -265,8 +435,88 @@ def main() -> None:
         )
 
     print()
-    print(f"Catalog written to: {catalog_path}")
-    print("Next: Claude will generate per-document summaries during Phase 0 Step 0c.")
+
+
+def print_changes(args, catalog: dict, lock_changed: bool) -> None:
+    if args.skip:
+        print(f"Skipped: {', '.join(catalog.get('skipped', []))}")
+    if args.priority:
+        print(f"Priority order: {', '.join(catalog.get('priority_order', []))}")
+    if args.lock:
+        print("Catalog locked." if lock_changed else "Catalog already locked.")
+
+
+def registry_mode(args: argparse.Namespace, sdlc_dir: Path | None) -> None:
+    """--registry: build the registry and index from the catalog on disk, then exit."""
+    import intake_registry
+
+    catalog_path = sdlc_dir / "context" / "intake" / "catalog.json" if sdlc_dir else None
+    if catalog_path is None or not catalog_path.exists():
+        fail("no catalog to build a registry from; run intake first")
+    result = intake_registry.build(sdlc_dir, read_catalog(catalog_path), estimate_tokens_from_text)
+    if args.json:
+        emit_json(result)
+    else:
+        print(intake_registry.format_report(result))
+
+
+def main() -> None:
+    args = parse_args()
+    sdlc_dir, project_root = locate_project(args)
+    if args.registry:
+        registry_mode(args, sdlc_dir)
+        return
+    provisional = sdlc_dir is None
+    catalog_path = (
+        sdlc_dir / "context" / "intake" / "catalog.json" if sdlc_dir else None
+    )
+    existing = (
+        read_catalog(catalog_path) if catalog_path and catalog_path.exists() else None
+    )
+    check_change_rules(args, sdlc_dir, existing)
+
+    wants_change = bool(args.skip or args.priority or args.lock)
+    reuse = existing is not None and not args.rescan
+    intake_path = None
+    if not (reuse and wants_change):
+        doc_config, intake_path = resolve_intake(args, sdlc_dir, project_root, provisional)
+
+    if reuse and not wants_change:
+        if args.json:
+            emit_json(catalog_json(existing, provisional))
+        else:
+            print_existing(existing, catalog_path)
+        sys.exit(0)
+
+    scanned = not reuse
+    if scanned:
+        catalog = scan_catalog(doc_config, intake_path, project_root, args, provisional)
+        if existing:
+            carry_over_decisions(existing, catalog)
+    else:
+        catalog = existing
+
+    try:
+        changed = apply_decisions(catalog, args.skip, args.priority)
+    except Refusal as refusal:
+        fail(str(refusal))
+    lock_changed = apply_lock(catalog) if args.lock else False
+
+    if catalog_path and (scanned or changed or lock_changed):
+        write_catalog(catalog_path, catalog)
+
+    if args.json:
+        emit_json(catalog_json(catalog, provisional))
+        return
+    if scanned:
+        print_summary(catalog, intake_path)
+        if catalog_path:
+            print(f"Catalog written to: {catalog_path}")
+            print("Next: Claude will generate per-document summaries during Phase 0 Step 0c.")
+        else:
+            print("Provisional catalog: nothing was written and the DOC-NNN ids are not stable.")
+            print("Run /sdlc-setup, then intake again, to get a project catalog.")
+    print_changes(args, catalog, lock_changed)
 
 
 if __name__ == "__main__":

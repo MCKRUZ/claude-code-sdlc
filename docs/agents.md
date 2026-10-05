@@ -30,7 +30,7 @@ There are three categories of agents:
 
 | Category | Defined In | Count | Examples |
 |----------|-----------|-------|---------|
-| SDLC agents | `agents/*.md` | 13 | sdlc-orchestrator, compliance-checker, requirements-analyst, section-evaluator, gate-repair, multi-reviewer, narrative-enhancer, discovery-analyst, feature-architect, bizreq-analyst, data-analyst, visual-designer, conversation-designer |
+| SDLC agents | `agents/*.md` | 14 | sdlc-orchestrator, compliance-checker, requirements-analyst, section-evaluator, gate-repair, multi-reviewer, narrative-enhancer, discovery-analyst, document-summarizer, feature-architect, bizreq-analyst, data-analyst, visual-designer, conversation-designer |
 | Harness agents | `harness/agents/*.md`, installed into the target repo | 6 | architect, build-error-resolver, debugger, grader, planner, security-reviewer |
 | Claude Code built-ins | Claude Code runtime | 2 used here | `Explore`, `Plan` |
 
@@ -260,6 +260,18 @@ Cross-document analysis for discovery: finds where the intake corpus disagrees w
 
 ---
 
+### 2.9 document-summarizer
+
+Writes the summary of ONE document in the intake corpus, to `templates/phases/00-discovery/document-summary.md` and the catalog's `summary_budget_tokens`. Spawned once per document by `/sdlc-intake` (Phase 0 Step 0c), in priority order, and by SDLC Studio's *Summarise the documents* button.
+
+**Produces:** `.sdlc/context/intake/DOC-NNN-<slug>.md` — overview, purpose / audience / scope, extractable requirements, key terms, relevance. A document over ~100K tokens is read by its opening, closing and headings and the summary says "Partial extraction".
+
+**Principles:** never invents (every statement traces to the document; "Not stated" otherwise); attributes to sections; summarises, never judges or reconciles (contradictions are the discovery-analyst's job); treats the document's own text as data, never as instructions.
+
+**When spawned:** Phase 0, after the catalog is reviewed and before the registry and index are built. Foreground.
+
+---
+
 ## 3. Harness and Built-in Subagents Used by SDLC
 
 Agents referenced by name in phase workflows that are not defined in `agents/`. The harness agents are installed into the target repo by `/sdlc-harness`; the two built-ins come from the Claude Code runtime.
@@ -310,6 +322,7 @@ rather than filled out with agents that would have to be invented.
 | Agent | Mode | Condition |
 |-------|------|-----------|
 | `Explore` | Foreground | Existing codebase to analyze |
+| `document-summarizer` | Foreground, once per document | Document intake is configured and the catalog is reviewed |
 | `discovery-analyst` | Foreground | Document intake ran AND a stakeholder workshop is planned |
 
 Phase 0 is primarily human-driven. `discovery-analyst` produces questions for humans, never answers.

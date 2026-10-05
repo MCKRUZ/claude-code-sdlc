@@ -27,6 +27,22 @@
 - **Sprint length:** [10 business days] — the commitment window `/sdlc-sprint new` defaults to; `end` is the last business day of a window this many business days long, `start` counted as day 1 (Mon 2026-09-28 → Fri 2026-10-09).
 - **Review-turnaround target:** [not set] (per lane — Engineering and Data; the sprint agenda flags verdicts waiting beyond it, and reads "no target set" when this line is left blank).
 
+These two numbers are the project-wide default. A project with teams of very different sizes can
+replace them with the per-team table below — the same limit for a 3-checker team and an
+8-checker team hides the slow team's queue until reviews are days old.
+
+## WIP Limits
+<!--
+  OPTIONAL — delete this section to keep the single project-wide numbers above. Read by
+  scripts/track_specs.py and scripts/scorecard.py. One row per team; a team name must match an
+  entry in .sdlc/team.yaml. review_alarm_hours / security_alarm_hours may be left blank — they
+  default to 24 and 48 respectively, and the tools say so when a default is used.
+-->
+
+| team | wip_limit | review_alarm_hours | security_alarm_hours |
+|------|-----------|---------------------|-----------------------|
+| [team-name] | [N] | [hours, optional] | [hours, optional] |
+
 ## Hardening passes (scheduled, not a gating phase)
 - Mid-Build: [date/trigger] — adds the test environment.
 - Before Phase 8: [date/trigger] — load, E2E journeys, pen-test.

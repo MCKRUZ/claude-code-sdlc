@@ -1,0 +1,74 @@
+template: question-list
+version: "1.0"
+description: "Everything the client's documents do not answer, grouped by workshop agenda block and routed to the room, an email or a one-to-one interview."
+
+# How `required` was chosen: the Problem and Success Metric blocks are required - every discovery
+# has to ask what the problem is and how success will be measured. The other blocks are optional
+# because a block with no open questions is a normal outcome, and the routing summary and answer
+# log are bookkeeping.
+# Each "### Block: ..." subsection is one field holding its whole run of "#### Q-NN" question
+# entries; the entries themselves are not split into fields because a block holds several
+# questions and each question repeats the same bold labels.
+# Not shaped: the Generated / Corpus / Status lines above the first "## " heading.
+
+sections:
+  - heading: Routing Summary
+    fields:
+      - label: Routing Summary
+        anchor: section
+        type: table
+        required: false
+        guidance: How many questions go to the workshop, are answerable by email beforehand, or are better asked one-to-one
+
+  - heading: Questions
+    fields:
+      - label: Problem
+        subheading: "Block: Problem"
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Questions about the problem, who it hurts and what it costs, each as a Q-NN entry with why it matters, source, likely answerer, route and answer
+      - label: Outcomes
+        subheading: "Block: Outcomes"
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Questions about the business, software and capability outcomes
+      - label: Success Metric
+        subheading: "Block: Success Metric"
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Questions about the one metric, its baseline and the system it will be read from
+      - label: Constraints
+        subheading: "Block: Constraints"
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Questions about what is fixed and what is negotiable
+      - label: Product Ownership
+        subheading: "Block: Product Ownership"
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Questions about who owns the product and at what hours
+      - label: Tooling & Access
+        subheading: "Block: Tooling & Access"
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Questions about tool procurement and system access
+      - label: Other
+        subheading: "Block: Other"
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Questions that fit none of the other blocks
+
+  - heading: Answer Log
+    fields:
+      - label: Answer Log
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per answered question - who answered, the answer and the date; unanswered questions carry into the Phase 1 handoff under the same Q-NN ids

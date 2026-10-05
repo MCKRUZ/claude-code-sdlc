@@ -43,9 +43,11 @@ def extract_frontmatter(content: str) -> dict | None:
     if not match:
         return None
     try:
-        return yaml.safe_load(match.group(1))
+        parsed = yaml.safe_load(match.group(1))
     except yaml.YAMLError:
         return None
+    # A list or a bare word between the --- lines parses, but is not frontmatter.
+    return parsed if isinstance(parsed, dict) else None
 
 
 def estimate_tokens(content: str) -> int:
@@ -105,6 +107,11 @@ def validate(state_path: Path, phase_id) -> int:
     # Token budget check
     estimated_tokens = estimate_tokens(content)
     declared_tokens = frontmatter.get("estimated_tokens", 0)
+    # A frozen layer is drafted by a model, which sometimes writes a field in the wrong form. Say so as a
+    # validation error instead of crashing on it (a bool is a number to Python, but not to a reader).
+    if declared_tokens is not None and (isinstance(declared_tokens, bool) or not isinstance(declared_tokens, (int, float))):
+        errors.append("estimated_tokens must be a number")
+        declared_tokens = 0
 
     if estimated_tokens < TOKEN_MIN:
         errors.append(
@@ -136,7 +143,11 @@ def validate(state_path: Path, phase_id) -> int:
 
     # Check traceability — source artifacts reference real files
     source_artifacts = frontmatter.get("source_artifacts", [])
-    if not source_artifacts:
+    if source_artifacts is not None and not (
+        isinstance(source_artifacts, list) and all(isinstance(a, str) for a in source_artifacts)
+    ):
+        errors.append("source_artifacts must be a list of file names")
+    elif not source_artifacts:
         warnings.append("No source_artifacts listed in frontmatter")
     else:
         artifacts_dir = sdlc_dir / "artifacts" / pm.artifact_dirname(phase_id)

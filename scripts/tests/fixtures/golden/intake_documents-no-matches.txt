@@ -1,0 +1,4 @@
+exit: 2
+--- stdout ---
+No matching documents found in <ROOT>/docs/intake
+  Scanned for types: ['pdf', 'markdown', 'text', 'docx']

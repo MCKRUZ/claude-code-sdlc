@@ -70,6 +70,39 @@ class TestRenderSpec:
         assert "**Tier:** HIGH" in out  # body tier synced to frontmatter risk
         assert "**Tier:** MEDIUM" not in out
 
+    def test_owner_and_team_fill_when_present(self):
+        template = (
+            '---\n'
+            'spec: "NNNN"\n'
+            'name: "short-kebab-name"\n'
+            'risk: MEDIUM             # HIGH | MEDIUM | LOW\n'
+            'source: "—"\n'
+            'owner: ""                # comment\n'
+            'team: ""                 # comment\n'
+            'created: "YYYY-MM-DD"\n'
+            '---\n'
+        )
+        out = render_spec(template, "0005", "add-rate-limiting", "HIGH", "REQ-12",
+                           owner="@priya-n", team="claims")
+        assert 'owner: "@priya-n"' in out
+        assert 'team: "claims"' in out
+
+    def test_owner_and_team_default_empty(self):
+        template = (
+            '---\n'
+            'spec: "NNNN"\n'
+            'name: "short-kebab-name"\n'
+            'risk: MEDIUM             # HIGH | MEDIUM | LOW\n'
+            'source: "—"\n'
+            'owner: ""                # comment\n'
+            'team: ""                 # comment\n'
+            'created: "YYYY-MM-DD"\n'
+            '---\n'
+        )
+        out = render_spec(template, "0005", "add-rate-limiting", "HIGH", "REQ-12")
+        assert 'owner: ""' in out
+        assert 'team: ""' in out
+
 
 class TestCreateSpec:
     def test_creates_file_in_specs_dir(self, tmp_path, monkeypatch):
@@ -86,6 +119,19 @@ class TestCreateSpec:
         create_spec(tmp_path, "first", "LOW", "—")
         out2 = create_spec(tmp_path, "second", "LOW", "—")
         assert out2.name == "0002-second.md"
+
+    def test_owner_and_team_write_through(self, tmp_path):
+        out = create_spec(tmp_path, "Add Rate Limiting", "HIGH", "REQ-1",
+                           owner="@priya-n", team="claims")
+        text = out.read_text(encoding="utf-8")
+        assert 'owner: "@priya-n"' in text
+        assert 'team: "claims"' in text
+
+    def test_omitted_owner_and_team_write_empty(self, tmp_path):
+        out = create_spec(tmp_path, "Add Rate Limiting", "HIGH", "REQ-1")
+        text = out.read_text(encoding="utf-8")
+        assert 'owner: ""' in text
+        assert 'team: ""' in text
 
     def test_duplicate_slug_errors(self, tmp_path):
         create_spec(tmp_path, "same name", "LOW", "—")

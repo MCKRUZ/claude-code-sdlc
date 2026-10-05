@@ -1,0 +1,58 @@
+template: channel-interaction-spec
+version: "1.0"
+description: "The agreed behaviour for one channel, one row per quality dimension, each turned into a check the spec is graded against."
+
+# required: true only on what the document is meaningless without: the channel and the contract
+# table. The AG-UI event contract applies only to web (ag-ui) channels, so it is optional and a
+# voice or chat document may omit the section. Notes are guidance for the author.
+#
+# The contract field's span includes the one-line reminder under the table and the closing rule,
+# because a section-anchored field is the whole section body.
+
+sections:
+  - heading: Spec identity
+    fields:
+      - label: Channel
+        anchor: inline
+        type: text
+        required: true
+        guidance: The channel this contract covers (web, voice or chat)
+      - label: Descriptor
+        anchor: inline
+        type: text
+        required: false
+        guidance: The channel descriptor file whose quality dimensions this contract answers
+      - label: Persona
+        anchor: inline
+        type: text
+        required: false
+        guidance: Who uses this surface
+      - label: Traces to
+        anchor: inline
+        type: text
+        required: false
+        guidance: The feature-brief row and spec this contract supports
+
+  - heading: The contract
+    fields:
+      - label: The contract
+        anchor: section
+        type: table
+        required: true
+        guidance: One row per quality dimension - the concrete behaviour for this surface and the acceptance check that lands in the spec
+
+  - heading: AG-UI event contract (`ag-ui` channels only)
+    fields:
+      - label: AG-UI event contract
+        anchor: section
+        type: table
+        required: false
+        guidance: For web channels only - the events consumed, and how confidence, personal data, states, accessibility and human approval are handled
+
+  - heading: Notes
+    fields:
+      - label: Notes
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Reminders for the author about how each contract row becomes an acceptance check

@@ -1,0 +1,101 @@
+template: requirements
+version: "1.0"
+description: "What the system must do, as testable statements each tracing back to a real stakeholder need."
+
+sections:
+  - heading: Overview
+    aliases: [Summary]
+    fields:
+      - label: Project
+        anchor: inline
+        type: text
+        required: true
+        guidance: The project name
+      - label: Version
+        anchor: inline
+        type: text
+        required: true
+        guidance: The document version
+      - label: Date
+        anchor: inline
+        type: date
+        required: true
+        guidance: The date this version was written (YYYY-MM-DD)
+      - label: Status
+        anchor: inline
+        type: enum
+        required: true
+        guidance: Where this document is in review
+        enum_values: [Draft, Under Review, Approved]
+
+  - heading: Functional Requirements
+    repeats: true
+    numbering:
+      pattern: "FR-%03d"
+    fields:
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: true
+        guidance: How important this requirement is
+        enum_values: [P0, P1, P2]
+      - label: Source
+        anchor: inline
+        type: text
+        required: false
+        guidance: The stakeholder persona or user story this traces back to
+      - label: Rationale
+        anchor: inline
+        type: text
+        required: false
+        guidance: Why this is required — what happens if we don't have it
+      - label: Requirement
+        anchor: labeled_block
+        type: longtext
+        required: true
+        guidance: "The testable SHALL statement — \"The system SHALL [verb] [object] [condition].\""
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: true
+        guidance: At least one Given/When/Then statement a tester can execute
+      - label: Dependencies
+        anchor: inline
+        type: text
+        required: false
+        guidance: Other requirements this one depends on, if any
+
+  - heading: Requirement Traceability
+    aliases: [Traceability Matrix]
+    fields:
+      - label: Requirement Traceability
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per FR-NNN tracing its description, priority, source persona, user story, source document, and status
+
+  - heading: Prioritization Rationale
+    fields:
+      - label: P0 criteria
+        anchor: inline
+        type: text
+        required: false
+        guidance: What makes a requirement P0 for this project
+      - label: P1 criteria
+        anchor: inline
+        type: text
+        required: false
+        guidance: What makes a requirement P1
+      - label: P2 criteria
+        anchor: inline
+        type: text
+        required: false
+        guidance: What makes a requirement P2, and how we will decide if it makes the cut
+
+  - heading: Requirements Review Notes
+    fields:
+      - label: Requirements Review Notes
+        anchor: section
+        type: table
+        required: false
+        guidance: Each reviewer, the date, what they flagged, and how it was addressed

@@ -36,6 +36,8 @@ This plugin makes structured SDLC methodology executable in Claude Code. It prov
 | `/sdlc-intake` | Catalog and summarize an external document corpus (Phase 0, opt-in) |
 | `/sdlc-brief` | Prep a stakeholder workshop brief from the document corpus |
 | `/sdlc-spec` | Author a ready Build-loop spec (`specs/NNNN-name.md`) and enforce the Definition of Ready |
+| `/sdlc-handoff` | Hand a ready spec to a developer — branch, frontmatter, code-host assignment, starting the agent |
+| `/sdlc-spec-status` | Report a spec's status read from its pull request — checks, grader verdict, approvals, merge |
 | `/sdlc-sprint` | Sprint board — slate a count of specs by risk-tier mix, ready the sprint once every slated spec clears the DoR and its Eng/Data verdicts, close it with kept / carried / dropped (advisory; never a gate) |
 | `/sdlc-refine` | Refinement agenda for the sprint's specs — DoR gaps, pending verdicts, overdue decisions; refine one spec or the whole slate; record Eng/Data verdicts; route upstream fixes without regressing a phase |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
@@ -65,7 +67,7 @@ For long-running phases (especially the Build loop), the spec is the durable sou
 ## Profiles
 
 Profiles configure the plugin for your company/team:
-- `microsoft-enterprise` — C#/.NET 8 + Angular 17 + Azure + SOC 2 compliance
+- `microsoft-enterprise` — C#/.NET 10 + Angular 22 + Azure + SOC 2 compliance
 - `ado-enterprise` — microsoft-enterprise's stack on Azure Repos + Azure Pipelines. The
   harness install is platform-aware (no GitHub payload lands in the repo; rails
   governance content installs to `.azuredevops/rails/` instead), and `/sdlc-doctor` +
@@ -92,6 +94,22 @@ Phase ids are strings (`build` and `close` are non-numeric); the 4/5/6 gap is in
 | 8 | Deployment | CI/CD |
 | 9 | Monitoring | Manual |
 | close | Close & Transfer | Manual |
+
+## Writing Artifacts
+
+Each phase's artifacts have a template in `templates/phases/<phase>/`. Studio, the gates and the
+completeness check all read a document by its `##` headings, so a document that renames them is
+treated as free text and none of its sections can be edited or checked. When you write an artifact:
+
+- **Start from the template file and keep its `##` headings exactly** — same words, same names, no
+  numbering added, none merged or dropped. You may add sections of your own; an added section is fine.
+  What you write under each heading is yours; the headings are the contract.
+- **Check it before moving on.** Run the phase's readiness check and fix every `section '…' not found`
+  by using the template's heading for that content. A missing field you can genuinely fill, fill.
+
+  ```bash
+  uv run scripts/stage_readiness.py --repo . --phase <phase-id> --json
+  ```
 
 ## Phase Layers (formerly "frozen layers")
 

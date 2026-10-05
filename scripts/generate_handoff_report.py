@@ -12,6 +12,7 @@ What it fills from records:
   - Engagement record   — per-phase gate status, completed date, approver    (state.yaml phases[])
   - Metrics history     — accepted-as-is, review wait, DORA four, escaped     (scorecard.py)
   - Spec backlog        — merged / total, by risk tier                        (track_specs.py)
+  - Deferred items      — number, name, reason per deferred spec, or "none"    (track_specs.py)
 
 What it leaves as slots (judgment, not data): outcomes vs the Phase 0 statement, the debt log
 narrative, the open-items table, the dashboard handover. Honest by design: missing data reads
@@ -98,6 +99,36 @@ def engagement_record(state: dict) -> str:
     return "\n".join(rows)
 
 
+def declared_by(state: dict, offered: str | None) -> str:
+    """Who declared Build finished, for the line a reader looks at first.
+
+    The project's own RECORD wins over whatever the caller offered. The two can differ for an
+    ordinary reason — this report is usually drafted at the moment of declaring, before the
+    stage has moved and recorded anything, so the caller supplies the name it is about to
+    record. Once the record exists it is the fact, and the offer is only ever a stand-in for it.
+    Preferring the offer would let a report disagree with the state file it was drafted from.
+
+    Neither available reads as a slot to fill, not as a blank. A hand-over document with an
+    empty signature line is worse than one that admits it does not know.
+    """
+    build = (state.get("phases") or {}).get("build") or {}
+    gate_results = build.get("gate_results")
+    recorded = None
+    if isinstance(gate_results, dict):
+        name = gate_results.get("signed_off_by")
+        if isinstance(name, str) and name.strip():
+            recorded = name.strip()
+
+    when = _fmt_ts(build.get("completed_at"))
+    if recorded:
+        return f"**Build declared complete by:** {recorded}" + (
+            f" on {when}" if when and when != "—" else "")
+    if offered and offered.strip():
+        return (f"**Build declared complete by:** {offered.strip()} "
+                f"_(not yet recorded in the project's own state)_")
+    return SLOT.format(what="who declared Build complete, and when")
+
+
 def metrics_history(metrics_dir: Path) -> str:
     """The steering numbers, sourced from scorecard's own computation (no fabricated zeros)."""
     sc = scorecard.compute_scorecard(scorecard.load_events(metrics_dir / "loop-events.jsonl"))
@@ -132,6 +163,21 @@ def spec_backlog(specs_dir: Path) -> str:
             f"- **By risk tier:** {by_risk or '—'}")
 
 
+def deferred_items(specs_dir: Path) -> str:
+    """One line per deferred spec — number, name, reason — in spec-number order.
+
+    "none" when there are none: never an empty heading, never a fabricated zero. Reuses
+    track_specs.scan_specs rather than re-parsing spec frontmatter.
+    """
+    deferred = sorted(
+        (s for s in track_specs.scan_specs(specs_dir) if s["status"] == "deferred"),
+        key=lambda s: s["id"],
+    )
+    if not deferred:
+        return "none"
+    return "\n".join(f"- **{s['id']}** {s['name']} — {s['deferred_reason'] or '—'}" for s in deferred)
+
+
 # ── Report assembly ─────────────────────────────────────────────────────────────
 
 SLOT = "> _[Fill: {what}]_"
@@ -145,6 +191,8 @@ def build_report(
     record: str,
     metrics: str,
     backlog: str,
+    deferred: str,
+    declaration: str,
     generated_at: str,
 ) -> str:
     start, end = window
@@ -164,6 +212,8 @@ def build_report(
 > this.
 {context_note}
 **Project:** {project_name}    **Engagement window:** {start} – {end}
+
+{declaration}
 
 ## Outcomes (against the Phase 0 statement)
 {SLOT.format(what="each Phase 0 outcome (business / software / capability) → its result with caveats, read from problem-statement.md and success-criteria.md")}
@@ -185,6 +235,9 @@ Every phase gate and its named sign-off, in one place.
 
 ## Spec backlog
 {backlog}
+
+## Deferred items
+{deferred}
 
 ## Technical debt log
 {SLOT.format(what="the debt log handed to the client with owners and dates — see project-retrospective.md")}
@@ -227,6 +280,10 @@ def main() -> int:
     src.add_argument("--repo", default=".", help="Repo root containing .sdlc/ (standalone; default cwd)")
     parser.add_argument("--output", type=Path, help="Output path (default: .sdlc/artifacts/close/final-handoff-report.md)")
     parser.add_argument("--force", action="store_true", help="Overwrite an existing report")
+    parser.add_argument(
+        "--declared-by",
+        help="Who declared Build complete. Used only until the project's own state records it; "
+             "the recorded name always wins, so the report cannot disagree with the state file.")
     args = parser.parse_args()
 
     repo_root, state = resolve_paths(args)
@@ -249,6 +306,8 @@ def main() -> int:
         record=engagement_record(state),
         metrics=metrics_history(metrics_dir),
         backlog=spec_backlog(specs_dir),
+        deferred=deferred_items(specs_dir),
+        declaration=declared_by(state, args.declared_by),
         generated_at=generated_at,
     )
 

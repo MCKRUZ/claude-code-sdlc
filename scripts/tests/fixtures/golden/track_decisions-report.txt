@@ -1,0 +1,13 @@
+exit: 0
+--- stdout ---
+Decision Log
+============================================
+Total decisions: 3
+Open: 2   Overdue (> 2 business days): 0
+
+Open decisions (2-business-day clock from 'opened'):
+  DL-01  [Jane]  opened 2099-01-05  due 2099-01-07  — 0 business day(s) open
+       Pick the auth provider
+  DL-03  [Mira]  opened soon  due ?  — opened date unparseable
+       Unscheduled thing
+--- stderr ---

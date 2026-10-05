@@ -1,0 +1,4 @@
+exit: 1
+--- stdout ---
+--- stderr ---
+ERROR: state file not found: .sdlc/nope.yaml

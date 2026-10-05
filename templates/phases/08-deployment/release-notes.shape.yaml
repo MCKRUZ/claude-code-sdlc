@@ -1,0 +1,25 @@
+template: release-notes
+version: "1.0"
+
+# The document's only "## " heading is itself the release version and date
+# ("## [Version X.Y.Z] — [YYYY-MM-DD]" in the template; "## v1.4.0 — 2026-09-23" in a real
+# one) — heading_pattern matches it by shape rather than exact text, since a real value can
+# never equal the template's own placeholder text. "Summary" and "Breaking Changes" are
+# fixed, always-once "### " subsections (not a numbered repeating series), so their fields
+# use `subheading` to be found inside this section rather than `repeats`.
+
+sections:
+  - heading_pattern: "^\\[?v?\\d+\\.\\d+(\\.\\d+)?\\]?"
+    fields:
+      - label: Summary
+        subheading: Summary
+        anchor: section
+        type: longtext
+        required: true
+        guidance: 2-3 sentences for non-technical stakeholders on what this release delivers
+      - label: Breaking Changes
+        subheading: Breaking Changes
+        anchor: section
+        type: longtext
+        required: true
+        guidance: "Each breaking change and what consumers must do to adapt — or literally \"None\""

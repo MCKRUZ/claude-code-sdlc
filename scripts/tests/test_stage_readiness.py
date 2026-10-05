@@ -1,0 +1,338 @@
+"""Tests for stage_readiness.py — the single read-only "what does this stage still need" call.
+
+The two behaviours worth pinning hardest, because both were deliberate corrections to how the
+existing tooling behaves:
+  * shapes resolve by PATH, not by the template stamp (nothing writes stamps, so a stamp-based
+    scan silently reports a clean bill of health for a document full of holes);
+  * it never touches `.sdlc/metrics/gate-log.jsonl`, so a UI can poll it without inflating the
+    project's own metrics.
+"""
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+
+from stage_readiness import (
+    assess,
+    find_shape_for_document,
+    judgement_conditions,
+    signoff_state,
+)
+
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
+FIXTURES_ROOT = Path(__file__).resolve().parent / "fixtures" / "documents"
+CLI_PATH = Path(__file__).resolve().parent.parent / "stage_readiness.py"
+INIT_PATH = Path(__file__).resolve().parent.parent / "init_project.py"
+STARTER_PROFILE = REPO_ROOT / "profiles" / "starter" / "profile.yaml"
+
+
+def _project(tmp_path: Path) -> Path:
+    """A real initialized project, made the way init_project.py makes one."""
+    subprocess.run(
+        [sys.executable, str(INIT_PATH), "--profile", str(STARTER_PROFILE), "--target", str(tmp_path)],
+        capture_output=True, text=True, timeout=60, check=True,
+    )
+    return tmp_path
+
+
+class TestFindShapeForDocument:
+    def test_resolves_by_path_convention_without_any_stamp(self):
+        """The fixture carries no template stamp — exactly like every real document — so this
+        is the resolution that has to work."""
+        text = (FIXTURES_ROOT / "requirements.md").read_text(encoding="utf-8")
+        assert "<!-- template:" not in text  # guard: if stamping ever lands, revisit this test
+        shape = find_shape_for_document(".sdlc/artifacts/01-requirements/requirements.md", text)
+        assert shape is not None
+        assert shape.name == "requirements.shape.yaml"
+
+    def test_windows_separators_resolve_the_same(self):
+        text = (FIXTURES_ROOT / "requirements.md").read_text(encoding="utf-8")
+        assert find_shape_for_document(r".sdlc\artifacts\01-requirements\requirements.md", text) is not None
+
+    def test_a_document_with_no_matching_template_resolves_to_nothing(self):
+        assert find_shape_for_document(".sdlc/artifacts/01-requirements/not-a-template.md", "# x") is None
+
+    def test_a_path_outside_the_artifacts_tree_resolves_to_nothing(self):
+        assert find_shape_for_document("README.md", "# x") is None
+
+
+class TestJudgementConditions:
+    def test_keeps_prose_checks_and_drops_artifact_file_checks(self):
+        phase_def = {"exit_gate": {"conditions": [
+            {"artifact": "requirements.md", "check": "exists_and_complete"},
+            {"check": "Scope boundaries are unambiguous"},
+            "A bare string condition",
+        ]}}
+        assert judgement_conditions(phase_def) == [
+            "Scope boundaries are unambiguous",
+            "A bare string condition",
+        ]
+
+    def test_a_phase_with_no_exit_gate_has_no_questions(self):
+        assert judgement_conditions({}) == []
+
+
+class TestSignoffState:
+    def test_reads_the_keys_advance_phase_actually_writes(self):
+        """advance_phase.py writes gate_results.signed_off_by and a sign_offs sibling list.
+        (audit_artifacts._signoff_note looks for `sign_off`/`signed_by`, which nothing writes —
+        reading those would mean never showing a name.)"""
+        state = {"phases": {"1": {
+            "status": "completed",
+            "completed_at": "2026-09-24T10:00:00Z",
+            "gate_results": {"passed": 4, "signed_off_by": "matt"},
+            "sign_offs": [{"discipline": "Design", "section": "UX", "by": "priya", "at": "T"}],
+        }}}
+        out = signoff_state(state, "1")
+        assert out["signed_off_by"] == "matt"
+        assert out["status"] == "completed"
+        assert out["discipline_sign_offs"][0]["by"] == "priya"
+
+    def test_an_unstarted_phase_reads_as_pending_without_inventing_a_name(self):
+        out = signoff_state({"phases": {}}, "1")
+        assert out["status"] == "pending"
+        assert out["signed_off_by"] is None
+
+    def test_a_malformed_phase_entry_does_not_crash(self):
+        out = signoff_state({"phases": {"1": "not a mapping"}}, "1")
+        assert out["status"] == "pending"
+
+
+class TestAssess:
+    def test_a_fresh_project_reports_every_required_document_missing(self, tmp_path: Path):
+        result = assess(_project(tmp_path), "1")
+        assert result["ready"] is False
+        assert all(not a["exists"] for a in result["artifacts"])
+        assert result["blocking_count"] == len(result["artifacts"])
+
+    def test_a_real_document_is_read_through_its_shape(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        dest = repo / ".sdlc" / "artifacts" / "01-requirements" / "requirements.md"
+        dest.write_bytes((FIXTURES_ROOT / "requirements.md").read_bytes())
+
+        result = assess(repo, "1")
+        req = next(a for a in result["artifacts"] if a["name"] == "requirements.md")
+        assert req["exists"] is True
+        assert req["shaped"] is True
+        # The fixture genuinely leaves FR-002's Dependencies empty — a stamp-based scan would
+        # have skipped the document entirely and reported nothing.
+        assert any(f["field"] == "Dependencies" for f in req["findings"])
+
+    def test_an_unknown_phase_is_reported_not_raised(self, tmp_path: Path):
+        result = assess(_project(tmp_path), "not-a-phase")
+        assert result["error"]
+        assert result["stage"] is None
+
+    def test_current_phase_is_flagged(self, tmp_path: Path):
+        result = assess(_project(tmp_path), None)  # defaults to the project's current phase
+        assert result["stage"]["is_current"] is True
+
+    def test_a_directory_with_no_project_does_not_crash(self, tmp_path: Path):
+        result = assess(tmp_path, "1")
+        assert result["ready"] is False
+        assert result["stage"]["id"] == "1"
+
+
+def _folder(result: dict, name: str) -> dict:
+    return next(a for a in result["artifacts"] if a["name"].rstrip("/") == name)
+
+
+class TestFolderArtifacts:
+    """The registry lists some artifacts as folders (`adrs/`). This was written as if every
+    artifact were one file, so on a real project the Design stage crashed with a traceback —
+    read_text() on a directory is PermissionError on Windows — and Studio showed it in red."""
+
+    def test_a_folder_of_documents_does_not_crash_the_stage(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        adrs = repo / ".sdlc" / "artifacts" / "02-design" / "adrs"
+        adrs.mkdir(parents=True)
+        (adrs / "ADR-001.md").write_text("# ADR-001\n\n## Decision\n\nUse PostgreSQL.\n", encoding="utf-8")
+
+        entry = _folder(assess(repo, "2"), "adrs")
+        assert entry["exists"] is True
+        assert entry["ready"] is True
+        assert entry["findings"] == []
+
+    def test_a_folder_is_not_presented_as_one_document(self, tmp_path: Path):
+        """There is no single shape to read a folder through, and Studio must not offer to open
+        it as if there were — so it says what it is."""
+        repo = _project(tmp_path)
+        adrs = repo / ".sdlc" / "artifacts" / "02-design" / "adrs"
+        adrs.mkdir(parents=True)
+        (adrs / "ADR-001.md").write_text("x\n", encoding="utf-8")
+
+        entry = _folder(assess(repo, "2"), "adrs")
+        assert entry["folder"] is True
+        assert entry["shaped"] is False
+
+    def test_a_file_artifact_is_not_marked_as_a_folder(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        result = assess(repo, "2")
+        assert _folder(result, "design-doc.md")["folder"] is False
+
+    def test_an_empty_folder_is_not_ready_and_says_why(self, tmp_path: Path):
+        """The gate's own rule (check_gates.check_artifact_exists): a folder with nothing in it
+        does not count as delivered."""
+        repo = _project(tmp_path)
+        (repo / ".sdlc" / "artifacts" / "02-design" / "adrs").mkdir(parents=True)
+
+        entry = _folder(assess(repo, "2"), "adrs")
+        assert entry["exists"] is True
+        assert entry["ready"] is False
+        assert any("empty" in f["reason"] for f in entry["findings"])
+
+    def test_a_missing_folder_reads_as_not_started(self, tmp_path: Path):
+        entry = _folder(assess(_project(tmp_path), "2"), "adrs")
+        assert entry["exists"] is False
+        assert entry["folder"] is True  # known from the registry entry, not from the disk
+
+    def test_no_folder_artifact_in_any_phase_can_crash_readiness(self, tmp_path: Path):
+        """Walks the registry instead of naming `adrs`, so a folder artifact added to any phase
+        later is covered without anyone remembering this bug."""
+        import phase_model as pm
+
+        repo = _project(tmp_path)
+        checked = 0
+        for phase_id in pm.all_phase_ids():
+            phase_def = pm.get_phase(phase_id)
+            phase_dir = repo / ".sdlc" / "artifacts" / (phase_def.get("slug") or "")
+            for art in pm.required_artifacts(phase_def, None):
+                if art.name.endswith("/"):
+                    folder = art.base_dir(phase_dir, repo) / art.name
+                    folder.mkdir(parents=True, exist_ok=True)
+                    (folder / "item.md").write_text("content\n", encoding="utf-8")
+                    checked += 1
+            assess(repo, phase_id)  # must not raise
+        assert checked > 0, "the registry no longer has a folder artifact — retire this test"
+
+
+class TestDoesNotWrite:
+    def test_reading_readiness_never_touches_the_gate_log(self, tmp_path: Path):
+        """The whole reason this script exists rather than shelling out to check_gates.py."""
+        repo = _project(tmp_path)
+        metrics = repo / ".sdlc" / "metrics"
+        before = sorted(p.name for p in metrics.iterdir()) if metrics.exists() else []
+
+        for _ in range(3):  # a UI would poll
+            assess(repo, "1")
+
+        after = sorted(p.name for p in metrics.iterdir()) if metrics.exists() else []
+        assert after == before
+        assert not (metrics / "gate-log.jsonl").exists()
+
+    def test_reading_readiness_does_not_modify_state(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        state_path = repo / ".sdlc" / "state.yaml"
+        before = state_path.read_bytes()
+        assess(repo, "1")
+        assert state_path.read_bytes() == before
+
+
+class TestJudgementItems:
+    """The questions as a person answers them: an id to tick against, what the software can say
+    about each, and who has already confirmed it."""
+
+    def test_each_question_carries_an_id_its_words_and_a_hint(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        items = assess(repo, "0")["judgement"]
+        assert [i["text"] for i in items] == assess(repo, "0")["judgement_conditions"]
+        assert all(i["id"] and i["hint"]["status"] in {"looks_met", "not_yet", "judgement"} for i in items)
+        assert all(i["confirmation"] is None for i in items)
+
+    def test_the_project_type_hint_reads_the_projects_own_state(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        by_text = {i["text"]: i for i in assess(repo, "0")["judgement"]}
+        type_item = next(v for k, v in by_text.items() if k.startswith("project_type is recorded"))
+        state = yaml.safe_load((repo / ".sdlc" / "state.yaml").read_text(encoding="utf-8"))
+        expected = "looks_met" if state.get("project_type") else "not_yet"
+        assert type_item["hint"]["status"] == expected
+
+    def test_a_confirmation_appears_on_its_question(self, tmp_path: Path):
+        from sign_off_confirmations import confirm
+
+        repo = _project(tmp_path)
+        first = assess(repo, "0")["judgement"][0]
+        confirm(repo, "0", first["id"], "Matt K")
+        after = assess(repo, "0")
+        assert after["judgement"][0]["confirmation"]["actor"] == "Matt K"
+        assert after["judgement"][1]["confirmation"] is None
+        assert after["confirmed_count"] == 1
+
+    def test_confirming_does_not_make_the_documents_ready(self, tmp_path: Path):
+        # Ticking a question is a person's word about judgement; it says nothing about whether
+        # the documents are complete, and must not change that answer.
+        from sign_off_confirmations import confirm
+
+        repo = _project(tmp_path)
+        before = assess(repo, "0")
+        for item in before["judgement"]:
+            confirm(repo, "0", item["id"], "Matt K")
+        after = assess(repo, "0")
+        assert after["ready"] == before["ready"]
+        assert after["blocking_count"] == before["blocking_count"]
+
+    def test_the_human_report_shows_boxes_hints_and_who_ticked(self, tmp_path: Path):
+        from sign_off_confirmations import confirm
+        from stage_readiness import format_report
+
+        repo = _project(tmp_path)
+        confirm(repo, "0", assess(repo, "0")["judgement"][0]["id"], "Matt K")
+        report = format_report(assess(repo, "0"))
+        assert "[x]" in report and "[ ]" in report
+        assert "Matt K" in report
+
+    def test_reading_readiness_writes_no_confirmation_ledger(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        assess(repo, "0")
+        assert not (repo / ".sdlc" / "metrics" / "confirmation-log.jsonl").exists()
+
+
+class TestCli:
+    def test_json_mode_exits_zero_and_is_parseable(self, tmp_path: Path):
+        repo = _project(tmp_path)
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), "--repo", str(repo), "--phase", "1", "--json"],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 0, proc.stderr
+        parsed = json.loads(proc.stdout)
+        assert parsed["stage"]["id"] == "1"
+        assert "judgement_conditions" in parsed
+
+    def test_a_missing_state_file_still_exits_zero(self, tmp_path: Path):
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), "--state", str(tmp_path / "nope.yaml")],
+            capture_output=True, text=True, timeout=60,
+        )
+        assert proc.returncode == 0
+        assert "not found" in proc.stdout
+
+    def test_human_output_surfaces_the_judgement_questions(self, tmp_path: Path):
+        # Decoded leniently on purpose: the human report contains em dashes, and Python writes
+        # them in the console's own codepage on Windows. Studio consumes --json (which escapes
+        # non-ASCII), so only these ASCII anchors matter here.
+        repo = _project(tmp_path)
+        proc = subprocess.run(
+            [sys.executable, str(CLI_PATH), "--repo", str(repo), "--phase", "1"],
+            capture_output=True, timeout=60,
+        )
+        assert proc.returncode == 0
+        stdout = proc.stdout.decode("utf-8", errors="replace")
+        assert "Questions for whoever signs this off" in stdout
+        assert "ADVISORY" in stdout
+
+
+class TestStateYamlShapeAssumption:
+    def test_the_template_state_still_has_the_keys_this_script_reads(self):
+        """If state-init.yaml's phase shape changes, this script's sign-off reading goes quiet
+        rather than loudly wrong — so pin the assumption here."""
+        template = yaml.safe_load(
+            (REPO_ROOT / "templates" / "state-init.yaml").read_text(encoding="utf-8")
+        )
+        phase = template["phases"]["1"]
+        assert "status" in phase
+        assert "completed_at" in phase
+        assert "gate_results" in phase

@@ -1,0 +1,152 @@
+template: user-stories
+version: "1.0"
+description: "What users want to accomplish, one story at a time, grouped by how essential each is, each with checks a tester can run."
+
+# required: true marks the P0 stories (the ones that must ship) and what makes each one a story -
+# who wants what, its priority and its acceptance criteria. The overview, the story map, the P1
+# and P2 groups, the estimate and the summary are useful but a small project can lack them.
+# The "As a / I want to / so that" lines have no bold label of their own, so each story's
+# "User story" field is the block of lines between its heading and its Priority line.
+# P1 and P2 stories declare only the fields the template gives them (no Definition of Done, and no
+# Linked requirement on P2).
+
+sections:
+  - heading: Overview
+    fields:
+      - label: Overview
+        anchor: section
+        type: longtext
+        required: false
+        guidance: A short introduction to the stories and the rule that every P0 story gets an end-to-end test
+
+  - heading: Story Map
+    fields:
+      - label: Story Map
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Stories laid out by user journey stage across, and priority down
+
+  - heading: P0 Stories — Must Ship
+    repeats: true
+    numbering:
+      pattern: "US-%03d"
+    fields:
+      - label: User story
+        anchor: section
+        type: longtext
+        required: true
+        guidance: The "As a ... I want to ... so that ..." lines naming who wants what and why
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: true
+        guidance: How essential this story is
+        enum_values: [P0, P1, P2]
+      - label: Estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: Story points or a T-shirt size
+      - label: Linked requirement
+        anchor: inline
+        type: text
+        required: false
+        guidance: The functional requirement this story delivers
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: true
+        guidance: Given/when/then checks a tester can run, including at least one error case
+      - label: Definition of Done
+        anchor: labeled_block
+        type: checklist
+        required: false
+        guidance: What must be true before the story counts as finished
+
+  - heading: P1 Stories — Should Ship
+    repeats: true
+    numbering:
+      pattern: "US-%03d"
+    fields:
+      - label: User story
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The "As a ... I want to ... so that ..." lines naming who wants what and why
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: false
+        guidance: How essential this story is
+        enum_values: [P0, P1, P2]
+      - label: Estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: Story points or a T-shirt size
+      - label: Linked requirement
+        anchor: inline
+        type: text
+        required: false
+        guidance: The functional requirement this story delivers
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: false
+        guidance: Given/when/then checks a tester can run
+
+  - heading: P2 Stories — Nice to Have
+    repeats: true
+    numbering:
+      pattern: "US-%03d"
+    fields:
+      - label: User story
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The "As a ... I want to ... so that ..." lines naming who wants what and why
+      - label: Priority
+        anchor: inline
+        type: enum
+        required: false
+        guidance: How essential this story is
+        enum_values: [P0, P1, P2]
+      - label: Estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: Story points or a T-shirt size
+      - label: Acceptance criteria
+        anchor: labeled_block
+        type: checklist
+        required: false
+        guidance: The checks that show the story works
+
+  - heading: Story Summary
+    fields:
+      - label: Story Summary
+        anchor: section
+        type: table
+        required: false
+        guidance: One row per story with its title, persona, priority, estimate and linked requirement
+      - label: Total P0 stories
+        anchor: inline
+        type: number
+        required: false
+        guidance: How many P0 stories there are
+      - label: Total P1 stories
+        anchor: inline
+        type: number
+        required: false
+        guidance: How many P1 stories there are
+      - label: Total P2 stories
+        anchor: inline
+        type: number
+        required: false
+        guidance: How many P2 stories there are
+      - label: Total estimate
+        anchor: inline
+        type: text
+        required: false
+        guidance: The combined estimate in points or days

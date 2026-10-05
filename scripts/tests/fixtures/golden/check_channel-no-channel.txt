@@ -1,0 +1,6 @@
+exit=0
+Channel Coverage Check — 0042-voice-claim-intake.md
+==================================================
+  NOTE    [SHOULD] No channel bound (channel: is blank or '—') — treating this spec as channel-agnostic; nothing to cross-check.
+==================================================
+ADVISORY — no channel coverage to assess (advisory check — never blocks).

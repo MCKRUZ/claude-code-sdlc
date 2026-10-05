@@ -1,0 +1,105 @@
+template: design-doc
+version: "1.0"
+description: "How the system will be built — the architecture, the components, and why this shape over the alternatives."
+
+# "Architecture Overview" and "Data Model" each carry REQUIRED markers on "### " children
+# (System Context + Architecture Diagram; Core Entities) rather than on the "## " heading
+# itself — this shape format only models "## " sections, so each enclosing "## " is shaped
+# as one whole-body field instead (coarser, still correct presence/absence + round-trip).
+
+sections:
+  - heading: Overview
+    fields:
+      - label: Project
+        anchor: inline
+        type: text
+        required: false
+        guidance: The project name
+      - label: Version
+        anchor: inline
+        type: text
+        required: false
+        guidance: The document version
+      - label: Date
+        anchor: inline
+        type: date
+        required: false
+        guidance: The date this version was written
+      - label: Status
+        anchor: inline
+        type: enum
+        required: false
+        guidance: Where this document is in review
+        enum_values: [Draft, Under Review, Approved]
+      - label: Authors
+        anchor: inline
+        type: text
+        required: false
+        guidance: Who wrote this document
+
+  - heading: Architecture Overview
+    fields:
+      - label: Architecture Overview
+        anchor: section
+        type: longtext
+        required: true
+        guidance: System context (one paragraph) plus an architecture diagram showing components, data flows, integrations and entry points
+
+  - heading: Data Model
+    fields:
+      - label: Data Model
+        anchor: section
+        type: longtext
+        required: true
+        guidance: Core entity definitions with all fields, types, descriptions, and the relationships between entities
+
+  - heading: Sequence Diagrams — P0 Flows
+    fields:
+      - label: Sequence Diagrams — P0 Flows
+        anchor: section
+        type: longtext
+        required: true
+        guidance: One sequence diagram per P0 user story, showing the full actor-to-storage flow
+
+  - heading: Component Design
+    aliases: [Component Descriptions]
+    fields:
+      - label: Component Design
+        anchor: section
+        type: longtext
+        required: false
+        guidance: One subsection per major component - responsibility, technology, deployment unit, interfaces exposed, dependencies, and key design decisions
+  - heading: Cross-Cutting Concerns
+    fields:
+      - label: Authentication & Authorization
+        subheading: Authentication & Authorization
+        anchor: section
+        type: longtext
+        required: false
+        guidance: Auth model, the end-to-end flow, and the key authorization rules
+      - label: Error Handling
+        subheading: Error Handling
+        anchor: section
+        type: longtext
+        required: false
+        guidance: How errors propagate, what users see versus what is logged, and where retries happen
+      - label: Observability
+        subheading: Observability
+        anchor: section
+        type: longtext
+        required: false
+        guidance: What is logged, what is measured, and the distributed tracing approach
+  - heading: Architecture Decision Records
+    fields:
+      - label: Architecture Decision Records
+        anchor: section
+        type: longtext
+        required: false
+        guidance: The ADRs made in this phase, with title and status - full content lives in the adrs/ folder
+  - heading: Design Review Notes
+    fields:
+      - label: Design Review Notes
+        anchor: section
+        type: table
+        required: false
+        guidance: Each reviewer's concern, the date, and how it was resolved

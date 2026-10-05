@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Only scripts were restricted before, which left everything else wide open — so text
+      from a document could still have reached the network through an image or a fetch,
+      without running any script at all. `default-src 'none'` closes that by starting from
+      nothing and naming what Studio actually needs. Every asset is bundled; all the app's
+      real work happens in the main process. (Spec 0010's security pass.)
+
+      `script-src` keeps 'unsafe-inline', unchanged from before. Dropping it is the obvious
+      next tightening, but Vite's dev server injects inline scripts and this one tag serves
+      both dev and the packaged app — so removing it blind would break the dev workflow to
+      buy a hardening nobody has verified. The right fix is to serve this as a response
+      header that differs between dev and production, which is its own change.
+
+      `ws:`/`wss:` on connect-src are for the dev server's hot-reload socket only; the
+      packaged app never opens one.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' ws: wss:; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none';"
+    />
+    <title>SDLC Studio</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

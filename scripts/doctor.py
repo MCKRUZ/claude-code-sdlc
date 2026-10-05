@@ -10,6 +10,7 @@ So this checks the things that are invisible when they are wrong:
     uv run scripts/doctor.py                 # in the client repo
     uv run scripts/doctor.py --repo <path>
     uv run scripts/doctor.py --offline       # skip the checks that need gh/az
+    uv run scripts/doctor.py --json          # the same report as one JSON document
 
 Exit 1 if anything FAILs. WARN never fails the run — it marks what could not be determined.
 
@@ -538,24 +539,33 @@ SECTIONS = [
 ]
 
 
-def run(repo: Path, offline: bool = False) -> int:
-    print(f"/sdlc-doctor — {repo.resolve()}\n")
-    failures, warnings = 0, 0
+def collect(repo: Path, offline: bool) -> list[tuple[str, list[Result] | None]]:
+    """Run every section once. A section skipped by --offline carries None instead of results.
 
-    for title, check, needs_network in SECTIONS:
-        if offline and needs_network:
+    Text and JSON are both rendered from this one list, so the two can never disagree about
+    what was checked."""
+    return [(title, None if offline and needs_network else check(repo))
+            for title, check, needs_network in SECTIONS]
+
+
+def _count(sections: list[tuple[str, list[Result] | None]], status: str) -> int:
+    return sum(r.status == status for _, results in sections for r in results or [])
+
+
+def _print_text(repo: Path, sections: list[tuple[str, list[Result] | None]]) -> int:
+    print(f"/sdlc-doctor — {repo.resolve()}\n")
+    for title, results in sections:
+        if results is None:
             print(f"{title}\n  [SKIP] --offline\n")
             continue
         print(title)
-        for r in check(repo):
-            marker = {PASS: "PASS", FAIL: "FAIL", WARN: "WARN"}[r.status]
-            print(f"  [{marker}] {r.title}" + (f" - {r.detail}" if r.detail else ""))
+        for r in results:
+            print(f"  [{r.status}] {r.title}" + (f" - {r.detail}" if r.detail else ""))
             if r.fix and r.status != PASS:
                 print(f"         fix: {r.fix}")
-            failures += r.status == FAIL
-            warnings += r.status == WARN
         print()
 
+    failures, warnings = _count(sections, FAIL), _count(sections, WARN)
     if failures:
         print(f"{failures} failure(s), {warnings} warning(s). "
               f"The harness will not fully work until the failures are fixed.")
@@ -564,12 +574,44 @@ def run(repo: Path, offline: bool = False) -> int:
     return 0
 
 
+def _print_json(repo: Path, sections: list[tuple[str, list[Result] | None]]) -> int:
+    """The same results as one JSON document. `fix` is the text a person sees after `fix:` and
+    is null wherever the text mode prints no fix line; `skipped` names the sections --offline
+    left unchecked, so "no secrets listed" is never mistaken for "secrets are fine"."""
+    installed = (repo / ".claude" / "harness-manifest.json").exists()
+    failures = _count(sections, FAIL)
+    doc = {
+        "ok": failures == 0,
+        "harness_installed": installed,
+        "message": None if installed else
+        "No harness is installed in this repo (no .claude/harness-manifest.json); "
+        "run /sdlc-setup from the repo root.",
+        "checks": [
+            {"name": r.title, "status": r.status, "detail": r.detail or None,
+             "fix": r.fix if r.fix and r.status != PASS else None}
+            for _, results in sections for r in results or []
+        ],
+        "summary": {"pass": _count(sections, PASS), "fail": failures,
+                    "warn": _count(sections, WARN)},
+        "skipped": [title for title, results in sections if results is None],
+    }
+    print(json.dumps(doc, indent=2))
+    return 1 if failures else 0
+
+
+def run(repo: Path, offline: bool = False, as_json: bool = False) -> int:
+    sections = collect(repo, offline)
+    return _print_json(repo, sections) if as_json else _print_text(repo, sections)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--repo", default=".", help="repo to check (default: current directory)")
     ap.add_argument("--offline", action="store_true", help="skip checks that need gh/az")
+    ap.add_argument("--json", action="store_true",
+                    help="print the report as one JSON document instead of text")
     args = ap.parse_args()
-    return run(Path(args.repo), offline=args.offline)
+    return run(Path(args.repo), offline=args.offline, as_json=args.json)
 
 
 if __name__ == "__main__":

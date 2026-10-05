@@ -1,0 +1,32 @@
+exit: 1
+--- stdout ---
+/sdlc-doctor — <REPO>
+
+Tools
+  [PASS] git present - /fake/bin/git
+  [PASS] gh present - /fake/bin/gh
+  [PASS] pwsh present - /fake/bin/pwsh
+
+Harness
+  [FAIL] harness not installed - no .claude/harness-manifest.json in this repo
+         fix: run /sdlc-setup, or install_harness.py, from the repo root
+
+Hooks
+  [WARN] hook wiring not checked - no .claude/settings.json
+
+Permissions
+  [WARN] executable bits not checked - POSIX permission bits are not meaningful on Windows
+
+Unfinished setup
+  [PASS] no unfilled setup tokens
+
+MCP
+  [WARN] no .mcp.json - this repo declares no MCP servers
+
+Repo secrets
+  [SKIP] --offline
+
+Branch protection
+  [SKIP] --offline
+
+1 failure(s), 3 warning(s). The harness will not fully work until the failures are fixed.

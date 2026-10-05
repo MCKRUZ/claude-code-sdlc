@@ -179,11 +179,11 @@ fail nearly every artifact. Gate 2 catches an untouched template, not a careless
 
 **Build Loop spec-backlog summary:**
 
-Within the Build Loop, the spec is the unit of work (one spec = one branch = one PR) and the durable source of truth. The gate system does not track sections; instead it reports a backlog summary derived directly from the spec files' own frontmatter. The gate runs `track_specs.py`, which scans `<repo>/specs/*.md`, reads each spec's `status` (draft → ready → in-flight → merged) and `risk` (HIGH/MEDIUM/LOW), and prints an `INFO`-level breakdown:
+Within the Build Loop, the spec is the unit of work (one spec = one branch = one PR) and the durable source of truth. The gate system does not track sections; instead it reports a backlog summary derived directly from the spec files' own frontmatter. The gate runs `track_specs.py`, which scans `<repo>/specs/*.md`, reads each spec's `status` (draft → ready → in-flight → merged, or deferred) and `risk` (HIGH/MEDIUM/LOW), and prints an `INFO`-level breakdown:
 
-1. **Status breakdown:** counts by status (merged / in-flight / ready / draft).
+1. **Status breakdown:** counts by status (merged / in-flight / ready / draft). `check_gates.py` is protected core, so this line is unchanged — a deferred spec is still counted in the total but not broken out here; `track_specs.py`'s own report does break it out, on its own line, once any spec uses it.
 2. **Risk breakdown:** counts by risk tier.
-3. **In-flight list:** the specs currently on a branch awaiting merge.
+3. **In-flight list:** the specs currently on a branch awaiting merge (a deferred spec is never in it).
 
 This is informational, not a blocking consistency check — progress is read from reality (the spec frontmatter) rather than from a separately maintained tracker that can drift. The per-change checkpoint protocol (each spec committed and proven against its spec in the Discern beat before the next begins) is enforced by the Build loop itself, not by a section-count gate.
 

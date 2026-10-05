@@ -80,6 +80,62 @@ These root-level templates are shorter, less prescriptive versions of their phas
 counterparts. The phase-specific versions under `phases/` are the authoritative templates used
 by the full SDLC workflow.
 
+### Template Shapes (optional, machine-readable)
+
+A template written as prose has no reliable machine structure — a heading someone renamed, or a
+bold label swapped for a different word, and a tool trying to read it either guesses or breaks
+something. Spec 0007 adds an optional **shape** file beside a template: `<name>.shape.yaml`,
+documented in full at `templates/_shape-schema.yaml`. A shape declares a template's `## `
+sections in order and, within them, the fields worth exposing to a form — each field's label,
+its type (from a fixed list: `text`, `longtext`, `enum`, `boolean`, `number`, `date`, `checklist`,
+`table`), whether it's required, and how the library finds its value (`inline`: same line as the
+label; `labeled_block`: the label alone on its line, value below it; `section`: no label, the
+field is the whole section body — used for a table, or where a `<!-- REQUIRED: -->` marker covers
+an entire section rather than one bold-label line).
+
+Two scripts do the work, and neither touches a template's own wording — a shape only *describes*
+what's there:
+
+- **`scripts/validate_shape.py <shape.yaml>`** checks a shape file itself: an unknown field type,
+  a duplicate section heading, a repeating section with no numbering pattern — every error names
+  the line it came from.
+- **`scripts/document_shape.py`** is the read/write library. It never parses a document into a
+  model and regenerates it — every recognized field is a byte span into the *original* text, and
+  a write replaces only that span, so a document round-trips byte-for-byte when nothing changed,
+  and a real edit changes only the bytes it targets. A document in which **no** section
+  is recognized reads as **all free text with a warning**. One that merely lacks a **required**
+  section still reads as sections, with the gap reported in `warnings` and shown to the reader:
+  every section that is shown was found by its heading, so it is definitely the one it says it is.
+  A section whose fields are all optional may be absent silently, since a shape now covers every section of its template, not just the gate-required
+  ones. A `## ` section the shape doesn't declare — one a person added to their own document — is
+  read as an editable section of its own (`custom: true`, one whole-body "Content" field) rather
+  than raw text. A section is found by its heading as the shape writes it, by an `aliases:` entry,
+  or by the same words with numbering, case and punctuation ignored, or with a qualifier after them
+  (`3. Deployment steps`, `Deployment procedure (deploy-dev)`); none of these ever equates different
+  words. `scripts/tests/test_shapes_cover_templates.py` fails when a template gains a
+  section its shape doesn't declare. A repeating section (like `requirements.md`'s `### FR-001`, `###
+  FR-002`, ...) allocates its next number by scanning the *whole* document, including free text,
+  so a number already in use — even one never captured by the shape — is never reused. Every
+  document created from a shaped template from now on carries a stamp
+  (`<!-- template: <id> v<version> -->` right after the title); a document from before the stamp
+  existed reads and writes as all free text, exactly like an unshaped one.
+
+**Coverage today:** the 28 templates that already carry a `<!-- REQUIRED: -->` marker (the
+existing completeness convention — see §1's Core Principles) are shaped; the other 36 are not,
+and read/write exactly as before (a shape is additive — nothing about an unshaped template
+changes). A repeating series identified by something other than a sequential number (API
+Contracts' per-endpoint sections, keyed by method + path) or a bold label written without a colon
+("**As a** ...") isn't modeled at field granularity — the enclosing section is still shaped as one
+field, so presence/absence and round-trip fidelity hold; only the finer-grained per-field read is
+out of scope for now.
+
+**The advisory completeness check**, `scripts/check_document_completeness.py`, uses shapes to
+report a required field that's absent or empty — including a required *section* deleted outright,
+the gap the string-only Gate 2 scan (§1) cannot see, since a deleted section leaves no marker
+behind to find. This is a **new, separate, additive check** — `check_gates.py` (the protected
+core) is unchanged, and this check exits 0 always; whether it ever blocks a gate is a later,
+deliberate decision.
+
 ---
 
 ## 2. Directory Structure
@@ -599,7 +655,7 @@ of work: one spec = one branch = one PR.
 ---
 spec: "0007"
 name: "Authentication Service"
-status: in-flight     # draft -> ready -> in-flight -> merged
+status: in-flight     # draft -> ready -> in-flight -> merged, or deferred (side branch)
 risk: HIGH            # HIGH / MEDIUM / LOW
 ---
 ```
@@ -609,7 +665,7 @@ risk: HIGH            # HIGH / MEDIUM / LOW
 | Output | Description |
 |--------|-------------|
 | Total specs | Count of `specs/*.md` with parseable frontmatter |
-| Status breakdown | Counts by `status` (`draft`, `ready`, `in-flight`, `merged`) |
+| Status breakdown | Counts by `status` (`draft`, `ready`, `in-flight`, `merged`; `deferred` gets its own line once any spec uses it — never pre-seeded at zero) |
 | Risk breakdown | Counts by `risk` tier (`HIGH`, `MEDIUM`, `LOW`) |
 | In-flight list | The specs currently on a branch awaiting merge |
 | WIP-cap breach | With `--wip-cap N`, flags (and exits non-zero) when in-flight specs exceed `N` |

@@ -1,0 +1,51 @@
+template: drill-record
+version: "1.0"
+
+# "Per-Alert Detail" repeats in the real document (one "### [Alert name]" block per Critical
+# alert), but each instance is named by the alert's own name, not a numbered prefix — this
+# shape format's `repeats` only supports a numbered "### <prefix>-NNN" series, so the whole
+# section is declared as one anchor: section field instead (still fully preserved and
+# checked as a block; just not decomposed instance by instance).
+
+sections:
+  - heading: Drill Summary
+    fields:
+      - label: Drill Summary
+        anchor: section
+        type: table
+        required: true
+        guidance: One row per Critical alert, each with observed detection time, who it reached, and outcome
+
+  - heading: Per-Alert Detail
+    fields:
+      - label: Per-Alert Detail
+        anchor: section
+        type: longtext
+        required: true
+        guidance: For each Critical alert — how it was triggered, what the responder did, what changed
+
+  - heading: Alerts Not Drilled
+    fields:
+      - label: Alerts Not Drilled
+        anchor: section
+        type: table
+        required: false
+        guidance: An undrilled Critical alert needs a named owner and a date, not an explanation - leave empty if every Critical alert was drilled
+
+  - heading: Sign-off
+    fields:
+      - label: Drills run by
+        anchor: inline
+        type: text
+        required: false
+        guidance: Name of the person who ran the drills
+      - label: Date range
+        anchor: inline
+        type: text
+        required: false
+        guidance: First and last drill date, YYYY-MM-DD to YYYY-MM-DD
+      - label: Reviewed by
+        anchor: inline
+        type: text
+        required: false
+        guidance: Name of the person accountable for the on-call rota

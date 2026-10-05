@@ -40,6 +40,15 @@ _PROFILE_TOKENS: tuple[tuple[str, tuple[str, str]], ...] = (
     ("<<CI_LINT_CMD>>", ("commands", "lint")),
     ("<<CI_COVERAGE_FLOOR>>", ("coverage", "floor_percent")),
     ("<<CI_EVAL_CMD>>", ("eval_gate", "command")),
+    # The dependency gate's two halves. Absent from this table until now, which had a worse
+    # consequence than a missing feature: the token was never substituted AND — because the
+    # audit is scoped to this same vocabulary — never reported as surviving either. So the
+    # dependency-scan pipeline installed with a literal `<<CI_DEPENDENCY_SCAN_CMD>>` sitting
+    # where its command belongs, the installer said the install succeeded, and the gate failed
+    # on its first run with a shell syntax error. Every stack profile already declared both
+    # values and pointed at these exact token names; only the seam never consumed them.
+    ("<<CI_DEPENDENCY_SCAN_CMD>>", ("dependency_scan", "command")),
+    ("<<CI_DEPENDENCY_BLOCK_SEVERITIES>>", ("dependency_scan", "block_severities")),
 )
 
 # The ENTIRE compose-time vocabulary. Membership — not the <<CI_ prefix — is what makes a token the

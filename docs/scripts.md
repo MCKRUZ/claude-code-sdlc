@@ -306,11 +306,13 @@ use `- [ ]` checkboxes and `[text](links)`, so a general bracket rule would fail
 artifact. The consequence is that a carelessly half-filled artifact can pass — the check is a
 tripwire for an untouched template, not a proofreader.
 
-**Build loop:** the gate prints a spec-backlog summary via `track_specs.py` instead of a section consistency check. It scans `<repo>/specs/*.md`, reads each spec's frontmatter `status` (`draft`/`ready`/`in-flight`/`merged`) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports as `INFO`:
+**Build loop:** the gate prints a spec-backlog summary via `track_specs.py` instead of a section consistency check. It scans `<repo>/specs/*.md`, reads each spec's frontmatter `status` (`draft`/`ready`/`in-flight`/`merged`, or `deferred`) and `risk` (`HIGH`/`MEDIUM`/`LOW`), and reports as `INFO`:
 - Total specs
 - Status breakdown (merged / in-flight / ready / draft)
 - Risk breakdown (HIGH / MEDIUM / LOW)
 - The in-flight list
+
+`check_gates.py` is protected core, so this line's four-status breakdown is unchanged — a deferred spec is still counted in the total but does not get its own number here. `track_specs.py`'s own report and `--json` output do break it out (see [`track_specs.py`](#track_specspy) below).
 
 This is informational and does not block — progress is read directly from the spec files (the unit of work: one spec = one branch = one PR), so it cannot drift from a separately maintained tracker.
 
@@ -951,7 +953,7 @@ uv run scripts/track_specs.py --state .sdlc/state.yaml --sprint S07 [--json]
 | `--sprint` | No | Only the specs whose frontmatter `sprint:` equals `SNN` exactly (applied before summarizing, so every count is for that slate); the text title becomes "Spec Backlog — sprint SNN" and the JSON gains `sprint_filter` |
 | `--json` | No | Emit the summary as JSON |
 
-**Output:** Total specs; breakdown by status (`draft`/`ready`/`in-flight`/`merged`) and by risk tier; the in-flight list (one spec = one branch = one PR); WIP-cap warnings. Invoked by `check_gates.py` to print the Build gate's INFO spec-backlog summary, and by `generate_handoff_report.py` for the handoff report's spec-backlog section.
+**Output:** Total specs; breakdown by status (`draft`/`ready`/`in-flight`/`merged`, plus `deferred` on its own line once any spec uses it — never pre-seeded at zero, so a project that has never deferred a spec sees unchanged output) and by risk tier; the in-flight list (one spec = one branch = one PR; deferred specs are never in it); WIP-cap warnings. Invoked by `check_gates.py` to print the Build gate's INFO spec-backlog summary (that line stays the original four statuses — see above), and by `generate_handoff_report.py` for the handoff report's spec-backlog and deferred-items sections.
 
 **Sprint layer (1.6.0, additive):** each scanned row carries `sprint` and `next_owner` (default `""`), and the summary gains `by_sprint` — a bucket → count map that *partitions* the specs (the counts sum to `total`): one bucket per `SNN` found, `unassigned` (no sprint, not merged), and `pre-sprint` (no sprint **and** merged — delivered before the sprint layer existed). The text report's "By sprint:" block renders only when at least one spec carries a non-empty sprint, so the legacy output is byte-identical for backlogs that never used sprints. Files whose frontmatter `spec:` id is not numeric (the installed `specs/spec-template.md` carries `spec: "NNNN"`) are skipped, so the template is no longer counted as a phantom draft here, in the Build gate's backlog line, or in the handoff report.
 

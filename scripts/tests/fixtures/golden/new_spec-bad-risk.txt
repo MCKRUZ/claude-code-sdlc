@@ -1,0 +1,4 @@
+exit: 1
+--- stdout ---
+Error: --risk must be one of HIGH, MEDIUM, LOW (got 'URGENT')
+--- stderr ---

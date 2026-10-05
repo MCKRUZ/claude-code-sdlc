@@ -31,15 +31,25 @@ workflow wrapped as one command, so no one runs the cataloger script by hand.
 > are highest priority for understanding the project? (3) Any to skip?" Adjust before proceeding.
 
 5. **Generate per-document summaries:** For each document (respecting `max_documents`), ordered
-   by human-indicated priority: read the content, write a summary following the
-   `document-summary.md` template to `.sdlc/context/intake/DOC-NNN-{slug}.md`, targeting
-   `summary_budget_tokens`. For any document over ~100K tokens, chunk it (first and last 10%
-   plus section headers) and flag the summary as a partial extraction.
+   by human-indicated priority, spawn the `document-summarizer` agent (subagent type
+   `claude-code-sdlc:document-summarizer`) with the document's path and `DOC-NNN` id. It writes the
+   summary following the `document-summary.md` template to `.sdlc/context/intake/DOC-NNN-{slug}.md`,
+   targeting `summary_budget_tokens`, and flags a partial extraction for any document over ~100K
+   tokens. Relay its result; do not rewrite its summaries.
 
-6. **Generate the registry and index:** Create `.sdlc/artifacts/00-discovery/document-registry.md`
-   (human-readable, all DOC-NNN IDs, key topics, summary links, topic clusters) and
-   `.sdlc/context/intake/index.md` (the condensed session-start index, within
-   `index_budget_tokens`).
+6. **Generate the registry and index:** Run the registry mode, which writes both from the catalog
+   and the summaries that exist:
+   ```bash
+   uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/intake_documents.py --state .sdlc/state.yaml --registry
+   ```
+   It creates `.sdlc/artifacts/00-discovery/document-registry.md` (corpus metrics, one row per
+   DOC-NNN with its summary link and key topics) and `.sdlc/context/intake/index.md` (the condensed
+   session-start index, trimmed to `index_budget_tokens` — topic clusters first, then one-line
+   descriptions, never a document id). On a re-run it rewrites only those two registry sections, so
+   topic clusters you wrote by hand are kept. The report lists any document still missing a summary
+   and says if the index could not fit its budget. What it does not do is judgment: now write the
+   registry's **Topic Clusters** and **Cross-Reference Map** yourself (group documents by theme;
+   note which reference which), then run it once more so the index carries the clusters.
 
 7. **Lock the catalog:**
 

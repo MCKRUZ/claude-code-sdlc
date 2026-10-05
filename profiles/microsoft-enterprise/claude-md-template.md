@@ -7,8 +7,8 @@ This project uses the claude-code-sdlc plugin for lifecycle management.
 - Commands: `/sdlc`, `/sdlc-setup`, `/sdlc-status`, `/sdlc-next`, `/sdlc-gate`
 
 ## Stack: Microsoft Enterprise
-- **Backend:** C# / .NET 8 / Entity Framework Core / xUnit
-- **Frontend:** TypeScript / Angular 17 / NgRx / Playwright
+- **Backend:** C# / .NET 10 / Entity Framework Core / xUnit
+- **Frontend:** TypeScript / Angular 22 / NgRx / Playwright
 - **Database:** SQL Server with EF Core migrations
 - **Cloud:** Azure (App Service, Azure SQL, Key Vault, App Insights)
 - **CI/CD:** GitHub Actions
