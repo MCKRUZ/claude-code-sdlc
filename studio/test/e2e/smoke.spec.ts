@@ -258,6 +258,12 @@ test.describe('[smoke] a team a few days in, every screen', () => {
 
     await page.getByRole('button', { name: 'Console', exact: true }).click()
     await run.look(page, 'Console open', '1280x800')
+    // What failed, exactly: a red line in the Console says a command failed, not which one.
+    run.failedCommands.push(...await page.evaluate(async () => {
+      type Entry = { ok: boolean; command: string; args: string[]; exitCode: number | null }
+      const bridge = (window as unknown as { studio: { getConsoleLog(): Promise<Entry[]> } }).studio
+      return (await bridge.getConsoleLog()).filter((e) => !e.ok).map((e) => `${e.command} ${e.args.join(' ').slice(0, 160)} (exit ${e.exitCode})`)
+    }))
     await page.getByRole('button', { name: 'Console', exact: true }).click()
 
     await openStage(0)

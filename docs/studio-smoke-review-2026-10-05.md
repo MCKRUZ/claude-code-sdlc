@@ -5,7 +5,7 @@ What a person finds when they use Studio for the first time and a few days in, f
 sizes (1280, 1024 and 640 px wide), clicked every read-only control, and used a stand-in for the live model.
 
 Everything below was observed in the real window against the real plugin. Nothing here has been fixed yet.
-Items 2 to 9 are still recorded in `studio/test/smoke/knownIssues.ts`, so the suite reports them without
+Items 3 to 9 are still recorded in `studio/test/smoke/knownIssues.ts`, so the suite reports them without
 failing; fixing one means deleting its entry.
 
 ## Bugs, most serious first
@@ -18,7 +18,8 @@ failing; fixing one means deleting its entry.
    Cause: `sync.ts` `pull()` runs `git fetch origin`, which fails when there is no `origin`.
    (Control: not measured against a project that has a remote. This is the cause of the message, but I have not
    confirmed the message disappears with a remote.)
-2. **The primary button on a new document is Edit, and it fails.** A document that has not been created yet shows
+2. **[Fixed] The primary button on a new document is Edit, and it fails.** A step whose document does not exist now
+   offers **Start this document**, which creates it from the plugin's template and opens it. The original finding follows. A document that has not been created yet shows
    a blue **Edit** button; pressing it ends in `<path> does not exist`. Seen on the first step of every stage.
 3. **At 640 px the middle column is about 40 px wide.** The sidebar and the chat take everything, and the content
    is unreadable. Nothing in the window setup (`electron/main/index.ts`) sets a minimum width, so a person can
