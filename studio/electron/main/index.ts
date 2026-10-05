@@ -17,6 +17,7 @@ import { createProjectFolder } from './newProject'
 import { gatherPipelineEvidence } from './pipelineEvidence'
 import { registerActivityHandlers } from './activities'
 import { registerActivityRunHandlers } from './activityRuns'
+import { registerBriefHandlers } from './briefForm'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
 import { registerDraftHandlers } from './draftDocuments'
@@ -274,6 +275,7 @@ function registerIpcHandlers() {
   })
   registerActivityHandlers(ipcMain, resolvePluginScriptsDir)
   registerActivityRunHandlers(ipcMain, resolvePluginScriptsDir)
+  registerBriefHandlers(ipcMain, resolvePluginScriptsDir)
   registerDraftHandlers(ipcMain, resolvePluginScriptsDir, sendToWindow, () => loadSettings().claudePathOverride)
   registerBatchHandlers(ipcMain, resolvePluginScriptsDir, sendToWindow, () => loadSettings().claudePathOverride)
 

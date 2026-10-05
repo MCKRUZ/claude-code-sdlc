@@ -64,6 +64,8 @@ const studio: StudioApi = {
   keepBatch: (projectPath, jobId, actor, candidateIds) => ipcRenderer.invoke('studio:keepBatch', projectPath, jobId, actor, candidateIds),
   discardBatch: (projectPath, jobId, actor, candidateIds) => ipcRenderer.invoke('studio:discardBatch', projectPath, jobId, actor, candidateIds),
   writeRegistry: (projectPath) => ipcRenderer.invoke('studio:writeRegistry', projectPath),
+  getBriefCandidates: (projectPath) => ipcRenderer.invoke('studio:getBriefCandidates', projectPath),
+  buildBrief: (projectPath, selections) => ipcRenderer.invoke('studio:buildBrief', projectPath, selections),
   onBatchState: (callback) => {
     const handler = (_event: Electron.IpcRendererEvent, update: { projectPath: string; state: BatchState }) => callback(update)
     ipcRenderer.on('studio:batchState', handler)
