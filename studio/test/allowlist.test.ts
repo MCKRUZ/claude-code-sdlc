@@ -28,7 +28,10 @@ describe('isAllowlisted', () => {
     // A phase sign-off writes its frozen-layer summary here — must sync, or it would only ever
     // exist on the machine that signed off.
     '.sdlc/context/layers/phase0-discovery.md',
-    '.sdlc/context/layers/phase0-discovery.md.superseded',
+    // A sprint record (`sprint.py new`) is the team's shared plan — before studio-improvements
+    // F5 it stayed on the machine that planned it while the spec keys it wrote did sync.
+    '.sdlc/sprints/S07.md',
+    '.sdlc/sprints/S123.md',
   ])('allows %s', (path) => {
     expect(isAllowlisted(path)).toBe(true)
   })
@@ -42,6 +45,16 @@ describe('isAllowlisted', () => {
     '.gitignore',
     '.env',
     'README.md',
+    // The copy a re-sign-off sets aside is this machine's safety net, not a shared document
+    // (F5 narrowed the layers entry to `*.md`).
+    '.sdlc/context/layers/phase0-discovery.md.superseded',
+    '.sdlc/context/layers/phase0-discovery.md.superseded-20261005',
+    // Only sprint RECORDS, by the plugin's own id shape — not anything dropped in the folder.
+    '.sdlc/sprints/notes.md',
+    '.sdlc/sprints/S7.md',
+    // Matched `^specs/` and resolved inside the project before the `..` check moved first (F8).
+    'specs/../.git/config',
+    '.sdlc/artifacts/01-requirements/../../../.env',
   ])('refuses %s', (path) => {
     expect(isAllowlisted(path)).toBe(false)
   })

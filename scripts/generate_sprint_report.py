@@ -714,6 +714,21 @@ def generate(repo_root: Path, sprint_id: str, kind: str = "planning", output: Pa
     return out
 
 
+def rel_output(repo_root: Path, out: Path) -> str:
+    """The page's repo-relative POSIX path (".sdlc/reports/sprint-S07-planning.html"); the absolute
+    path as a string when --output put it outside the repo."""
+    try:
+        return Path(out).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+    except ValueError:
+        return str(out)
+
+
+def page_result(repo_root: Path, sprint_id: str, kind: str, out: Path) -> dict:
+    """The one document `--json` prints on success — the same shape `sprint.py plan --json` prints."""
+    return {"ok": True, "sprint": sprint_id, "kind": kind, "output": str(out),
+            "rel_output": rel_output(repo_root, out)}
+
+
 def resolve_repo_root(args) -> Path | None:
     """Workflow: parent of .sdlc/ from --state (None if the state file is missing). Standalone: --repo."""
     if args.state:
@@ -734,17 +749,28 @@ def main() -> int:
     parser.add_argument("--kind", choices=KINDS, default="planning", help="planning (default) or review page")
     parser.add_argument("--output", type=Path, default=None,
                         help="Output path (default: .sdlc/reports/sprint-SNN-<kind>.html)")
+    parser.add_argument("--json", action="store_true",
+                        help='Emit {"ok", "sprint", "kind", "output", "rel_output"} (or {"ok": false, "error"}) '
+                             "on stdout instead of prose; exit codes are unchanged")
     args = parser.parse_args()
+
+    def fail(message: str) -> int:
+        if args.json:
+            print(json.dumps({"ok": False, "error": message}, indent=2))
+        else:
+            print(f"Error: {message}", file=sys.stderr)
+        return 1
 
     repo_root = resolve_repo_root(args)
     if repo_root is None:
-        print(f"Error: state file not found: {args.state}", file=sys.stderr)
-        return 1
+        return fail(f"state file not found: {args.state}")
     try:
         out = generate(repo_root, args.sprint, kind=args.kind, output=args.output)
     except (SprintNotFound, ValueError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 1
+        return fail(str(exc))
+    if args.json:
+        print(json.dumps(page_result(repo_root, args.sprint, args.kind, out), indent=2))
+        return 0
     mode = "workflow" if is_workflow(repo_root) else "standalone"
     print(f"Sprint {args.sprint} {args.kind} page written to: {out} ({mode} mode)")
     return 0

@@ -198,3 +198,29 @@
     label: "Talk it through"
     command: sdlc-coach
     kind: talk
+
+  - id: refine
+    label: "Refine the next sprint's specs"
+    command: sdlc-refine
+    kind: talk
+
+"build":
+  - id: sprint
+    label: "Plan, ready and close the sprint"
+    command: sdlc-sprint
+    kind: run
+
+  - id: refine
+    label: "Refine the next sprint's specs"
+    command: sdlc-refine
+    kind: talk
+
+  - id: phase-report
+    label: "Export this stage's report"
+    command: sdlc-phase-report
+    kind: run
+
+  - id: coach
+    label: "Talk it through"
+    command: sdlc-coach
+    kind: talk

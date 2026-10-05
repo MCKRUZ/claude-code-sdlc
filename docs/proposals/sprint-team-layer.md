@@ -217,6 +217,7 @@ Both ship together as **1.6.0** (new capability = minor per `RELEASING.md`).
 | ADO card / export / reconcile | The team updates ADO manually |
 | Epic tracks for a new epic mid-Build (`.sdlc/tracks.yaml`) | `--upstream` routing covers the case without new state; revisit if the team hits it |
 | Cross-repo board, facilitator agent, per-person `[SDLC-LANE]` reminder | After one or two real sprints |
+| **Studio Sprint view — shipped** (`feat/studio-improvements`, `docs/proposals/studio-improvements.md` Batches 1–2) | Was deferred as "after a real sprint"; now a read-only Build › Sprint view over `sprint.py status --json` plus the planning / review page via `generate_sprint_report.py --json`, declared through `phases/activities.yaml` `"build":` and `capabilities.py`. Write verbs from Studio (verdict, hand-off, ack, ready) remain deferred to that proposal's Batch 3 |
 
 ## 12. Tests
 

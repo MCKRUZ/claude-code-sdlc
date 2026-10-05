@@ -43,6 +43,11 @@ CAPABILITIES: dict[str, dict] = {
     "phase-report-json": {"script": "generate_phase_report.py", "flags": ["--json", "--all"]},
     "intake-registry": {"script": "intake_documents.py", "flags": ["--registry", "--json"]},
     "brief-candidates": {"script": "workshop_brief.py", "argv": ["candidates"], "flags": ["--state", "--repo", "--json"]},
+    # The sprint team layer, read-only from Studio (proposal: studio-improvements, Batches 1-2).
+    "sprint-status": {"script": "sprint.py", "argv": ["status"], "flags": ["--repo", "--state", "--sprint", "--json"]},
+    "sprint-plan": {"script": "sprint.py", "argv": ["plan"], "flags": ["--repo", "--state", "--sprint", "--json"]},
+    "sprint-report": {"script": "generate_sprint_report.py",
+                      "flags": ["--repo", "--state", "--sprint", "--kind", "--json"]},
 }
 
 

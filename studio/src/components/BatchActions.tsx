@@ -2,6 +2,7 @@ import type { BatchKind, RegistryResult } from '../../shared/types'
 import { messageOf, PANEL_BUTTON, PANEL_SECONDARY_BUTTON, PanelError, useScopedState } from './activityPanelBits'
 import { RegistryResultView } from './RegistryResultView'
 import type { DraftBatchApi } from './useDraftBatch'
+import { useClaudeIssue } from './ClaudeIssueContext'
 
 export const LOCK_FIRST_NOTE = 'Lock the document ids to summarise them.'
 export const WAITING_REASON = 'Keep or discard the waiting results first'
@@ -27,10 +28,11 @@ export function BatchActions({ projectPath, locked, batch }: { projectPath: stri
   const [error, setError] = useScopedState<string | null>(projectPath, null)
   const [registry, setRegistry] = useScopedState<RegistryResult | null>(projectPath, null)
   const [working, setWorking] = useScopedState<Working>(projectPath, null)
+  const claudeIssue = useClaudeIssue()
 
   if (!locked) return <p className="text-xs text-slate-500">{LOCK_FIRST_NOTE}</p>
 
-  const reason = batch.state.job?.phase === 'running' ? RUNNING_REASON : batch.state.candidates.length > 0 ? WAITING_REASON : null
+  const reason = claudeIssue ?? (batch.state.job?.phase === 'running' ? RUNNING_REASON : batch.state.candidates.length > 0 ? WAITING_REASON : null)
   const blocked = reason !== null || working !== null
 
   const ask = async (kind: BatchKind) => {

@@ -1182,3 +1182,117 @@ class TestHelpers:
         assert any("Missing required section" in m for m in row["dor_blocking"])
         ready = sprint.spec_row(repo / "specs" / "0007-warranty-lookup.md", (repo / "specs" / "0007-warranty-lookup.md").read_text())
         assert ready["dor"] == "READY" and ready["dor_blocking"] == []
+
+
+# --- the Studio contract: rel_path, one JSON document, plan --json (studio-improvements F13) -------------
+
+STATUS_TOP_KEYS = {"sprint", "slate", "readiness", "verdicts_pending", "handoffs_open", "mix", "mix_warnings",
+                   "wip", "build_order", "next_up", "dependency_gaps", "decisions", "carried_in", "has_data"}
+
+
+class TestStudioContract:
+    def test_slate_rows_and_the_sprint_carry_rel_path_beside_the_absolute_path(self, slated_repo, capsys):
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S07", "--json")
+        assert code == 0
+        view = json.loads(out)
+        assert view["sprint"]["rel_path"] == ".sdlc/sprints/S07.md"
+        assert Path(view["sprint"]["path"]).is_absolute()
+        assert [r["rel_path"] for r in view["slate"]] == [
+            "specs/0007-warranty-lookup.md", "specs/0009-case-guardrail.md", "specs/0011-copy-polish.md"]
+        for r in view["slate"]:
+            assert Path(r["path"]).is_absolute()
+            assert "\\" not in r["rel_path"]  # POSIX, whatever the host separator
+
+    def test_rel_path_is_relative_to_the_repo_root_the_state_file_names(self, slated_repo, capsys):
+        (slated_repo / ".sdlc" / "state.yaml").write_text("project_name: x\n", encoding="utf-8")
+        code, out = run(capsys, "status", "--state", slated_repo / ".sdlc" / "state.yaml", "--sprint", "S07", "--json")
+        assert code == 0
+        assert [r["rel_path"] for r in json.loads(out)["slate"]][0] == "specs/0007-warranty-lookup.md"
+
+    def test_rel_path_helper_falls_back_outside_the_repo(self, tmp_path):
+        assert sprint.rel_path(tmp_path / "repo", tmp_path / "elsewhere" / "specs" / "0001-x.md") == "specs/0001-x.md"
+        assert sprint.rel_path(None, Path("specs") / "0001-x.md") == "specs/0001-x.md"
+
+    def test_malformed_sprint_under_json_is_exactly_one_document_with_has_data_false_and_a_note(self, repo, capsys):
+        code, out = run(capsys, "status", "--repo", repo, "--sprint", "sprint-7", "--json")
+        assert code == 0
+        view = json.loads(out)  # exactly one document — json.loads would refuse prose or two documents
+        assert view == {
+            "sprint": None, "slate": [], "readiness": {"ready": 0, "total": 0, "gaps": []},
+            "verdicts_pending": [], "handoffs_open": [], "mix": {}, "mix_warnings": [],
+            "wip": {"in_flight": 0, "cap": None}, "build_order": [], "next_up": None, "dependency_gaps": [],
+            "decisions": None, "carried_in": [], "has_data": False, "note": view["note"],
+        }
+        assert "sprint-7" in view["note"] and "not a sprint id" in view["note"]
+
+    def test_unknown_sprint_under_json_is_one_document_with_a_note_naming_it(self, slated_repo, capsys):
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S99", "--json")
+        assert code == 0
+        view = json.loads(out)
+        assert view["sprint"] is None and view["slate"] == [] and view["has_data"] is False
+        assert "S99" in view["note"]
+        assert set(view) == STATUS_TOP_KEYS | {"note"}
+
+    def test_no_sprint_at_all_under_json_carries_a_note(self, repo, capsys):
+        code, out = run(capsys, "status", "--repo", repo, "--json")
+        assert code == 0
+        view = json.loads(out)
+        assert view["sprint"] is None and view["has_data"] is False
+        assert "no sprint record" in view["note"]
+
+    def test_a_real_view_has_no_note(self, slated_repo, capsys):
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S07", "--json")
+        assert set(json.loads(out)) == STATUS_TOP_KEYS
+
+    def test_status_text_output_is_unchanged_by_the_json_work(self, repo, slated_repo, capsys):
+        # The text paths are what people and the slash command read; --json must not touch them.
+        code, out = run(capsys, "status", "--repo", repo, "--sprint", "sprint-7")
+        assert code == 0
+        assert out == "'sprint-7' is not a sprint id (expected S07, S12, ...) — no data\n"
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S99")
+        assert code == 0
+        assert out.startswith("Sprint: no data — no sprint record under ")
+        assert "note" not in out and "rel_path" not in out
+
+    def test_plan_json_prints_ok_sprint_kind_output_rel_output(self, slated_repo, capsys, render_calls):
+        code, out = run(capsys, "plan", "--repo", slated_repo, "--sprint", "S07", "--json")
+        assert code == 0
+        doc = json.loads(out)
+        assert doc == {"ok": True, "sprint": "S07", "kind": "planning",
+                       "output": str(slated_repo / ".sdlc" / "reports" / "sprint-S07-planning.html"),
+                       "rel_output": ".sdlc/reports/sprint-S07-planning.html"}
+        assert render_calls[0]["kind"] == "planning"
+
+    def test_plan_json_on_a_missing_sprint_is_ok_false_with_the_same_exit_code(self, repo, capsys, render_calls):
+        code, out = run(capsys, "plan", "--repo", repo, "--sprint", "S99", "--json")
+        assert code == 1 and render_calls == []
+        doc = json.loads(out)
+        assert doc["ok"] is False and "S99" in doc["error"]
+        assert set(doc) == {"ok", "error"}
+
+    def test_plan_json_on_a_render_failure_is_ok_false_not_a_traceback(self, slated_repo, capsys, monkeypatch):
+        def boom(*a, **k):
+            raise RuntimeError("disk full")
+        monkeypatch.setattr(sprint, "_render_page", boom)
+        code, out = run(capsys, "plan", "--repo", slated_repo, "--sprint", "S07", "--json")
+        assert code == 1
+        doc = json.loads(out)
+        assert doc["ok"] is False and "disk full" in doc["error"]
+        # ...and without --json the exception still surfaces as before (nothing swallowed)
+        with pytest.raises(RuntimeError):
+            sprint.main(["plan", "--repo", str(slated_repo), "--sprint", "S07"])
+
+    def test_plan_text_output_is_unchanged(self, slated_repo, repo, capsys, render_calls):
+        code, out = run(capsys, "plan", "--repo", slated_repo, "--sprint", "S07")
+        assert code == 0
+        assert out == f"Planning page written to: {slated_repo / '.sdlc' / 'reports' / 'sprint-S07-planning.html'}\n"
+        code, out = run(capsys, "plan", "--repo", repo, "--sprint", "S99")
+        assert code == 1 and out.startswith("Error: ") and "S99" in out and "{" not in out
+
+    def test_the_text_status_renders_the_same_with_rel_path_on_the_rows(self, slated_repo, capsys):
+        # rel_path is an extra key on the dict; the text table lists fixed columns and must not grow one.
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S07", "--today", "2026-10-02")
+        assert code == 0
+        header = next(ln for ln in out.splitlines() if ln.strip().startswith("spec"))
+        assert header.split() == ["spec", "name", "risk", "type", "status", "DoR", "eng", "data", "next", "owner"]
+        assert "rel_path" not in out

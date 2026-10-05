@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { initSettingsPath } from '../electron/main/settings'
-import { checkStageGates, parseGateCheckOutput, signOffStage } from '../electron/main/signOff'
+import { checkStageGates, parseGateCheckOutput, setAsideLayer, signOffStage } from '../electron/main/signOff'
 import { pull } from '../electron/main/sync'
 import { requirePlugin } from './pluginRoot'
 
@@ -230,7 +230,69 @@ describe('parseGateCheckOutput — pure, no subprocess', () => {
   })
 })
 
+describe('setAsideLayer — pure file moves, no subprocess (studio-improvements F6)', () => {
+  const dir = () => { const d = mkdtempSync(join(tmpdir(), 'studio-layer-')); made.push(d); return d }
+
+  it('does nothing when there is no layer yet, and restore is a no-op', () => {
+    const layer = join(dir(), 'phase0-discovery.md')
+    const aside = setAsideLayer(layer)
+    expect(aside.supersededPath).toBeNull()
+    expect(() => aside.restore()).not.toThrow()
+    expect(existsSync(layer)).toBe(false)
+  })
+
+  it('keeps the previous layer under /sdlc-next\'s own name, dated', () => {
+    const layer = join(dir(), 'phase0-discovery.md')
+    writeFileSync(layer, 'reviewed')
+    const aside = setAsideLayer(layer, new Date('2026-10-05T12:00:00Z'))
+    expect(aside.supersededPath).toBe(`${layer}.superseded-20261005`)
+    expect(existsSync(layer)).toBe(false)
+    expect(readFileSync(aside.supersededPath!, 'utf-8')).toBe('reviewed')
+  })
+
+  it('restore puts the previous layer back byte-for-byte and removes the failed draft', () => {
+    const layer = join(dir(), 'phase0-discovery.md')
+    writeFileSync(layer, 'reviewed\r\nlayer\r\n')
+    const aside = setAsideLayer(layer)
+    writeFileSync(layer, 'an invalid draft')
+    aside.restore()
+    expect(readFileSync(layer, 'utf-8')).toBe('reviewed\r\nlayer\r\n')
+    expect(existsSync(aside.supersededPath!)).toBe(false)
+  })
+
+  it('a second sign-off on the same day does not overwrite the first one\'s history', () => {
+    const layer = join(dir(), 'phase0-discovery.md')
+    const day = new Date('2026-10-05T12:00:00Z')
+    writeFileSync(layer, 'first')
+    setAsideLayer(layer, day)
+    writeFileSync(layer, 'second')
+    const aside = setAsideLayer(layer, day)
+    expect(aside.supersededPath).toBe(`${layer}.superseded-20261005-2`)
+    expect(readFileSync(`${layer}.superseded-20261005`, 'utf-8')).toBe('first')
+    expect(readFileSync(aside.supersededPath!, 'utf-8')).toBe('second')
+  })
+})
+
+describe('signOffStage refuses Build before reading anything (studio-improvements F3)', () => {
+  it('names Closing as where Build ends', async () => {
+    const result = await signOffStage(join(tmpdir(), 'no-such-project'), join(tmpdir(), 'no-such-plugin'), 'claude', 'build', 'Matt K', [])
+    if (result.ok) throw new Error('expected a refusal')
+    expect(result.stage).toBe('build')
+    expect(result.error).toMatch(/Closing/)
+  })
+})
+
 describe.skipIf(!PLUGIN.available)('checkStageGates, against the real plugin', () => {
+  it('fails CLOSED when the script cannot run at all — a missing state file is not a clean pass', async () => {
+    const nowhere = mkdtempSync(join(tmpdir(), 'studio-nostate-'))
+    made.push(nowhere)
+    const result = await checkStageGates(nowhere, SCRIPTS_DIR, '0')
+    expect(result.blocked).toBe(true)
+    expect(result.mustFailures).toHaveLength(1)
+    expect(result.mustFailures[0]).toMatch(/did not complete/)
+    expect(result.mustFailures[0]).toMatch(/State file not found/)
+  }, 60_000)
+
   it('blocks a freshly initialised project, naming a missing artifact', async () => {
     const s = await scenario(null)
     const result = await checkStageGates(s.project, SCRIPTS_DIR, '0')

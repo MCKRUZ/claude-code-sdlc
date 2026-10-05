@@ -36,8 +36,19 @@ class TestTheShippedDeclarationIsTrue:
         assert {"feature-brief", "rules", "rules-check"} <= set(ids["1"])
         assert {"data", "data-check", "experience"} <= set(ids["2"])
         assert "pipeline-proof" in ids["3"]
-        for phase in ("0", "1", "2", "3"):
+        for phase in ("0", "1", "2", "3", "build"):
             assert "coach" in ids[phase]
+
+    def test_the_build_phase_declares_the_sprint_layer(self):
+        ids = [a["id"] for a in am.load()["build"]]
+        assert ids == ["sprint", "refine", "phase-report", "coach"]
+
+    def test_refinement_starts_at_foundation(self):
+        assert "refine" in [a["id"] for a in am.load()["3"]]
+
+    def test_the_sprint_activity_is_never_done_and_starts_nothing(self):
+        sprint = next(a for a in am.load()["build"] if a["id"] == "sprint")
+        assert "creates" not in sprint and "done_when" not in sprint
 
     @pytest.mark.parametrize("phase, activity, command, kind", [
         ("0", "intake", "sdlc-intake", "run"), ("0", "brief", "sdlc-brief", "create"),
@@ -48,6 +59,9 @@ class TestTheShippedDeclarationIsTrue:
         ("2", "data", "sdlc-data", "create"), ("2", "data-check", "sdlc-data", "check"),
         ("2", "experience", "sdlc-experience", "create"),
         ("3", "pipeline-proof", None, "run"), ("1", "coach", "sdlc-coach", "talk"),
+        ("build", "sprint", "sdlc-sprint", "run"), ("build", "refine", "sdlc-refine", "talk"),
+        ("build", "phase-report", "sdlc-phase-report", "run"), ("build", "coach", "sdlc-coach", "talk"),
+        ("3", "refine", "sdlc-refine", "talk"),
     ])
     def test_each_activity_is_mapped_to_its_command_and_kind(self, phase, activity, command, kind):
         entry = next(a for a in am.load()[phase] if a["id"] == activity)
@@ -100,6 +114,85 @@ class TestValidationNamesTheActivityAndTheRule:
 
     def test_a_done_when_with_an_unknown_kind_of_condition(self):
         self.check({"0": [act(done_when={"vibes": "good"})]}, "done_when")
+
+
+class TestAMalformedFieldIsReportedNotRaised:
+    """F12: one badly typed entry used to raise out of validate() and blank every stage."""
+
+    def check(self, activity, expect, phase="0"):
+        problems = am.validate({phase: [activity]})
+        assert any(expect in p for p in problems), problems
+        return problems
+
+    def test_the_probe_that_used_to_raise_returns_a_problem(self):
+        bad = {"build": [{"id": "x", "label": "x", "kind": "run", "requires": ["file"]}]}
+        problems = am.validate(bad)
+        assert problems and all("phase build / activity x" in p for p in problems)
+        assert any("requires must be a mapping" in p for p in problems)
+
+    def test_an_unknown_key_is_named(self):
+        problems = self.check(act(colour="blue"), "unknown key colour")
+        assert "phase 0 / activity a: unknown key colour" in problems
+
+    def test_every_documented_key_is_known(self):
+        full = act(creates=[".sdlc/artifacts/00-discovery/workshop-brief.md"], after=[], optional=False,
+                   requires={"file": "x.md"}, done_when={"exists": "y.md"})
+        assert am.validate({"0": [full]}) == []
+
+    def test_requires_that_is_not_a_mapping(self):
+        self.check(act(requires="profile"), "requires must be a mapping")
+
+    def test_done_when_that_is_not_a_mapping(self):
+        self.check(act(done_when=["exists"]), "done_when must be a mapping")
+
+    def test_done_when_holding_two_conditions(self):
+        self.check(act(done_when={"exists": "a.md", "exists_all": ["b.md"]}), "one condition")
+
+    def test_creates_that_is_not_a_list(self):
+        self.check(act(creates=".sdlc/artifacts/00-discovery/workshop-brief.md"), "creates must be a list")
+
+    def test_creates_holding_a_non_string(self):
+        self.check(act(creates=[42]), "creates must hold only non-empty strings")
+
+    def test_after_that_is_not_a_list(self):
+        self.check(act(after="intake"), "after must be a list")
+
+    def test_after_holding_a_non_string(self):
+        self.check(act(after=[None]), "after must hold only non-empty strings")
+
+    def test_a_command_that_is_not_a_string(self):
+        self.check(act(command=["sdlc-coach"]), "command must be")
+
+    def test_an_optional_that_is_not_a_bool(self):
+        self.check(act(optional="yes"), "optional must be true or false")
+
+    def test_an_id_that_is_not_a_string(self):
+        self.check(act(id=["a"]), "needs an id")
+
+    def test_a_label_that_is_not_a_string(self):
+        self.check(act(label=7), "needs a label")
+
+    def test_a_requires_value_that_is_empty(self):
+        self.check(act(requires={"profile": ""}), "requires profile must name")
+
+    def test_done_when_exists_all_that_is_empty(self):
+        self.check(act(done_when={"exists_all": []}), "at least one path")
+
+    def test_done_when_json_missing_its_parts(self):
+        self.check(act(done_when={"json": {"file": "a.json"}}), "file, key and equals")
+
+    def test_each_bad_field_yields_its_own_problem(self):
+        problems = am.validate({"0": [act(requires="x", done_when="y", creates="z", after="w", nope=1)]})
+        assert len(problems) == 5 and all(p.startswith("phase 0 / activity a: ") for p in problems)
+
+    @pytest.mark.parametrize("activity", [
+        {"id": None, "label": None, "kind": None, "command": 3, "creates": 1, "after": {}, "requires": 1,
+         "done_when": 2, "optional": None},
+        {"id": [1], "label": [2]},
+        {},
+    ])
+    def test_nothing_in_an_activity_can_make_validate_raise(self, activity):
+        assert am.validate({"0": [activity, act(id="ok")]})
 
 
 @pytest.fixture

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { BUILD_STAGE_ID } from '../../shared/nav'
 import type { DocumentFocus, SignOffQuestion } from '../../shared/types'
 import { stageHomeKey } from '../stageHomeKey'
 import { DocumentsTab } from './DocumentsTab'
@@ -34,6 +35,7 @@ export function StageHome({
   setOpening,
   onSignedOff,
   onOpenDocument,
+  onGoToClosing,
 }: {
   projectPath: string
   stageId?: string
@@ -42,6 +44,8 @@ export function StageHome({
   setOpening: (opening: Opening | null) => void
   onSignedOff: () => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  /** Where Build actually ends (Build › Closing); shown in place of the sign-off on Build. */
+  onGoToClosing?: () => void
 }) {
   const { readiness, loading, refresh } = useStageReadiness()
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -130,14 +134,39 @@ export function StageHome({
           every judgement question has actually been confirmed. Signing off a stage that is not
           current, or that still has open work, is not a decision this button should be able to
           make look easy. */}
-      {readiness.isCurrent && readiness.ready && readiness.judgement.every((q) => q.confirmation) && (
-        <SignOffPanel
-          projectPath={projectPath}
-          readiness={readiness}
-          actor={actor}
-          setOpening={setOpening}
-          onSignedOff={onSignedOff}
-        />
+      {readiness.stageId === BUILD_STAGE_ID ? (
+        // Build does not end here (studio-improvements F3). It is declared complete from Build ›
+        // Closing — every spec decided, each team's list confirmed (declare_complete.py) — and
+        // the generic sign-off used to offer a way around all of that. signOff.ts refuses
+        // `build` too; this is the honest surface for the same rule.
+        readiness.isCurrent && (
+          <div className="rounded-xl border border-slate-200 bg-white p-4" data-testid="build-ends-from-closing">
+            <h3 className="text-sm font-medium text-slate-900">Build ends from Closing</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Build is not signed off like the other stages. It is declared complete from Build › Closing
+              once every spec is decided and each team has confirmed its list; the phase advances from there.
+            </p>
+            {onGoToClosing && (
+              <button
+                type="button"
+                onClick={onGoToClosing}
+                className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-slate-300"
+              >
+                Go to Closing
+              </button>
+            )}
+          </div>
+        )
+      ) : (
+        readiness.isCurrent && readiness.ready && readiness.judgement.every((q) => q.confirmation) && (
+          <SignOffPanel
+            projectPath={projectPath}
+            readiness={readiness}
+            actor={actor}
+            setOpening={setOpening}
+            onSignedOff={onSignedOff}
+          />
+        )
       )}
     </div>
   )

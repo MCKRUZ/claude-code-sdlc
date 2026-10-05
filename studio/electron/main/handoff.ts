@@ -11,6 +11,7 @@
 // for a checker — and it reads the refusal's KIND for that, never its wording.
 
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { resolveProjectDocument } from './projectPaths'
 import type { HandoffRefusal, HandoffResult, RefusalKind } from '../../shared/types'
 
@@ -58,7 +59,7 @@ export async function handOff(
   if (overLimitReason?.trim()) args.push('--over-limit', overLimitReason.trim())
 
   const entry = await runPluginScript(pluginScriptsDir, 'handoff.py', args)
-  return readHandoffOutput(entry.stdout, entry.stderr, developer)
+  return readHandoffOutput(rawStdout(entry), entry.stderr, developer)
 }
 
 /** Turning the command's answer into something the window can act on. Pure, and separate,

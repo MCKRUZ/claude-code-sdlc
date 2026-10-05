@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { DocumentField } from '../../shared/types'
 import { AiProposalCard } from './AiProposalCard'
+import { useClaudeIssue } from './ClaudeIssueContext'
 
 /** Editing one field, including asking Claude to draft it.
  *
@@ -39,6 +40,7 @@ export function FieldEditor({
   const [draft, setDraft] = useState<string | null>(null)
   const [drafting, setDrafting] = useState(false)
   const [draftError, setDraftError] = useState<string | null>(null)
+  const claudeIssue = useClaudeIssue()
 
   // A save re-reads the document, so the incoming field is the source of truth.
   useEffect(() => { setValue(field.value) }, [field.value])
@@ -141,7 +143,8 @@ export function FieldEditor({
           <button
             type="button"
             onClick={requestDraft}
-            disabled={drafting}
+            disabled={drafting || claudeIssue !== null}
+            title={claudeIssue ?? undefined}
             className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
           >
             {drafting ? 'Asking Claude…' : 'Ask Claude to draft'}

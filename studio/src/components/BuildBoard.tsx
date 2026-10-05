@@ -144,20 +144,24 @@ export function BuildBoard({
         />
         <Select value={team} onChange={setTeam} label="All teams" options={teams} />
         <Select value={risk} onChange={setRisk} label="Any risk" options={['LOW', 'MEDIUM', 'HIGH']} />
-        <Select value={status} onChange={setStatus} label="Any status" options={['draft', 'ready', 'in-flight', 'merged']} />
+        <Select value={status} onChange={setStatus} label="Any status" options={['draft', 'ready', 'in-flight', 'merged', 'deferred']} />
         <Select
           value={grouping === 'none' ? '' : grouping}
           onChange={(v) => setGrouping((v || 'none') as BoardGrouping)}
           label="No grouping"
-          options={['epic', 'team', 'person']}
+          options={['sprint', 'team', 'person']}
         />
       </div>
 
       {visible.length === 0 ? (
         <p className="text-sm text-slate-400">
-          {role === 'needs-me'
-            ? 'Nothing is waiting on you.'
-            : 'No specs match. Try a wider filter.'}
+          {role !== 'needs-me'
+            ? 'No specs match. Try a wider filter.'
+            : account
+              ? 'Nothing is waiting on you.'
+              // Signed out, "waiting on me" has no "me" — an empty list here is not a clean
+              // slate, and claiming one was the F10 defect.
+              : 'Nobody is signed in, so this view cannot say what is waiting on you. Sign in to the code host, or switch to Everything.'}
         </p>
       ) : (
         groups.map((group) => (
@@ -220,7 +224,13 @@ function SpecRow({
             <Person handle={row.owner} label="owns" account={account} />
             <Person handle={row.developer} label="builds" account={account} />
             <Person handle={row.checker} label="checks" account={account} />
+            <Person handle={row.nextOwner} label="next on" account={account} />
             {row.team && <span className="ml-2 text-slate-400">{row.team}</span>}
+            {row.sprint && (
+              <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600" data-testid="sprint-chip">
+                {row.sprint}
+              </span>
+            )}
           </span>
         </span>
         <span className="w-16 shrink-0 text-xs font-medium text-slate-500">{row.risk}</span>

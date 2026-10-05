@@ -13,6 +13,7 @@
 //                          cadence plan and are the plugin's to interpret, not Studio's.
 
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { resolveProjectDocument } from './projectPaths'
 import { isOnRemote, save } from './sync'
 import type {
@@ -45,6 +46,12 @@ interface RawRow {
   developer?: string
   checker?: string
   branch?: string
+  /** The sprint layer's keys, as spec_status.py --all reports them: "" / [] when never slated. */
+  sprint?: string
+  next_owner?: string
+  eng_review?: string
+  data_review?: string
+  depends_on?: string[]
   pull_request?: RawPullRequest | null
   error?: string
 }
@@ -63,6 +70,11 @@ function toRow(raw: RawRow): BoardRow {
     developer: raw.developer ?? '',
     checker: raw.checker ?? '',
     branch: raw.branch ?? '',
+    sprint: raw.sprint ?? '',
+    nextOwner: raw.next_owner ?? '',
+    engReview: raw.eng_review ?? '',
+    dataReview: raw.data_review ?? '',
+    dependsOn: Array.isArray(raw.depends_on) ? raw.depends_on.map(String) : [],
     pullRequest: raw.pull_request
       ? {
           number: raw.pull_request.number,
@@ -93,7 +105,7 @@ async function fetchTeamLimits(
 ): Promise<Board['teamLimits']> {
   const entry = await runPluginScript(pluginScriptsDir, 'track_specs.py', ['--repo', projectPath, '--json'])
   try {
-    return (JSON.parse(entry.stdout).wip_by_team as Board['teamLimits']) ?? null
+    return (JSON.parse(rawStdout(entry)).wip_by_team as Board['teamLimits']) ?? null
   } catch {
     return null
   }
@@ -106,7 +118,7 @@ export async function getBoard(projectPath: string, pluginScriptsDir: string): P
 
   let parsed: { specs?: RawRow[]; code_host_available?: boolean; error?: string | null }
   try {
-    parsed = JSON.parse(entry.stdout)
+    parsed = JSON.parse(rawStdout(entry))
   } catch {
     return { ...EMPTY, error: entry.stderr.trim() || 'Could not read the specs in this project.' }
   }
@@ -149,7 +161,7 @@ export async function getSpecStatus(
     '--repo', projectPath, '--spec', fullSpecPath, '--json',
   ])
   try {
-    return { ok: true, status: JSON.parse(entry.stdout) as SpecStatus }
+    return { ok: true, status: JSON.parse(rawStdout(entry)) as SpecStatus }
   } catch {
     return { ok: false, error: entry.stderr.trim() || 'Could not read this spec’s status.' }
   }
@@ -182,7 +194,7 @@ export async function getSpecReadiness(
     '--spec', fullSpecPath, '--state', `${projectPath}/.sdlc/state.yaml`, '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as SpecReadiness
+    return JSON.parse(rawStdout(entry)) as SpecReadiness
   } catch {
     // Never "ready" on a failure to read. A spec whose readiness is unknown is not ready.
     return notReady(entry.stderr.trim() || 'Could not read this spec’s readiness.')
@@ -222,7 +234,7 @@ export async function transitionSpec(
 
   const entry = await runPluginScript(pluginScriptsDir, 'spec_transition.py', args)
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     if (parsed.ok !== true) {
       return { ok: false, refusal: {
         kind: String(parsed.refusal?.kind ?? 'other'),
@@ -253,7 +265,7 @@ export async function getDeclarationStatus(
     '--repo', projectPath, '--json', 'check', ...confirmationArgs(confirmedTeams),
   ])
   try {
-    return JSON.parse(entry.stdout) as DeclarationStatus
+    return JSON.parse(rawStdout(entry)) as DeclarationStatus
   } catch {
     // can_declare: false on an unreadable answer. The one direction that must never fail open
     // — a declaration permitted because a check could not run is exactly the false statement
@@ -285,7 +297,7 @@ export async function declareComplete(
     '--declared-by', declaredBy, ...confirmationArgs(confirmedTeams),
   ])
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     if (parsed.ok !== true) {
       return { ok: false, refusal: {
         kind: String(parsed.refusal?.kind ?? 'other'),
@@ -322,7 +334,7 @@ export async function deferSpec(
 
   let parsed: { ok?: boolean; changed?: boolean; message?: string; refusal?: { kind?: string; message?: string } }
   try {
-    parsed = JSON.parse(entry.stdout)
+    parsed = JSON.parse(rawStdout(entry))
   } catch {
     return { ok: false, refusal: {
       kind: 'other',
@@ -489,7 +501,7 @@ async function readPhaseRecord(
     '--state', `${projectPath}/${STATE_FILE}`, '--json',
   ])
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     return {
       phaseId: String(parsed?.current_phase?.id ?? '') || null,
       stages: Array.isArray(parsed?.stages) ? (parsed.stages as StageRecord[]) : [],

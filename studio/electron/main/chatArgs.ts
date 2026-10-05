@@ -18,8 +18,8 @@ import { ASK_QUESTION_TOOL as ASK_QUESTION, PROPOSE_WRITE_TOOL as PROPOSE_WRITE 
 
 /** The exact, complete tool list every chat session gets — nothing more, nothing less. A test
  * asserts buildChatArgs() output contains exactly this, comma-joined, as the value that
- * follows --tools (and again after --allowedTools, since --permission-prompts none denies an
- * MCP tool call outright without an explicit allow — measured live; Read/Grep/Glob/Task did
+ * follows --tools (and again after --allowedTools, since denying prompts (--permission-mode
+ * dontAsk) denies an MCP tool call outright without an explicit allow — measured live; Read/Grep/Glob/Task did
  * not need it, but granting it uniformly is simpler and strictly no wider than --tools already
  * allows). */
 export const CHAT_TOOLS = ['Read', 'Grep', 'Glob', 'Task', PROPOSE_WRITE, ASK_QUESTION] as const

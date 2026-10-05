@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { GateAuthPanel } from './GateAuthPanel'
 import type {
-  ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, Scorecard, SettingsSection,
+  ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, Scorecard, SettingsSection, ToolingReport, ToolStatus,
 } from '../../shared/types'
+import { claudeLacksMessage } from '../../shared/claudeContract'
 
 /** A fixed rolling window for the alarm comparison below — this screen is about configuration,
  * not a report a person tunes the window on, so one steady figure beats an extra control. */
@@ -31,6 +32,9 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
   /** For the review-wait alarm next to each team's limit below — the same figure spec 0013's
    * read-only scorecard shows, reused here rather than a second computation of "over alarm". */
   const [scorecard, setScorecard] = useState<Scorecard | null>(null)
+  /** Which Claude Code and which plugin this session is actually driving (studio-improvements
+   * F1/F2) — machine facts, not project settings, but this is where a person looks for them. */
+  const [tooling, setTooling] = useState<ToolingReport | null>(null)
   const [loading, setLoading] = useState(true)
   /** Nothing on this screen changes anything until edit mode is on, and the controls are
    * ABSENT rather than disabled outside it — the same rule spec 0010's document editor
@@ -46,16 +50,18 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, c, r, sc] = await Promise.all([
+    const [s, c, r, sc, tl] = await Promise.all([
       window.studio.getProjectSettings(projectPath),
       window.studio.getConnectionInfo(projectPath),
       window.studio.getConnectionReport(projectPath),
       window.studio.getScorecard(projectPath, ALARM_WINDOW_DAYS),
+      window.studio.detectTooling(),
     ])
     setSettings(s)
     setConnection(c)
     setReport(r)
     setScorecard(sc)
+    setTooling(tl)
     setLoading(false)
   }, [projectPath])
 
@@ -337,6 +343,16 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
         </p>
       </Section>
 
+      <Section title="Tooling on this machine" file="" fileLabel="">
+        {/* Not a project setting — it does not travel with the repository — but the question
+            "which plugin is Studio running, and can this Claude Code run what it asks" has no
+            other home, and both have been answered wrongly in silence before (F1, F2). */}
+        <dl className="grid gap-3 text-sm sm:grid-cols-2" data-testid="tooling-facts">
+          <Row label="Claude Code" value={tooling ? describeClaude(tooling.claude) : 'checking…'} />
+          <Row label="Plugin scripts" value={tooling ? describePlugin(tooling.pluginScripts) : 'checking…'} />
+        </dl>
+      </Section>
+
       <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
         <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
           Fixed here — change these in the playbook, not the project
@@ -477,6 +493,26 @@ function ApprovalEditor({
       )}
     </span>
   )
+}
+
+/** The installed Claude Code, and whether it accepts every flag Studio emits. */
+export function describeClaude(status: ToolStatus): string {
+  if (!status.found) return status.error ?? 'not found'
+  const missing = status.missingFlags ?? []
+  if (missing.length > 0) return claudeLacksMessage(status.version, missing)
+  return `${status.version ?? 'found'} — accepts every flag Studio uses`
+}
+
+/** Which plugin is driving this session, said plainly: the path alone does not say whether it is
+ * the checkout beside Studio or an older marketplace copy (studio-improvements F2). */
+export function describePlugin(status: ToolStatus): string {
+  if (!status.found || !status.path) return status.error ?? 'not found'
+  const origin = status.source === 'sibling' ? 'the checkout beside Studio'
+    : status.source === 'cache' ? 'the plugin cache'
+    : status.source === 'override' ? 'the path set in Studio'
+    : 'origin not recorded'
+  const version = status.pluginVersion ? `version ${status.pluginVersion}` : 'version not readable'
+  return `${status.path} — ${version}, from ${origin}`
 }
 
 function Row({ label, value }: { label: string; value: string }) {

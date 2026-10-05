@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { DisciplineSignoff, StageReadiness } from '../../shared/types'
+import { useClaudeIssue } from './ClaudeIssueContext'
 
 interface Opening {
   projectName: string
@@ -70,6 +71,9 @@ export function SignOffPanel({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<{ fromPhase?: string; toPhase?: string; note?: string } | null>(null)
+  // Drafting the phase summary is a model call; an installed Claude Code that lacks a flag Studio
+  // emits would fail it after the gates passed. Disabled with the reason instead (F1).
+  const claudeIssue = useClaudeIssue()
 
   if (success) {
     return (
@@ -150,10 +154,12 @@ export function SignOffPanel({
         </div>
       )}
 
+      {claudeIssue && <p className="mt-3 text-xs text-amber-800">{claudeIssue}</p>}
+
       <button
         type="button"
         onClick={signOff}
-        disabled={busy || !signedBy.trim()}
+        disabled={busy || !signedBy.trim() || claudeIssue !== null}
         className="mt-3 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
       >
         {busy ? 'Signing off…' : error ? 'Try again' : `Sign off and advance`}

@@ -51,13 +51,15 @@ describe('what an entry opens', () => {
 
   it('each Build Loop view opens its own screen', () => {
     expect(targetForBuildView('board')).toEqual({ area: 'build' })
+    expect(targetForBuildView('sprint')).toEqual({ area: 'sprint' })
     expect(targetForBuildView('going')).toEqual({ area: 'explain' })
     expect(targetForBuildView('closing')).toEqual({ area: 'closing' })
     expect(targetForBuildView('documents')).toEqual({ area: 'documents', stageId: 'build' })
   })
 
-  it('offers exactly the four Build Loop views, so none of the old tabs is lost', () => {
-    expect(BUILD_VIEWS.map((v) => v.id)).toEqual(['board', 'going', 'closing', 'documents'])
+  it('offers exactly the five Build Loop views — the four old tabs and the Sprint beside the Board', () => {
+    expect(BUILD_VIEWS.map((v) => v.id)).toEqual(['board', 'sprint', 'going', 'closing', 'documents'])
+    expect(BUILD_VIEWS.find((v) => v.id === 'sprint')?.label).toBe('Sprint')
   })
 })
 
@@ -72,6 +74,7 @@ describe('which entry is lit', () => {
 
   it('lights Build Loop and the right view for each Build screen', () => {
     expect(activeNav('build', undefined, '3')).toEqual({ stageId: 'build', buildView: 'board', footer: null })
+    expect(activeNav('sprint', undefined, '3')).toEqual({ stageId: 'build', buildView: 'sprint', footer: null })
     expect(activeNav('explain', undefined, '3')).toEqual({ stageId: 'build', buildView: 'going', footer: null })
     expect(activeNav('closing', undefined, '3')).toEqual({ stageId: 'build', buildView: 'closing', footer: null })
   })

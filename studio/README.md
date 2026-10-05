@@ -60,6 +60,14 @@ Files under `electron/` are compiled into `dist-electron/`.
 
 ## Status
 
-Specs 0008–0014 (in the `claude-code-sdlc` repo's `specs/` directory) define Studio's build
-order. The application shell itself — spec 0008 — has not landed yet; this repo currently holds
-a cleaned-up, verified scaffold only.
+Studio drives the plugin **beside it**. Unpackaged, tool detection prefers `<studio>/../scripts`
+when it carries `capabilities.py`, then the newest marketplace-cached plugin that does, then a
+path set in Studio — and Settings › *Tooling on this machine* says which one is in use and the
+version it declares. Every `claude` call uses the flags listed in `shared/claudeContract.ts`,
+checked once against the installed CLI's `--help`: an older Claude Code is reported ("Claude Code
+<version> lacks <flags> — update with `claude update`") and the model controls stay off until it is
+updated, while the project itself stays readable.
+
+The specs in the repository's `specs/` directory (0008 onward) record Studio's build order;
+`docs/proposals/studio-improvements.md` is the current plan, with Batches 1–2 built and 3–4
+awaiting review.

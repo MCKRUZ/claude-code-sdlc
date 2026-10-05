@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BoardRow, ClashChoice, ConsoleEntry, DocumentFocus, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
+import type { Area } from '../shared/nav'
 import { appendConsoleEntry } from './consoleLog'
 import { ToolingIssues } from './components/ToolingIssues'
+import { ClaudeIssueContext } from './components/ClaudeIssueContext'
+import { claudeLacksMessage } from '../shared/claudeContract'
 import { NewProjectScreen } from './components/NewProjectScreen'
 import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
@@ -11,6 +14,7 @@ import { StageHome } from './components/StageHome'
 import { DocumentView } from './components/DocumentView'
 import { HistoryPanel } from './components/HistoryPanel'
 import { BuildBoard } from './components/BuildBoard'
+import { SprintScreen } from './components/SprintBoard'
 import { SpecStatusView } from './components/SpecStatusView'
 import { HandoffDialog } from './components/HandoffDialog'
 import { SettingsScreen } from './components/SettingsScreen'
@@ -63,15 +67,26 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
    * already use — rather than inventing a separate Studio-only name to keep in step. */
   const [actor, setActor] = useState('')
   /** Which area of the project is showing. Documents is where spec 0010 lives; Build is
-   * spec 0011's board. Kept here rather than in a router, because there are two areas. */
-  const [area, setArea] = useState<'documents' | 'build' | 'explain' | 'closing' | 'settings'>('documents')
+   * spec 0011's board; Sprint is the sprint the team runs on it. Kept here rather than in a
+   * router, because there are so few areas. */
+  const [area, setArea] = useState<Area>('documents')
   /** The spec whose status is open, and separately whether its hand-off is showing — a
    * hand-off is a decision taken FROM a spec, not a different place in the app. */
   const [openSpec, setOpenSpec] = useState<BoardRow | null>(null)
   const [handingOff, setHandingOff] = useState(false)
+  /** The last tooling report, kept for one derived fact: whether the installed Claude Code
+   * accepts every flag Studio emits (studio-improvements F1). A missing tool blocks opening a
+   * project (below); a missing FLAG does not — the project is still readable — it disables the
+   * model controls with the reason, through ClaudeIssueContext. */
+  const [tooling, setTooling] = useState<ToolingReport | null>(null)
+  const claudeIssue = useMemo(() => {
+    const missing = tooling?.claude.missingFlags ?? []
+    return missing.length > 0 ? claudeLacksMessage(tooling?.claude.version, missing) : null
+  }, [tooling])
 
   const refreshTooling = useCallback(async () => {
     const report = await window.studio.detectTooling()
+    setTooling(report)
     const allFound = report.claude.found && report.uv.found && report.pluginScripts.found && report.git.found && report.gh.found
     if (!allFound) {
       setScreen({ kind: 'toolingIssues', report })
@@ -232,6 +247,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     }
     const { projectPath, status } = screen
     return (
+      <ClaudeIssueContext.Provider value={claudeIssue}>
       <Frame
         status={status}
         projectPath={projectPath}
@@ -247,8 +263,8 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             setShowHistory(false)
             setViewedStageId(target.stageId)
           }
-          if (target.area === 'build') {
-            // Choosing Board again returns to the list, not to whichever spec was open.
+          if (target.area === 'build' || target.area === 'sprint') {
+            // Choosing Board or Sprint again returns to the list, not to whichever spec was open.
             setOpenSpec(null)
             setHandingOff(false)
           }
@@ -269,7 +285,9 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
           <ExplainViews projectPath={projectPath} />
         ) : area === 'settings' ? (
           <SettingsScreen projectPath={projectPath} actor={actor} />
-        ) : area === 'build' ? (
+        ) : area === 'build' || area === 'sprint' ? (
+          // A spec opened from the sprint's slate is the same spec view the board opens, and
+          // Back returns to wherever it was opened from.
           handingOff && openSpec ? (
             <HandoffDialog
               projectPath={projectPath}
@@ -289,6 +307,14 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
               row={openSpec}
               onBack={() => setOpenSpec(null)}
               onHandOff={() => setHandingOff(true)}
+            />
+          ) : area === 'sprint' ? (
+            <SprintScreen
+              projectPath={projectPath}
+              onOpenSpec={(row) => {
+                setHandingOff(false)
+                setOpenSpec(row)
+              }}
             />
           ) : (
             <BuildBoard
@@ -327,6 +353,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             actor={actor}
             setOpening={setOpening}
             onSignedOff={refreshStatus}
+            onGoToClosing={() => setArea('closing')}
             onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
               setOpenDocFocus(focus)
@@ -335,6 +362,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
           />
         )}
       </Frame>
+      </ClaudeIssueContext.Provider>
     )
   }
 

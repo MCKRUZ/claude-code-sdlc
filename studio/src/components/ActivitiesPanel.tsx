@@ -10,6 +10,7 @@ import { IntakePanel } from './IntakePanel'
 import { NarrativeCoveragePanel } from './NarrativeCoveragePanel'
 import { PhaseReportPanel } from './PhaseReportPanel'
 import { ReviewStandingPanel } from './ReviewStandingPanel'
+import { SprintBoard } from './SprintBoard'
 import { useDraftJob, type DraftJobApi } from './useDraftJob'
 
 /** "Also in this stage" (spec 0024): the optional things a person can do here, as the plugin
@@ -114,6 +115,8 @@ function ActivityPanel({ id, projectPath, stageId, documents, draft, actor, onOp
   if (id === 'phase-report') return <PhaseReportPanel key={key} projectPath={projectPath} stageId={stageId} />
   if (id === 'intake') return <IntakePanel key={key} projectPath={projectPath} actor={actor} />
   if (id === 'brief') return <BriefForm key={key} projectPath={projectPath} actor={actor} onOpenDocument={onOpenDocument} />
+  // The row is already gated on `sprint-status` by PanelOrReason, so the panel needs no capabilities.
+  if (id === 'sprint') return <SprintBoard key={key} compact projectPath={projectPath} />
   if (id === 'enhance') {
     return <NarrativeCoveragePanel key={key} projectPath={projectPath} stageId={stageId} documents={documents} draft={draft} actor={actor} />
   }

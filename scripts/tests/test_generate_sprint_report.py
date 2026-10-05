@@ -602,3 +602,62 @@ class TestCli:
         out = repo / ".sdlc" / "reports" / "sprint-S07-planning.html"
         assert out.is_file() and "Sprint S07" in out.read_text(encoding="utf-8")
         assert "workflow mode" in proc.stdout
+
+
+class TestCliJson:
+    """`--json` prints one document on stdout; exit codes and the prose path are unchanged (studio-improvements F13)."""
+
+    def test_success_prints_ok_sprint_kind_output_rel_output(self, tmp_path):
+        pytest.importorskip("sprint")
+        repo = make_repo(tmp_path, with_state=True)
+        proc = run_cli("--state", str(repo / ".sdlc" / "state.yaml"), "--sprint", "S07", "--kind", "review", "--json",
+                       cwd=tmp_path)
+        assert proc.returncode == 0, proc.stderr + proc.stdout
+        doc = json.loads(proc.stdout)
+        assert doc == {"ok": True, "sprint": "S07", "kind": "review",
+                       "output": str((repo / ".sdlc" / "reports" / "sprint-S07-review.html").resolve()),
+                       "rel_output": ".sdlc/reports/sprint-S07-review.html"}
+        assert (repo / doc["rel_output"]).is_file()
+        assert proc.stderr == ""
+
+    def test_default_kind_is_planning_under_json_too(self, tmp_path):
+        pytest.importorskip("sprint")
+        repo = make_repo(tmp_path)
+        proc = run_cli("--repo", str(repo), "--sprint", "S07", "--json", cwd=tmp_path)
+        assert proc.returncode == 0, proc.stderr + proc.stdout
+        doc = json.loads(proc.stdout)
+        assert doc["kind"] == "planning" and doc["rel_output"] == ".sdlc/reports/sprint-S07-planning.html"
+
+    def test_unknown_sprint_is_ok_false_on_stdout_with_the_same_exit_code(self, tmp_path):
+        repo = make_repo(tmp_path)
+        proc = run_cli("--repo", str(repo), "--sprint", "S99", "--json", cwd=tmp_path)
+        assert proc.returncode == 1
+        doc = json.loads(proc.stdout)
+        assert doc["ok"] is False and "S99" in doc["error"] and set(doc) == {"ok", "error"}
+        assert proc.stderr == ""
+        assert not (repo / ".sdlc" / "reports" / "sprint-S99-planning.html").exists()
+
+    def test_bad_sprint_id_and_missing_state_are_ok_false_documents(self, tmp_path):
+        repo = make_repo(tmp_path)
+        proc = run_cli("--repo", str(repo), "--sprint", "seven", "--json", cwd=tmp_path)
+        assert proc.returncode == 1 and json.loads(proc.stdout)["ok"] is False
+        assert "not a sprint id" in json.loads(proc.stdout)["error"]
+        proc = run_cli("--state", str(tmp_path / ".sdlc" / "state.yaml"), "--sprint", "S07", "--json", cwd=tmp_path)
+        assert proc.returncode == 1
+        assert "state file not found" in json.loads(proc.stdout)["error"]
+
+    def test_the_prose_path_is_byte_identical_without_json(self, tmp_path):
+        pytest.importorskip("sprint")
+        repo = make_repo(tmp_path, with_state=True)
+        proc = run_cli("--state", str(repo / ".sdlc" / "state.yaml"), "--sprint", "S07", cwd=tmp_path)
+        out = (repo / ".sdlc" / "reports" / "sprint-S07-planning.html").resolve()
+        assert proc.returncode == 0
+        assert proc.stdout == f"Sprint S07 planning page written to: {out} (workflow mode)\n"
+        proc = run_cli("--repo", str(repo), "--sprint", "S99", cwd=tmp_path)
+        assert proc.returncode == 1 and proc.stdout == "" and proc.stderr.startswith("Error: ") and "S99" in proc.stderr
+
+    def test_rel_output_outside_the_repo_is_the_absolute_path(self, tmp_path):
+        repo = make_repo(tmp_path)
+        elsewhere = tmp_path / "elsewhere" / "page.html"
+        assert gsr.rel_output(repo, elsewhere) == str(elsewhere)
+        assert gsr.rel_output(repo, repo / ".sdlc" / "reports" / "x.html") == ".sdlc/reports/x.html"

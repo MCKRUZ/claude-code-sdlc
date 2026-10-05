@@ -67,6 +67,26 @@ def test_a_broken_declaration_degrades_to_no_activities_and_a_warning(project, m
     assert result["artifacts"] is not None  # the rest of the report is intact
 
 
+def test_a_malformed_entry_degrades_to_no_activities_and_a_named_warning(project, monkeypatch, tmp_path):
+    bad = tmp_path / "typed-wrong.yaml"
+    bad.write_text("'build':\n  - {id: x, label: x, kind: run, requires: [file]}\n", encoding="utf-8")
+    monkeypatch.setattr(activities_model, "ACTIVITIES_PATH", bad)
+    result = sr.assess(project, "0")
+    assert result["activities"] == []
+    assert any("requires must be a mapping" in w for w in result["warnings"])
+    assert result["artifacts"] is not None
+
+
+def test_any_fault_while_evaluating_the_declaration_becomes_a_warning_not_a_crash(project, monkeypatch):
+    def explode(*_a, **_k):
+        raise TypeError("unhashable type: 'list'")
+    monkeypatch.setattr(activities_model, "validate", explode)
+    result = sr.assess(project, "0")
+    assert result["activities"] == []
+    assert any("could not be evaluated" in w and "TypeError" in w for w in result["warnings"])
+    assert result["ready"] in (True, False)  # the rest of the report is intact
+
+
 def test_a_healthy_run_has_no_warnings_key(project):
     assert "warnings" not in sr.assess(project, "0")
 

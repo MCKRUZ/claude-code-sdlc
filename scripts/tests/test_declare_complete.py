@@ -14,6 +14,8 @@ so the tests are about the refusals:
   confirmation, and the point of asking each lead is whose assertion it is.
 """
 
+from pathlib import Path
+
 import pytest
 
 import declare_complete as dc
@@ -311,3 +313,64 @@ class TestWhatEachUnfinishedSpecAlreadySays:
         specs = [("something-invented", "claims", "@sam-k", "")]
         result = dc.assess(_project(tmp_path, specs), {"claims": "@x"})
         assert result["unfinished"][0]["intent"] == dc.INTENT_NOT_COMMITTED
+
+
+class TestTheInstalledTemplateIsNotASpec:
+    """The harness installs specs/spec-template.md beside the real specs (studio-improvements F4).
+
+    `scan_specs` skips it by its placeholder id (spec: "NNNN"), which is right — and `_specs`
+    then took the difference between "files in specs/" and "specs scan_specs returned" by name,
+    so the template showed up as an "unreadable spec" and refused every declaration in every
+    project the harness had been installed into. Only files named like a spec
+    (new_spec.SPEC_FILE_RE, `NNNN-`) are considered, the same rule track_specs and sprint.py use.
+    """
+
+    HARNESS_TEMPLATE = Path(__file__).resolve().parent.parent.parent / "harness" / "spec-template.md"
+
+    def _with_template(self, tmp_path, specs=ALL_MERGED):
+        project = _project(tmp_path, specs)
+        (project / "specs" / "spec-template.md").write_bytes(self.HARNESS_TEMPLATE.read_bytes())
+        return project
+
+    def test_the_template_is_not_an_unreadable_spec_blocker(self, tmp_path):
+        result = dc.assess(self._with_template(tmp_path), CONFIRMED)
+        assert result["can_declare"] is True
+        assert result["unreadable"] == []
+        assert not any(b["kind"] == "unreadable_specs" for b in result["blockers"])
+
+    def test_the_template_is_absent_from_every_list_and_the_totals(self, tmp_path):
+        result = dc.assess(self._with_template(tmp_path), CONFIRMED)
+        assert result["totals"] == {"specs": 2, "unfinished": 0, "deferred": 0, "unreadable": 0}
+        assert result["teamless"] == []
+        assert result["teams_in_list"] == ["claims", "platform"]
+
+    def test_declaring_with_the_template_present_is_permitted(self, tmp_path):
+        result = dc.declare(self._with_template(tmp_path), "Matt K", CONFIRMED)
+        assert result["ok"] is True
+
+    def test_a_REAL_unreadable_spec_still_blocks_beside_the_template(self, tmp_path):
+        # The filter narrows which files are specs; it must not hide a genuinely unreadable one.
+        project = self._with_template(tmp_path)
+        unclosed = '---\nspec: "0002"\nname: "unfinished"\nstatus: in-flight\nteam: "core"\n\n# body\n'
+        (project / "specs" / "0002-unfinished.md").write_text(unclosed, encoding="utf-8")
+        result = dc.assess(project, CONFIRMED)
+        blocker = next(b for b in result["blockers"] if b["kind"] == "unreadable_specs")
+        assert blocker["count"] == 1
+        assert "0002-unfinished.md" in blocker["message"]
+        assert "spec-template.md" not in blocker["message"]
+
+    def test_other_non_spec_markdown_is_ignored_too(self, tmp_path):
+        project = _project(tmp_path, ALL_MERGED)
+        (project / "specs" / "notes.md").write_text("# scratch, no frontmatter\n", encoding="utf-8")
+        assert dc.assess(project, CONFIRMED)["can_declare"] is True
+
+    def test_the_text_report_is_unchanged_by_the_template(self, tmp_path):
+        # Byte-identical: the report a person reads says the same thing whether or not the
+        # harness has been installed into the project.
+        unfinished = [("merged", "claims", "@sam-k", ""), ("in-flight", "platform", "@dev", "")]
+        (tmp_path / "a").mkdir()
+        (tmp_path / "b").mkdir()
+        plain = dc.format_report(dc.assess(_project(tmp_path / "a", unfinished), CONFIRMED))
+        with_template = dc.format_report(
+            dc.assess(self._with_template(tmp_path / "b", unfinished), CONFIRMED))
+        assert plain == with_template

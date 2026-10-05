@@ -15,6 +15,7 @@ import { dirname, join, relative, sep } from 'node:path'
 import { pluginIsBehind } from '../../shared/pluginContract'
 import { documentNotFoundError } from '../../shared/documentErrors'
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import {
   findShapeForPath, readShapeFromBytes, writeShapeUpdates,
   type ShapeField, type ShapeReadResult,
@@ -386,7 +387,7 @@ export async function nextNumber(
   ])
   if (!entry.ok) return { ok: false, error: entry.stderr || 'next-number failed' }
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     return { ok: true, id: parsed.id, number: parsed.number }
   } catch {
     return { ok: false, error: 'next-number returned unreadable output' }

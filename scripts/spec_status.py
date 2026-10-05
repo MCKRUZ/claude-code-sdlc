@@ -24,6 +24,8 @@ import cadence_plan
 import check_spec as cs
 from github_import import GitHubImportError, _hours_between, _is_security_pr, fetch_pr_events, gh_json, run_gh
 from handoff import HandoffError, run_git, branch_name_for, resolve_base_branch
+from new_spec import SPEC_FILE_RE
+from sprint_model import parse_depends_on
 
 VERDICT_HEADING = "Acceptance Check Verdicts"
 GRADER_CHECK_NAME = "grader"
@@ -421,6 +423,15 @@ def _spec_row(
         "owner": (fm.get("owner") or "").strip(),
         "developer": (fm.get("developer") or "").strip(),
         "checker": (fm.get("checker") or "").strip(),
+        # The sprint-layer fields (sprint.py writes them; sprint_model.SPEC_KEYS names them).
+        # Strings default to "" and depends_on to [] so a board can group by sprint and answer
+        # "is this waiting on ME" without a second read of the file. Additive: a repo that has
+        # never run a sprint gets empty values, not missing keys.
+        "sprint": (fm.get("sprint") or "").strip(),
+        "next_owner": (fm.get("next_owner") or "").strip(),
+        "eng_review": (fm.get("eng_review") or "").strip(),
+        "data_review": (fm.get("data_review") or "").strip(),
+        "depends_on": parse_depends_on(fm.get("depends_on")),
         "branch": branch,
         "pull_request": None,
     }
@@ -501,8 +512,11 @@ def report_all(repo_root: Path) -> dict:
     Read-only, and honest when the code host is unreachable: the rows are still returned,
     built from the spec files, with `code_host_available: false` saying why the live half is
     missing. An empty board would read as "there is no work", which is a different claim."""
+    # Only files named like a spec (new_spec.SPEC_FILE_RE, `NNNN-`) are rows — the same rule
+    # track_specs and sprint.py apply. The harness installs specs/spec-template.md beside the
+    # real specs, and a README may live there too; neither is work, so neither is a row.
     specs_dir = repo_root / "specs"
-    spec_paths = sorted(p for p in specs_dir.glob("*.md") if p.name != "README.md") \
+    spec_paths = sorted(p for p in specs_dir.glob("*.md") if SPEC_FILE_RE.match(p.name)) \
         if specs_dir.is_dir() else []
 
     by_branch: dict[str, dict] | None = None

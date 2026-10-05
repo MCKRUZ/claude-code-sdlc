@@ -10,6 +10,7 @@ import { MarkdownView } from './MarkdownView'
 import { CHAT_MIN_WIDTH, useChatWidth } from '../chatWidth'
 import { registerChatSender, type ChatSendResult } from '../chatBridge'
 import { useStageReadiness } from './StageReadinessContext'
+import { useClaudeIssue } from './ClaudeIssueContext'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
  * conversation up, and spec 0018 scopes it to the stage's current document and makes the wait
@@ -378,6 +379,9 @@ function ChatComposer({
   hasPendingProposal: boolean
   onSubmit: () => void
 }) {
+  // A turn is a model call; when the installed Claude Code lacks a flag Studio emits, the box
+  // says so where the person would type, instead of failing after Enter (F1).
+  const claudeIssue = useClaudeIssue()
   return (
     <div className="border-t border-slate-200 p-3">
       <div className="flex gap-2">
@@ -389,15 +393,15 @@ function ChatComposer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit() }
           }}
-          disabled={busy}
-          placeholder="Type a message…"
+          disabled={busy || claudeIssue !== null}
+          placeholder={claudeIssue ?? 'Type a message…'}
           rows={2}
           className="min-w-0 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
         />
         <button
           type="button"
           onClick={onSubmit}
-          disabled={busy || !draft.trim()}
+          disabled={busy || !draft.trim() || claudeIssue !== null}
           className="shrink-0 self-end rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
         >
           Send

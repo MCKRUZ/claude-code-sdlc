@@ -27,6 +27,16 @@ export interface ToolStatus {
   path?: string
   version?: string
   error?: string
+  /** Claude only: the flags Studio emits that this CLI's `--help` does not declare (probed once
+   * per detected version, shared/claudeContract.ts). Empty or absent means every model call can
+   * run; non-empty means they are off until `claude update`. */
+  missingFlags?: string[]
+  /** Plugin scripts only: the version `.claude-plugin/plugin.json` beside them declares, when
+   * readable — so Settings can say WHICH plugin is driving this session, not just where. */
+  pluginVersion?: string
+  /** Plugin scripts only: how the directory was chosen — the checkout Studio ships in, the
+   * marketplace cache, or a path the person typed. */
+  source?: 'sibling' | 'cache' | 'override'
 }
 
 export interface ToolingReport {
@@ -1363,7 +1373,7 @@ export interface DisciplineSignoff {
  * `/sdlc-next` follows. `stage` names exactly where it stopped, so a refusal is never a mystery. */
 export type SignOffResult =
   | { ok: true; fromPhase?: string; toPhase?: string; note?: string }
-  | { ok: false; stage: 'plugin' | 'name' | 'not-current' | 'confirmations' | 'gates' | 'frozen-layer' | 'advance'; error: string }
+  | { ok: false; stage: 'plugin' | 'claude' | 'build' | 'name' | 'not-current' | 'confirmations' | 'gates' | 'frozen-layer' | 'advance'; error: string }
 
 export interface DeclarationResult {
   ok: boolean
@@ -1375,6 +1385,94 @@ export interface DeclarationResult {
   next_step?: string
   refusal?: { kind: string; message: string }
 }
+
+// --- Sprint view (proposal: studio-improvements, Batch 2) ---
+// Mirrors `sprint.py status --json` key for key, in camelCase. Studio computes none of it: every
+// count, verdict age and build-order position is the plugin's own. A value the plugin reports as
+// null (no ledger line to age from, no WIP cap stated) stays null here and reads "no data" on
+// screen — never a zero.
+
+/** One slated spec, as `sprint.py` reads it from the spec's frontmatter. */
+export interface SprintSlateRow {
+  id: string
+  name: string
+  risk: string
+  type: string
+  channel: string
+  status: string
+  sprint: string
+  nextOwner: string
+  engReview: string
+  dataReview: string
+  dependsOn: string[]
+  dor: 'READY' | 'NOT READY'
+  /** The Definition-of-Ready MUST lines that fail, in the checker's words. Empty when READY. */
+  dorBlocking: string[]
+  /** Absolute path, as the plugin prints it. */
+  path: string
+  /** Repo-relative POSIX path (e.g. "specs/0007-name.md") — what opens the spec view. */
+  relPath: string
+}
+
+export interface SprintRecord {
+  id: string
+  goal: string
+  start: string
+  end: string
+  /** planning | ready | closed (forward only). */
+  state: string
+  /** How many specs to slate — a count, never a size. Null when the record states none. */
+  target: number | null
+  /** The mix as written, e.g. "HIGH:1,MEDIUM:2,LOW:3". */
+  mix: string
+  boardRef: string
+  readiedBy: string
+  closedBy: string
+  created: string
+  path: string
+  relPath: string
+  /** Business days over the sprint window; all null when start or end is missing. */
+  days: { total: number | null; elapsed: number | null; remaining: number | null }
+}
+
+export interface SprintReadinessGap { spec: string; gaps: string[] }
+export interface SprintVerdictPending { spec: string; lane: string; sinceBusinessDays: number | null }
+export interface SprintHandoffOpen { spec: string; to: string; sinceBusinessDays: number | null }
+/** Per risk tier: how many are slated against how many the mix asked for (null: no target). */
+export interface SprintMixTier { target: number | null; actual: number }
+export interface SprintOverdueDecision { id: string; decision: string; owner: string; due: string }
+export interface SprintDecisions { open: number; overdue: SprintOverdueDecision[] }
+export interface SprintCarriedIn { spec: string; fromSprint: string; reason: string }
+
+export interface SprintView {
+  ok: true
+  /** Null when the project has no sprint record (or named one that does not exist). */
+  sprint: SprintRecord | null
+  slate: SprintSlateRow[]
+  readiness: { ready: number; total: number; gaps: SprintReadinessGap[] }
+  verdictsPending: SprintVerdictPending[]
+  handoffsOpen: SprintHandoffOpen[]
+  mix: Record<string, SprintMixTier>
+  mixWarnings: string[]
+  wip: { inFlight: number | null; cap: number | null }
+  buildOrder: string[]
+  nextUp: string | null
+  dependencyGaps: string[]
+  /** Null when the project keeps no decision log. */
+  decisions: SprintDecisions | null
+  carriedIn: SprintCarriedIn[]
+  /** False when nothing is slated: every count above is then an empty record, not a score. */
+  hasData: boolean
+  /** The plugin's own one-line reason when it answered with no data (e.g. an unknown sprint id). */
+  note: string | null
+}
+
+export type SprintStatusResult = SprintView | { ok: false; error: string }
+
+export type SprintReportKind = 'planning' | 'review'
+
+/** `relOutput` is repo-relative (".sdlc/reports/sprint-S07-planning.html") for `openReport`. */
+export type SprintReportResult = { ok: true; relOutput: string } | { ok: false; error: string }
 
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
@@ -1436,6 +1534,12 @@ export interface StudioApi {
   getNarrativeCoverage(projectPath: string, stageId: string): Promise<NarrativeCoverage>
   getReviewStanding(projectPath: string): Promise<ReviewStanding>
   runStrictReviewCheck(projectPath: string): Promise<StrictCheckResult>
+  /** The sprint as `sprint.py status --json` reports it (the active sprint, or `sprintId`).
+   * Read-only; nothing is written. */
+  getSprintStatus(projectPath: string, sprintId?: string): Promise<SprintStatusResult>
+  /** Writes the sprint's planning or review page through the plugin and returns where it went,
+   * for `openReport`. The page stays on this computer. */
+  renderSprintReport(projectPath: string, sprintId: string, kind: SprintReportKind): Promise<SprintReportResult>
   /** Runs a model job (summary or review) and resolves with the candidate. Nothing is written. */
   startDraft(projectPath: string, request: DraftRequest): Promise<StartDraftResult>
   cancelDraft(): Promise<{ ok: boolean }>
@@ -1622,7 +1726,9 @@ export interface StudioApi {
  * whom. */
 export type BoardRole = 'needs-me' | 'owner' | 'developer' | 'checker' | 'everything'
 
-export type BoardGrouping = 'none' | 'epic' | 'team' | 'person'
+/** `sprint` replaced the dead `epic` grouping (studio-improvements F10): no spec frontmatter
+ * carries an epic, every sprint-slated one carries `sprint`. */
+export type BoardGrouping = 'none' | 'sprint' | 'team' | 'person'
 
 export interface BoardFilters {
   role: BoardRole
@@ -1670,6 +1776,14 @@ export interface BoardRow {
   checker: string
   branch: string
   epic?: string
+  /** The sprint-layer fields `spec_status.py --all` reports from the frontmatter (sprint.py
+   * writes them). Strings are "" and dependsOn [] when the spec has never been slated — present
+   * either way, so the board groups by sprint and answers "waiting on me" from one read. */
+  sprint: string
+  nextOwner: string
+  engReview: string
+  dataReview: string
+  dependsOn: string[]
   pullRequest: BoardPullRequest | null
   /** Set only when the spec file itself could not be read — the row is still shown, saying
    * so, rather than silently dropped. */

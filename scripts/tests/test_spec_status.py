@@ -7,6 +7,7 @@ monkeypatched.
 """
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -549,3 +550,94 @@ class TestWaitingOnHandle:
 
     def test_an_unidentifiable_reviewer_is_None_rather_than_the_word_someone(self):
         assert ss.waiting_on_handle(self._pr(reviewRequests=[{}])) is None
+
+
+# ---------------------------------------------------------------------------
+# Board rows carry the sprint-layer fields; only `NNNN-` files are rows (studio-improvements F4/F10)
+# ---------------------------------------------------------------------------
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+HARNESS_TEMPLATE = PLUGIN_ROOT / "harness" / "spec-template.md"
+
+SPEC_WITH_SPRINT_KEYS = SPEC_TEXT.replace(
+    "status: in-flight\n",
+    'status: in-flight\nsprint: "S07"\nnext_owner: "@sam-k"\neng_review: "@priya-n"\n'
+    'data_review: "@dana"\ndepends_on: "0007, 0009"\n',
+)
+
+
+class TestReportAllSprintFields:
+    def test_rows_carry_the_sprint_fields_from_the_frontmatter(self, tmp_path, monkeypatch):
+        assert "sprint: " in SPEC_WITH_SPRINT_KEYS  # the fixture really has the keys
+        _write_spec(tmp_path, text=SPEC_WITH_SPRINT_KEYS)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["sprint"] == "S07"
+        assert row["next_owner"] == "@sam-k"
+        assert row["eng_review"] == "@priya-n"
+        assert row["data_review"] == "@dana"
+        assert row["depends_on"] == ["0007", "0009"]
+
+    def test_a_spec_without_the_keys_gets_empty_values_not_missing_keys(self, tmp_path, monkeypatch):
+        # Additive: a repo that has never run a sprint still gets every key, so a board can
+        # read row["sprint"] without a presence check — and "" is honest, where a missing key
+        # would be read by some consumers as "unknown" and by others as a crash.
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["sprint"] == ""
+        assert row["next_owner"] == ""
+        assert row["eng_review"] == ""
+        assert row["data_review"] == ""
+        assert row["depends_on"] == []
+
+    def test_depends_on_uses_the_sprint_models_parser(self, tmp_path, monkeypatch):
+        # One parser for the comma-separated field, so the board and sprint.py agree on what
+        # "0007,0007 , 0009" means (deduped, trimmed, order kept).
+        text = SPEC_TEXT.replace("status: in-flight\n", 'status: in-flight\ndepends_on: "0007,0007 , 0009"\n')
+        assert "depends_on" in text  # the fixture really has the key
+        _write_spec(tmp_path, text=text)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        assert ss.report_all(tmp_path)["specs"][0]["depends_on"] == ["0007", "0009"]
+
+    def test_the_text_report_is_unchanged_by_the_new_keys(self, tmp_path, monkeypatch):
+        # The new keys ride the JSON only; the text board a person reads is byte-identical
+        # whether or not a spec carries them.
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        _write_spec(tmp_path)
+        plain = ss.format_all_report(ss.report_all(tmp_path))
+        _write_spec(tmp_path, text=SPEC_WITH_SPRINT_KEYS)
+        with_keys = ss.format_all_report(ss.report_all(tmp_path))
+        assert plain == with_keys
+
+
+class TestReportAllOnlyListsSpecFiles:
+    """The harness installs specs/spec-template.md beside the real specs. It has frontmatter
+    (spec: "NNNN"), so it used to parse as a phantom board row. Only files named like a spec —
+    new_spec.SPEC_FILE_RE, `NNNN-` — are rows, the same rule track_specs and sprint.py apply."""
+
+    def test_the_installed_spec_template_is_not_a_board_row(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        (tmp_path / "specs" / "spec-template.md").write_bytes(HARNESS_TEMPLATE.read_bytes())
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        rows = ss.report_all(tmp_path)["specs"]
+        assert len(rows) == 1
+        assert rows[0]["spec"] == "0042"
+        assert not any("spec-template" in str(r.get("path", "")) for r in rows)
+
+    def test_other_non_spec_markdown_is_not_a_row_either(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        (tmp_path / "specs" / "notes.md").write_text("# scratch\n", encoding="utf-8")
+        (tmp_path / "specs" / "readme.md").write_text("# lower-case readme\n", encoding="utf-8")
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        assert len(ss.report_all(tmp_path)["specs"]) == 1
+
+    def test_a_broken_file_that_IS_named_like_a_spec_still_gets_its_error_row(self, tmp_path, monkeypatch):
+        # The filter narrows WHICH files are specs; it must not hide a real spec that is
+        # unreadable. That row saying "no parseable frontmatter" is the point of the board.
+        _write_spec(tmp_path, text="# Just a heading\n", name="0099-broken.md")
+        (tmp_path / "specs" / "spec-template.md").write_bytes(HARNESS_TEMPLATE.read_bytes())
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        rows = ss.report_all(tmp_path)["specs"]
+        assert [r["path"] for r in rows] == ["0099-broken.md"]
+        assert "frontmatter" in rows[0]["error"]

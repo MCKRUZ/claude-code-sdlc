@@ -20,7 +20,7 @@ describe('buildAgentArgs', () => {
       '--agent', 'claude-code-sdlc:narrative-enhancer',
       '--tools', 'Read,Grep,Glob',
       '--allowedTools', 'Read,Grep,Glob',
-      '--permission-prompts', 'none',
+      '--permission-mode', 'dontAsk',
       '--strict-mcp-config',
       '--output-format', 'stream-json',
       '--verbose',
@@ -45,11 +45,16 @@ describe('buildAgentArgs', () => {
     const forbidden = [
       'Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch', 'Task', 'NotebookEdit',
       '--mcp-config', '--dangerously-skip-permissions', '--dangerously-load-development-channels',
-      '--permission-mode', '--disallowedTools', '--append-system-prompt', '--settings', '--resume', '--continue',
+      '--disallowedTools', '--append-system-prompt', '--settings', '--resume', '--continue',
     ]
     for (const word of forbidden) {
       expect(args.some((a) => a.split(',').includes(word)), word).toBe(false)
     }
+    // `--permission-mode` is allowed ONLY as dontAsk (studio-improvements F1 replaced
+    // `--permission-prompts none` with it): any other mode would let a prompt through or skip
+    // permissions outright, which is the finding this list exists to prevent.
+    expect(args.filter((a) => a === '--permission-mode')).toHaveLength(1)
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk')
     // And the two tool lists are the same read-only list, nothing more.
     const listAfter = (flag: string) => args[args.indexOf(flag) + 1]
     expect(listAfter('--tools')).toBe(AGENT_TOOLS.join(','))

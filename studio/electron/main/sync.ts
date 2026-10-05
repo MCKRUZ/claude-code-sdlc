@@ -666,7 +666,7 @@ async function approvalSettingsForFiles(
   let byStage: Record<string, ApprovalStageSetting> = {}
   let known = true
   try {
-    byStage = (JSON.parse(entry.stdout).settings ?? {}) as Record<string, ApprovalStageSetting>
+    byStage = (JSON.parse(rawStdout(entry)).settings ?? {}) as Record<string, ApprovalStageSetting>
   } catch {
     byStage = {}
     known = false

@@ -65,14 +65,20 @@ describe('Sidebar', () => {
 
   it('keeps Build Loop’s own screens hidden until Build Loop is where you are', () => {
     const away = render()
-    for (const v of ['Board', 'How it is going', 'Closing']) expect(away).not.toContain(`>${v}<`)
+    for (const v of ['Board', 'Sprint', 'How it is going', 'Closing']) expect(away).not.toContain(`>${v}<`)
   })
 
   it('opens Build Loop’s screens beneath it once you are on one of them', () => {
-    for (const area of ['build', 'explain', 'closing'] as const) {
+    for (const area of ['build', 'sprint', 'explain', 'closing'] as const) {
       const html = render({ area })
-      for (const v of ['Board', 'How it is going', 'Closing', 'Documents']) expect(html, `${area}: ${v}`).toContain(`>${v}<`)
+      for (const v of ['Board', 'Sprint', 'How it is going', 'Closing', 'Documents']) expect(html, `${area}: ${v}`).toContain(`>${v}<`)
     }
+  })
+
+  it('lights the Sprint entry, and only it, on the sprint screen', () => {
+    const html = render({ area: 'sprint' })
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1)
+    expect(html).toMatch(/aria-current="page"[^>]*>[^<]*<span>Sprint<\/span>/)
   })
 
   it('puts Settings and Console in the footer, and never lights a stage on Settings', () => {

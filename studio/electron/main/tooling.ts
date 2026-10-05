@@ -5,11 +5,12 @@
 // right thing when detection or verification fails. Settings then remembers whatever the
 // person confirmed, so this only runs again if that override stops working.
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { runCommand } from './commandRunner'
+import { rawStdout, runCommand } from './commandRunner'
+import { missingClaudeFlags } from '../../shared/claudeContract'
 import type { ToolStatus, ToolingReport } from '../../shared/types'
 
 export type { ToolStatus, ToolingReport }
@@ -91,11 +92,34 @@ async function detect(overridePath: string | undefined, command: string): Promis
   return { found: true, path: overridePath ?? command, version: result.version, resolved: result.resolved }
 }
 
+/** `claude --help`, read once per (binary, version): the probe costs a process start, and what
+ * the CLI accepts cannot change until the binary does. Exported for tests only. */
+export const helpProbeCache = new Map<string, string[]>()
+
+async function probeClaudeFlags(command: string, version: string): Promise<string[]> {
+  const key = `${command}@${version}`
+  const cached = helpProbeCache.get(key)
+  if (cached) return cached
+  const entry = await runCommand(command, ['--help'], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS })
+  // An unreadable help text reports every flag missing (shared/claudeContract.ts): "could not
+  // read what the CLI accepts" must never be shown as "accepts everything".
+  const missing = missingClaudeFlags(entry.ok ? rawStdout(entry) : '')
+  helpProbeCache.set(key, missing)
+  return missing
+}
+
 /** claude and uv are both just PATH lookups — verified by actually running them, never
- * trusted from `which`/`where` alone (a stale PATH entry can point at nothing executable). */
+ * trusted from `which`/`where` alone (a stale PATH entry can point at nothing executable).
+ *
+ * Claude additionally has its `--help` read for the flags Studio emits (studio-improvements
+ * F1): a flag the installed CLI does not know fails every model call at once with
+ * `unknown option`, and until this probe nothing looked before leaping. `missingFlags` is set
+ * only when something is missing, so an absent key still reads "fine". */
 export async function detectClaude(overridePath?: string): Promise<ToolStatus> {
   const { resolved: _resolved, ...status } = await detect(overridePath, 'claude')
-  return status
+  if (!status.found) return status
+  const missing = await probeClaudeFlags(overridePath ?? 'claude', status.version ?? '')
+  return missing.length > 0 ? { ...status, missingFlags: missing } : status
 }
 
 export async function detectUv(overridePath?: string): Promise<ToolStatus> {
@@ -126,18 +150,62 @@ function compareVersions(a: string, b: string): number {
   return 0
 }
 
-/** The plugin installs to ~/.claude/plugins/cache/<namespace>/claude-code-sdlc/<version>/
- * (verified against a real local install) — search every namespace, take the newest
- * version that actually has scripts/generate_status.py, the file this app depends on
- * existing. A person who checked the plugin out from git manually (not via the plugin
- * marketplace) won't be found this way; that's exactly the override-path fallback case. */
-export async function detectPluginScripts(overridePath?: string): Promise<ToolStatus> {
-  if (overridePath) {
-    const marker = join(overridePath, 'generate_status.py')
-    return existsSync(marker)
-      ? { found: true, path: overridePath }
-      : { found: false, error: `generate_status.py not found under ${overridePath}` }
+/** The file that marks a usable plugin `scripts/` directory. `capabilities.py` rather than
+ * `generate_status.py` (the old marker): the capabilities list is what lets this Studio tell an
+ * older plugin from a current one, so a directory without it is an older plugin by definition. */
+export const PLUGIN_MARKER = 'capabilities.py'
+
+/** The version `.claude-plugin/plugin.json` beside a `scripts/` directory declares, when
+ * readable — so Settings can say WHICH plugin is driving this session, not only where it is. */
+function readPluginVersion(scriptsDir: string): string | undefined {
+  try {
+    const manifest = JSON.parse(readFileSync(join(scriptsDir, '..', '.claude-plugin', 'plugin.json'), 'utf-8'))
+    return typeof manifest.version === 'string' ? manifest.version : undefined
+  } catch {
+    return undefined
   }
+}
+
+function foundPlugin(path: string, source: NonNullable<ToolStatus['source']>): ToolStatus {
+  const pluginVersion = readPluginVersion(path)
+  return pluginVersion ? { found: true, path, source, pluginVersion } : { found: true, path, source }
+}
+
+/** The plugin checkout Studio ships inside, when it is one: `studio/` sits in the plugin's own
+ * repository, so `<APP_ROOT>/../scripts` is that plugin's scripts directory. Null when there is
+ * no such directory (a packaged build, or a Studio copied elsewhere) or it lacks the marker. */
+export function siblingPluginScripts(appRoot: string | undefined = process.env.APP_ROOT): string | null {
+  if (!appRoot) return null
+  const scripts = join(appRoot, '..', 'scripts')
+  return existsSync(join(scripts, PLUGIN_MARKER)) ? scripts : null
+}
+
+/** Which plugin drives this session, in this order (studio-improvements F2):
+ *
+ *   1. a path the person set in Settings — they said so, and it is checked, not trusted;
+ *   2. the checkout Studio ships in (`siblingPluginScripts`) — the README's promise that "the
+ *      plugin Studio drives is always the one beside it", which used to be false: the cache
+ *      scan below ran first and picked an older marketplace copy over the checkout;
+ *   3. the newest marketplace-cached version under ~/.claude/plugins/cache/<namespace>/
+ *      claude-code-sdlc/<version>/ (verified against a real local install) that carries the
+ *      marker.
+ *
+ * Every result says which of the three it was (`source`) and the version it declares. */
+export async function detectPluginScripts(
+  overridePath?: string,
+  appRoot: string | undefined = process.env.APP_ROOT,
+): Promise<ToolStatus> {
+  if (overridePath) {
+    return existsSync(join(overridePath, PLUGIN_MARKER))
+      ? foundPlugin(overridePath, 'override')
+      : {
+          found: false,
+          error: `${PLUGIN_MARKER} not found under ${overridePath} — Studio needs the scripts/ folder of a current claude-code-sdlc plugin`,
+        }
+  }
+
+  const sibling = siblingPluginScripts(appRoot)
+  if (sibling) return foundPlugin(sibling, 'sibling')
 
   const cacheDir = join(homedir(), '.claude', 'plugins', 'cache')
   if (!existsSync(cacheDir)) {
@@ -162,14 +230,17 @@ export async function detectPluginScripts(overridePath?: string): Promise<ToolSt
 
   const withScripts = candidates
     .map((dir) => ({ dir, scripts: join(dir, 'scripts') }))
-    .filter(({ scripts }) => existsSync(join(scripts, 'generate_status.py')))
+    .filter(({ scripts }) => existsSync(join(scripts, PLUGIN_MARKER)))
 
   if (withScripts.length === 0) {
-    return { found: false, error: 'claude-code-sdlc plugin not found under ~/.claude/plugins/cache' }
+    return {
+      found: false,
+      error: `no claude-code-sdlc plugin with ${PLUGIN_MARKER} under ~/.claude/plugins/cache — install or update the plugin, or point Studio at a checkout's scripts/ folder`,
+    }
   }
 
   withScripts.sort((a, b) => compareVersions(b.dir.split(/[\\/]/).pop()!, a.dir.split(/[\\/]/).pop()!))
-  return { found: true, path: withScripts[0].scripts }
+  return foundPlugin(withScripts[0].scripts, 'cache')
 }
 
 export interface DetectAllToolingResult extends ToolingReport {

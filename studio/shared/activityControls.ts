@@ -41,6 +41,8 @@ export const PANEL_CONTROLS: Readonly<Record<string, { capability: string }>> = 
   // `record_findings.py report --json` predates activities, so any plugin that declares them has it.
   review: { capability: 'activities' },
   brief: { capability: 'brief-candidates' },
+  // The sprint the team runs (sprint.py status --json): a read-only picture, never "done".
+  sprint: { capability: 'sprint-status' },
 }
 
 /** Starting documents from templates needs the plugin to know about activities at all. */
@@ -55,7 +57,7 @@ export function capabilityFor(activity: StageActivity): string | null {
   return null
 }
 
-/** True when Studio has a control for this activity (create, talk, one of the two checks, or one of the four panels). */
+/** True when Studio has a control for this activity (create, talk, one of the two checks, or one of the panels). */
 export function isDrawn(activity: StageActivity): boolean {
   return capabilityFor(activity) !== null
 }

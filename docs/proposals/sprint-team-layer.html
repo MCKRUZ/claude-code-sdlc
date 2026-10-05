@@ -271,6 +271,7 @@ depends_on: "0007"       # comma list; refine proposes, a human confirms</pre>
   <tr><td>Open product decisions</td><td class="mono">.sdlc/decision-log.md</td><td>existing — owner + 2-business-day clock</td></tr>
   <tr><td>Cadence, WIP cap, sprint length</td><td class="mono">.sdlc/artifacts/03-foundation/cadence-plan.md</td><td>existing Phase-3 artifact, gains three rows</td></tr>
   <tr><td>Logic</td><td class="mono">scripts/sprint_model.py (pure) · scripts/sprint.py (CLI)</td><td>new; <code>track_specs.py</code> gains <code>by_sprint</code></td></tr>
+  <tr><td>Studio › Build › Sprint (read-only view)</td><td class="mono">studio/electron/main/sprint.ts · studio/src/components/SprintBoard.tsx</td><td>none of its own — renders <code>sprint.py status --json</code> as-is and opens the planning / review page via <code>generate_sprint_report.py --json</code>; declared by <code>phases/activities.yaml</code> <code>"build":</code> and <code>capabilities.py</code>; no write verbs yet</td></tr>
 </table>
 
 <div class="band">Decisions (taken 2026-09-30 — every recommended default was adopted)</div>

@@ -84,7 +84,7 @@ describe.skipIf(!PLUGIN.available)('the summarise job', () => {
         '--plugin-dir', root, '--add-dir', project, root,
         '--agent', 'claude-code-sdlc:document-summarizer',
         '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob',
-        '--permission-prompts', 'none', '--strict-mcp-config',
+        '--permission-mode', 'dontAsk', '--strict-mcp-config',
         '--output-format', 'stream-json', '--verbose',
         '-p', '--',
         `Summarise the catalog document ${id} (look up its source path in ${catalogPath}) exactly as your instructions describe. `

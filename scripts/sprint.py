@@ -141,7 +141,19 @@ def write_spec_text(path: Path, text: str) -> None:
     path.write_bytes(text.encode("utf-8"))
 
 
-def spec_row(path: Path, text: str) -> dict:
+def rel_path(repo_root: Path | None, path: Path) -> str:
+    """The repo-relative POSIX path Studio shows and syncs by (e.g. "specs/0007-name.md"). Falls back
+    to the path's last two parts when it does not sit under the repo root (it always does in practice)."""
+    try:
+        if repo_root is not None:
+            return Path(path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+    except ValueError:
+        pass
+    parts = Path(path).parts
+    return "/".join(parts[-2:]) if len(parts) >= 2 else str(path)
+
+
+def spec_row(path: Path, text: str, repo_root: Path | None = None) -> dict:
     """A slate row from one spec file: frontmatter fields, the parsed depends_on, and the DoR verdict."""
     fm, _body = parse_frontmatter(text)
     m = SPEC_FILE_RE.match(path.name)
@@ -165,6 +177,7 @@ def spec_row(path: Path, text: str) -> dict:
         "dor": "NOT READY" if blocking else "READY",
         "dor_blocking": blocking,
         "path": str(path),
+        "rel_path": rel_path(repo_root, path),
     }
 
 
@@ -172,7 +185,7 @@ def load_specs(repo_root: Path) -> list[dict]:
     rows = []
     for path in list_spec_files(repo_root):
         try:
-            rows.append(spec_row(path, read_spec_text(path)))
+            rows.append(spec_row(path, read_spec_text(path), repo_root))
         except UnicodeDecodeError:
             continue
     return sorted(rows, key=lambda r: r["id"])
@@ -251,6 +264,7 @@ def read_sprint(repo_root: Path, sprint_id: str) -> dict | None:
         "closed_by": str(fm.get("closed_by") or ""),
         "created": str(fm.get("created") or ""),
         "path": str(path),
+        "rel_path": f".sdlc/sprints/{sprint_id}.md",
     }
 
 
@@ -468,11 +482,33 @@ def decisions_view(repo_root: Path, today: date) -> dict | None:
     return {"open": summary["open"], "overdue": overdue}
 
 
+def empty_view(note: str) -> dict:
+    """The one JSON document `status --json` prints when there is nothing to read (a malformed
+    --sprint): every key of a real view, empty, `has_data` false and `note` saying why. Studio and
+    scripts parse exactly one document either way — never prose where JSON was asked for."""
+    return {
+        "sprint": None, "slate": [],
+        "readiness": {"ready": 0, "total": 0, "gaps": []},
+        "verdicts_pending": [], "handoffs_open": [], "mix": {}, "mix_warnings": [],
+        "wip": {"in_flight": 0, "cap": None},
+        "build_order": [], "next_up": None, "dependency_gaps": [], "decisions": None, "carried_in": [],
+        "has_data": False, "note": note,
+    }
+
+
+def _no_sprint_note(repo_root: Path, requested: str | None) -> str:
+    if requested:
+        return f"sprint {requested} does not exist ({sprint_file(repo_root, requested)}) — run `new` first"
+    return f"no sprint record under {sprints_dir(repo_root)} — create one with `sprint.py new`"
+
+
 def build_view(repo_root: Path, sprint_id: str | None, today: date | None = None,
                wip_cap: int | None = None) -> dict:
-    """The sprint status as one dict — exactly the JSON `status --json` prints."""
+    """The sprint status as one dict — exactly the JSON `status --json` prints. When there is no
+    sprint to read (none exists, or the one named does not) the document carries a `note` saying why."""
     repo_root = Path(repo_root).resolve()
     today = today or date.today()
+    requested = sprint_id
     if sprint_id is None:
         sprint_id = active_sprint_id(repo_root)
     sprint = read_sprint(repo_root, sprint_id) if sprint_id else None
@@ -537,6 +573,7 @@ def build_view(repo_root: Path, sprint_id: str | None, today: date | None = None
         "decisions": decisions_view(repo_root, today),
         "carried_in": carried_in,
         "has_data": bool(slate),
+        **({"note": _no_sprint_note(repo_root, requested)} if sprint is None else {}),
     }
 
 
@@ -913,7 +950,11 @@ def cmd_unslate(args, repo_root: Path) -> int:
 def cmd_status(args, repo_root: Path) -> int:
     sid = args.sprint
     if sid and not sm.is_valid_sprint_id(sid):
-        print(f"'{sid}' is not a sprint id (expected S07, S12, ...) — {NO_DATA}")
+        why = f"'{sid}' is not a sprint id (expected S07, S12, ...)"
+        if args.json:
+            print(json.dumps(empty_view(why), indent=2))
+        else:
+            print(f"{why} — {NO_DATA}")
         return 0
     view = build_view(repo_root, sid, today=_today(args), wip_cap=args.wip_cap)
     if args.json:
@@ -1010,10 +1051,31 @@ def cmd_ready(args, repo_root: Path) -> int:
     return 0
 
 
+def _page_result(repo_root: Path, sprint_id: str, kind: str, out: Path) -> dict:
+    """What `plan --json` (and generate_sprint_report.py --json) print on success."""
+    return {"ok": True, "sprint": sprint_id, "kind": kind, "output": str(out),
+            "rel_output": rel_path(repo_root, out)}
+
+
 def cmd_plan(args, repo_root: Path) -> int:
-    sprint = _need_sprint(repo_root, args.sprint, "plan")
-    out = _render_page(repo_root, sprint["id"], "planning", _today(args), output=args.output)
-    print(f"Planning page written to: {out}")
+    as_json = bool(getattr(args, "json", False))
+    try:
+        sprint = _need_sprint(repo_root, args.sprint, "plan")
+        out = _render_page(repo_root, sprint["id"], "planning", _today(args), output=args.output)
+    except Illegal as exc:
+        if not as_json:
+            raise
+        print(json.dumps({"ok": False, "error": str(exc)}, indent=2))
+        return 1
+    except Exception as exc:  # noqa: BLE001 — under --json the caller needs a document, not a traceback
+        if not as_json:
+            raise
+        print(json.dumps({"ok": False, "error": f"planning page not rendered ({type(exc).__name__}: {exc})"}, indent=2))
+        return 1
+    if as_json:
+        print(json.dumps(_page_result(repo_root, sprint["id"], "planning", Path(out)), indent=2))
+    else:
+        print(f"Planning page written to: {out}")
     return 0
 
 
@@ -1180,6 +1242,8 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("plan", parents=[common], help="Render (or re-render) the sprint-planning page on demand")
     p.add_argument("--sprint", default=None, metavar="SNN", help="Sprint id (default: the active sprint)")
     p.add_argument("--output", type=Path, default=None, help="Output path (default: .sdlc/reports/sprint-SNN-planning.html)")
+    p.add_argument("--json", action="store_true",
+                   help='Emit {"ok", "sprint", "kind", "output", "rel_output"} (or {"ok": false, "error"}) instead of prose')
 
     p = sub.add_parser("close", parents=[common, write],
                        help="Close the sprint: kept (merged) / carried (with reason) / dropped (with reason)")

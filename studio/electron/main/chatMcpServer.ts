@@ -20,7 +20,7 @@
 // a probe server built exactly this way completed a real initialize/tools-list/tools-call
 // round trip with `claude -p ... --mcp-config <this> --strict-mcp-config --tools
 // "mcp__<server>__<Tool>" --allowedTools "mcp__<server>__<Tool>"` — note --allowedTools is
-// required alongside --tools: --permission-prompts none denies an MCP tool call outright
+// required alongside --tools: --permission-mode dontAsk denies an MCP tool call outright
 // without it, since tool AVAILABILITY (--tools) and permission to actually call it
 // (--allowedTools) are two separate gates.
 //

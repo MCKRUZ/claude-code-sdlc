@@ -13,6 +13,13 @@ export default defineConfig({
     // to tolerate.
     passWithNoTests: false,
     testTimeout: 1000 * 29,
+    // The draft and batch suites set up a REAL project in beforeEach — init_project.py through
+    // the plugin's own venv, then a git repository — and Vitest runs test files in parallel
+    // workers, so under a full run a dozen of those hooks contend for the same CPU and venv at
+    // once. Measured 2026-10-05 after the sprint-view suites joined: the same hooks pass alone
+    // and overrun the 10s default in a full run. The work is real, not a hang, so the hook gets
+    // the same ceiling a test does rather than a flake that reads as a regression.
+    hookTimeout: 1000 * 29,
     setupFiles: ['test/setupTests.ts'],
     // Everything defaults to the plain 'node' environment (main-process tests spawn real
     // subprocesses and touch the real filesystem — jsdom would only add overhead there). A

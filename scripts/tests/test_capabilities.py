@@ -79,3 +79,14 @@ def test_status_json_gains_capabilities_and_keeps_every_existing_key():
 def test_the_markdown_dashboard_does_not_mention_capabilities():
     state = {"project_name": "demo", "current_phase": "0", "phases": {}}
     assert "capabilit" not in gs.generate_dashboard(state, Path("/nonexistent/.sdlc")).lower()
+
+
+def test_the_sprint_capabilities_studio_reads_are_declared_with_the_agreed_shape():
+    """studio-improvements shared contract: Studio's Sprint view keys on these names."""
+    assert caps.CAPABILITIES["sprint-status"] == {
+        "script": "sprint.py", "argv": ["status"], "flags": ["--repo", "--state", "--sprint", "--json"]}
+    assert caps.CAPABILITIES["sprint-plan"] == {
+        "script": "sprint.py", "argv": ["plan"], "flags": ["--repo", "--state", "--sprint", "--json"]}
+    assert caps.CAPABILITIES["sprint-report"] == {
+        "script": "generate_sprint_report.py", "flags": ["--repo", "--state", "--sprint", "--kind", "--json"]}
+    assert {"sprint-status", "sprint-plan", "sprint-report"} <= set(caps.list_capabilities())

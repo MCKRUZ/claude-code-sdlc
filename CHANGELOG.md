@@ -15,6 +15,87 @@
   is now synced — previously absent from the allowlist, so a frozen layer would have stayed
   local forever.
 
+### SDLC Studio — the sprint layer surfaced, CLI compatibility, hardening
+
+Studio shipped with no sprint surface at all: `phases/activities.yaml` declared nothing for the
+Build phase, nothing in `studio/` called `sprint.py`, and a team running `/sdlc-sprint` saw their
+sprint only in a terminal. One defect meanwhile disabled every model-backed feature on an older
+Claude Code, and a handful of medium defects would have bitten a team daily. This change (Batches
+1–2 of `docs/proposals/studio-improvements.md`) fixes those and gives the sprint a read-only view.
+
+- **Works on every current Claude Code.** Studio passed `--permission-prompts none` to every
+  `claude` call — a flag Claude Code 2.1.289 has and 2.1.239 does not, so on the older CLI every
+  chat, draft, review and sign-off failed with `unknown option` and the test fake, which accepted
+  any flag, could not see it. The shared safe arguments are now `--permission-mode dontAsk
+  --strict-mcp-config` (both CLIs; `dontAsk` auto-denies anything not pre-approved, which was the
+  old flag's intent). `shared/claudeContract.ts` names every flag Studio emits
+  (`REQUIRED_CLAUDE_FLAGS`) and `tooling.ts` runs `claude --help` once per detected version to
+  report `missingFlags` on the Claude tool status; Tooling and Settings say "Claude Code <ver>
+  lacks <flags> — update with `claude update`" and the model buttons stay enabled only when
+  nothing is missing. A zero-cost contract test parses the real CLI's help.
+- **Studio drives the plugin beside it.** Auto-detect preferred the newest *cached marketplace*
+  plugin, never the checkout Studio ships in (the README said the opposite). Unpackaged, Studio
+  now prefers `<APP_ROOT>/../scripts` when it carries `capabilities.py` (the marker), and Settings
+  and Tooling show which plugin path and version are in use.
+- **Build ends from Closing, not from the generic sign-off.** The stage sign-off panel had no
+  stage check, so Build could be signed off around `declare_complete.py`. For `build` the panel
+  now says so and links to Closing; `signOff.ts` refuses `build` outright.
+- **Sign-off fails closed and cannot lose a layer.** A `check_gates.py` error (non-zero exit with
+  no MUST lines) was read as "no failures"; a failed re-sign-off could overwrite the previous
+  phase layer with an unreviewed draft. The gate step now fails closed, and the previous layer is
+  set aside as `.superseded-<YYYYMMDD>` (the name `/sdlc-next` uses) before any draft is written
+  and put back if no draft validates — a failed re-sign-off leaves the layer exactly as it was.
+- **Sprint records sync.** `.sdlc/sprints/SNN.md` was not on the sync allowlist (the spec keys and
+  the ledger were), so a sprint planned in Studio stayed local. Added; the layers entry is
+  narrowed to `*.md` so `.superseded-<date>` copies stay local.
+- **Redacted stdout is never parsed as data.** Twenty-eight call sites parsed `entry.stdout` —
+  the console copy, where `token:` and `auth:` values are rewritten — as JSON. Every one now
+  reads `rawStdout(entry)`, and a vitest lint fails the suite on any new `JSON.parse(x.stdout)`.
+- **Path allowlist checked after normalisation.** `specs/../.git/config` passed the allowlist
+  because the match ran before the path was resolved; `..` segments are now rejected first.
+- **The board tells the truth.** The dead "group by epic" is replaced by **group by sprint** (rows
+  carry `sprint`, `nextOwner`, `engReview`, `dataReview`, `dependsOn` from `spec_status.py`), a
+  sprint chip sits on each card, the status filter gains `deferred`, "Nothing is waiting on you"
+  is no longer claimed when nobody is signed in, and "waiting on me" counts `next_owner == me`.
+- **Test infrastructure.** `vitest.config.ts` gives setup hooks the same 29s ceiling tests have:
+  the draft and batch suites build a real project (`init_project.py` through the plugin's venv,
+  then a git repository) in `beforeEach`, and with the sprint-view suites added the full parallel
+  run pushed those hooks past the 10s default on one machine while they passed alone. The work is
+  real, not a hang. Suite: 133 files, 1771 tests (+173), 5 skipped without a live model.
+  The installed `specs/spec-template.md` — a phantom board row and a Closing "unreadable spec"
+  blocker — is excluded by `spec_status.py` and `declare_complete.py` with the same `^\d{4}-`
+  filter `track_specs` and `sprint.py` already apply.
+- **The plugin declares the Build activities.** `phases/activities.yaml` gains a `"build":` block
+  — `sprint` (run, `/sdlc-sprint`; never "done", always available), `refine` (talk,
+  `/sdlc-refine`), `phase-report`, `coach` — and `refine` under Foundation (`"3"`), so Guide and
+  Workflow show the sprint layer with no Studio list to update. `activities_model.validate()` no
+  longer raises on a malformed entry: unknown keys, wrong types, a `done_when` with the wrong
+  arity are each a named problem (`phase <p> / activity <id>: …`), and `stage_readiness.py`
+  degrades to no activities plus a warning rather than failing the report.
+- **Capabilities and `--json` for the sprint scripts.** `capabilities.py` gains `sprint-status`,
+  `sprint-plan` and `sprint-report` (proven against live `--help` by `test_capabilities.py`).
+  `sprint.py status --json` slate rows gain `rel_path` (repo-relative, POSIX) and the sprint
+  object gains `rel_path`; a malformed or unknown `--sprint` prints exactly ONE JSON document
+  (`sprint: null`, empty lists, `has_data: false`, a `note` saying why) with exit 0 instead of
+  prose. `sprint.py plan --json` and `generate_sprint_report.py --json` print `{ok, sprint,
+  kind, output, rel_output}` (or `{ok: false, error}` with the existing exit code). Text output
+  and exit codes without the flags are byte-identical.
+- **The Sprint view.** A `Sprint` entry beside Board in the Build sidebar group, plus the
+  `sprint` panel in Build › Workflow (`PANEL_CONTROLS.sprint`, capability `sprint-status`).
+  `electron/main/sprint.ts` runs `sprint.py status --json` over a fixed argv with the sprint id
+  validated before it reaches the command line (`studio:getSprintStatus`), and renders the
+  planning or review page through `generate_sprint_report.py --json`
+  (`studio:renderSprintReport`), opened with the existing `studio:openReport`. `SprintBoard.tsx`
+  shows the header, slate, readiness gaps, verdicts pending, open handoffs, mix against target,
+  WIP, the advisory build order and next-up, dependency gaps, decisions due and carried-in specs;
+  `shared/sprintModel.ts` holds the pure helpers. Read-only — no write verb runs from Studio yet
+  (Batch 3). Honest by design: `has_data: false` and `null` read "no data", never 0; no
+  per-person aggregation; no velocity, points or estimates anywhere.
+- **Protected core byte-for-byte unchanged:** `check_spec.py`, `check_gates.py`,
+  `advance_phase.py`, `phase_model.py`, `phase-registry.yaml`, `section-evaluator`, `harness/**`,
+  `/sdlc-coach`, `/sdlc-spec`, `new_spec.py`, `scorecard.py`, `generate_status.py`,
+  `templates/state-init.yaml`. See `docs/proposals/studio-improvements.md`.
+
 ### Sprint team layer — `/sdlc-sprint` and `/sdlc-refine`
 
 The Build loop had a backlog, a Definition of Ready, and a WIP cap — and no way for a team to

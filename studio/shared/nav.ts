@@ -10,7 +10,7 @@
 import { stageStateLabel } from './stageLabel'
 
 /** The screens Studio can show inside a project. */
-export type Area = 'documents' | 'build' | 'explain' | 'closing' | 'settings'
+export type Area = 'documents' | 'build' | 'sprint' | 'explain' | 'closing' | 'settings'
 
 /** Where an entry takes you: an area, and for documents, which stage's. */
 export interface NavTarget {
@@ -42,11 +42,13 @@ export function groupStages<T extends { id: string }>(stages: T[]): { label: str
 
 // --- where entries lead -------------------------------------------------------------------
 
-export type BuildView = 'board' | 'going' | 'closing' | 'documents'
+export type BuildView = 'board' | 'sprint' | 'going' | 'closing' | 'documents'
 
 /** Build Loop's own screens — everything that used to be a top tab except the documents. */
 export const BUILD_VIEWS: { id: BuildView; label: string }[] = [
   { id: 'board', label: 'Board' },
+  // The sprint the team runs, beside the board it runs it on (proposal studio-improvements, D2).
+  { id: 'sprint', label: 'Sprint' },
   { id: 'going', label: 'How it is going' },
   { id: 'closing', label: 'Closing' },
   { id: 'documents', label: 'Documents' },
@@ -59,6 +61,7 @@ export function targetForStage(stageId: string): NavTarget {
 export function targetForBuildView(view: BuildView): NavTarget {
   switch (view) {
     case 'board': return { area: 'build' }
+    case 'sprint': return { area: 'sprint' }
     case 'going': return { area: 'explain' }
     case 'closing': return { area: 'closing' }
     case 'documents': return { area: 'documents', stageId: BUILD_STAGE_ID }
@@ -79,6 +82,7 @@ export function activeNav(area: Area, viewedStageId: string | undefined, current
   switch (area) {
     case 'settings': return { stageId: null, buildView: null, footer: 'settings' }
     case 'build': return { stageId: BUILD_STAGE_ID, buildView: 'board', footer: null }
+    case 'sprint': return { stageId: BUILD_STAGE_ID, buildView: 'sprint', footer: null }
     case 'explain': return { stageId: BUILD_STAGE_ID, buildView: 'going', footer: null }
     case 'closing': return { stageId: BUILD_STAGE_ID, buildView: 'closing', footer: null }
     case 'documents': {

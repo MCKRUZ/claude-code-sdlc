@@ -36,8 +36,14 @@ const ALLOWLIST_PATTERNS: RegExp[] = [
   // an edit would have stayed on one person's machine, silently.
   /^\.sdlc\/team\.yaml$/,
   // The frozen-layer summary a phase sign-off writes. Without this a layer Studio generated
-  // would sit on one machine forever — save() only ever pushes what this list allows.
-  /^\.sdlc\/context\/layers\/.+$/,
+  // would sit on one machine forever — save() only ever pushes what this list allows. Narrowed
+  // to `*.md` (studio-improvements F5): the `.superseded` copy a re-sign-off leaves beside it is
+  // this machine's safety net, not a shared document.
+  /^\.sdlc\/context\/layers\/[^/]+\.md$/,
+  // Sprint records (`sprint.py new` writes `.sdlc/sprints/S07.md`). The spec keys and the
+  // ledger it writes were already here; the record itself was not, so a sprint planned on one
+  // machine stayed there (F5).
+  /^\.sdlc\/sprints\/S\d{2,}\.md$/,
   // The reference-document catalogue and per-document summaries (spec 0026): the DOC-NNN ids a
   // person froze are other people's ids too, so they are shared like the rest of the project.
   // `.sdlc/reports/` is deliberately NOT here — generated report pages stay on this computer.
@@ -45,8 +51,17 @@ const ALLOWLIST_PATTERNS: RegExp[] = [
   /^specs\//,
 ]
 
+/** A path with a `.` or `..` segment, or an empty one (`a//b`), is never one of this project's
+ * documents, whatever it resolves to. Checked BEFORE the pattern match (studio-improvements F8):
+ * `specs/../.git/config` matched `^specs/` and resolved inside the project, so both checks
+ * passed and a file Studio must never touch was in reach. */
+export function hasDotSegment(relPath: string): boolean {
+  return relPath.replace(/\\/g, '/').split('/').some((seg) => seg === '' || seg === '.' || seg === '..')
+}
+
 export function isAllowlisted(relPath: string): boolean {
   const normalized = relPath.replace(/\\/g, '/')
+  if (hasDotSegment(normalized)) return false
   return ALLOWLIST_PATTERNS.some((p) => p.test(normalized))
 }
 
