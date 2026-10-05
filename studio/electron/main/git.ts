@@ -61,6 +61,18 @@ export async function ghJson<T>(args: string[], cwd: string): Promise<T> {
   }
 }
 
+/** Is there a fetched copy of `origin/<branch>` here? Asked with `for-each-ref`, which prints
+ * nothing and succeeds when the answer is no, so a project with no shared repository does not put
+ * a failed command in the Console just to learn that. */
+export async function remoteBranchExists(cwd: string, branch: string): Promise<boolean> {
+  if (!branch) return false
+  try {
+    return (await runGit(['for-each-ref', '--format=%(refname)', `refs/remotes/origin/${branch}`], cwd)).trim().length > 0
+  } catch {
+    return false
+  }
+}
+
 /** A git call whose failure is an expected, meaningful outcome (e.g. "does this ref exist,"
  * "will this push be accepted") rather than an error — returns the ConsoleEntry either way
  * instead of throwing, so the caller can branch on entry.ok without a try/catch. */

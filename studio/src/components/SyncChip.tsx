@@ -42,6 +42,16 @@ export function SyncChip({ syncState }: { syncState: SyncState }) {
       return <div className={`${base} bg-amber-50 text-amber-800`}>{dot}{`Waiting for ${syncState.approver}`}</div>
     case 'waitingForChecks':
       return <div className={`${base} bg-slate-100 text-slate-500`}>{dot}Waiting for checks</div>
+    case 'localOnly':
+      return (
+        <div
+          className={`${base} flex-col items-start gap-0.5 bg-slate-100 text-slate-600`}
+          title="This project is not connected to a shared repository, so nothing syncs. To work with a team, connect one (git remote add origin <the repository's address>) and Studio will start syncing."
+        >
+          <span className="flex items-center gap-2">{dot}Saved on this computer only</span>
+          <span className="pl-3.5 font-normal text-slate-500">Not shared with a team yet</span>
+        </div>
+      )
     case 'error':
       return (
         <div className={`${base} bg-red-50 text-[var(--color-command-error)]`} title={syncState.message}>

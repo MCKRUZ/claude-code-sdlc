@@ -5,12 +5,14 @@ What a person finds when they use Studio for the first time and a few days in, f
 sizes (1280, 1024 and 640 px wide), clicked every read-only control, and used a stand-in for the live model.
 
 Everything below was observed in the real window against the real plugin. Nothing here has been fixed yet.
-The first nine are already recorded in `studio/test/smoke/knownIssues.ts`, so the suite reports them without
+Items 2 to 9 are still recorded in `studio/test/smoke/knownIssues.ts`, so the suite reports them without
 failing; fixing one means deleting its entry.
 
 ## Bugs, most serious first
 
-1. **A brand-new project shows a red "Sync error" on every screen.** A project with no shared repository (which
+1. **[Fixed] A brand-new project shows a red "Sync error" on every screen.** Now reads "Saved on this computer
+   only / Not shared with a team yet", the Console no longer lists the failed checks, and a save says in plain
+   words that the project is not connected to a shared repository. The original finding follows. A project with no shared repository (which
    is every project when it is created) fails the background sync, and the sidebar says "Sync error" in red. The
    reason is only in a hover tooltip. The Console lists the same two failed checks in red, with a bare "EXIT 128".
    Cause: `sync.ts` `pull()` runs `git fetch origin`, which fails when there is no `origin`.
