@@ -611,6 +611,115 @@ export interface RegistryResult {
   warnings: string[]
 }
 
+/** What a person chooses from when preparing the workshop brief (`workshop_brief.py candidates`, spec
+ * 0032), in the shape the form uses. `hasData` false means an input is missing: the form shows `notes`
+ * (what to run next) instead of empty lists and zero counts. */
+export interface BriefSource {
+  side: 'A' | 'B'
+  /** The document reference ("DOC-001 s2.1") and the passage quoted from it. */
+  document: string
+  quote: string
+}
+
+export interface BriefContradiction {
+  id: string
+  title: string
+  severity: string
+  /** The question for the room. */
+  question: string
+  sources: BriefSource[]
+  /** The command's own pre-tick rule (blocks-outcome or shapes-design). */
+  recommended: boolean
+}
+
+export interface BriefQuestion {
+  id: string
+  question: string
+  /** The workshop agenda block it belongs to. */
+  block: string
+  /** `workshop`, `pre-workshop` (emailed instead of discussed) or `interview` (neither). */
+  route: string
+}
+
+export interface BriefDocument {
+  id: string
+  filename: string
+  topics: string
+}
+
+export interface BriefLimits {
+  contradictions: number
+  questions: number
+  /** Inclusive range for decisions on the page, counting the template's standing ones. */
+  decisions: [number, number]
+  /** Inclusive range for load-bearing documents. */
+  loadBearing: [number, number]
+}
+
+export type BriefCandidatesResult =
+  | { ok: false; error: string }
+  | {
+      ok: true
+      hasData: boolean
+      notes: string[]
+      contradictions: BriefContradiction[]
+      questions: BriefQuestion[]
+      documents: BriefDocument[]
+      limits: BriefLimits
+      /** Decisions the template already carries; the person supplies the rest. */
+      standingDecisions: number
+      /** A workshop-brief.md already exists: building replaces it, and only if confirmed. */
+      existingBrief: boolean
+      provisionalIds: boolean
+    }
+
+export interface BriefAttendee {
+  name: string
+  role: string
+}
+
+export interface BriefClaim {
+  text: string
+  /** A DOC-NNN from the registry; a claim without one is refused. */
+  docRef: string
+}
+
+/** Everything the person chose and wrote. The main process validates all of it again. */
+export interface BriefSelections {
+  /** CON-NN ids on the page, in the order shown. */
+  contradictions: string[]
+  /** Q-NN ids ticked for the page (workshop-routed only); pre-workshop ones are added by the main process. */
+  questions: string[]
+  /** DOC-NNN ids named as load-bearing. */
+  loadBearing: string[]
+  claims: BriefClaim[]
+  /** Engagement-specific decisions the person added (the template's standing ones are not repeated here). */
+  decisions: string[]
+  logistics: {
+    clientName: string
+    dateTimeLocation: string
+    duration: string
+    facilitator: string
+    attendees: BriefAttendee[]
+  }
+  /** The person ticked "Replace the existing brief"; the only way `--force` is ever passed. */
+  replaceExisting: boolean
+}
+
+export type BuildBriefResult =
+  | { ok: false; error: string }
+  | {
+      ok: true
+      /** Repo-relative path of the brief written. */
+      path: string
+      contradictionsOnPage: number
+      questionsOnPage: number
+      /** Q-NN ids routed pre-workshop, reported as emailed instead of placed on the page. */
+      emailedInstead: string[]
+      notes: string[]
+      lint: Array<{ line: number; message: string }>
+    }
+
 /** A stage's own guidance file from the plugin (its `definition`), as text. */
 export interface StageGuide {
   ok: boolean
@@ -1353,6 +1462,10 @@ export interface StudioApi {
   writeRegistry(projectPath: string): Promise<RegistryResult>
   /** Pushed on every change to a batch; `projectPath` says whose it is. */
   onBatchState(callback: (update: { projectPath: string; state: BatchState }) => void): () => void
+  /** What the brief can be chosen from (read-only, writes nothing). */
+  getBriefCandidates(projectPath: string): Promise<BriefCandidatesResult>
+  /** Validates the selections, then builds the one-page brief. Replaces an existing one only when confirmed. */
+  buildBrief(projectPath: string, selections: BriefSelections): Promise<BuildBriefResult>
   /** Reads GitHub's own history (read-only: nothing is opened, merged or changed) to say which
    * delivery rails have actually fired, and writes the result to pipeline-proof.md. Needs the
    * `gh` CLI signed in on this machine; says so plainly when it is not. */

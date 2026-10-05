@@ -13,7 +13,7 @@ describe('computeActivityRows', () => {
       capabilities: ['activities', 'rules-check'],
       activities: [
         activity({ id: 'analysis', kind: 'run' }),
-        activity({ id: 'brief', kind: 'draft' }),
+        activity({ id: 'some-draft', kind: 'draft' }),
         activity({ id: 'mystery-check', kind: 'check' }),
         activity({ id: 'rules-check', kind: 'check' }),
       ],

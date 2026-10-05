@@ -40,6 +40,7 @@ export const PANEL_CONTROLS: Readonly<Record<string, { capability: string }>> = 
   enhance: { capability: 'narrative-status' },
   // `record_findings.py report --json` predates activities, so any plugin that declares them has it.
   review: { capability: 'activities' },
+  brief: { capability: 'brief-candidates' },
 }
 
 /** Starting documents from templates needs the plugin to know about activities at all. */
