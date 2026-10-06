@@ -19,8 +19,8 @@ This kit is the canonical source, but the easy path for a team is the **`claude-
 plugin**, which bundles a synced copy and lays it down for you:
 
 ```
-/plugin marketplace add MCKRUZ/claude-code-sdlc
-/plugin install claude-code-sdlc@mckruz
+/plugin marketplace add splashthree/claude-code-sdlc
+/plugin install claude-code-sdlc@togo
 # then, per repo:
 /sdlc-setup        # initializes .sdlc/ AND installs this harness
 # or, to (re)install just the harness:
