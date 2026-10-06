@@ -6,6 +6,12 @@
 import { afterEach } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
+// Tests that run the real plugin scripts (sprintEndToEnd, draftEndToEnd, …) spawn Python
+// directly; on the Windows runner a piped stdout is cp1252 and the plugin's '→' crashes it.
+// The app itself sets these on every spawn (commandRunner.ts); the tests inherit them here.
+process.env.PYTHONUTF8 ??= '1'
+process.env.PYTHONIOENCODING ??= 'utf-8'
+
 afterEach(() => {
   cleanup()
 })

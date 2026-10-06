@@ -17,7 +17,9 @@ import type {
 import { MOTION_DURATIONS, MOTION_STAGGERS } from '../src/motion/contract'
 
 const root = join(__dirname, '..', 'src')
-const read = (rel: string) => readFileSync(join(root, rel), 'utf8')
+// The Windows runner checks out with CRLF on purpose (ci.yml); the multi-line expectations below
+// are written with \n, so line endings are normalised here rather than in every assertion.
+const read = (rel: string) => readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n')
 const index = read('index.css')
 const tokens = read('theme/tokens.css')
 const type = read('theme/type.css')

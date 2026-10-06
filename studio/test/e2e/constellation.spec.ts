@@ -117,7 +117,18 @@ test.describe('[observatory S2] the dependency constellation on the Sprint scree
 
   test('toggling to Graph gives a canvas or the WebGL notice, and never a page error', async () => {
     const figure = page.getByTestId('constellation-sprint')
-    await figure.getByRole('button', { name: /^Graph/ }).click()
+    const graph = figure.getByRole('button', { name: /^Graph/ })
+    // On a runner without hardware graphics (the ubuntu job under xvfb) or in a window under
+    // MIN_GRAPH_WIDTH, the shell disables the toggle and says why in its title — the honest
+    // refusal IS the expected outcome there, so the test reads the reason instead of clicking.
+    if (await graph.isDisabled()) {
+      expect(await graph.getAttribute('title')).toMatch(/Graphics are not available|Widen the window/)
+      await expect(figure).toHaveAttribute('data-surface', 'table')
+      await expect(figure.locator('canvas')).toHaveCount(0)
+      expect(pageErrors).toEqual([])
+      return
+    }
+    await graph.click()
     await expect
       .poll(async () => (await figure.locator('canvas').count()) > 0 || (await figure.getByText(WEBGL_NOTICE).count()) > 0, { timeout: 30_000 })
       .toBe(true)

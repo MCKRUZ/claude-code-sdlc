@@ -83,8 +83,11 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
 
   test.afterAll(async () => {
     test.setTimeout(120_000)
-    await page?.screenshot({ path: 'test/screenshots/studio-improvements-sprint.png' }).catch(() => {})
-    await app?.close().catch(() => {})
+    // On the ubuntu runner this hook once ate the whole 120 s: a screenshot of a window that was
+    // tearing down never returned. Each step gets its own ceiling so one slow step cannot strand
+    // the rest (the screenshot is a convenience, not an assertion).
+    await page?.screenshot({ path: 'test/screenshots/studio-improvements-sprint.png', timeout: 15_000 }).catch(() => {})
+    await Promise.race([app?.close().catch(() => {}), new Promise((r) => setTimeout(r, 30_000))])
     try {
       if (workspace) rmSync(workspace, { recursive: true, force: true })
     } catch {

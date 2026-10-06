@@ -267,7 +267,11 @@ export function runCommand(
       return
     }
 
-    const env = opts?.env ? { ...process.env, ...opts.env } : undefined
+    // Python on Windows encodes a piped stdout in the console code page (cp1252), and the plugin
+    // prints '→' and '·' — `sprint.py new` died with UnicodeEncodeError on the Windows runner.
+    // PYTHONUTF8 makes every spawned script write UTF-8 regardless of the machine's locale; a
+    // caller's own env still wins.
+    const env = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', ...(opts?.env ?? {}) }
 
     // spawn() usually reports a bad command through the 'error' event below, asynchronously —
     // but not always. Node's CVE-2024-27980 fix makes an invalid combination (a Windows .cmd

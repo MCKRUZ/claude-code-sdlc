@@ -180,6 +180,9 @@ describe('useDraftJob: progress and cancel', () => {
     vi.useFakeTimers()
     const { result } = setup()
     await act(async () => { await result.current.start(ENHANCE) })
+    // The clearInterval runs in the effect cleanup of the commit that moves phase off 'running';
+    // under load (ubuntu CI) that commit could land after the act above, so flush once more.
+    await act(async () => { await Promise.resolve() })
     expect(vi.getTimerCount()).toBe(0)
   })
 

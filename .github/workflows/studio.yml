@@ -40,6 +40,12 @@ concurrency:
   group: studio-${{ github.ref }}
   cancel-in-progress: true
 
+# Python on Windows encodes a piped stdout in cp1252 and the plugin prints '→'/'·' — every
+# step that reaches a plugin script speaks UTF-8 (the app and the vitest setup set the same).
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
+
 jobs:
   studio:
     # Spec 0008's own acceptance check ("runs on Windows and macOS from the same source") had

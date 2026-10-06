@@ -29,7 +29,7 @@ function deps(over: Partial<ResolveCodeHostDeps> & { remote?: string | null; fil
   const d: ResolveCodeHostDeps = {
     runGit: async () => { if (over.remote === null) throw new Error('fatal: No such remote'); return over.remote ?? ADO },
     azJson: az as unknown as ResolveCodeHostDeps['azJson'], runGh: gh, ghJson: async <T,>() => [] as unknown as T,
-    env: {}, readFile: (p) => over.files?.[p.split('/').slice(-2).join('/')] ?? over.files?.[p.split('/').pop()!] ?? null,
+    env: {}, readFile: (p) => { const parts = p.split(/[\\/]/); return over.files?.[parts.slice(-2).join('/')] ?? over.files?.[parts[parts.length - 1]!] ?? null },
     found: { gh: true, az: true }, ...over,
   }
   return { d, az, gh, project }
