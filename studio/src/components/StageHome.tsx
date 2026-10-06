@@ -40,8 +40,9 @@ interface Opening {
  * are the same switch; the name is kept for callers that import it from here. */
 export const SPINE_COLLAPSED_KEY = SPINE_COLLAPSED_STORAGE_KEY
 
-/** Spine body height per density (§5.1): 168 comfortable, 120 compact. */
-const SPINE_HEIGHT = { comfortable: 168, compact: 120 } as const
+/** Spine body height per density (§5.1): 160 comfortable (capped — the strip above already shows
+ * the stations, so the band is context, not the hero), 120 compact. */
+export const SPINE_HEIGHT = { comfortable: 160, compact: 120 } as const
 
 /** The Spine's data from the plugin's own rows, through the scene's model (`spineModel.ts` is the
  * one source of truth for station shape — this file used to carry a copy). The current stage is

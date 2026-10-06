@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BatchState, ChatActivity, ConsoleEntry, DraftProgressEvent, StudioApi, SyncState } from '../../shared/types'
+import type { BatchState, ChatActivity, CommandCenterApi, ConsoleEntry, DraftProgressEvent, StudioApi, SyncState } from '../../shared/types'
 
 // The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
 // no arbitrary command execution — every call here maps to exactly one narrow main-process
@@ -7,7 +7,7 @@ import type { BatchState, ChatActivity, ConsoleEntry, DraftProgressEvent, Studio
 // when it needs to run anything, so every command Studio runs is recorded to the console.
 // Typed against the shared StudioApi interface, so a mismatch with what the renderer
 // expects is a compile error here, not a runtime surprise.
-const studio: StudioApi = {
+const studio: StudioApi & CommandCenterApi = {
   detectTooling: () => ipcRenderer.invoke('studio:detectTooling'),
   getSettings: () => ipcRenderer.invoke('studio:getSettings'),
   setToolOverride: (kind, path) => ipcRenderer.invoke('studio:setToolOverride', kind, path),
@@ -162,6 +162,20 @@ const studio: StudioApi = {
     ipcRenderer.invoke('studio:answerChatQuestion', projectPath, stageId, questionId, optionLabel),
   resolveChatProposal: (projectPath, stageId, proposalId, outcome, finalValue, actor) =>
     ipcRenderer.invoke('studio:resolveChatProposal', projectPath, stageId, proposalId, outcome, finalValue, actor),
+
+  // The command center (togo-command-center.md §2.2, §2.4): five P-class reads, six writes that
+  // each resolve the actor in main and run one fixed argv. Pass-through only.
+  getCommandCenter: (projectPath, since, refresh) => ipcRenderer.invoke('studio:getCommandCenter', projectPath, since, refresh),
+  getSlateProposal: (projectPath, sprintId) => ipcRenderer.invoke('studio:getSlateProposal', projectPath, sprintId),
+  getSpecCard: (projectPath, specPath, developer) => ipcRenderer.invoke('studio:getSpecCard', projectPath, specPath, developer),
+  getReadinessAll: (projectPath) => ipcRenderer.invoke('studio:getReadinessAll', projectPath),
+  getDecisions: (projectPath) => ipcRenderer.invoke('studio:getDecisions', projectPath),
+  runSprintVerb: (projectPath, request) => ipcRenderer.invoke('studio:runSprintVerb', projectPath, request),
+  openDecision: (projectPath, decision, owner) => ipcRenderer.invoke('studio:openDecision', projectPath, decision, owner),
+  decideDecision: (projectPath, id, resolution) => ipcRenderer.invoke('studio:decideDecision', projectPath, id, resolution),
+  confirmTier: (projectPath, specPath) => ipcRenderer.invoke('studio:confirmTier', projectPath, specPath),
+  assignRoles: (projectPath, specPath, roles) => ipcRenderer.invoke('studio:assignRoles', projectPath, specPath, roles),
+  checkHandOff: (projectPath, specPath, developer) => ipcRenderer.invoke('studio:checkHandOff', projectPath, specPath, developer),
 }
 
 contextBridge.exposeInMainWorld('studio', studio)

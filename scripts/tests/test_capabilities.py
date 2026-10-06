@@ -97,3 +97,28 @@ def test_the_import_outcomes_capability_is_declared_with_the_agreed_shape():
     assert caps.CAPABILITIES["import-outcomes"] == {
         "script": "import_outcomes.py", "flags": ["--since", "--repo", "--state", "--host", "--json"]}
     assert "import-outcomes" in caps.list_capabilities()
+
+
+def test_the_command_center_capabilities_are_declared_with_the_agreed_shape():
+    """togo-command-center.md §2.6: Studio disables a control on an older plugin by these names,
+    so the names and the flags behind them are a contract, not a convenience."""
+    assert caps.CAPABILITIES["sprint-list"] == {
+        "script": "sprint.py", "argv": ["list"], "flags": ["--repo", "--state", "--json"]}
+    assert caps.CAPABILITIES["sprint-log"] == {
+        "script": "sprint.py", "argv": ["log"], "flags": ["--since", "--sprint", "--json"]}
+    assert caps.CAPABILITIES["sprint-carry"] == {
+        "script": "sprint.py", "argv": ["carry"], "flags": ["--spec", "--to", "--reason", "--by"]}
+    assert caps.CAPABILITIES["sprint-edit"] == {
+        "script": "sprint.py", "argv": ["edit"], "flags": ["--sprint", "--goal", "--by"]}
+    assert caps.CAPABILITIES["sprint-write"] == {
+        "script": "sprint.py", "argv": ["slate"], "flags": ["--spec", "--by", "--override", "--reason"]}
+    assert caps.CAPABILITIES["confirm-tier"] == {
+        "script": "spec_transition.py", "argv": ["confirm-tier"], "flags": ["--by"]}
+    assert caps.CAPABILITIES["assign-roles"] == {
+        "script": "spec_transition.py", "argv": ["assign"], "flags": ["--developer", "--checker", "--by"]}
+    assert caps.CAPABILITIES["handoff-check"] == {"script": "handoff.py", "flags": ["--check", "--json"]}
+    assert caps.CAPABILITIES["findings-json"] == {
+        "script": "record_findings.py", "argv": ["report"], "flags": ["--json", "--spec"]}
+    assert caps.CAPABILITIES["readiness-all"] == {"script": "spec_readiness.py", "flags": ["--all", "--json"]}
+    assert {"sprint-list", "sprint-log", "sprint-carry", "sprint-edit", "sprint-write", "confirm-tier",
+            "assign-roles", "handoff-check", "findings-json", "readiness-all"} <= set(caps.list_capabilities())

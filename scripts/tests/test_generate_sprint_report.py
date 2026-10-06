@@ -661,3 +661,24 @@ class TestCliJson:
         elsewhere = tmp_path / "elsewhere" / "page.html"
         assert gsr.rel_output(repo, elsewhere) == str(elsewhere)
         assert gsr.rel_output(repo, repo / ".sdlc" / "reports" / "x.html") == ".sdlc/reports/x.html"
+
+
+# ── carry-over recurrence sees a mid-sprint `sprint.py carry` (togo-command-center §2.5 row 3) ──
+
+class TestRecurrenceSeesMidSprintCarry:
+    def test_review_counts_a_carry_made_without_closing(self, tmp_path):
+        """`sprint.py carry` writes close's exact `carried` event, so the review page's per-spec
+        recurrence counts it alongside the carries recorded at close — no second ledger, no reshaping."""
+        sprint = pytest.importorskip("sprint")
+        repo = make_repo(tmp_path)  # S07 open; 0002 in S07; the ledger already holds 0002 carried S06→S07 and S07→S08
+        assert sprint.main(["new", "--repo", str(repo), "--sprint", "S09", "--goal", "Next", "--start", "2026-10-26",
+                            "--target", "3", "--by", "Priya"]) == 0
+        assert sprint.main(["carry", "--repo", str(repo), "--spec", "0002", "--to", "S09",
+                            "--reason", "sandbox still down", "--by", "Priya"]) == 0
+        carried = [e for e in gsr.read_ledger(repo) if e.get("event") == "carried" and e.get("spec") == "0002"]
+        assert len(carried) == 3 and carried[-1]["sprint"] == "S07" and carried[-1]["to_sprint"] == "S09"
+        assert set(carried[-1]) == set(carried[0])  # the close path's shape, byte for byte in its keys
+        view = full_view(repo, state="closed")
+        page = gsr.generate(repo, "S07", kind="review", view=view).read_text(encoding="utf-8")
+        assert "<code>0002</code></td><td>3</td>" in page
+        assert "sandbox still down" in page  # this sprint's carried/dropped ledger table lists it with its reason

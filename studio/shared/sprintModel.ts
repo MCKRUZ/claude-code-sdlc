@@ -72,7 +72,8 @@ export function groupVerdicts(pending: readonly SprintVerdictPending[]): Array<{
 
 export type ChipTone = 'neutral' | 'good' | 'attention' | 'muted'
 
-/** planning / ready / closed as a chip; anything else the plugin may say later is shown as it is. */
+/** planning / ready / closed as a chip; anything else the plugin may say later is shown as it is.
+ * Kept for the old Sprint board; the command-center screens use `sprintStateChip` below. */
 export function stateChip(state: string): { label: string; tone: ChipTone } {
   switch (state) {
     case 'planning': return { label: 'planning', tone: 'attention' }
@@ -80,6 +81,46 @@ export function stateChip(state: string): { label: string; tone: ChipTone } {
     case 'closed': return { label: 'closed', tone: 'muted' }
     default: return { label: state || 'unknown', tone: 'neutral' }
   }
+}
+
+/** The sprint's state as ONE chip on every command-center screen (header, planning, close) —
+ * the kit tone names, spelled here so `shared/` stays free of the renderer. A state is not a
+ * measured wait or a host verdict, so it never wears amber or green (visual §8 #4): `planning`
+ * is a neutral chip with a dot, `ready` is "now" (the current tone), `closed` is neutral and
+ * muted; a word the plugin adds later is shown as it is, neutral. */
+export type SprintStateTone = 'neutral' | 'current'
+
+export function sprintStateChip(state: string): { label: string; tone: SprintStateTone; dot: boolean; muted: boolean } {
+  switch (state) {
+    case 'planning': return { label: 'planning', tone: 'neutral', dot: true, muted: false }
+    case 'ready': return { label: 'ready', tone: 'current', dot: true, muted: false }
+    case 'closed': return { label: 'closed', tone: 'neutral', dot: false, muted: true }
+    default: return { label: state || 'unknown', tone: 'neutral', dot: false, muted: false }
+  }
+}
+
+/** Risk chips keep the kit's tones everywhere a tier is drawn (visual §2): HIGH = error,
+ * MEDIUM = warn, LOW = neutral; a tier the plugin wrote in another word is neutral too — never a
+ * colour Studio chose. ONE table, so the Board, the lanes, planning and the spec card agree. */
+export type RiskTone = 'error' | 'warn' | 'neutral'
+
+export function riskTone(risk: string): RiskTone {
+  switch (risk.trim().toUpperCase()) {
+    case 'HIGH': return 'error'
+    case 'MEDIUM': return 'warn'
+    default: return 'neutral'
+  }
+}
+
+/** The Definition-of-Ready verdict as ONE chip tone (visual §8 #4): READY is "now" (`current`
+ * with a dot — a passing check is the checker's verdict, never a host success, so never green);
+ * NOT READY is the warn tone the checker's own MUST lines earn; anything else is neutral. */
+export type DorTone = 'current' | 'warn' | 'neutral'
+
+export function dorChipTone(dor: string | null | undefined): DorTone {
+  if (dor === 'READY') return 'current'
+  if (dor === 'NOT READY') return 'warn'
+  return 'neutral'
 }
 
 export function targetLabel(target: number | null): string {

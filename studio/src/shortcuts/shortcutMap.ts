@@ -3,18 +3,21 @@
 // an action the host handles. The map is data so the Shortcuts help dialog renders the same
 // table the listener dispatches from — there is no second list to drift. ⌘W/Q/R/1–9 and the
 // F-keys are deliberately absent: Electron and the OS own them.
-import type { BuildView } from '../../shared/nav'
+import type { BuildView, Home } from '../../shared/nav'
 
-export type ShortcutScope = 'global' | 'project' | 'stageHome' | 'documentView' | 'board' | 'scene'
+/** `lanes` (togo-command-center.md §3.1) is live ONLY while the lane board has focus, exactly as
+ * `scene` is for a graph: the board root carries `data-shortcut-scope="lanes"`. */
+export type ShortcutScope = 'global' | 'project' | 'stageHome' | 'documentView' | 'board' | 'lanes' | 'scene'
 
 /** Headings for the Shortcuts help, in the order the dialog lists the scopes. */
-export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = ['global', 'project', 'stageHome', 'documentView', 'board', 'scene']
+export const SHORTCUT_SCOPE_ORDER: readonly ShortcutScope[] = ['global', 'project', 'stageHome', 'documentView', 'board', 'lanes', 'scene']
 export const SHORTCUT_SCOPE_LABEL: Readonly<Record<ShortcutScope, string>> = {
   global: 'Everywhere',
   project: 'In a project',
   stageHome: 'On a stage',
   documentView: 'In a document',
   board: 'On the Board',
+  lanes: 'In the lanes',
   scene: 'In a graph',
 }
 
@@ -49,9 +52,24 @@ export type ShortcutAction =
   | { type: 'saveField' }
   | { type: 'scene'; command: SceneCommand }
 
-export interface ShortcutBinding {
+/** What a key does inside the lane board (togo-command-center.md §3.1): `j`/`k` roving focus,
+ * `↵` opens the card, `h` the hand-off dialog, `v` the verdict dialog, `Esc` clears. The board
+ * runs these itself from its own keydown (`laneCommandFor`), as the graph does; the help lists
+ * them under "In the lanes". */
+export type LaneCommand = 'next' | 'prev' | 'open' | 'handoff' | 'verdict' | 'clear'
+
+/** The command center's own actions. Kept as a SEPARATE union so `dispatchShortcut`'s switch over
+ * `ShortcutAction` stays exhaustive until P4 widens it to `ShortcutAction | CommandCenterAction`
+ * and spreads `COMMAND_CENTER_BINDINGS` into the listener and the help. `g s` and `g p` need no
+ * new action: they are `buildView` bindings in `SHORTCUT_MAP` already. */
+export type CommandCenterAction =
+  | { type: 'lane'; command: LaneCommand }
+  | { type: 'home'; home: Home }
+  | { type: 'steering' }
+
+export interface ShortcutBinding<A = ShortcutAction> {
   keys: string[]
-  action: ShortcutAction
+  action: A
   scope: ShortcutScope
   /** Fires even while an input, textarea, select or contenteditable has focus. */
   inInputs?: boolean
@@ -67,6 +85,32 @@ const STAGE_SEQUENCES: ShortcutBinding[] = [
   })),
   { keys: ['g', '.'], action: { type: 'stage', stageId: 'close' }, scope: 'project', label: 'Go to Close' },
 ]
+
+/** A command-center binding: the same row shape, a command-center action. */
+export type CcBinding = ShortcutBinding<CommandCenterAction>
+
+export const LANE_SCOPE_VALUE = 'lanes'
+
+/** The lane board's own keys (togo-command-center.md §3.1). `Esc` is listed for the reader; the
+ * window listener handles Escape before any chord, so the board's keydown is what clears. */
+export const LANE_BINDINGS: readonly CcBinding[] = [
+  { keys: ['j'], action: { type: 'lane', command: 'next' }, scope: 'lanes', label: 'Next card' },
+  { keys: ['k'], action: { type: 'lane', command: 'prev' }, scope: 'lanes', label: 'Previous card' },
+  { keys: ['Enter'], action: { type: 'lane', command: 'open' }, scope: 'lanes', label: 'Open the card' },
+  { keys: ['h'], action: { type: 'lane', command: 'handoff' }, scope: 'lanes', label: 'Hand off' },
+  { keys: ['v'], action: { type: 'lane', command: 'verdict' }, scope: 'lanes', label: 'Record a verdict' },
+  { keys: ['Esc'], action: { type: 'lane', command: 'clear' }, scope: 'lanes', label: 'Clear the focus' },
+]
+
+/** The two homes and steering mode (togo-command-center.md §1, §3.5): `g l` the lifecycle home,
+ * `g t` steering. (`g s` the sprint home and `g p` planning are `buildView` rows in `SHORTCUT_MAP`.) */
+export const COMMAND_CENTER_SEQUENCES: readonly CcBinding[] = [
+  { keys: ['g', 'l'], action: { type: 'home', home: 'lifecycle' }, scope: 'project', label: 'Go to the lifecycle home' },
+  { keys: ['g', 't'], action: { type: 'steering' }, scope: 'project', label: 'Steering mode' },
+]
+
+/** Everything the command center adds, for the listener and the help to spread in. */
+export const COMMAND_CENTER_BINDINGS: readonly CcBinding[] = [...LANE_BINDINGS, ...COMMAND_CENTER_SEQUENCES]
 
 /** The graph's own keys (I6). `Esc` is listed for the reader; the listener handles Escape before
  * any chord, so the figure's keydown is what clears the hover. */
@@ -98,7 +142,8 @@ export const SHORTCUT_MAP: readonly ShortcutBinding[] = [
   { keys: ['Mod+Shift+L'], action: { type: 'density' }, scope: 'global', inInputs: true, label: 'Toggle density' },
   { keys: ['Mod+\\'], action: { type: 'chat' }, scope: 'project', inInputs: true, label: 'Toggle the chat panel' },
   { keys: ['g', 'b'], action: { type: 'buildView', view: 'board' }, scope: 'project', label: 'Go to the Board' },
-  { keys: ['g', 's'], action: { type: 'buildView', view: 'sprint' }, scope: 'project', label: 'Go to the Sprint' },
+  { keys: ['g', 's'], action: { type: 'buildView', view: 'sprint' }, scope: 'project', label: 'Go to the sprint home' },
+  { keys: ['g', 'p'], action: { type: 'buildView', view: 'planning' }, scope: 'project', label: 'Go to sprint planning' },
   { keys: ['g', 'h'], action: { type: 'buildView', view: 'going' }, scope: 'project', label: 'Go to How it is going' },
   { keys: ['g', 'c'], action: { type: 'buildView', view: 'closing' }, scope: 'project', label: 'Go to Closing' },
   { keys: ['g', 'd'], action: { type: 'buildView', view: 'documents' }, scope: 'project', label: 'Go to the Build documents' },
@@ -129,6 +174,32 @@ export function sceneCommandFor(e: KeyLike, isMac = isMacPlatform()): SceneComma
 export function inSceneScope(target: EventTarget | null): boolean {
   if (!target || typeof (target as Element).closest !== 'function') return false
   return (target as Element).closest(`[${SCENE_SCOPE_ATTR}="${SCENE_SCOPE_VALUE}"]`) !== null
+}
+
+/** The lane command a keydown means, from `LANE_BINDINGS` and nothing else — the lane board's
+ * own keydown reads the same table the help renders. Escape resolves to `clear`. Null when the
+ * key is not a lane key. */
+export function laneCommandFor(e: KeyLike, isMac = isMacPlatform()): LaneCommand | null {
+  if (e.key === 'Escape') return 'clear'
+  const chord = chordFromEvent(e, isMac)
+  if (!chord) return null
+  const hit = LANE_BINDINGS.find((b) => b.keys.length === 1 && normalizeChord(b.keys[0]) === chord)
+  return hit && hit.action.type === 'lane' ? hit.action.command : null
+}
+
+/** True when `target` sits inside the lane board (`[data-shortcut-scope="lanes"]`). */
+export function inLaneScope(target: EventTarget | null): boolean {
+  if (!target || typeof (target as Element).closest !== 'function') return false
+  return (target as Element).closest(`[${SCENE_SCOPE_ATTR}="${LANE_SCOPE_VALUE}"]`) !== null
+}
+
+/** The command-center action a two-key sequence means (`g l`, `g t`), or null. For the window
+ * listener once P4 widens `dispatchShortcut`. */
+export function commandCenterSequenceFor(first: string, second: string): CommandCenterAction | null {
+  const a = normalizeChord(first)
+  const b = normalizeChord(second)
+  const hit = COMMAND_CENTER_SEQUENCES.find((x) => x.keys.length === 2 && normalizeChord(x.keys[0]) === a && normalizeChord(x.keys[1]) === b)
+  return hit ? hit.action : null
 }
 
 // --- chord vocabulary ------------------------------------------------------------------------

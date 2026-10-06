@@ -330,3 +330,192 @@ class TestAValueCannotBecomeAnotherField:
         st.defer(spec, reason)
         fm, _ = cs.parse_frontmatter(spec.read_text(encoding="utf-8"))
         assert fm["deferred_reason"] == reason
+
+
+# ---------------------------------------------------------------------------
+# Tōgō command center (togo-command-center.md §2.5 rows 5–6): confirm-tier and assign
+# ---------------------------------------------------------------------------
+
+import json  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+import spec_readiness as sr  # noqa: E402
+import spec_status  # noqa: E402
+import track_specs  # noqa: E402
+import yaml as _yaml  # noqa: E402
+
+SCRIPT = Path(__file__).resolve().parent.parent / "spec_transition.py"
+ROSTER = _yaml.dump({
+    "teams": [{"name": "core", "lead": "@priya-n"}],
+    "people": [
+        {"handle": "@priya-n", "name": "Priya", "team": "core", "roles": ["owner", "lead"]},
+        {"handle": "@sam-k", "name": "Sam", "team": "core", "roles": ["developer"]},
+        {"handle": "@dana", "name": "Dana", "team": "core", "roles": ["checker"]},
+    ],
+})
+ROLE_SPEC = READY_SPEC.replace('team: "core"\n', 'team: "core"\ndeveloper: ""\nchecker: ""\n')
+
+
+def _roster(tmp_path) -> Path:
+    (tmp_path / ".sdlc").mkdir(exist_ok=True)
+    path = tmp_path / ".sdlc" / "team.yaml"
+    path.write_text(ROSTER, encoding="utf-8")
+    return path
+
+
+def _cli(*argv):
+    proc = subprocess.run([sys.executable, str(SCRIPT), *argv], capture_output=True, text=True,
+                          encoding="utf-8", env={"PYTHONIOENCODING": "utf-8", "PATH": ""})
+    return proc.returncode, proc.stdout
+
+
+class TestConfirmTier:
+    def test_writes_the_confirmer_once_and_only_once(self, tmp_path):
+        spec = _spec(tmp_path)
+        first = st.confirm_tier(spec, "Priya N")
+        assert first == {"ok": True, "changed": True, "risk": "HIGH", "confirmed_by": "Priya N",
+                         "message": "HIGH tier confirmed by Priya N."}
+        text = spec.read_text(encoding="utf-8")
+        assert text.count("risk_confirmed_by:") == 1
+        assert cs.parse_frontmatter(text)[0]["risk_confirmed_by"] == "Priya N"
+
+    def test_the_second_run_changes_nothing(self, tmp_path):
+        spec = _spec(tmp_path)
+        st.confirm_tier(spec, "Priya N")
+        before = spec.read_text(encoding="utf-8")
+        again = st.confirm_tier(spec, "Someone Else")
+        assert again["changed"] is False and again["confirmed_by"] == "Priya N"
+        assert spec.read_text(encoding="utf-8") == before
+
+    @pytest.mark.parametrize("name", ["Claude", "the agent", "copilot-bot", "", "   "])
+    def test_an_ai_or_blank_name_is_refused_and_the_spec_untouched(self, tmp_path, name):
+        spec = _spec(tmp_path)
+        before = spec.read_text(encoding="utf-8")
+        with pytest.raises(st.TransitionError) as e:
+            st.confirm_tier(spec, name)
+        assert e.value.kind == "not_a_person"
+        assert spec.read_text(encoding="utf-8") == before
+
+    def test_a_tier_that_is_not_a_tier_cannot_be_confirmed(self, tmp_path):
+        spec = _spec(tmp_path, READY_SPEC.replace("risk: HIGH", "risk: SEVERE"))
+        with pytest.raises(st.TransitionError) as e:
+            st.confirm_tier(spec, "Priya N")
+        assert e.value.kind == "unknown_tier"
+
+    def test_changing_the_tier_clears_the_confirmation_and_says_so(self, tmp_path):
+        spec = _spec(tmp_path)
+        st.confirm_tier(spec, "Priya N")
+        result = st.set_risk(spec, "MEDIUM", authorised_by="Matt K")
+        assert result["confirmation_cleared"] is True
+        assert "confirmation by Priya N no longer applies" in result["message"]
+        fm, _ = cs.parse_frontmatter(spec.read_text(encoding="utf-8"))
+        assert fm["risk"] == "MEDIUM" and fm["risk_confirmed_by"] == ""
+        # And it can be confirmed afresh, for the new tier.
+        assert st.confirm_tier(spec, "Priya N")["changed"] is True
+
+    def test_an_unconfirmed_tier_change_reports_nothing_cleared(self, tmp_path):
+        assert st.set_risk(_spec(tmp_path, READY_SPEC.replace("risk: HIGH", "risk: LOW")), "HIGH")[
+            "confirmation_cleared"] is False
+
+    def test_every_reader_is_byte_identical_with_and_without_the_key(self, tmp_path, monkeypatch):
+        """The key is additive: the protected DoR check, the readiness report, the board row and
+        the backlog tracker must not change a byte of what they say because of it."""
+        spec = _spec(tmp_path)
+        monkeypatch.setattr(spec_status, "gh_json", lambda *a, **k: [])
+
+        def snapshot():
+            text = spec.read_text(encoding="utf-8")
+            return (
+                cs.check_spec_text(text),
+                sr.readiness(spec),
+                spec_status.report_all(tmp_path)["specs"],
+                track_specs.summarize(track_specs.scan_specs(tmp_path / "specs")),
+            )
+        before = json.dumps(snapshot(), sort_keys=True, default=str)
+        st.confirm_tier(spec, "Priya N")
+        assert "risk_confirmed_by" in spec.read_text(encoding="utf-8")
+        assert json.dumps(snapshot(), sort_keys=True, default=str) == before
+
+    def test_the_cli_writes_json_and_never_exits_2(self, tmp_path):
+        spec = _spec(tmp_path)
+        code, out = _cli("--spec", str(spec), "--json", "confirm-tier", "--by", "Priya N")
+        assert code == 0 and json.loads(out)["confirmed_by"] == "Priya N"
+        code, out = _cli("--spec", str(spec), "--json", "confirm-tier", "--by", "Claude")
+        assert code == 1 and json.loads(out)["refusal"]["kind"] == "not_a_person"
+
+
+class TestAssign:
+    def test_round_trips_both_keys(self, tmp_path):
+        spec = _spec(tmp_path, ROLE_SPEC)
+        result = st.assign(spec, "@sam-k", "@dana", _roster(tmp_path))
+        assert result == {"ok": True, "changed": True, "developer": "@sam-k", "checker": "@dana",
+                          "message": "Assigned developer @sam-k and checker @dana."}
+        fm, _ = cs.parse_frontmatter(spec.read_text(encoding="utf-8"))
+        assert (fm["developer"], fm["checker"]) == ("@sam-k", "@dana")
+        # Same bytes handoff.py would leave for the developer line.
+        assert 'developer: "@sam-k"' in spec.read_text(encoding="utf-8")
+
+    def test_a_handle_the_roster_does_not_list_is_refused(self, tmp_path):
+        spec = _spec(tmp_path, ROLE_SPEC)
+        roster = _roster(tmp_path)
+        with pytest.raises(st.TransitionError) as e:
+            st.assign(spec, "@ghost", None, roster)
+        assert e.value.kind == "unknown_developer"
+        with pytest.raises(st.TransitionError) as e:
+            st.assign(spec, None, "@ghost", roster)
+        assert e.value.kind == "unknown_checker"
+
+    def test_without_a_roster_any_handle_goes(self, tmp_path):
+        assert st.assign(_spec(tmp_path, ROLE_SPEC), "@anyone", None, None)["developer"] == "@anyone"
+
+    def test_the_developer_may_not_be_the_checker_in_the_handoffs_own_words(self, tmp_path):
+        import handoff
+        spec = _spec(tmp_path, ROLE_SPEC)
+        with pytest.raises(st.TransitionError) as e:
+            st.assign(spec, "@sam-k", "@sam-k", _roster(tmp_path))
+        assert e.value.kind == "developer_is_checker"
+        assert str(e.value) == handoff.SELF_CHECK_MESSAGE.format(developer="@sam-k")
+        # Also when the clash is with a value already on file.
+        st.assign(spec, "@sam-k", None, _roster(tmp_path))
+        with pytest.raises(st.TransitionError):
+            st.assign(spec, None, "@sam-k", _roster(tmp_path))
+
+    @pytest.mark.parametrize("status", ["in-flight", "merged"])
+    def test_a_developer_change_on_a_spec_past_ready_is_refused_but_a_checker_change_is_not(self, tmp_path, status):
+        spec = _spec(tmp_path, ROLE_SPEC.replace("status: draft", f"status: {status}")
+                     .replace('developer: ""', 'developer: "@sam-k"'))
+        with pytest.raises(st.TransitionError) as e:
+            st.assign(spec, "@priya-n", None, _roster(tmp_path))
+        assert e.value.kind == "already_in_flight"
+        assert st.assign(spec, None, "@dana", _roster(tmp_path))["checker"] == "@dana"
+
+    def test_nothing_asked_and_nothing_to_change_are_both_honest(self, tmp_path):
+        spec = _spec(tmp_path, ROLE_SPEC)
+        with pytest.raises(st.TransitionError) as e:
+            st.assign(spec)
+        assert e.value.kind == "nothing_to_assign"
+        st.assign(spec, "@sam-k", None, _roster(tmp_path))
+        before = spec.read_text(encoding="utf-8")
+        assert st.assign(spec, "@sam-k", None, _roster(tmp_path))["changed"] is False
+        assert spec.read_text(encoding="utf-8") == before
+
+    def test_handoff_then_succeeds_with_a_preset_checker_and_refuses_the_self_check(self, tmp_path, monkeypatch):
+        import handoff as h
+        repo = tmp_path
+        spec = _spec(repo, ROLE_SPEC.replace('owner: "@MCKRUZ"', 'owner: "@priya-n"'))  # on the roster
+        roster = _roster(repo)
+        monkeypatch.setattr(h, "find_existing_handoff", lambda *a, **k: None)
+        st.assign(spec, None, "@dana", roster)
+        would = h.check_handoff(repo, spec, "@sam-k", None)
+        assert would["ok"] and would["would"]["checker"] == "@dana"
+        with pytest.raises(h.HandoffError) as e:
+            h.check_handoff(repo, spec, "@dana", None)
+        assert e.value.kind == "developer_is_checker"
+
+    def test_the_cli_needs_a_human_by(self, tmp_path):
+        spec = _spec(tmp_path, ROLE_SPEC)
+        code, out = _cli("--spec", str(spec), "--json", "assign", "--developer", "@sam-k", "--by", "Claude")
+        assert code == 1 and json.loads(out)["refusal"]["kind"] == "not_a_person"
+        code, out = _cli("--spec", str(spec), "--json", "assign", "--developer", "@sam-k", "--by", "Priya")
+        assert code == 0 and json.loads(out)["developer"] == "@sam-k"

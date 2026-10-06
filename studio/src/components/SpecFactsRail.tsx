@@ -1,13 +1,26 @@
 import { forwardRef, type ReactNode, type RefObject } from 'react'
-import type { BoardRow } from '../../shared/types'
+import type { ActorInfo, BoardRow, SprintVerb } from '../../shared/types'
 import { statusTone } from '../../shared/sprintModel'
+import { CAPABILITIES, newerPlugin, NO_ACTOR } from '../../shared/reasons'
 import { Button, Card, Chip, DefinitionList, Eyebrow } from '../ui'
 
-/** The sprint write verbs (`sprint.py verdict / next / ack / ready`) have no IPC yet. The slots
- * are drawn so the screen's shape is settled, and each says why it does nothing. The four labels
- * are pinned by SpecStatusView.test. */
-export const SLOT_REASON = 'These arrive with a newer plugin'
+/** The sprint verbs a spec can take from its own page (togo-command-center.md §2.4, §3.6): each
+ * slot hands a verb and the row to the host (`onVerb`), whose VerbDialog shows the argv and runs it
+ * through the closed table. Without a host wiring — or without `sprint-write` / an actor — the slot
+ * is drawn disabled with its reason in `reasons.ts` words. The four labels are pinned by
+ * SpecStatusView.test. */
+export const SLOT_REASON = newerPlugin(CAPABILITIES.sprintWrite)
 export const SLOTS = ['Verdict', 'Pass next action', 'Acknowledge', 'Mark ready'] as const
+export type SlotLabel = (typeof SLOTS)[number]
+/** Slot → the `sprint.py` verb it opens. "Mark ready" is the SPRINT's `ready`, on the row's sprint. */
+export const SLOT_VERB: Record<SlotLabel, SprintVerb> = { Verdict: 'verdict', 'Pass next action': 'handoff', Acknowledge: 'ack', 'Mark ready': 'ready' }
+
+/** Why a slot is disabled, or undefined when the host wired it and the plugin can run it. */
+export function slotReason(capabilities: string[] | undefined, actor: ActorInfo | null | undefined, wired: boolean): string | undefined {
+  if (capabilities !== undefined && !capabilities.includes(CAPABILITIES.sprintWrite)) return SLOT_REASON
+  if (actor === null) return NO_ACTOR
+  return wired ? undefined : SLOT_REASON
+}
 
 /** "—" for a value the spec file does not carry — a dash is a fact ("nothing recorded"), a blank
  * cell is a question. */
@@ -31,7 +44,14 @@ export const SpecFactsRail = forwardRef<HTMLElement, {
   dependencyReason: (id: string) => string | null
   statusChipRef?: RefObject<HTMLElement | null>
   prChipRefs?: RefObject<Array<HTMLElement | null>>
-}>(function SpecFactsRail({ row, pullRequest, onOpenDependency, dependencyReason, statusChipRef, prChipRefs }, ref) {
+  /** What the installed plugin declares; undefined = not known yet. */
+  capabilities?: string[]
+  /** The signed-in person, resolved in main; null = nobody (every slot then says `NO_ACTOR`). */
+  actor?: ActorInfo | null
+  /** The host's VerbDialog opener. Absent → the slots are disabled with their reason. */
+  onVerb?: (verb: SprintVerb, row: BoardRow) => void
+}>(function SpecFactsRail({ row, pullRequest, onOpenDependency, dependencyReason, statusChipRef, prChipRefs, capabilities, actor, onVerb }, ref) {
+  const reason = slotReason(capabilities, actor, Boolean(onVerb))
   const setPrChip = (index: number) => (el: HTMLElement | null) => {
     if (prChipRefs) prChipRefs.current[index] = el
   }
@@ -97,15 +117,15 @@ export const SpecFactsRail = forwardRef<HTMLElement, {
         />
       </Card>
 
-      {/* What you cannot do yet, last and quiet (inset). Reserved slots, drawn disabled with
-          their reason (SpecStatusView.test pins all four): the note says up front that none of
-          them works yet, so the row reads as a promise, not as four live controls. */}
+      {/* The sprint verbs, last and quiet (inset). Live when the host wired its VerbDialog and the
+          plugin declares `sprint-write`; otherwise drawn disabled with the reason (SpecStatusView.test
+          pins all four). Every live slot carries `data-write`: the dialog, not this rail, runs it. */}
       <Card tone="inset">
         <Eyebrow as="h3" className="mb-2">Sprint decisions</Eyebrow>
-        <p className="mb-2 text-xs text-ink-3">Not available yet — these arrive with a newer plugin.</p>
+        <p className="mb-2 text-xs text-ink-3">{reason ? `Not available here — ${reason}.` : 'Each opens the verb dialog with this spec filled in; the plugin answers.'}</p>
         <div className="flex flex-wrap gap-2">
           {SLOTS.map((label) => (
-            <Button key={label} size="sm" disabled disabledReason={SLOT_REASON}>{label}</Button>
+            <Button key={label} size="sm" data-write={reason ? undefined : ''} disabled={Boolean(reason)} disabledReason={reason} onClick={reason ? undefined : () => onVerb?.(SLOT_VERB[label], row)}>{label}</Button>
           ))}
         </div>
       </Card>

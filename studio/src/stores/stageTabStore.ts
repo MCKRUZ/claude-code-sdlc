@@ -17,8 +17,13 @@ export interface StageTabRequest {
   nonce: number
 }
 
-/** Same key StageHome has always read for the Spine band's collapsed state (§7 StageHome row). */
+/** Same key StageHome has always read for the Spine band's collapsed state (§7 StageHome row).
+ * Values: `'1'` collapsed, `'0'` expanded. ABSENT means the default — collapsed — because the
+ * lifecycle strip (togo-command-center.md §1) already draws the nine stations above every screen,
+ * and a second full Spine beneath it pushed a stage's documents below the fold (the v11 stage
+ * shots). The `^` control expands it; the choice is remembered per machine. */
 export const SPINE_COLLAPSED_STORAGE_KEY = 'studio.spine.collapsed'
+export const SPINE_COLLAPSED_DEFAULT = true
 
 /** The tab row's order, which is what the digit shortcuts mean (§6.2). */
 export const STAGE_TAB_BY_NUMBER: Readonly<Record<StageTabNumber, StageTabName>> = {
@@ -36,17 +41,20 @@ type Listener = () => void
 
 function readCollapsed(): boolean {
   try {
-    return typeof localStorage !== 'undefined' && localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY) === '1'
+    if (typeof localStorage === 'undefined') return SPINE_COLLAPSED_DEFAULT
+    const stored = localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY)
+    if (stored === '1') return true
+    if (stored === '0') return false
+    return SPINE_COLLAPSED_DEFAULT
   } catch {
-    return false
+    return SPINE_COLLAPSED_DEFAULT
   }
 }
 
 function writeCollapsed(collapsed: boolean): void {
   try {
     if (typeof localStorage === 'undefined') return
-    if (collapsed) localStorage.setItem(SPINE_COLLAPSED_STORAGE_KEY, '1')
-    else localStorage.removeItem(SPINE_COLLAPSED_STORAGE_KEY)
+    localStorage.setItem(SPINE_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0')
   } catch {
     // Not remembered this time; the band still collapses for this session.
   }

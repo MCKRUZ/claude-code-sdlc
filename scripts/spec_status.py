@@ -465,6 +465,10 @@ def _spec_row(
         "eng_review": (fm.get("eng_review") or "").strip(),
         "data_review": (fm.get("data_review") or "").strip(),
         "depends_on": parse_depends_on(fm.get("depends_on")),
+        # Why a deferred spec was not built (spec_transition.py defer writes it; check_spec reads
+        # it). "" when absent — a board shows the reason beside the deferral or nothing, never a
+        # guess. Additive: every row has the key.
+        "deferred_reason": (fm.get("deferred_reason") or "").strip(),
         "branch": branch,
         "pull_request": None,
     }

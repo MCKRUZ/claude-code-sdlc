@@ -232,15 +232,58 @@ describe('stageTabStore (what 1 / 2 / 3 and the Spine row write)', () => {
     expect(seen.slice(-2)).toEqual(['workflow#1', 'guide#2'])
   })
 
-  it('the Spine toggle persists under studio.spine.collapsed and notifies', () => {
+  it('the Spine toggle persists under studio.spine.collapsed and notifies; absent, the band is collapsed (the strip shows the stations)', () => {
     const seen: boolean[] = []
     function Probe() { seen.push(useSpineCollapsed()); return null }
     render(<Probe />)
-    expect(stageTabStore.spineCollapsed).toBe(false)
+    // The default beside the lifecycle strip is collapsed (fixer round, v11 stage shots).
+    expect(stageTabStore.spineCollapsed).toBe(true)
+    act(() => { stageTabStore.toggleSpineCollapsed() })
+    expect(window.localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY)).toBe('0')
     act(() => { stageTabStore.toggleSpineCollapsed() })
     expect(window.localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY)).toBe('1')
-    act(() => { stageTabStore.toggleSpineCollapsed() })
-    expect(window.localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY)).toBeNull()
-    expect(seen).toEqual([false, true, false])
+    expect(seen).toEqual([true, false, true])
+    // An older '1' still reads collapsed; '0' reads expanded.
+    window.localStorage.setItem(SPINE_COLLAPSED_STORAGE_KEY, '0')
+    resetStageTabStore()
+    expect(stageTabStore.spineCollapsed).toBe(false)
+  })
+})
+
+/** Command center (togo-command-center.md §1, §3.1): `g l` and `g t` dispatch from the one
+ * table; the lanes' keys are live ONLY inside `[data-shortcut-scope="lanes"]`, as the graph's are. */
+describe('command-center bindings', () => {
+  afterEach(() => setPlatform('MacIntel'))
+
+  it('g l goes to the lifecycle home and g t to steering; g s stays a build view', () => {
+    const goHome = vi.fn()
+    const steering = vi.fn()
+    const goBuildView = vi.fn()
+    render(<Host handlers={{ goHome, steering, goBuildView }} scopes={['project']} />)
+    press('g'); press('l')
+    expect(goHome).toHaveBeenCalledWith('lifecycle')
+    press('g'); press('t')
+    expect(steering).toHaveBeenCalledTimes(1)
+    press('g'); press('s')
+    expect(goBuildView).toHaveBeenCalledWith('sprint')
+    press('g'); press('p')
+    expect(goBuildView).toHaveBeenLastCalledWith('planning')
+  })
+
+  it('j / k / Enter / h / v reach laneCommand only from inside the lane board', () => {
+    const laneCommand = vi.fn()
+    function Lanes(props: UseShortcutsOptions) {
+      useShortcuts(props)
+      return <div><div data-shortcut-scope="lanes" tabIndex={0} data-testid="lanes"><button>card</button></div><button data-testid="outside">x</button></div>
+    }
+    const { getByTestId } = render(<Lanes handlers={{ laneCommand }} scopes={['project']} />)
+    press('j', { target: getByTestId('outside') })
+    expect(laneCommand).not.toHaveBeenCalled()
+    press('j', { target: getByTestId('lanes') })
+    press('k', { target: getByTestId('lanes').querySelector('button')! })
+    press('Enter', { target: getByTestId('lanes') })
+    press('h', { target: getByTestId('lanes') })
+    press('v', { target: getByTestId('lanes') })
+    expect(laneCommand.mock.calls.map((c) => c[0])).toEqual(['next', 'prev', 'open', 'handoff', 'verdict'])
   })
 })

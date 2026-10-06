@@ -17,13 +17,18 @@ export const VisuallyHidden = forwardRef<HTMLElement, VisuallyHiddenProps>(funct
 /** The `activity-disabled-reason` convention in one place: a `title` on the control (sighted
  * hover) plus hidden text (assistive tech). Controls call `disabledReasonProps` for the title and
  * render `<DisabledReason>` inside themselves. Nothing renders when there is no reason. */
-export function disabledReasonProps(reason: string | undefined, disabled: boolean | undefined) {
-  return reason && disabled ? { title: reason } : {}
+/** A disabled control always carries its reason (togo-command-center.md §2.7, §8 honesty check
+ * 1): as `title` for the pointer and — when the caller renders a `DisabledReason` with the same
+ * `id` — as `aria-describedby`, so the reason is the control's accessible DESCRIPTION, readable
+ * by assistive tech and by a test (`#${describedby}` has the sentence, character for character). */
+export function disabledReasonProps(reason: string | undefined, disabled: boolean | undefined, id?: string) {
+  if (!reason || !disabled) return {}
+  return id ? { title: reason, 'aria-describedby': id } : { title: reason }
 }
 
-export function DisabledReason({ reason, disabled }: { reason?: string; disabled?: boolean }) {
+export function DisabledReason({ reason, disabled, id }: { reason?: string; disabled?: boolean; id?: string }) {
   if (!reason || !disabled) return null
-  return <VisuallyHidden data-disabled-reason="">{reason}</VisuallyHidden>
+  return <VisuallyHidden id={id} data-disabled-reason="">{reason}</VisuallyHidden>
 }
 
 /** `<a href="#main">`, the first child of `#root`. Invisible until it receives focus, then it sits

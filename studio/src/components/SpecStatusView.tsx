@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { GitPullRequest } from 'lucide-react'
-import type { BoardRow, SpecStatus } from '../../shared/types'
+import type { ActorInfo, BoardRow, SpecStatus, SprintVerb } from '../../shared/types'
 import type { DotStatus } from '../ui'
 import { BackLink, Card, Chip, DefinitionList, Disclosure, EmptyState, Eyebrow, Icon, Notice, StatusDot } from '../ui'
 import { useEnter } from '../motion/useEnter'
@@ -8,7 +8,7 @@ import { useStudioGSAP } from '../motion/useStudioGSAP'
 import { motion } from '../motion/motion'
 import { contextFrom, handoffCeremony, sharedElement } from '../motion/choreo'
 import { stashBack } from '../motion/choreo/sharedElement'
-import { slateToBoardRow } from '../../shared/sprintModel'
+import { riskTone, slateToBoardRow } from '../../shared/sprintModel'
 import { SpecReadinessPanel } from './SpecReadinessPanel'
 import { SpecFactsRail } from './SpecFactsRail'
 import { SpecNeighbourhood } from './SpecNeighbourhood'
@@ -38,6 +38,9 @@ export function SpecStatusView({
   onBack,
   onHandOff,
   onOpenSpec,
+  capabilities,
+  actor,
+  onVerb,
 }: {
   projectPath: string
   row: BoardRow
@@ -45,6 +48,12 @@ export function SpecStatusView({
   onHandOff: () => void
   /** Opens another spec from this one (a dependency, a neighbour). P7 wires App's setter here. */
   onOpenSpec?: (row: BoardRow) => void
+  /** Command center (togo-command-center.md §2.4): the plugin's capabilities, the resolved actor and
+   * the host's VerbDialog opener, threaded to the facts rail's sprint-verb slots. All optional —
+   * without them the slots stay disabled with their reason, exactly as before. */
+  capabilities?: string[]
+  actor?: ActorInfo | null
+  onVerb?: (verb: SprintVerb, row: BoardRow) => void
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const titleRef = useRef<HTMLDivElement>(null)
@@ -152,7 +161,7 @@ export function SpecStatusView({
                 { term: <Eyebrow as="span">Owns it</Eyebrow>, detail: row.owner || nobody },
                 { term: <Eyebrow as="span">Builds it</Eyebrow>, detail: <span ref={buildsCellRef}>{row.developer || nobody}</span> },
                 { term: <Eyebrow as="span">Checks it</Eyebrow>, detail: row.checker || nobody },
-                { term: <Eyebrow as="span">Risk</Eyebrow>, detail: row.risk ? <Chip tone="mono" casing="identifier">{row.risk}</Chip> : nobody },
+                { term: <Eyebrow as="span">Risk</Eyebrow>, detail: row.risk ? <Chip tone={riskTone(row.risk)} casing="identifier">{row.risk}</Chip> : nobody },
               ]}
             />
           </Card>
@@ -176,8 +185,9 @@ export function SpecStatusView({
             // Never "not started" — that is a claim about the work. This is a claim about us. A
             // different fact-class from readiness, so it keeps its own notice, ONE line: the
             // headline, what the file says, the §7.1 reason, and the host's own words behind an
-            // inline disclosure rather than as a mono block in the prose.
-            <Notice tone="warn">
+            // inline disclosure rather than as a mono block in the prose. Info, not amber: a
+            // degraded read is information (visual §8 #4 keeps amber for a measured wait).
+            <Notice tone="info" role="status">
               <span className="font-medium">Could not reach the code host.</span>{' '}
               The spec file itself says <span className="font-medium">{status.local_status || 'nothing'}</span>.
               {hostDownReason && <> {hostDownReason}</>}
@@ -302,6 +312,9 @@ export function SpecStatusView({
           dependencyReason={dependencyReason}
           statusChipRef={statusChipRef}
           prChipRefs={prChipRefs}
+          capabilities={capabilities}
+          actor={actor}
+          onVerb={onVerb}
         />
       </div>
     </div>

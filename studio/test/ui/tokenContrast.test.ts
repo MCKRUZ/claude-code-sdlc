@@ -51,6 +51,8 @@ const light = declarations(read('tokens.css'), ':root')
 const dark = declarations(read('dark.css'), '[data-theme="dark"]')
 
 const AA = 4.5
+/** WCAG non-text contrast floor for a UI edge, ring or disc. */
+const UI = 3
 const STATUSES = ['ok', 'warn', 'error', 'running'] as const
 
 /** `[text token, surface token]` — every pair a word in that colour is drawn on. */
@@ -62,6 +64,46 @@ const PAIRS: ReadonlyArray<[string, string]> = [
   ['--color-eyebrow', '--color-surface-0'],
   ['--color-ink-3', '--color-surface-2'],
   ...STATUSES.map((s): [string, string] => [`--color-status-${s}-ink`, `--color-status-${s}-bg`]),
+  // Command center text pairs (togo-command-center-visual.md §2, the measured table).
+  ['--color-ink-1', '--color-lane'],
+  ['--color-ink-2', '--color-lane'],
+  ['--color-ink-3', '--color-lane'],
+  ['--color-eyebrow', '--color-lane-header'],
+  ['--color-ink-1', '--color-lane-header'],
+  ['--color-accent-text', '--color-lane'],
+  ['--color-baton-ink', '--color-baton-bg'],
+  ['--color-today-act-ink', '--color-today-act-bg'],
+  ['--color-today-wait-ink', '--color-today-wait-bg'],
+  ['--color-today-late-ink', '--color-today-late-bg'],
+  ['--color-ink-2', '--color-plan-says'],
+  ['--color-ink-3', '--color-plan-says'],
+  ['--color-accent-text', '--color-plan-says'],
+  ['--color-ledger-open-ink', '--color-ledger-open-bg'],
+  ['--color-ledger-fixed-ink', '--color-ledger-fixed-bg'],
+  ['--color-ledger-split-ink', '--color-ledger-split-bg'],
+  ['--color-ledger-accepted-ink', '--color-ledger-accepted-bg'],
+  ['--color-ledger-postponed-ink', '--color-ledger-postponed-bg'],
+  ['--color-ink-1', '--color-steer-bg'],
+  ['--color-ink-2', '--color-steer-bg'],
+  ['--color-steer-number-ink', '--color-steer-tile'],
+  ['--color-steer-label-ink', '--color-steer-tile'],
+  ['--color-steer-nodata-ink', '--color-steer-tile'],
+]
+
+/** `[edge token, surface token]` — a ring, disc or 1 px edge drawn on that surface (≥ 3:1). */
+const UI_PAIRS: ReadonlyArray<[string, string]> = [
+  ['--color-card-lit', '--color-surface-1'],
+  ['--color-card-lit', '--color-lane'],
+  ['--color-baton', '--color-lane'],
+  ['--color-baton', '--color-surface-1'],
+  ['--color-you-ring', '--color-surface-1'],
+  ['--color-you-ring', '--color-lane'],
+  ['--color-you-ring', '--color-surface-raised'],
+  ['--color-strip-lit', '--color-surface-0'],
+  ['--color-strip-viewing', '--color-surface-0'],
+  ['--color-rung-pass', '--color-surface-1'],
+  ['--color-rung-fail', '--color-surface-1'],
+  ['--color-rung-pending', '--color-surface-1'],
 ]
 
 describe.each([
@@ -71,6 +113,71 @@ describe.each([
   it.each(PAIRS)('%s on %s is at least 4.5:1', (text, surface) => {
     const ratio = contrast(resolveHex(vars, text, fallback), resolveHex(vars, surface, fallback))
     expect(ratio, `${text} on ${surface} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(AA)
+  })
+})
+
+describe.each([
+  ['light', light, undefined],
+  ['dark', dark, light],
+] as const)('%s theme UI contrast (command center)', (_name, vars, fallback) => {
+  it.each(UI_PAIRS)('%s on %s is at least 3:1', (edge, surface) => {
+    const ratio = contrast(resolveHex(vars, edge, fallback), resolveHex(vars, surface, fallback))
+    expect(ratio, `${edge} on ${surface} = ${ratio.toFixed(2)}:1`).toBeGreaterThanOrEqual(UI)
+  })
+})
+
+describe('the command center\'s written numbers reproduce (togo-command-center-visual.md §2)', () => {
+  const measure = (vars: Map<string, string>, fg: string, bg: string, fallback?: Map<string, string>) =>
+    contrast(resolveHex(vars, fg, fallback), resolveHex(vars, bg, fallback))
+  const WRITTEN: Array<[string, string, number, number]> = [
+    ['--color-ink-1', '--color-lane', 16.75, 15.23],
+    ['--color-ink-2', '--color-lane', 9.21, 10.07],
+    ['--color-ink-3', '--color-lane', 4.74, 5.69],
+    ['--color-eyebrow', '--color-lane-header', 4.57, 5.40],
+    ['--color-ink-1', '--color-lane-header', 16.15, 14.46],
+    ['--color-accent-text', '--color-lane', 6.08, 10.04],
+    ['--color-card-lit', '--color-surface-1', 3.43, 5.73],
+    ['--color-card-lit', '--color-lane', 3.05, 5.90],
+    ['--color-baton', '--color-lane', 4.40, 5.90],
+    ['--color-baton', '--color-surface-1', 4.95, 5.73],
+    ['--color-baton-ink', '--color-baton-bg', 5.82, 7.31],
+    ['--color-you-ring', '--color-surface-1', 4.95, 9.74],
+    ['--color-you-ring', '--color-lane', 4.40, 10.04],
+    ['--color-you-ring', '--color-surface-raised', 4.95, 8.31],
+    ['--color-strip-lit', '--color-surface-0', 3.15, 9.79],
+    ['--color-strip-viewing', '--color-surface-0', 4.73, 6.20],
+    ['--color-today-act-ink', '--color-today-act-bg', 6.40, 7.31],
+    ['--color-today-wait-ink', '--color-today-wait-bg', 4.84, 11.23],
+    ['--color-today-late-ink', '--color-today-late-bg', 5.91, 9.32],
+    ['--color-ink-2', '--color-plan-says', 9.69, 8.52],
+    ['--color-ink-3', '--color-plan-says', 4.98, 4.81],
+    ['--color-accent-text', '--color-plan-says', 6.40, 8.49],
+    ['--color-rung-pass', '--color-surface-1', 3.30, 9.99],
+    ['--color-rung-fail', '--color-surface-1', 4.83, 6.29],
+    ['--color-rung-pending', '--color-surface-1', 5.93, 8.13],
+    ['--color-ledger-postponed-ink', '--color-ledger-postponed-bg', 4.55, 4.94],
+    ['--color-ledger-fixed-ink', '--color-ledger-fixed-bg', 4.79, 10.96],
+    ['--color-ink-1', '--color-steer-bg', 18.83, 16.61],
+    ['--color-ink-2', '--color-steer-bg', 10.35, 10.99],
+    ['--color-ink-1', '--color-steer-tile', 18.00, 14.77],
+    ['--color-ink-2', '--color-steer-tile', 9.90, 9.77],
+    ['--color-ink-3', '--color-steer-tile', 5.09, 5.52],
+  ]
+  it.each(WRITTEN)('%s on %s = %s light / %s dark', (fg, bg, l, d) => {
+    expect(measure(light, fg, bg)).toBeCloseTo(l, 1)
+    expect(measure(dark, fg, bg, light)).toBeCloseTo(d, 1)
+  })
+
+  it('rung-none (ink-4) is decoration beside the words "no data": below the 3:1 UI floor in light and below AA in both themes', () => {
+    expect(measure(light, '--color-rung-none', '--color-surface-1')).toBeLessThan(UI)
+    // The document's 2.45:1 is ink-4 on surface-0 (the kit's pinned figure, below).
+    expect(measure(dark, '--color-rung-none', '--color-surface-1', light)).toBeLessThan(AA)
+  })
+
+  it('light rung-pending takes the running INK step because the fill is 2.77:1 on white', () => {
+    expect(contrast(resolveHex(light, '--color-status-running-fill'), '#ffffff')).toBeLessThan(UI)
+    expect(resolveHex(light, '--color-rung-pending')).toBe(resolveHex(light, '--color-status-running-ink'))
+    expect(resolveHex(dark, '--color-rung-pending')).toBe(resolveHex(dark, '--color-status-running-fill'))
   })
 })
 

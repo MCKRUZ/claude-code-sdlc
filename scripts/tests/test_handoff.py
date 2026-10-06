@@ -455,3 +455,117 @@ class TestOnAzureDevOps:
         assert "review requested" not in out
         assert "Could not assign on the code host: checker @priya-n has no email" in out
         assert "Code host: azure-devops (from remote)" in out
+
+
+# ---------------------------------------------------------------------------
+# Tōgō command center (togo-command-center.md §2.5 row 7): `--check`, the dry run
+# ---------------------------------------------------------------------------
+
+import subprocess  # noqa: E402
+
+SCRIPT = Path(__file__).resolve().parent.parent / "handoff.py"
+
+
+class TestCheckHandoff:
+    def _no_remote_branch(self, monkeypatch):
+        monkeypatch.setattr(h, "find_existing_handoff", lambda *a, **k: None)
+        for name in ("resolve_base_branch", "push_handoff_commit", "assign_on_host"):
+            monkeypatch.setattr(h, name, lambda *a, _n=name, **k: (_ for _ in ()).throw(
+                AssertionError(f"{_n} must never run under --check")))
+
+    def test_a_ready_spec_reports_what_would_happen_and_touches_nothing(self, tmp_path, monkeypatch):
+        self._no_remote_branch(monkeypatch)
+        repo = make_repo(tmp_path, checker="@priya-n")
+        spec = repo / "specs" / "0007-reject-duplicate-claims.md"
+        before = spec.read_text(encoding="utf-8")
+        result = h.check_handoff(repo, spec, "@sam-k", None)
+        assert result == {"ok": True, "already_in_flight": False, "would": {
+            "branch": h.branch_name_for("0007", "reject-duplicate-claims"),
+            "developer": "@sam-k", "checker": "@priya-n", "team": "claims", "in_flight_after": None}}
+        assert spec.read_text(encoding="utf-8") == before
+        assert not list(repo.rglob("handoff-wt"))
+
+    def test_in_flight_after_is_a_count_only_where_a_cap_exists(self, tmp_path, monkeypatch):
+        self._no_remote_branch(monkeypatch)
+        repo = make_repo(tmp_path)
+        monkeypatch.setattr(h.cp, "load_limits", lambda repo_root: (
+            {"claims": {"wip_limit": 3, "review_alarm_hours": 24, "review_alarm_hours_default": True,
+                        "security_alarm_hours": 48, "security_alarm_hours_default": True}}, []))
+        monkeypatch.setattr(h.ts, "scan_specs", lambda specs_dir: [
+            {"id": "0006", "name": "other", "status": "in-flight", "risk": "LOW", "channel": "unassigned",
+             "owner": "@priya-n", "developer": "@sam-k", "checker": "", "team": "claims",
+             "deferred_reason": "", "path": "specs/0006-other.md"}])
+        assert h.check_handoff(repo, repo / "specs" / "0007-reject-duplicate-claims.md", "@sam-k", None)[
+            "would"]["in_flight_after"] == 2
+
+    @pytest.mark.parametrize("setup, developer, kind", [
+        (dict(spec_text=NOT_READY_SPEC), "@sam-k", "not_ready"),
+        (dict(), "@ghost", "unknown_developer"),
+        (dict(checker="@sam-k"), "@sam-k", "developer_is_checker"),
+    ])
+    def test_every_refusal_is_identical_live_and_in_check(self, tmp_path, monkeypatch, setup, developer, kind):
+        self._no_remote_branch(monkeypatch)
+        repo = make_repo(tmp_path, **setup)
+        spec = repo / "specs" / "0007-reject-duplicate-claims.md"
+        with pytest.raises(h.HandoffError) as live:
+            h.handoff(repo, spec, developer, None, host="none")
+        with pytest.raises(h.HandoffError) as check:
+            h.check_handoff(repo, spec, developer, None)
+        assert (live.value.kind, str(live.value)) == (check.value.kind, str(check.value)) == (kind, str(live.value))
+
+    def test_the_wip_refusal_is_identical_live_and_in_check(self, tmp_path, monkeypatch):
+        self._no_remote_branch(monkeypatch)
+        repo = make_repo(tmp_path)
+        monkeypatch.setattr(h.cp, "load_limits", lambda repo_root: (
+            {"claims": {"wip_limit": 1, "review_alarm_hours": 24, "review_alarm_hours_default": True,
+                        "security_alarm_hours": 48, "security_alarm_hours_default": True}}, []))
+        monkeypatch.setattr(h.ts, "scan_specs", lambda specs_dir: [
+            {"id": "0006", "name": "other", "status": "in-flight", "risk": "LOW", "channel": "unassigned",
+             "owner": "@priya-n", "developer": "@sam-k", "checker": "", "team": "claims",
+             "deferred_reason": "", "path": "specs/0006-other.md"}])
+        spec = repo / "specs" / "0007-reject-duplicate-claims.md"
+        with pytest.raises(h.HandoffError) as live:
+            h.handoff(repo, spec, "@sam-k", None, host="none")
+        with pytest.raises(h.HandoffError) as check:
+            h.check_handoff(repo, spec, "@sam-k", None)
+        assert live.value.kind == check.value.kind == "team_at_limit" and str(live.value) == str(check.value)
+
+    def test_already_in_flight_is_reported_not_refused(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(h, "find_existing_handoff", lambda *a, **k: "@sam-k")
+        repo = make_repo(tmp_path, spec_text=NOT_READY_SPEC)
+        assert h.check_handoff(repo, repo / "specs" / "0007-reject-duplicate-claims.md", "@sam-k", None) == {
+            "ok": True, "already_in_flight": True, "developer": "@sam-k", "would": None}
+
+    def test_the_live_path_still_returns_exactly_what_it_did(self, tmp_path, monkeypatch):
+        """handoff() now runs through check_preconditions; its results must not grow keys."""
+        monkeypatch.setattr(h, "find_existing_handoff", lambda *a, **k: None)
+        monkeypatch.setattr(h, "resolve_base_branch", lambda repo_root: "main")
+        monkeypatch.setattr(h, "push_handoff_commit", lambda *a, **k: None)
+        monkeypatch.setattr(h, "assign_on_host", lambda *a, **k: "https://example/pr/1")
+        repo = make_repo(tmp_path, checker="@priya-n")
+        result = h.handoff(repo, repo / "specs" / "0007-reject-duplicate-claims.md", "@sam-k", None, host="none")
+        assert result == {"already_in_flight": False, "branch": "spec/0007-reject-duplicate-claims",
+                          "developer": "@sam-k", "checker": "@priya-n", "pr_url": "https://example/pr/1",
+                          "assignment_error": None, "spec_rel_path": "specs/0007-reject-duplicate-claims.md"}
+
+    def test_the_cli_check_prints_one_json_document_and_leaves_git_branches_alone(self, tmp_path, monkeypatch):
+        """Against a real repository with no remote, `ls-remote` fails — which is a refusal (exit 1),
+        reported as JSON, and `git branch --list` is unchanged. Whatever the outcome, --check never
+        reaches the mutation."""
+        repo = make_repo(tmp_path)
+        subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init"],
+                       cwd=repo, check=True)
+        branches_before = subprocess.run(["git", "branch", "--list"], cwd=repo, capture_output=True, text=True).stdout
+        proc = subprocess.run([sys.executable, str(SCRIPT), "--repo", str(repo), "--spec",
+                               str(repo / "specs" / "0007-reject-duplicate-claims.md"),
+                               "--developer", "@sam-k", "--check", "--json", "--host", "none"],
+                              capture_output=True, text=True, encoding="utf-8",
+                              env={**__import__("os").environ, "PYTHONIOENCODING": "utf-8"})
+        payload = json.loads(proc.stdout)
+        assert proc.returncode in (0, 1) and payload["ok"] == (proc.returncode == 0)
+        assert "host" in payload
+        branches_after = subprocess.run(["git", "branch", "--list"], cwd=repo, capture_output=True, text=True).stdout
+        assert branches_after == branches_before
+        assert "spec/" not in branches_after

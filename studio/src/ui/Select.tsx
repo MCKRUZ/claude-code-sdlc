@@ -4,7 +4,7 @@
 // NOT full-width by default: a select's natural width is its longest option, and four of them
 // on a wrapping filter row each took a whole line when they inherited `w-full` (observatory v2
 // critique, shot 8). Pass `className="w-full"` where a form wants it to fill.
-import { forwardRef, type ForwardedRef } from 'react'
+import { forwardRef, useId, type ForwardedRef } from 'react'
 import type { ControlSize, SelectProps } from './contract'
 import { cn } from './cn'
 import { useFieldControl } from './Field'
@@ -28,7 +28,12 @@ function SelectInner<V extends string>(
   { size = 'md', value, onChange, options, roster, invalid, disabled, disabledReason, className, id, required, ...rest }: SelectProps<V>,
   ref: ForwardedRef<HTMLSelectElement>,
 ) {
-  const field = useFieldControl({ id, required, 'aria-describedby': rest['aria-describedby'], 'aria-invalid': invalid })
+  // A disabled select is DESCRIBED by its reason (aria-describedby → the hidden sibling), joined
+  // with whatever the Field already describes it with; the title keeps the pointer's tooltip.
+  const reasonId = useId()
+  const reasonDescribes = disabled && disabledReason ? reasonId : undefined
+  const ownDescribedBy = [rest['aria-describedby'], reasonDescribes].filter(Boolean).join(' ') || undefined
+  const field = useFieldControl({ id, required, 'aria-describedby': ownDescribedBy, 'aria-invalid': invalid })
   return (
     <>
       <select
@@ -52,7 +57,7 @@ function SelectInner<V extends string>(
           </option>
         ))}
       </select>
-      <DisabledReason reason={disabledReason} disabled={disabled} />
+      <DisabledReason reason={disabledReason} disabled={disabled} id={reasonId} />
     </>
   )
 }

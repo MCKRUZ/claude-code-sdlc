@@ -159,6 +159,11 @@ export interface SceneDataConstellation {
   /** `SprintView.hasData === false` → no scene; the host shows `note` or NoData text. */
   hasData: boolean
   note: string | null
+  /** Command center (togo-command-center.md §3.2): true when the bodies are the plugin's slate
+   * PROPOSAL rather than a committed slate — every `buildOrderIndex` is then null (the plugin has
+   * given no order) and the host captions the figure `reasons.ORDER_ARRIVES_ON_COMMIT`. Absent
+   * or false for a committed sprint and for Board bodies. Never changes geometry. */
+  proposed?: boolean
 }
 
 // --- slots ------------------------------------------------------------------------------------

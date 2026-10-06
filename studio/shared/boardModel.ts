@@ -19,21 +19,17 @@
 // judgement — and it compares handles the plugin supplies, never prose it wrote.
 
 import type { BoardRow, BoardRole, BoardGrouping, BoardFilters } from './types'
+import { samePerson } from './identity'
+
+/** Identity matching lives in `./identity.ts` (togo-command-center.md §2.1: one module for the
+ * "you" ring, the Mine filter and needs-you). Re-exported so every existing import keeps working. */
+export { samePerson }
 
 /** Two days is the spec's own threshold for "overdue". Business days are deliberately not
  * modelled: the plugin's decision log uses plain elapsed days too, and inventing a second,
  * subtly different clock here would make two parts of the same product disagree about
  * whether the same thing is late. */
 const OVERDUE_DAYS = 2
-
-function normalizeHandle(handle: string): string {
-  return handle.trim().replace(/^@/, '').toLowerCase()
-}
-
-export function samePerson(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a || !b) return false
-  return normalizeHandle(a) === normalizeHandle(b)
-}
 
 /** Every role this person holds on this spec. A person can hold more than one — Matt's
  * resolved decision is that owner and developer may be the same person, so this returns a

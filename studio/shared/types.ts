@@ -1857,3 +1857,328 @@ export interface Board {
   /** Per-team work-in-progress limits, or null for a project that has not adopted them. */
   teamLimits: Record<string, { in_flight: number; wip_limit: number }> | null
 }
+
+// --- The command center (togo-command-center.md §2) ---------------------------------------
+//
+// One read model, every block sourced; one closed argv table for writes. Nothing below is a
+// number Studio computed: a `SourcedBlock` carries the plugin's own output and the literal
+// `<script> <verb> --json` it came from, and `data: null` renders "no data", never 0. There is
+// deliberately NO per-person key anywhere in these types (§2.3) — presence lists, never totals.
+
+/** One block of the read model. `source` is the literal spawn the element shows as provenance
+ * ("sprint.py status --json"); `fetchedAt` is for "as of 10:42", never for a metric. */
+export interface SourcedBlock<T> {
+  source: string
+  fetchedAt: string
+  ok: boolean
+  /** Null reads "no data" — the plugin's absence, not a zero. */
+  data: T | null
+  /** The plugin's stderr / the spawn error, verbatim, when `ok` is false. */
+  error: string | null
+}
+
+/** Who every write is recorded against, resolved ONCE in the main process (`actor.ts`) from
+ * `ConnectionInfo`: roster handle → host identity → the typed name. The renderer never
+ * assembles one. */
+export interface ActorInfo {
+  name: string
+  source: 'roster' | 'host' | 'typed'
+}
+
+/** The four lanes of the sprint home (§3.1), a PARTITION of the slate: a row sits in exactly one
+ * lane or is `unplaced` and listed with its raw fields. Drafts and NOT READY rows are not in a
+ * lane — they live in Refining. */
+export type LaneId = 'ready' | 'building' | 'checking' | 'merged'
+export type LanePlacement = LaneId | 'unplaced'
+
+/** `sprint.py list --json` (§2.5 row 1), camel-cased. `ordinal` is the plugin's 1-based id order;
+ * a malformed file reads `state: null`. */
+export interface SprintListEntry {
+  id: string
+  state: string | null
+  goal: string
+  start: string
+  end: string
+  ordinal: number
+}
+export interface SprintListView {
+  sprints: SprintListEntry[]
+  active: string | null
+  count: number
+}
+
+/** `sprint.py log --json` (§2.5 row 2): the ledger lines VERBATIM — no reshaping, no aggregate
+ * key. The known fields are typed for the stream; everything else rides along. */
+export interface SprintLogEvent {
+  timestamp?: string
+  event?: string
+  spec?: string
+  sprint?: string
+  by?: string
+  [key: string]: unknown
+}
+export interface SprintLogView {
+  events: SprintLogEvent[]
+  count: number
+  since: string | null
+  path: string
+  exists: boolean
+  /** Corrupt lines the plugin could not parse — counted, never silently dropped. */
+  skipped: number
+}
+
+/** `record_findings.py report --json` (§2.5 row 9): the three legacy counts plus one row per
+ * fingerprint and the recurrence map. Dispositions are the plugin's words (`findings_model`). */
+export interface FindingRow {
+  fingerprint: string
+  id: string
+  category: string
+  severity: string
+  target: string
+  disposition: string
+  detail: string
+  /** The plugin's own judgement (SPLIT without id+owner, an AI signing ACCEPTED_RISK, …). */
+  offBooks: boolean
+  firstSeen: string | null
+  lastSeen: string | null
+  rounds: number
+  [key: string]: unknown
+}
+export interface FindingsView {
+  tracked: number
+  openDebt: number
+  fixedClaimMismatches: number
+  findings: FindingRow[]
+  /** fingerprint → how many reports carried it ("seen N times across reports"). */
+  recurrence: Record<string, number>
+  /** Only with `--spec`: how many rows fall under the spec's `## Scope` In paths. */
+  attribution?: { method: 'scope-paths'; attributed: number; unattributed: number }
+}
+
+/** `track_decisions.py --json` (§2.2): one row per open decision with the plugin's clock. */
+export interface DecisionRow {
+  id: string
+  decision: string
+  owner: string
+  opened: string
+  due: string
+  status: string
+  businessDaysOpen: number | null
+  clockDue: string | null
+  /** The plugin's `overdue:true` is the ONLY thing that may tint a decision `today-late-*`. */
+  overdue: boolean
+}
+export interface DecisionsView {
+  total: number
+  open: number
+  overdue: number
+  clockBusinessDays: number
+  openDecisions: DecisionRow[]
+  overdueDecisions: DecisionRow[]
+  logPath: string
+  exists: boolean
+}
+
+/** One item addressed to the signed-in person, by EXACT handle match in the main process
+ * (§2.3): a hand-off whose `to` is me, a PR whose `waitingOnHandle` is me, an open decision
+ * whose `owner` is me (overdue first), a spec I own with `risk` set and no `risk_confirmed_by`
+ * — the last only when `confirm-tier` is a capability. `verdicts_pending` has a lane, not a
+ * person, and never appears here. */
+export interface NeedsYouItem {
+  kind: 'ack' | 'review' | 'decide' | 'confirm-tier'
+  spec?: string
+  id?: string
+  /** The one action the item offers, as a verb the dialog runs ("ack", "open PR", "decide", "confirm"). */
+  action: string
+  /** Where the fact came from — the block's `source`. */
+  source: string
+  /** The plugin's own words for the row (the hand-off's `to`, the decision text, the PR's `waitingOn`). */
+  text: string
+  overdue?: boolean
+}
+
+/** One row of "since yesterday" (§2.3): a ledger event verbatim, a PR merged in the window, or a
+ * decision closed in the window — each tagged by origin, ordered by the timestamp the source
+ * gave; undated rows last and labelled "undated". `key` = `timestamp+event+spec`, the identity
+ * a later arrival rises by (never a re-stagger). */
+export type StreamOrigin = 'log' | 'board' | 'decisions'
+export interface StreamRow {
+  origin: StreamOrigin
+  key: string
+  /** ISO timestamp from the source, or null for an undated row. */
+  at: string | null
+  event: string
+  spec?: string
+  sprint?: string
+  by?: string
+  id?: string
+  text: string
+  raw: Record<string, unknown>
+}
+
+/** The window the person picks for the stream — a FILTER main passes as `--since`, never a
+ * reported number. */
+export type SinceWindow = 1 | 3
+
+/** The one document the sprint home and the lifecycle home read (§2.3). Blocks are independent:
+ * one failing leaves the others `ok`. `track_specs` exit 1 is a WIP finding → `board.ok` stays
+ * true with `warnings[]`. */
+export interface CommandCenter {
+  projectPath: string
+  fetchedAt: string
+  actor: ActorInfo | null
+  /** `generate_status.py --json` capabilities, so a control can be disabled with `reasons.newerPlugin`. */
+  capabilities: string[]
+  sprint: SourcedBlock<SprintView>
+  sprints: SourcedBlock<SprintListView>
+  board: SourcedBlock<Board & { warnings: string[] }>
+  decisions: SourcedBlock<DecisionsView>
+  findings: SourcedBlock<FindingsView>
+  scorecard: SourcedBlock<Scorecard>
+  roster: SourcedBlock<ProjectSettings['roster']>
+  log: SourcedBlock<SprintLogView>
+  needsYou: NeedsYouItem[]
+  /** Why `needsYou` is empty when it is for a reason other than "nothing": `reasons.NO_ACTOR`. */
+  needsYouReason: string | null
+  sinceYesterday: StreamRow[]
+  since: SinceWindow
+}
+
+/** `sprint.py slate --sprint SNN --json` with no `--spec` (§2.2): the plugin's deterministic,
+ * read-only proposal. NOTE the plugin reports `candidates` as a COUNT; the candidate rows are
+ * the Board rows with a `SLATEABLE_STATUSES` status and no `sprint` — the same rule
+ * `_proposal` applies — so a screen lists them from the `board` block, not from here. */
+export interface SlateProposal {
+  sprint: string | null
+  target: number | null
+  mix: string
+  alreadySlated: string[]
+  candidates: number
+  /** `spec_row` shaped, in the plugin's id-order fill. */
+  proposal: SprintSlateRow[]
+  mixAfter: Record<string, SprintMixTier>
+  mixWarnings: string[]
+  dependencyWarnings: string[]
+  hasData: boolean
+  note: string | null
+}
+
+/** `spec_readiness.py --spec --json` `ladder{}` (§2.5 row 8) = `risk_model.required_rungs()`.
+ * `touchesGatedPath` is true only when the frontmatter says `gated_path: true`; nothing detects
+ * gated paths today, so an absent value reads "gated path: not declared". */
+export interface SpecLadder {
+  tier: string
+  touchesGatedPath: boolean | null
+  rungs: string[]
+}
+export type SpecReadinessFull = SpecReadiness & { ladder?: SpecLadder }
+
+/** `check_channel.py --json` (advisory, exit 0). `bound:false` reads "no channel bound" — never
+ * an empty list styled as zero. */
+export interface ChannelCheckView {
+  spec: string
+  channel: string | null
+  bound: boolean
+  source: string
+  dimensions: Array<{ id: string; covered: boolean }>
+  uncovered: string[]
+  advisory: boolean
+  notes: string[]
+}
+
+/** `handoff.py --check --json` (§2.5 row 7): the refusal block without the git op. */
+export type HandOffCheck =
+  | {
+    ok: true
+    would: { branch: string; developer: string; checker: string | null; team: string | null; inFlightAfter: number | null }
+    alreadyInFlight: boolean
+    host: string
+  }
+  | { ok: false; refusal: HandoffRefusal; host?: string }
+
+/** The spec card's read (§2.2 `getSpecCard`). Each block is sourced; `channel` is null when the
+ * spec binds no channel, `handoffCheck` null when no developer was named. */
+export interface SpecCard {
+  spec: string
+  path: string
+  readiness: SourcedBlock<SpecReadinessFull>
+  ladder: SourcedBlock<SpecLadder>
+  status: SourcedBlock<SpecStatus>
+  findings: SourcedBlock<FindingsView>
+  channel: SourcedBlock<ChannelCheckView> | null
+  handoffCheck: SourcedBlock<HandOffCheck> | null
+}
+
+/** `spec_readiness.py --all --json` (§2.5 row 8) — one spawn for every Refining / backlog row. */
+export interface ReadinessAll {
+  ok: boolean
+  specs: SpecReadinessFull[]
+}
+
+// --- writes: the closed argv table (§2.4) ---------------------------------------------------
+
+export type SprintVerb = 'slate' | 'unslate' | 'handoff' | 'ack' | 'verdict' | 'ready' | 'close' | 'new' | 'carry' | 'edit'
+export type VerdictLane = 'eng' | 'data'
+export type VerdictValue = 'accepted' | 'returned' | 'pending' | 'n-a'
+
+/** A write request, validated in main against `shared/sprintVerbArgv.ts` (sprint ids `^S\d{2,}$`,
+ * spec ids `^\d{4}$` and present on the board). `--field` is never exposed. The actor is NOT a
+ * field: main fills `--by` from `actor.ts`. */
+export type SprintVerbRequest =
+  | { verb: 'slate'; sprint: string; specs: string[]; override?: boolean; reason?: string }
+  | { verb: 'unslate'; spec: string; reason: string }
+  | { verb: 'handoff'; spec: string; to: string; note?: string }
+  | { verb: 'ack'; spec: string }
+  | { verb: 'verdict'; spec: string; lane: VerdictLane; verdict: VerdictValue; reason?: string }
+  | { verb: 'ready'; sprint: string }
+  | { verb: 'close'; sprint: string; carryTo?: string; carry: Record<string, string>; drop: Record<string, string> }
+  | { verb: 'new'; sprint: string; goal: string; start: string; end?: string; days?: number; target: number; mix?: string; boardRef?: string }
+  | { verb: 'carry'; spec: string; to: string; reason: string }
+  | { verb: 'edit'; sprint: string; goal: string }
+
+/** The exit code is the truth: 0 "Done", 1 "Not done", 2 "Refused by the plugin". No JSON is
+ * parsed — write verbs print prose — and the dialog shows `stdout`/`stderr` verbatim. */
+export interface SprintVerbResult {
+  ok: boolean
+  exitCode: number | null
+  refused: boolean
+  stdout: string
+  stderr: string
+  /** The exact argv that ran (without the interpreter), for the console and the dialog. */
+  argv: string[]
+  verb: SprintVerb
+}
+
+/** `track_decisions.py open|decide … --json`; a refusal is exit 1 with the message on stderr. */
+export type OpenDecisionResult =
+  | { ok: true; id: string; opened: string; due: string; owner: string; path?: string }
+  | { ok: false; stderr: string }
+export type DecideDecisionResult =
+  | { ok: true; id: string; status: string; decided: string; by: string; path?: string }
+  | { ok: false; stderr: string }
+
+/** `spec_transition.py confirm-tier | assign` (§2.5 rows 5–6). Same envelope as the existing
+ * transitions; the extra keys are the plugin's. This script never exits 2. */
+export type TransitionResult = SpecTransitionResult
+export type ConfirmTierResult = SpecTransitionResult & { risk?: string; confirmedBy?: string; confirmationCleared?: boolean }
+export type AssignRolesResult = SpecTransitionResult & { developer?: string; checker?: string }
+
+/** The bridge the command center adds (§2.2, §2.4). Kept as its own interface so the preload
+ * (`const studio: StudioApi`) keeps compiling until P3 implements it; `window.studio` is typed
+ * `StudioApi & CommandCenterApi` in `src/vite-env.d.ts`. */
+export interface CommandCenterApi {
+  // reads — P-class only, never pull/sync
+  /** `refresh: true` is "Refresh this screen": main drops its cache for the project and re-reads every block. */
+  getCommandCenter(projectPath: string, since?: SinceWindow, refresh?: boolean): Promise<CommandCenter>
+  getSlateProposal(projectPath: string, sprintId: string): Promise<SlateProposal>
+  getSpecCard(projectPath: string, specPath: string, developer?: string): Promise<SpecCard>
+  getReadinessAll(projectPath: string): Promise<ReadinessAll>
+  getDecisions(projectPath: string): Promise<DecisionsView>
+  // writes — every one through the closed argv table with the resolved actor as --by
+  runSprintVerb(projectPath: string, request: SprintVerbRequest): Promise<SprintVerbResult>
+  openDecision(projectPath: string, decision: string, owner?: string): Promise<OpenDecisionResult>
+  decideDecision(projectPath: string, id: string, resolution: string): Promise<DecideDecisionResult>
+  confirmTier(projectPath: string, specPath: string): Promise<ConfirmTierResult>
+  assignRoles(projectPath: string, specPath: string, roles: { developer?: string; checker?: string }): Promise<AssignRolesResult>
+  checkHandOff(projectPath: string, specPath: string, developer: string): Promise<HandOffCheck>
+}

@@ -1,7 +1,11 @@
 import { memo, type CSSProperties, type MutableRefObject, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ConsoleEntry, ProjectStatus, SyncState } from '../../shared/types'
-import type { Area, DocProgress, NavTarget } from '../../shared/nav'
-import { Sidebar } from './Sidebar'
+import type { CommandCenter, ConsoleEntry, ProjectStatus, SyncState } from '../../shared/types'
+import type { Area, NavTarget } from '../../shared/nav'
+import { homeFor } from '../../shared/nav'
+import { slateToBoardRow } from '../../shared/sprintModel'
+import { identityLabel } from '../../shared/identity'
+import { LifecycleStrip, stripFactsFrom } from './LifecycleStrip'
+import { OMNIBAR_PLACEHOLDER, TopBand } from './TopBand'
 import { ChatPanel } from './ChatPanel'
 import { Console, readStoredConsoleHeight } from './Console'
 import { ShortcutsHelp } from './ShortcutsHelp'
@@ -14,12 +18,15 @@ import { CHAT_DEFAULT_WIDTH, readStoredChatWidth } from '../chatWidth'
 import { StageReadinessProvider, useStageReadiness } from './StageReadinessContext'
 import { consoleStore, useConsoleEntries, useConsoleOpen } from '../stores/consoleStore'
 import { useBacklogStore } from '../stores/backlogStore'
+import { useConnection } from '../stores/connectionStore'
 import { stageTabStore } from '../stores/stageTabStore'
 import { SkipLink } from '../ui/VisuallyHidden'
+import { cn } from '../ui/cn'
 import { ToastRegion } from '../ui/ToastRegion'
 import { toast } from '../ui/toastStore'
 import { LiveAnnouncer } from '../a11y/LiveAnnouncer'
 import { CommandPalette } from '../palette/CommandPalette'
+import { intentEntries, type IntentContext, type IntentMatch } from '../palette/intents'
 import { toggleSurfacePreference } from '../palette/paletteActions'
 import { usePaletteIndex, usePreferenceActionHooks } from '../palette/usePaletteIndex'
 import type { PaletteActionHooks, SettingsAnchor } from '../palette/types'
@@ -34,47 +41,49 @@ import { joinSpineAssemble } from '../scenes/spine/spineCeremony'
 export interface FrameShellHooks {
   /** Open a spec by its repo-relative path (what the Board and the palette's "#" rows carry). */
   openSpec?: (relPath: string) => void
-  /** Open a document, with the stage its readiness belongs to so the sidebar lights that stage. */
+  /** Open a document, with the stage its readiness belongs to so the strip lights that stage. */
   openDocument?: (relPath: string, stageId: string | undefined) => void
   /** Go to Settings and scroll to a section once it has mounted. */
   openSettings?: (anchor: SettingsAnchor) => void
   /** The screen's own Back, when there is something behind it. */
   back?: () => void
-  /** True while StageHome is the screen: enables the Spine toggle and the readiness refresh. */
+  /** True while the lifecycle home (StageHome inside it) is the screen: enables the Spine toggle
+   * and the readiness refresh. */
   stageHomeShowing?: boolean
   /** True while the Sprint view (with its constellation) is the screen. */
   sprintShowing?: boolean
   /** A screen's own P-class refresh, where App has one; never openProject or pull. */
   refreshScreen?: () => void
+  /** The omnibar matched a verb (togo-command-center.md §3.6): App opens the VerbDialog. */
+  openIntent?: (match: IntentMatch) => void
+  /** The `…` menu's two project-switching rows. */
+  newProject?: () => void
+  openFolder?: () => void
 }
 
-/** The frame every screen shares once a project is open: the sidebar (the only navigation, which
- * also carries the project's name and the sync indicator), the chat panel, and the console —
- * spec 0008's own scope, in one place so nothing built on top of it can accidentally omit a
- * piece of it. Spec 0009's sync indicator sits in the sidebar's footer, so it is on every one of
- * those screens without each having to remember.
+/** The frame every screen shares once a project is open (togo-command-center.md §1): the shell
+ * band — TopBand (mark · omnibar trigger · needs-you chip · sync · Console · Appearance · Settings
+ * · `…`) over the LifecycleStrip (`nav[aria-label="Project"]`, the only navigation) — as the
+ * FIRST `<aside>`, then `<main>` beside the chat (the second `<aside>`, 380 px), the console as
+ * the bottom drawer. The a11y pins (two asides sidebar-then-chat, no `<input>` at rest, one `h1`,
+ * one `aria-current`) hold verbatim: the band takes the sidebar's seat.
  *
  * Spec 0019: Frame is the common ancestor of both `StageHome` (rendered as its `children`) and
- * `ChatPanel` (its direct sibling) — see `studio/src/App.tsx` — so it wraps them in
- * `StageReadinessProvider` (see that file for why the single shared fetch exists). `FrameBody` is
+ * `ChatPanel` (its direct sibling), so it wraps them in `StageReadinessProvider`. `FrameBody` is
  * split out only because a value a `Context.Provider` holds can be read by a descendant, never by
  * the component that renders the provider itself.
  *
  * Observatory (§7 Frame row): the Wave 0 pieces mount here once — skip link, live region, toasts,
- * palette + shortcuts — and the two heavy siblings get a `React.memo` boundary. Console entries no
- * longer travel through props: they live in `consoleStore` and only the Console panel subscribes,
- * so an entry every 2 s (Workflow tab) or 150 ms (streaming) re-renders that panel alone. */
+ * palette + shortcuts — and the heavy siblings get a `React.memo` boundary. Console entries never
+ * travel through props: they live in `consoleStore` and only the Console panel subscribes.
+ *
+ * Steering mode (§3.5, visual §4 "steer-bg full-bleed; no chat, no console"): `steering` hides the
+ * chat (the aside stays in the DOM), closes the console, takes the omnibar's verb group away, and
+ * steps the shell back — the band becomes a presentation (mark · name · Leave), the strip and the
+ * Build views are not drawn, and `<main>` drops its padding so the room is edge to edge. The
+ * committee's view has zero write controls and nothing to navigate by but Esc. */
 export function Frame({
-  status,
-  projectPath,
-  consoleEntries,
-  syncState,
-  area,
-  viewedStageId,
-  actor,
-  onNavigate,
-  shell,
-  children,
+  status, projectPath, consoleEntries, syncState, area, viewedStageId, actor, commandCenter = null, steering = false, onNavigate, shell, children,
 }: {
   status: ProjectStatus
   projectPath: string
@@ -88,12 +97,13 @@ export function Frame({
   /** Who is using Studio — spec 0016's chat needs this to attribute an accepted or discarded
    * proposal through the SAME draft ledger a structured-editor draft already uses. */
   actor: string
+  /** The one read model (§2.3) App holds; null before it lands or on a plugin without it. */
+  commandCenter?: CommandCenter | null
+  steering?: boolean
   onNavigate: (target: NavTarget) => void
   shell?: FrameShellHooks
   children: ReactNode
 }) {
-  // Computed ONCE here and handed down, rather than each of Frame and FrameBody re-deriving its
-  // own `.find()` over the same stage list for the same answer.
   const currentStageId = status.stages.find((s) => s.stage_state === 'current')?.id
   // The ONE resolved stage every consumer below needs — the picked stage, or the project's own
   // current one, the same default stage_readiness.py itself uses when called with no --phase.
@@ -111,6 +121,8 @@ export function Frame({
         stageId={stageId}
         currentStageId={currentStageId}
         actor={actor}
+        commandCenter={commandCenter}
+        steering={steering}
         onNavigate={onNavigate}
         shell={shell}
       >
@@ -120,27 +132,16 @@ export function Frame({
   )
 }
 
-/** Memo boundaries live here, not in Sidebar.tsx / ChatPanel.tsx, so those files and their
- * `renderToStaticMarkup` tests are untouched. `onNavigate` is a `useCallback` in App and
- * `onToggleConsole` a module function, so nothing happening in FrameBody reaches them. */
-const MemoSidebar = memo(Sidebar)
+/** Memo boundaries live here. `onNavigate` is a `useCallback` in App and `onToggleConsole` a
+ * module function, so nothing happening in FrameBody reaches them. */
+const MemoTopBand = memo(TopBand)
+const MemoStrip = memo(LifecycleStrip)
 const MemoChatPanel = memo(ChatPanel)
 
 const EMPTY_SHELL: FrameShellHooks = {}
 
 function FrameBody({
-  status,
-  projectPath,
-  consoleEntries,
-  syncState,
-  area,
-  viewedStageId,
-  stageId,
-  currentStageId,
-  actor,
-  onNavigate,
-  shell = EMPTY_SHELL,
-  children,
+  status, projectPath, consoleEntries, syncState, area, viewedStageId, stageId, currentStageId, actor, commandCenter, steering, onNavigate, shell = EMPTY_SHELL, children,
 }: {
   status: ProjectStatus
   projectPath: string
@@ -151,39 +152,44 @@ function FrameBody({
   stageId: string | undefined
   currentStageId: string | undefined
   actor: string
+  commandCenter: CommandCenter | null
+  steering: boolean
   onNavigate: (target: NavTarget) => void
   shell?: FrameShellHooks
   children: ReactNode
 }) {
   // Open/closed is store state so the palette's "Toggle console" and ⌘J flip the same flag the
-  // sidebar button does; the sidebar's button needs the flag, the dock below subscribes on its own.
+  // band's button does; the dock below subscribes on its own.
   const consoleOpen = useConsoleOpen()
-  const { readiness } = useStageReadiness()
   // ⌘\ hides the chat without unmounting it: the aside keeps its place in DOM order (the a11y
-  // pins count two asides, sidebar then chat) and its composer keeps whatever was typed.
+  // pins count two asides, band then chat) and its composer keeps whatever was typed.
   const [chatHidden, setChatHidden] = useState(false)
   const toggleChat = useCallback(() => setChatHidden((h) => !h), [])
+  // Steering closes the console: the committee's screen has no drawer of command output.
+  useEffect(() => { if (steering) consoleStore.setOpen(false) }, [steering])
   // The palette's open flag lives in ShellPalette so opening it re-renders that component alone;
-  // the sidebar's Search button reaches it through this ref, which ShellPalette fills on mount.
+  // the band's omnibar trigger reaches it through this ref, which ShellPalette fills on mount.
   const openPaletteRef = useRef<(() => void) | null>(null)
   const onOpenPalette = useCallback(() => openPaletteRef.current?.(), [])
-  // Sidebar's doc-count line is always about the ACTUAL current stage (it only renders under the
-  // row whose stage_state is 'current' — see Sidebar.tsx; spec 0019 kept that). The shared fetch
-  // is for the VIEWED stage, which is the current one unless a stage was picked — then this line
-  // reads that same fetch. When the two differ, `stage_readiness.py` answers for one stage per
-  // call, so `useOtherCurrentStageDocs` runs its own small fetch for just that case rather than
-  // falling back to "In progress" (reserved for before data has arrived at all).
-  const viewedComplete = readiness?.ok && readiness.stageId === currentStageId
-    ? readiness.documents.filter((d) => d.ready).length
-    : null
-  const viewedTotal = readiness?.ok && readiness.stageId === currentStageId ? readiness.documents.length : null
-  // Memoised on the two numbers — a fresh object per render would defeat MemoSidebar for nothing.
-  const viewedStageDocs = useMemo<DocProgress | null>(
-    () => (viewedComplete !== null && viewedTotal !== null ? { complete: viewedComplete, total: viewedTotal } : null),
-    [viewedComplete, viewedTotal],
-  )
-  const otherCurrentDocs = useOtherCurrentStageDocs(projectPath, currentStageId, stageId)
-  const currentDocs = viewedStageDocs ?? otherCurrentDocs
+  const openShortcutsRef = useRef<(() => void) | null>(null)
+  const onOpenShortcuts = useCallback(() => openShortcutsRef.current?.(), [])
+
+  const sprintFacts = useMemo(() => stripFactsFrom(commandCenter), [commandCenter])
+  const needsYou = useMemo(() => (commandCenter ? { count: commandCenter.needsYou.length, reason: commandCenter.needsYouReason } : null), [commandCenter])
+  // Guarded: a test fixture may omit `current_phase`; the real status always carries it.
+  const home = homeFor(status.current_phase ? status : null, null, commandCenter?.capabilities ?? null)
+  const { newProject, openFolder, back } = shell
+  // Esc's own path out of steering (App's `back` returns to the screen it was entered from); a
+  // test that mounts Frame without the hook leaves through the sprint home.
+  const leaveSteering = useCallback(() => { if (back) back(); else onNavigate({ area: 'sprint' }) }, [back, onNavigate])
+  const presentation = useMemo(() => (steering ? { onLeave: leaveSteering } : undefined), [steering, leaveSteering])
+  const overflow = useMemo(() => ({
+    toggleChat,
+    openShortcuts: onOpenShortcuts,
+    steering: () => onNavigate({ area: 'steering' }),
+    newProject,
+    openFolder,
+  }), [toggleChat, onOpenShortcuts, onNavigate, newProject, openFolder])
 
   // The Frame root carries `--chat-width` / `--console-height` and `data-chat-hidden` (the
   // round-2 shell contract, read by screens that lay out beside the chat or above the console).
@@ -210,28 +216,36 @@ function FrameBody({
   usePrefetchCanvasHost(projectPath)
 
   return (
-    <div ref={rootRef} data-frame-root="" data-chat-hidden={chatHidden ? '' : undefined} style={rootStyle} className="flex h-screen flex-col bg-slate-50">
+    <div ref={rootRef} data-frame-root="" data-chat-hidden={chatHidden || steering ? '' : undefined} data-steering={steering ? '' : undefined} style={rootStyle} className="flex h-screen flex-col bg-slate-50">
       <SkipLink />
       <LiveAnnouncer />
-      {/* Column below sm, row at sm+ — spec 0018's document panel and chat need to stack at
-          phone width, and Sidebar/main/ChatPanel are unconditional row siblings here rather
-          than inside WorkflowTab, so the wrap has to happen at this level. */}
-      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-        <MemoSidebar
+      {/* The shell band: the FIRST aside, holding the band and the strip (`nav[aria-label="Project"]`). */}
+      <aside data-testid="shell-band" aria-label="Project shell" className={cn('shrink-0', steering ? 'bg-steer-bg' : 'bg-surface-0')}>
+        <MemoTopBand
           status={status}
-          area={area}
-          viewedStageId={viewedStageId}
-          currentDocs={currentDocs}
           syncState={syncState}
+          area={area}
           consoleOpen={consoleOpen}
           onToggleConsole={consoleStore.toggle}
-          onNavigate={onNavigate}
           onOpenPalette={onOpenPalette}
+          onNavigate={onNavigate}
+          needsYou={needsYou}
+          home={home}
+          currentStageId={currentStageId ?? null}
+          overflow={overflow}
+          presentation={presentation}
         />
+        {/* The strip (and the Build views under it) is navigation; steering mode draws none. */}
+        {!steering && <MemoStrip status={status} projectPath={projectPath} area={area} viewedStageId={viewedStageId} sprint={sprintFacts} onNavigate={onNavigate} />}
+      </aside>
+      {/* Column below sm, row at sm+ — spec 0018's document panel and chat need to stack at
+          phone width. */}
+      <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
         {/* `id="main"` is the skip link's target; `tabIndex={-1}` takes programmatic focus without
-            joining the tab order. Children render directly — no wrapper (§7 Frame row [MF]). */}
-        <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
-        <MemoChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} hidden={chatHidden} onWidthChange={onChatWidth} />
+            joining the tab order. Children render directly — no wrapper (§7 Frame row [MF]).
+            Steering: no padding, so the room is full-bleed without negative margins. */}
+        <main id="main" tabIndex={-1} className={cn('min-w-0 flex-1 overflow-auto', steering ? 'p-0' : 'p-6')}>{children}</main>
+        <MemoChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} hidden={chatHidden || steering} onWidthChange={onChatWidth} />
       </div>
       <ConsoleDock entries={consoleEntries} onHeightReport={onConsoleHeight} />
       <ToastRegion />
@@ -241,10 +255,13 @@ function FrameBody({
         currentStageId={currentStageId}
         viewedStageId={stageId}
         area={area}
+        commandCenter={commandCenter}
+        steering={steering}
         onNavigate={onNavigate}
         toggleChat={toggleChat}
         shell={shell}
         openRef={openPaletteRef}
+        openShortcutsRef={openShortcutsRef}
       />
     </div>
   )
@@ -265,7 +282,6 @@ function ConsoleDock({ entries, onHeightReport }: { entries?: ConsoleEntry[]; on
   const wrapper = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (open) setRendered(true) }, [open])
-  // The Frame root's `--console-height`: the dock's height while it is on screen, 0 once gone.
   useEffect(() => {
     onHeightReport?.(rendered ? height : 0)
   }, [onHeightReport, rendered, height])
@@ -274,9 +290,6 @@ function ConsoleDock({ entries, onHeightReport }: { entries?: ConsoleEntry[]; on
     const el = wrapper.current
     if (!el || !rendered) return
     const tl = consoleToggle.play(choreoContext(el), { wrapper: el, direction: open ? 'open' : 'close' })
-    // The open tween ends with `clearProps: 'height'`, which also drops React's inline height;
-    // put the preference back once the resting height has landed. The close tween ends with the
-    // dock gone — unmounting is what releases the layout, not a zero height left in place.
     tl.add(open ? () => { el.style.height = `${heightRef.current}px` } : () => setRendered(false))
   }, { scope: wrapper, dependencies: [open, rendered] })
 
@@ -314,59 +327,56 @@ function copyProjectPath(projectPath: string): void {
 
 /** Palette + shortcuts help + the shell's shortcuts, isolated so opening either re-renders this
  * component and nothing above it. The index is built from what Frame already holds; nothing
- * here calls the bridge. */
-function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area, onNavigate, toggleChat, shell, openRef }: {
+ * here calls the bridge. The omnibar's verb row (`intents.ts`) reads the same held state — the
+ * backlog rows, the command center's roster and sprints, the connection's identity — and hands a
+ * match to App through `shell.openIntent`; nothing is spawned here. */
+function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area, commandCenter, steering, onNavigate, toggleChat, shell, openRef, openShortcutsRef }: {
   status: ProjectStatus
   projectPath: string
   currentStageId: string | undefined
   viewedStageId: string | undefined
   area: Area
+  commandCenter: CommandCenter | null
+  steering: boolean
   onNavigate: (target: NavTarget) => void
   toggleChat: () => void
   shell: FrameShellHooks
   openRef: MutableRefObject<(() => void) | null>
+  openShortcutsRef: MutableRefObject<(() => void) | null>
 }) {
   const [open, setOpen] = useState(false)
   const [helpOpen, setHelpOpen] = useState(false)
   const { readiness, refresh } = useStageReadiness()
-  // Subscribe, do not just reference: `buildIndex` copies rows/slate at build time, so a host
-  // memoised on the store OBJECT froze the "#" specs group at whatever the Board had fetched when
-  // some other host field last changed — "Open the Board once to index specs" with 40 rows on
-  // screen. The snapshot changes identity on every `setRows`/`setSlate`, so the index follows.
   const backlog = useBacklogStore()
+  const connection = useConnection()
   const prefs = usePreferenceActionHooks()
-  // I6: the mounted graph's own two commands (fit, focus next up), or null while no graph is on
-  // screen — plain callbacks from `sceneActions`, zero IPC; the rows appear and vanish with it.
   const scene = useSceneActions()
   const openPalette = useCallback(() => { setHelpOpen(false); setOpen(true) }, [])
   const closePalette = useCallback(() => setOpen(false), [])
-  // The help closes the palette first: two dialogs stacked would both claim Esc and the focus trap.
   const openShortcuts = useCallback(() => { setOpen(false); setHelpOpen(true) }, [])
   const closeShortcuts = useCallback(() => setHelpOpen(false), [])
   useEffect(() => {
     openRef.current = openPalette
-    return () => { openRef.current = null }
-  }, [openRef, openPalette])
+    openShortcutsRef.current = openShortcuts
+    return () => { openRef.current = null; openShortcutsRef.current = null }
+  }, [openRef, openShortcutsRef, openPalette, openShortcuts])
 
-  const { openSpec, openDocument, openSettings, back, stageHomeShowing, sprintShowing, refreshScreen } = shell
+  const { openSpec, openDocument, openSettings, back, stageHomeShowing, sprintShowing, refreshScreen, openIntent } = shell
   const readinessStageId = readiness?.ok ? readiness.stageId : undefined
   const actions = useMemo<PaletteActionHooks>(() => ({
     ...prefs.hooks,
     toggleConsole: consoleStore.toggle,
     toggleChat,
-    // Only while the thing the row names is on screen: the Spine band is StageHome's, the two
-    // scenes with a Graph / Table choice are the Spine and the Sprint constellation.
     toggleSpine: stageHomeShowing ? stageTabStore.toggleSpineCollapsed : undefined,
     toggleSurface: stageHomeShowing ? () => toggleSurfacePreference('spine') : sprintShowing ? () => toggleSurfacePreference('sprint') : undefined,
-    // StageHome's refresh is the shared readiness read Frame already owns; other screens pass
-    // their own through App, or the row is absent.
     refreshScreen: stageHomeShowing ? () => { void refresh() } : refreshScreen,
     fitGraph: scene?.fitGraph,
     focusNextUp: scene ? () => { scene.focusNextUp() } : undefined,
     copyProjectPath: () => copyProjectPath(projectPath),
     openShortcuts,
+    steering: steering ? undefined : () => onNavigate({ area: 'steering' }),
     back,
-  }), [prefs.hooks, toggleChat, stageHomeShowing, sprintShowing, refresh, refreshScreen, scene, projectPath, openShortcuts, back])
+  }), [prefs.hooks, toggleChat, stageHomeShowing, sprintShowing, refresh, refreshScreen, scene, projectPath, openShortcuts, steering, onNavigate, back])
 
   const host = useMemo(() => ({
     stages: status.stages,
@@ -378,7 +388,6 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
     recentIds: [],
     area,
     navigate: onNavigate,
-    // App's openers land ON the item; the area is the honest fallback when App passed none.
     openSpec: openSpec ?? (() => onNavigate({ area: 'build' })),
     openDocument: openDocument
       ? (path: string) => openDocument(path, readinessStageId ?? viewedStageId)
@@ -386,8 +395,23 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
     openSettings: openSettings ?? (() => onNavigate({ area: 'settings' })),
   }), [status.stages, currentStageId, viewedStageId, readiness, readinessStageId, backlog, actions, area, onNavigate, openSpec, openDocument, openSettings])
   const { entries, recentIds, remember } = usePaletteIndex(host)
-  // The shell's own bindings; a screen adds its scope (stageHome, documentView, board) with its
-  // own `useShortcuts` call. Esc's outermost layers here are the two dialogs this component owns.
+
+  // The omnibar's grammar context (§3.6): board rows (the slate converted the same way the Board
+  // does), the roster, the sprint ids and capabilities the plugin reported, the identity label.
+  const intents = useMemo(() => {
+    if (steering || !openIntent) return undefined
+    const seen = new Set(backlog.rows.map((r) => r.spec))
+    const ctx: IntentContext = {
+      rows: [...backlog.rows, ...backlog.slate.filter((s) => !seen.has(s.id)).map(slateToBoardRow)],
+      roster: (commandCenter?.roster.data?.people ?? []).map((p) => ({ handle: p.handle, name: p.name })),
+      activeSprint: commandCenter?.sprints.data?.active ?? commandCenter?.sprint.data?.sprint?.id ?? null,
+      sprintIds: commandCenter?.sprints.data?.sprints.map((s) => s.id) ?? [],
+      capabilities: commandCenter?.capabilities ?? null,
+      actor: identityLabel(connection?.account, connection?.rosterHandle),
+    }
+    return (query: string) => intentEntries(query, ctx, openIntent)
+  }, [steering, openIntent, backlog, commandCenter, connection])
+
   useShortcuts({
     handlers: {
       openPalette,
@@ -408,34 +432,26 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
   })
   return (
     <>
-      <CommandPalette open={open} onClose={closePalette} entries={entries} recentIds={recentIds} onRun={(e) => remember(e.id)} />
+      <CommandPalette open={open} onClose={closePalette} entries={entries} recentIds={recentIds} onRun={(e) => remember(e.id)} placeholder={OMNIBAR_PLACEHOLDER} intents={intents} />
       <ShortcutsHelp open={helpOpen} onClose={closeShortcuts} />
     </>
   )
 }
 
 /** M2 / M3: the shell opens as one thing. Played ONCE per `projectPath` from the Frame root the
- * moment it mounts (the overlay unmounted in the same commit — App sets the screen and clears
- * the opening together), never again on a `refreshStatus` re-render: `frameAssemble.playOnce`
- * keys on the path and this effect only re-runs when the path changes. Each mount is one OPEN of
- * the project: the familiarity counter is bumped first and the tier read second, so opens 1–3
- * play in full, 4–10 at `dur-4`, and past ten nothing plays. Only inner content is handed over —
- * the sidebar's header, its stage rows, `<main>`'s first child and the chat's inner wrapper —
- * never an `<aside>` or `<main>` itself (§4 invariants). P4's Spine joins through
- * `frameAssemble.join`. Under the stub (test mode, off) nothing moves and nothing is written. */
+ * moment it mounts, never again on a `refreshStatus` re-render. Only inner content is handed
+ * over — the band, `<main>`'s first child and the chat's inner wrapper — never an `<aside>` or
+ * `<main>` itself (§4 invariants). The strip's rail draw and station pops (row #32) and the
+ * Spine's own draw join through `frameAssemble.join`. Under the stub nothing moves. */
 function useFrameAssemble(rootRef: MutableRefObject<HTMLDivElement | null>, projectPath: string) {
   useEffect(() => {
     const root = rootRef.current
     if (!root) return
     motion.recordOpen(projectPath)
     const tier = motion.familiarity(projectPath)
-    // M2: a mounted Spine adds its rail draw and station pops INSIDE this assemble at the join
-    // point; with no scene mounted yet (the canvas is lazy) `joinSpineAssemble` is a no-op and
-    // the Spine plays its own draw when it arrives. Joiners run only under a real timeline.
     const unjoin = frameAssemble.join((_ctx, tl) => { joinSpineAssemble(tl as unknown as gsap.core.Timeline) })
     const tl = frameAssemble.playOnce(projectPath, choreoContext(root), {
-      sidebarHeader: root.querySelector('[data-sidebar-header]'),
-      stageRows: Array.from(root.querySelectorAll('nav[aria-label="Project"] ol > li')),
+      sidebarHeader: root.querySelector('[data-topband]'),
       screenRoot: root.querySelector('main#main > :first-child'),
       chatInner: root.querySelector('[data-chat-inner]'),
       tier,
@@ -450,9 +466,7 @@ function useFrameAssemble(rootRef: MutableRefObject<HTMLDivElement | null>, proj
 
 /** I8 (host half): warm the scene chunk while the window is idle, so the first Graph surface
  * does not pay the import on click. Only when it is likely to be wanted — not in a test build,
- * not when the Spine band is collapsed, and only when the stored default surface is `graph`. The
- * import is of P4's `lazyCanvas` module and tolerates a build where `prefetchCanvasHost` has not
- * landed yet (it is read as optional). */
+ * not when the Spine band is collapsed, and only when the stored default surface is `graph`. */
 function usePrefetchCanvasHost(projectPath: string) {
   useEffect(() => {
     if (import.meta.env.MODE === 'test') return
@@ -477,29 +491,4 @@ function usePrefetchCanvasHost(projectPath: string) {
       if (timer !== null) clearTimeout(timer)
     }
   }, [projectPath])
-}
-
-/** The sidebar's current-stage doc-count line for the one case the shared fetch cannot cover: the
- * viewed stage is not the current one. Runs its own `getStageReadiness` for `currentStageId` only
- * while that holds (the pre-spec-0019 `useCurrentStageDocs` shape, narrowed to this gap). Null
- * while unknown or on failure, so the sidebar shows its documented "In progress" placeholder. */
-function useOtherCurrentStageDocs(
-  projectPath: string, currentStageId: string | undefined, viewedStageId: string | undefined,
-): DocProgress | null {
-  const [docs, setDocs] = useState<DocProgress | null>(null)
-  const needsOwnFetch = currentStageId !== undefined && currentStageId !== viewedStageId
-
-  useEffect(() => {
-    if (!needsOwnFetch) return
-    let cancelled = false
-    window.studio.getStageReadiness(projectPath, currentStageId)
-      .then((r) => {
-        if (cancelled || !r.ok) return
-        setDocs({ complete: r.documents.filter((d) => d.ready).length, total: r.documents.length })
-      })
-      .catch(() => { /* the sidebar simply keeps saying "In progress" */ })
-    return () => { cancelled = true }
-  }, [projectPath, currentStageId, needsOwnFetch])
-
-  return needsOwnFetch ? docs : null
 }

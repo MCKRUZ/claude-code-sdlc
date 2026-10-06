@@ -12,7 +12,81 @@ const WINDOWS: { value: WindowDays; label: string }[] = [
 ]
 
 const percent = (v: number) => `${Math.round(v * 100)}%`
-const hours = (v: number) => `${v.toFixed(1)}h`
+/** ONE way to write hours on every screen (the home's panel, the close screen, steering, here):
+ * one decimal and the unit joined, "5.3h" — never "20 h" here and "20.0h" there. */
+export const formatHours = (v: number) => `${(Math.round(v * 10) / 10).toFixed(1)}h`
+const hours = formatHours
+
+/** One measure of the standard, as `scorecard.py report --json` reports it. `field` is the plugin's
+ * own JSON key — every tile names it, so a number in a steering room is traceable to its source.
+ * The table is shared by this screen, the sprint home's "How it is going" panel, the close screen's
+ * Outcomes and steering mode (togo-command-center.md §3.1, §3.5): one list, so no screen can show a
+ * measure another lacks or invent one the plugin does not report. */
+export interface ScorecardMeasure {
+  id: string
+  label: string
+  field: string
+  value: number | null
+  kind: 'percent' | 'hours' | 'count'
+  produces: string
+  /** The one measure the standard keeps apart (security-review wait) — its own line, always. */
+  emphasis?: boolean
+  /** What a RATE is a rate OF, from the plugin's own `totals` / `dora.deploy_count` — printed
+   * under the number as "of N merged" so a measured 0 % is distinguishable from no data. Null
+   * when the plugin reports no denominator (or a 0 — "of 0" would be a fabricated base). */
+  denominator?: { n: number; noun: string; field: string } | null
+}
+
+/** "of 4 merged" — the plugin's own count under a rate, or null when it gave none. */
+export function denominatorFor(n: number | null | undefined, noun: string, field: string): ScorecardMeasure['denominator'] {
+  return typeof n === 'number' && Number.isFinite(n) && n > 0 ? { n, noun, field } : null
+}
+
+export function denominatorText(d: ScorecardMeasure['denominator']): string | null {
+  return d ? `of ${d.n} ${d.noun}` : null
+}
+
+export function scorecardMeasures(card: Scorecard): ScorecardMeasure[] {
+  const merged = denominatorFor(card.totals?.merges, 'merged', 'totals.merges')
+  const deploys = denominatorFor(card.dora.deploy_count, 'deployments', 'dora.deploy_count')
+  return [
+    { id: 'accepted', label: 'Accepted as-is', field: 'accepted_as_is_rate', value: card.accepted_as_is_rate, kind: 'percent', produces: 'a merged spec recorded as accepted without rework', denominator: merged },
+    { id: 'rework', label: 'Rework or revert', field: 'rework_revert_rate', value: card.rework_revert_rate, kind: 'percent', produces: 'a merged spec that was later reverted or reworked', denominator: merged },
+    { id: 'bounce', label: 'Sent back', field: 'bounce_back_rate', value: card.bounce_back_rate, kind: 'percent', produces: 'a spec returned to its developer during checking', denominator: merged },
+    { id: 'review-wait', label: 'Review wait (median)', field: 'review_wait_median_hours', value: card.review_wait_median_hours, kind: 'hours', produces: 'a review that has been requested and answered' },
+    { id: 'security-wait', label: 'Security review wait (median)', field: 'security_review_wait_median_hours', value: card.security_review_wait_median_hours, kind: 'hours', produces: 'a security review that has been requested and answered', emphasis: true },
+    { id: 'dora.deploys', label: 'Deployments', field: 'dora.deploy_count', value: card.dora.deploy_count, kind: 'count', produces: 'a recorded deployment' },
+    { id: 'dora.lead', label: 'Lead time (median)', field: 'dora.lead_time_median_hours', value: card.dora.lead_time_median_hours, kind: 'hours', produces: 'a merged change that reached production' },
+    { id: 'dora.cfr', label: 'Change failure rate', field: 'dora.change_fail_rate', value: card.dora.change_fail_rate, kind: 'percent', produces: 'a deployment that caused an incident', denominator: deploys },
+    { id: 'dora.ttr', label: 'Time to recover (median)', field: 'dora.time_to_recover_median_hours', value: card.dora.time_to_recover_median_hours, kind: 'hours', produces: 'a closed incident' },
+  ]
+}
+
+/** The DORA four (the "Delivery" group) apart from the outcomes — one filter, so a screen that
+ * groups the tiles agrees with this one about which measure is which. */
+export const isDora = (m: Pick<ScorecardMeasure, 'id'>) => m.id.startsWith('dora.')
+
+/** The number as READ for display — 72 for "72 %", 5.3 for "5.3 h" — plus its unit. Null stays null. */
+/** The words for a count of zero recorded events — the plugin's own `0` (its text prints
+ * "Deploys 0"), said as its escaped-bugs line says it, never a bare numeral that reads as a
+ * measured zero (visual §8 #6). */
+export const NONE_RECORDED = 'none recorded in this window'
+
+export function shownValue(m: Pick<ScorecardMeasure, 'value' | 'kind'>): { shown: number | null; unit: string; words?: string } {
+  const unit = m.kind === 'percent' ? '%' : m.kind === 'hours' ? 'h' : ''
+  if (m.value === null) return { shown: null, unit }
+  if (m.kind === 'count' && m.value === 0) return { shown: null, unit, words: NONE_RECORDED }
+  return { shown: m.kind === 'percent' ? Math.round(m.value * 100) : m.kind === 'hours' ? Number(m.value.toFixed(1)) : m.value, unit }
+}
+
+/** The five outcome tiles as StatTiles — the sprint home's "How it is going" panel reuses this. */
+export function ScorecardMeasures({ card }: { card: Scorecard }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {scorecardMeasures(card).filter((m) => !m.id.startsWith('dora.')).map((m) => <Measure key={m.id} measure={m} />)}
+    </div>
+  )
+}
 
 /** How Build is going (spec 0013). Every number is the plugin's; `null` is "no data" with what
  * would produce some — never a 0, which is a different and false claim. */
@@ -38,20 +112,15 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
    * eleven times, which is the difference between a screen that informs and one that nags. */
   const nothingRecorded = card !== null && hasNothingRecorded(card)
 
-  /** Built from the SAME object this screen rendered, never from a fresh fetch. Spec 0013
-   * asks an export to contain exactly what is on screen, and a second fetch could return
-   * something else between somebody reading a number and taking it to a room. */
+  /** Built from the SAME object this screen rendered, never from a fresh fetch (spec 0013). */
   const exportScorecard = async () => {
     if (!card) return
     const contents = buildScorecardExport(card, {
-      // Both separators: on Windows a forward-slash-only split leaves the whole path, which
-      // would put an absolute directory where a project name belongs in a steering document.
       projectName: projectPath.split(/[\\/]/).filter(Boolean).pop() ?? 'this project',
       windowDays: Number(windowDays),
       now: new Date(),
     })
     const result = await window.studio.exportDocument(`how-build-is-going-${windowDays}d.md`, contents)
-    // The toast is the one acknowledgement; no inline sentence repeats it.
     if (result.ok) toast({ tone: 'ok', title: 'Export written', detail: result.path ?? 'saved' })
   }
 
@@ -66,9 +135,7 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
 
   if (unreadable) {
     return (
-      // Deliberately NOT an all-zero scorecard. A zeroed screen is a claim about the project;
-      // this is a claim about the tool, and a steering meeting is exactly where confusing the
-      // two costs something.
+      // Deliberately NOT an all-zero scorecard: a claim about the tool, not about the project.
       <Notice tone="warn" title="The scorecard could not be read.">
         This is not the same as "nothing has happened" — no numbers are being shown because
         none could be read, not because they are zero.
@@ -76,10 +143,10 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
     )
   }
   if (!card) return null
+  const dora = scorecardMeasures(card).filter((m) => m.id.startsWith('dora.'))
 
   return (
     <div ref={root} className="space-y-4">
-      {/* S1: the kit header; the heading text is byte-identical (board.spec finds it by name). */}
       <PageHeader
         eyebrow="Build · How it is going"
         title="How Build is going"
@@ -92,9 +159,6 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
         )}
       />
 
-      {/* The export's outcome is the toast (`exportScorecard` fires one with the path); a second
-          green sentence here would repeat it (G4-15). */}
-
       {nothingRecorded && (
         <EmptyState
           title={`No data in the last ${windowDays} days.`}
@@ -102,19 +166,9 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
         />
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        <Measure id="accepted" label="Accepted as-is" value={card.accepted_as_is_rate} kind="percent" produces="a merged spec recorded as accepted without rework" />
-        <Measure id="rework" label="Rework or revert" value={card.rework_revert_rate} kind="percent" produces="a merged spec that was later reverted or reworked" />
-        <Measure id="bounce" label="Sent back" value={card.bounce_back_rate} kind="percent" produces="a spec returned to its developer during checking" />
-        <Measure id="review-wait" label="Review wait (median)" value={card.review_wait_median_hours} kind="hours" produces="a review that has been requested and answered" />
-        {/* On its own line, never folded into the figure above. A slow security review hidden
-            inside an average is a slow security review nobody acts on. */}
-        <Measure id="security-wait" label="Security review wait (median)" value={card.security_review_wait_median_hours} kind="hours" produces="a security review that has been requested and answered" emphasis />
-      </div>
+      <ScorecardMeasures card={card} />
 
-      {/* Spec 0013: "waiting times are shown against the project's own alarm thresholds, and
-          a measure over its threshold is marked." The comparison itself is the plugin's
-          (team_alarms), never computed here from the two medians above. */}
+      {/* The comparison itself is the plugin's (team_alarms), never computed here from the medians. */}
       {card.team_alarms && Object.keys(card.team_alarms).length > 0 && (
         <Card>
           <Eyebrow as="h3" className="mb-2">Review-wait alarms by team</Eyebrow>
@@ -142,12 +196,7 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
         <Eyebrow as="h3" className="mb-2">Delivery</Eyebrow>
         <DefinitionList
           columns={2}
-          items={[
-            { term: 'Deployments', detail: <Counted id="dora.deploys" value={card.dora.deploy_count} format={String} produces="a recorded deployment" /> },
-            { term: 'Lead time (median)', detail: <Counted id="dora.lead" value={card.dora.lead_time_median_hours} format={hours} produces="a merged change that reached production" /> },
-            { term: 'Change failure rate', detail: <Counted id="dora.cfr" value={card.dora.change_fail_rate} format={percent} produces="a deployment that caused an incident" /> },
-            { term: 'Time to recover (median)', detail: <Counted id="dora.ttr" value={card.dora.time_to_recover_median_hours} format={hours} produces="a closed incident" /> },
-          ]}
+          items={dora.map((m) => ({ term: m.label, detail: <Counted id={m.id} value={m.value} format={m.kind === 'hours' ? hours : m.kind === 'percent' ? percent : String} produces={m.produces} /> }))}
         />
       </Card>
 
@@ -160,11 +209,7 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
             {card.escaped_bugs.map((bug, i) => (
               <li key={i} className="text-sm" data-reveal="">
                 <span className="text-ink-1">{String(bug.summary ?? 'a bug')}</span>
-                {/* The retro input, not a bug count: which check should have caught it, and
-                    what is proposed about that check. */}
-                <span className="mt-0.5 block text-xs text-ink-3">
-                  Should have been caught by: {String(bug.which_check ?? 'not recorded')}
-                </span>
+                <span className="mt-0.5 block text-xs text-ink-3">Should have been caught by: {String(bug.which_check ?? 'not recorded')}</span>
                 {bug.proposed_fix ? <span className="block text-xs text-ink-3">Proposed: {String(bug.proposed_fix)}</span> : null}
               </li>
             ))}
@@ -172,9 +217,7 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
         )}
       </Card>
 
-      {/* Spec 0013 asks for this to be STATED, not merely absent. An absence explains nothing;
-          saying why these are not measured is the part that changes a conversation. */}
-      {/* A standing statement, not a notice (G4-15): an inset card with an eyebrow. */}
+      {/* Spec 0013 asks for this to be STATED, not merely absent (board.spec pins the sentence). */}
       <Card tone="inset">
         <Eyebrow as="h3" className="mb-2">Not measured here, on purpose</Eyebrow>
         <p className="text-sm text-ink-1">Velocity, story points, pull-request counts and lines of code.</p>
@@ -196,26 +239,21 @@ function Counted({ id, value, format, produces }: { id: string; value: number | 
   return <span ref={counted.ref} className="text-sm font-semibold tabular-nums">{counted.text}</span>
 }
 
-/** One measure as a StatTile. The tile is handed the number as it is READ — 72 with "%", 5.3
- * with "h" — so it is right with no motion layer at all; the counter then drives the tile's own
- * `[data-value]` text node, found through the tile's ref, so the kit never imports gsap. */
-function Measure({
-  id, label, value, kind, produces, emphasis,
-}: { id: string; label: string; value: number | null; kind: 'percent' | 'hours'; produces: string; emphasis?: boolean }) {
-  const shown = value === null ? null : kind === 'percent' ? Math.round(value * 100) : Number(value.toFixed(1))
-  const counted = useCountUp(`scorecard.${id}`, shown, { snap: kind === 'percent' ? 1 : 0.1 })
+/** One measure as a StatTile; the counter drives the tile's own `[data-value]` text node. */
+function Measure({ measure }: { measure: ScorecardMeasure }) {
+  const { shown, unit } = shownValue(measure)
+  const counted = useCountUp(`scorecard.${measure.id}`, shown, { snap: measure.kind === 'percent' ? 1 : 0.1 })
   return (
     <StatTile
-      id={`scorecard-${id}`}
+      id={`scorecard-${measure.id}`}
       ref={(el) => { counted.ref.current = el?.querySelector<HTMLElement>('[data-value]') ?? null }}
-      label={label}
+      label={measure.label}
       value={shown}
-      unit={kind === 'percent' ? '%' : 'h'}
-      hint={`Produced by ${produces}.`}
+      unit={unit}
+      hint={`Produced by ${measure.produces}.`}
       noDataWhat="Nothing of that kind has been recorded in this window."
-      // The one measure the standard keeps apart gets its own row by POSITION (full width),
-      // not by a different fill — a tinted tile would read as a state it does not have.
-      className={emphasis ? 'sm:col-span-2 lg:col-span-3' : undefined}
+      // The one measure the standard keeps apart gets its own row by POSITION, not a tint.
+      className={measure.emphasis ? 'sm:col-span-2 lg:col-span-3' : undefined}
       data-reveal=""
     />
   )

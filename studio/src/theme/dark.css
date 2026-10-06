@@ -141,6 +141,55 @@
   --color-sky-50: #082f49;
   --color-sky-200: #0c4a6e;
   --color-sky-700: #7dd3fc;
+
+  /* Command center (togo-command-center-visual.md §2). Inside the FIRST block on purpose:
+     tokenContrast.test reads only this block. Alias rows restate the alias so a retune follows. */
+  --color-lane: #0e1727;
+  --color-lane-header: #121c2f;
+  --color-lane-line: #1b2639;
+  --color-card-lit: #22a3ad;
+  --color-baton: #22a3ad;
+  --color-baton-bg: #0c363b;
+  --color-baton-ink: #6fd1d4;
+  --color-you-ring: #6fd1d4;
+  --color-strip-lit: var(--color-stage-signed-fill);
+  --color-strip-unlit: var(--color-line-2);
+  --color-strip-viewing: var(--color-stage-current-fill);
+  --color-today-act-bg: var(--color-stage-current-bg);
+  --color-today-act-ink: var(--color-stage-current-ink);
+  --color-today-act-line: var(--color-stage-current-line);
+  --color-today-wait-bg: var(--color-status-warn-bg);
+  --color-today-wait-ink: var(--color-status-warn-ink);
+  --color-today-wait-line: var(--color-status-warn-line);
+  --color-today-late-bg: var(--color-status-error-bg);
+  --color-today-late-ink: var(--color-status-error-ink);
+  --color-today-late-line: var(--color-status-error-line);
+  --color-plan-backlog: var(--color-lane);
+  --color-plan-slate: var(--color-surface-1);
+  --color-plan-says: #0a2a2e;
+  --color-plan-says-line: #0f4a50;
+  --color-rung-pass: var(--color-status-ok-fill);
+  --color-rung-fail: var(--color-status-error-fill);
+  --color-rung-pending: #38bdf8;
+  --color-rung-none: var(--color-ink-4);
+  --color-rung-rail: var(--color-line-2);
+  --color-ledger-open-bg: var(--color-status-warn-bg);
+  --color-ledger-open-ink: var(--color-status-warn-ink);
+  --color-ledger-fixed-bg: var(--color-status-ok-bg);
+  --color-ledger-fixed-ink: var(--color-status-ok-ink);
+  --color-ledger-split-bg: var(--color-stage-current-bg);
+  --color-ledger-split-ink: var(--color-stage-current-ink);
+  --color-ledger-accepted-bg: var(--color-stage-signed-bg);
+  --color-ledger-accepted-ink: var(--color-stage-signed-ink);
+  --color-ledger-postponed-bg: var(--color-stage-later-bg);
+  --color-ledger-postponed-ink: var(--color-stage-later-ink);
+  --color-ledger-offbooks: var(--color-status-error-fill);
+  --color-steer-bg: #070c16;
+  --color-steer-tile: #111a2b;
+  --color-steer-tile-line: var(--color-line-1);
+  --color-steer-number-ink: var(--color-ink-1);
+  --color-steer-label-ink: var(--color-ink-2);
+  --color-steer-nodata-ink: var(--color-ink-3);
 }
 
 /* The eight exceptions. Each fixes a BACKGROUND usage the text-favouring remap would get wrong. */

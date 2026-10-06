@@ -95,7 +95,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
   <div>
     <div class="eyebrow">Team guide</div>
     <h1>Stand up Tōgō — a team guide</h1>
-    <p class="meta">Tōgō — plugin 1.6.2 (Unreleased: sprint layer, Observatory, code-host providers). For an engineer or product manager starting a project with the plugin. Every command below was checked against its <code>--help</code> on 2026-10-05.</p>
+    <p class="meta">Tōgō — plugin 1.7.0 (the command center; sprint layer, Observatory, code-host providers). For an engineer or product manager starting a project with the plugin. Every command below was checked against its <code>--help</code> on 2026-10-05.</p>
   </div>
 </header>
 
@@ -208,7 +208,7 @@ npm run dev</code></pre>
 <p>Says which plugin drives this session and which Claude Code it found. Unpackaged, the app prefers <code>&lt;studio&gt;/../scripts</code> when it carries <code>capabilities.py</code>, then the newest marketplace-cached plugin under <code>~/.claude/plugins/cache/</code>, then a path set in the app.</p>
 <aside class="see"><b>What you should see</b>
 <pre>Claude Code   2.1.289 — accepts every flag Studio uses
-Plugin        /…/claude-code-sdlc/scripts — version 1.6.2, from the checkout beside Studio</pre>
+Plugin        /…/claude-code-sdlc/scripts — version 1.7.0, from the checkout beside Studio</pre>
 <p>On an older CLI the first line reads "Claude Code 2.1.239 lacks --permission-mode — update with <code>claude update</code>" and the model buttons are off until it is updated. The plugin line's origin is one of: the checkout beside Studio, the plugin cache, the path set in Studio.</p>
 </aside>
 
@@ -560,7 +560,7 @@ Next: /sdlc-refine --spec 0012 · /sdlc-sprint ready --by &lt;name&gt; when the 
   <tr><td><code>scripts/tests/fixtures/code_host/azure_devops/captured/CAPTURE-NOTES.md</code></td><td>What real Azure DevOps output looks like, including the sign-in facts in §1.</td></tr>
   <tr><td><code>studio/README.md</code></td><td>The desktop app: scripts, appearance, shortcuts, scenes, bundle, security.</td></tr>
   <tr><td><code>docs/proposals/studio-observatory.md</code></td><td>The Observatory design: tokens, kit, motion, scenes, interaction mechanics.</td></tr>
-  <tr><td><code>docs/brand/togo/brandbook.html</code></td><td>The Tōgō brand guide: name, mark, colour, type, voice. The solid mark is the mark; its <i>Depth</i> gradient treatment lives in three places only — the Welcome hero, the opening card and the app icon (48 px and above) — never on a control, chip, status, data row or behind text. <code>docs/brand/togo/build-assets.mjs</code> regenerates every raster and the app icon from the SVG sources.</td></tr>
+  <tr><td><code>docs/brand/togo/brandbook.html</code></td><td>The Tōgō brand guide: name, mark, colour, type, voice. The solid mark is the mark; its <i>Depth</i> gradient treatment lives in four places only — the Welcome hero, the opening card, the app icon and the steering-mode lockup (48 px and above) — never on a control, chip, status, data row or behind text. <code>docs/brand/togo/build-assets.mjs</code> regenerates every raster and the app icon from the SVG sources.</td></tr>
 </table>
 <table>
   <tr><th style="width:330px">Path (your project, after <code>/sdlc-setup</code>)</th><th>Covers</th></tr>
@@ -571,7 +571,7 @@ Next: /sdlc-refine --spec 0012 · /sdlc-sprint ready --by &lt;name&gt; when the 
 </table>
 
 <footer>
-  <p>Tōgō — plugin 1.6.2 (Unreleased: sprint layer, Observatory, code-host providers).</p>
+  <p>Tōgō — plugin 1.7.0 (the command center; sprint layer, Observatory, code-host providers).</p>
   <p>Commands were checked against <code>--help</code> on 2026-10-05: <code>code_host.py</code>, <code>set_setting.py</code> (<code>person</code>, <code>code-host</code>), <code>sprint.py</code> (all ten verbs), <code>check_spec.py</code>, <code>new_spec.py</code>, <code>track_specs.py</code>, <code>init_project.py</code>, <code>validate_profile.py</code>, <code>validate_team.py</code>, <code>check_gates.py</code>, <code>doctor.py</code>, <code>track_decisions.py</code>, <code>scorecard.py</code>, <code>install_harness.py</code>, <code>generate_status.py</code>, <code>generate_phase_report.py</code>, <code>audit_artifacts.py</code>. Slash commands against <code>commands/*.md</code>. Sample outputs are shapes, not transcripts; your names, counts and dates will differ.</p>
 </footer>
 

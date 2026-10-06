@@ -14,9 +14,11 @@ import type { IpcMain } from 'electron'
 import { runPluginScript } from './project'
 import { rawStdout } from './commandRunner'
 import { isSprintId } from '../../shared/sprintModel'
+import { readSlateProposal, readSprintList, readSprintLog } from './commandCenterReaders'
 import type {
-  SprintCarriedIn, SprintDecisions, SprintHandoffOpen, SprintMixTier, SprintReadinessGap, SprintRecord,
-  SprintReportKind, SprintReportResult, SprintSlateRow, SprintStatusResult, SprintVerdictPending, SprintView,
+  SlateProposal, SprintCarriedIn, SprintDecisions, SprintHandoffOpen, SprintListView, SprintLogView, SprintMixTier,
+  SprintReadinessGap, SprintRecord, SprintReportKind, SprintReportResult, SprintSlateRow, SprintStatusResult,
+  SprintVerdictPending, SprintView,
 } from '../../shared/types'
 
 const NO_PLUGIN = 'claude-code-sdlc plugin scripts not found'
@@ -32,14 +34,14 @@ const stateFile = (project: string) => join(project, '.sdlc', 'state.yaml')
 
 /** `--state` when the project has one, else `--repo`: the scripts run standalone too, and a
  * `--state` that points at a file that is not there is their one-line error, not a sprint. */
-function sourceArgs(projectPath: string): string[] {
+export function sourceArgs(projectPath: string): string[] {
   const state = stateFile(projectPath)
   return existsSync(state) ? ['--state', state] : ['--repo', projectPath]
 }
 
 /** The plugin's own refusal, when it gave one on its usual "Error:" line; otherwise null, so a
  * python traceback or a missing-script message never reaches a person. */
-function pluginMessage(stdout: string, stderr: string): string | null {
+export function pluginMessage(stdout: string, stderr: string): string | null {
   for (const line of `${stderr}\n${stdout}`.split(/\r?\n/)) {
     const m = /^error:\s*(.+)$/i.exec(line.trim())
     if (m) return m[1].replace(/�/g, '-').trim()
@@ -47,11 +49,11 @@ function pluginMessage(stdout: string, stderr: string): string | null {
   return null
 }
 
-type Ran = { exitCode: number | null; raw: Record<string, unknown> | null; stdout: string; stderr: string }
+export type Ran = { exitCode: number | null; raw: Record<string, unknown> | null; stdout: string; stderr: string }
 
 /** Runs `script` and parses stdout as exactly one JSON object when it is one; the exit code
  * comes back beside it so each caller decides what counts as an answer. */
-async function run(scriptsDir: string, script: string, args: string[]): Promise<Ran> {
+export async function run(scriptsDir: string, script: string, args: string[]): Promise<Ran> {
   const entry = await runPluginScript(scriptsDir, script, args)
   let raw: Record<string, unknown> | null = null
   try {
@@ -206,6 +208,42 @@ export async function renderSprintReport(
   }
   const refusal = raw !== null && raw.ok === false && typeof raw.error === 'string' && raw.error !== '' ? raw.error : null
   return { ok: false, error: refusal ?? pluginMessage(ran.stdout, ran.stderr) ?? PAGE_UNWRITTEN }
+}
+
+// --- the command center's sprint reads (togo-command-center.md §2.2) --------------------------
+//
+// Each is a read (exit 0 always on the plugin side), answers `{ ok, data | error }` and parses
+// nothing beyond the one document. The caller wraps the answer in a `SourcedBlock`; the
+// capability check (`sprint-list`, `sprint-log`) is the caller's too, so an older plugin is
+// never asked for a verb it lacks.
+
+export type Read<T> = { ok: true; data: T } | { ok: false; error: string }
+
+/** `sprint.py list --json`: every sprint record with its 1-based ordinal and the active id. */
+export async function getSprintList(projectPath: string, scriptsDir: string): Promise<Read<SprintListView>> {
+  const ran = await run(scriptsDir, 'sprint.py', ['list', ...sourceArgs(projectPath), '--json'])
+  const data = ran.exitCode === 0 && ran.raw ? readSprintList(ran.raw) : null
+  return data ? { ok: true, data } : { ok: false, error: pluginMessage(ran.stdout, ran.stderr) ?? (ran.stderr.trim() || UNREADABLE) }
+}
+
+/** `sprint.py log [--since D] [--sprint SNN] --json`: the ledger lines verbatim. `since` is the
+ * filter the person picked, as YYYY-MM-DD — never a number Studio reports. */
+export async function getSprintLog(projectPath: string, scriptsDir: string, since?: string, sprintId?: string): Promise<Read<SprintLogView>> {
+  if (since !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(since)) return { ok: false, error: 'since must be a date (YYYY-MM-DD)' }
+  if (sprintId !== undefined && !isSprintId(sprintId)) return { ok: false, error: NOT_A_SPRINT_ID }
+  const args = ['log', ...sourceArgs(projectPath), ...(since ? ['--since', since] : []), ...(sprintId ? ['--sprint', sprintId] : []), '--json']
+  const ran = await run(scriptsDir, 'sprint.py', args)
+  const data = ran.exitCode === 0 && ran.raw ? readSprintLog(ran.raw) : null
+  return data ? { ok: true, data } : { ok: false, error: pluginMessage(ran.stdout, ran.stderr) ?? (ran.stderr.trim() || UNREADABLE) }
+}
+
+/** `sprint.py slate --sprint SNN --json` with no `--spec`: the plugin's deterministic, read-only
+ * proposal. Nothing is written — the write path is `runSprintVerb({verb:'slate'})`. */
+export async function getSlateProposal(projectPath: string, scriptsDir: string, sprintId: string): Promise<Read<SlateProposal>> {
+  if (!isSprintId(sprintId)) return { ok: false, error: NOT_A_SPRINT_ID }
+  const ran = await run(scriptsDir, 'sprint.py', ['slate', ...sourceArgs(projectPath), '--sprint', sprintId, '--json'])
+  const data = ran.exitCode === 0 && ran.raw ? readSlateProposal(ran.raw) : null
+  return data ? { ok: true, data } : { ok: false, error: pluginMessage(ran.stdout, ran.stderr) ?? (ran.stderr.trim() || UNREADABLE) }
 }
 
 // --- registration ------------------------------------------------------------------------------

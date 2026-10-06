@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 //
 // studio-observatory.md §9 "Shell re-renders": a console entry used to re-render the whole shell
-// — Sidebar, the open screen, ChatPanel — every ~2 s on the Workflow tab and every 150 ms while a
-// command streamed. The fix is three parts (`consoleStore` subscribed by the Console alone,
-// `React.memo` boundaries around Sidebar and ChatPanel in Frame.tsx, a `useCallback` onNavigate
-// in App), and this test is the proof: push entries into the store and count renders of the two
-// siblings. Sidebar and ChatPanel are replaced by probes that count their own renders, since the
-// question is whether React CALLS them, not what they draw.
+// — the navigation, the open screen, ChatPanel — every ~2 s on the Workflow tab and every 150 ms
+// while a command streamed. The fix is three parts (`consoleStore` subscribed by the Console
+// alone, `React.memo` boundaries around the shell's siblings in Frame.tsx, a `useCallback`
+// onNavigate in App), and this test is the proof: push entries into the store and count renders
+// of the siblings. The command center (togo-command-center.md §1) retired the Sidebar for the
+// TopBand + LifecycleStrip inside the first `<aside>`; the strip and ChatPanel are replaced by
+// probes that count their own renders, since the question is whether React CALLS them.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import type { ConsoleEntry, ProjectStatus, StageReadiness } from '../shared/types'
@@ -15,8 +16,13 @@ import { consoleStore, resetConsoleStore } from '../src/stores/consoleStore'
 
 const renders = { sidebar: 0, chat: 0 }
 
-vi.mock('../src/components/Sidebar', () => ({
-  Sidebar: () => { renders.sidebar += 1; return <aside data-testid="sidebar-probe" /> },
+vi.mock('../src/components/LifecycleStrip', () => ({
+  LifecycleStrip: () => { renders.sidebar += 1; return <nav aria-label="Project" data-testid="strip-probe" /> },
+  stripFactsFrom: () => ({ sprintId: null, ordinal: null, capabilities: null }),
+}))
+vi.mock('../src/components/TopBand', () => ({
+  TopBand: () => <div data-topband="" />,
+  OMNIBAR_PLACEHOLDER: 'a spec id, a verb, or a place',
 }))
 vi.mock('../src/components/ChatPanel', () => ({
   ChatPanel: () => { renders.chat += 1; return <aside data-testid="chat-probe" /> },
@@ -81,7 +87,7 @@ async function settle() {
 }
 
 describe('Frame: a console entry re-renders the Console alone', () => {
-  it('pushing entries into consoleStore does not re-render Sidebar or ChatPanel', async () => {
+  it('pushing entries into consoleStore does not re-render the strip or ChatPanel', async () => {
     renderFrame()
     await settle()
     const sidebarBefore = renders.sidebar
@@ -140,8 +146,10 @@ describe('Frame: a console entry re-renders the Console alone', () => {
     expect(main.getAttribute('tabindex')).toBe('-1')
     expect(main.className).toBe('min-w-0 flex-1 overflow-auto p-6')
     expect(main.firstElementChild?.tagName).toBe('H2')
+    // Two asides, band then chat: the strip's probe sits inside the first.
     const asides = Array.from(container.querySelectorAll('aside'))
-    expect(asides.map((a) => a.dataset.testid)).toEqual(['sidebar-probe', 'chat-probe'])
+    expect(asides.map((a) => a.dataset.testid)).toEqual(['shell-band', 'chat-probe'])
+    expect(asides[0].querySelector('[data-testid="strip-probe"]')).not.toBeNull()
     expect(screen.getByText('Screen')).toBeTruthy()
   })
 })

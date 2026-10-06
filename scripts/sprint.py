@@ -22,9 +22,9 @@ What it writes
   - Never .sdlc/state.yaml.
 
 Exit codes
-  reads  (status, slate proposal)                          0 always — an unknown or malformed sprint
+  reads  (status, slate proposal, list, log)               0 always — an unknown or malformed sprint
                                                            id prints "no data", never an error
-  writes (new, slate, unslate, handoff, ack, verdict, ready, close) — every one carries --by <name>
+  writes (new, slate, unslate, handoff, ack, verdict, ready, close, carry, edit) — every one carries --by <name>
          0 ok · 1 illegal / missing precondition / unknown spec / ready gap
          2 refused — an activity-metric field (velocity, points, estimate, effort, hours, ...),
            a malformed frontmatter value ('#', quotes, newline, placeholder token), or an AI
@@ -62,7 +62,7 @@ TEMPLATE_PATH = PLUGIN_ROOT / "templates" / "phases" / "build" / "sprint.md"
 
 NO_DATA = "no data"
 READY_WHEN = "ready when: every slated spec READY + status ready + eng accepted + data accepted|n-a"
-WRITE_VERBS = ("new", "slate", "unslate", "handoff", "ack", "verdict", "ready", "close")
+WRITE_VERBS = ("new", "slate", "unslate", "handoff", "ack", "verdict", "ready", "close", "carry", "edit")
 
 # Sprint-record keys written bare (not quoted) so parse_frontmatter and humans read them alike.
 _BARE_SPRINT_KEYS = ("state", "target")
@@ -365,11 +365,14 @@ def render_close_table(kept: list[str], carried: dict[str, str], dropped: dict[s
 
 # --- Ledger -----------------------------------------------------------------------------------------
 
-def read_ledger(repo_root: Path) -> list[dict]:
+def read_ledger_lines(repo_root: Path) -> tuple[list[dict], int]:
+    """(entries, skipped): every parseable ledger line as its own dict, verbatim, plus how many
+    lines were not JSON objects. Blank lines are neither entries nor skipped."""
     path = ledger_path(repo_root)
     if not path.is_file():
-        return []
-    out = []
+        return [], 0
+    out: list[dict] = []
+    skipped = 0
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         line = line.strip()
         if not line:
@@ -377,10 +380,17 @@ def read_ledger(repo_root: Path) -> list[dict]:
         try:
             entry = json.loads(line)
         except json.JSONDecodeError:
+            skipped += 1
             continue
         if isinstance(entry, dict):
             out.append(entry)
-    return out
+        else:
+            skipped += 1
+    return out, skipped
+
+
+def read_ledger(repo_root: Path) -> list[dict]:
+    return read_ledger_lines(repo_root)[0]
 
 
 def latest_event_ts(ledger: list[dict], event: str, spec_id: str, sprint_id: str | None = None) -> str | None:
@@ -1162,6 +1172,163 @@ def cmd_close(args, repo_root: Path) -> int:
     return 0
 
 
+# --- list / log (reads, exit 0 always) ---------------------------------------------------------------------
+
+def sprint_list_view(repo_root: Path) -> dict:
+    """Every sprint record in id order: {sprints[{id,state,goal,start,end,ordinal}], active, count}.
+    `ordinal` is the 1-based position in id order (S07 is the 1st if it is the lowest id on disk).
+    A record with no parseable frontmatter, or a state outside SPRINT_STATES, reads `state: null`."""
+    repo_root = Path(repo_root).resolve()
+    rows = []
+    for ordinal, sid in enumerate(list_sprint_ids(repo_root), start=1):
+        fm, _ = parse_frontmatter(read_spec_text(sprint_file(repo_root, sid)))
+        state = str(fm.get("state") or "").strip().lower()
+        rows.append({
+            "id": sid,
+            "state": state if fm and state in sm.SPRINT_STATES else None,
+            "goal": str(fm.get("goal") or ""),
+            "start": str(fm.get("start") or ""),
+            "end": str(fm.get("end") or ""),
+            "ordinal": ordinal,
+        })
+    return {"sprints": rows, "active": active_sprint_id(repo_root), "count": len(rows)}
+
+
+def cmd_list(args, repo_root: Path) -> int:
+    view = sprint_list_view(repo_root)
+    if args.json:
+        print(json.dumps(view, indent=2))
+        return 0
+    if not view["sprints"]:
+        print(f"Sprints: {NO_DATA} — {_no_sprint_note(repo_root, None)}")
+        return 0
+    print(f"Sprints: {view['count']} record(s) under {sprints_dir(repo_root)} · active {view['active'] or NO_DATA}")
+    for s in view["sprints"]:
+        dates = f"{s['start'] or '?'} → {s['end'] or '?'}"
+        print(f"  {s['id']}  #{s['ordinal']}  {s['state'] or 'state unreadable'}  {dates}  {s['goal'] or '(no goal)'}")
+    return 0
+
+
+def _since_date(raw) -> date | None:
+    if not raw:
+        return None
+    d = sm.ts_to_date(raw)
+    if d is None:
+        raise Illegal(f"--since must be an ISO date (got '{raw}')")
+    return d
+
+
+def cmd_log(args, repo_root: Path) -> int:
+    """The ledger, verbatim: every line is printed as it was written, nothing reshaped or summed.
+    --since keeps events dated on or after that day (00:00, inclusive); an undated line cannot be
+    placed, so it is kept. --sprint keeps the lines whose `sprint` field is that id."""
+    since = _since_date(args.since)
+    sprint_filter = (args.sprint or "").strip() or None
+    entries, skipped = read_ledger_lines(repo_root)
+    events = []
+    for e in entries:
+        if sprint_filter is not None and str(e.get("sprint", "")) != sprint_filter:
+            continue
+        if since is not None:
+            when = sm.ts_to_date(e.get("ts"))
+            if when is not None and when < since:
+                continue
+        events.append(e)
+    path = ledger_path(repo_root)
+    doc = {"events": events, "count": len(events), "since": since.isoformat() if since else None,
+           "path": str(path), "exists": path.is_file(), "skipped": skipped}
+    if args.json:
+        print(json.dumps(doc, indent=2))
+        return 0
+    if not doc["exists"]:
+        print(f"Sprint log: {NO_DATA} — no ledger at {path}")
+        return 0
+    scope = (f" since {doc['since']}" if since else "") + (f" for {sprint_filter}" if sprint_filter else "")
+    print(f"Sprint log: {len(events)} event(s){scope} — {path}"
+          + (f" · {skipped} unreadable line(s) skipped" if skipped else ""))
+    if not events:
+        print(f"  {NO_DATA}")
+    for e in events:
+        rest = "  ".join(f"{k}={v}" for k, v in e.items() if k not in ("ts", "event"))
+        print(f"  {e.get('ts', 'undated')}  {e.get('event', '?')}  {rest}".rstrip())
+    return 0
+
+
+# --- carry / edit (writes) ---------------------------------------------------------------------------------
+
+def cmd_carry(args, repo_root: Path) -> int:
+    """Move one open slated spec into a later sprint without closing the one it leaves — the close
+    path's `carried` outcome, available mid-sprint. One commit: the spec's `sprint:`, both sprints'
+    `## Slate` tables, and one `carried` event of exactly close's shape."""
+    by = require_human(args.by, "--by")
+    extras = parse_extra_fields(args.field)
+    reason = (args.reason or "").strip()
+    if not reason:
+        raise Illegal("--reason is required — a carry without a why is a silent scope change")
+    to = str(args.to or "").strip()
+    if not sm.is_valid_sprint_id(to):
+        raise Illegal(f"--to '{to}' is not a sprint id (expected S08, S12, ...)")
+    all_rows = load_specs(repo_root)
+    row = _need_spec(all_rows, args.spec)
+    src = row["sprint"]
+    if not src:
+        raise Illegal(f"spec {row['id']} is not in a sprint — slate it instead: sprint.py slate --sprint {to} --spec {row['id']}")
+    if row["status"] == "merged":
+        raise Illegal(f"spec {row['id']} is merged — delivered work is kept where it was delivered, not carried")
+    if to == src:
+        raise Illegal(f"--to {to} is the sprint {row['id']} is already in — carry forward, not in place")
+    target = read_sprint(repo_root, to)
+    if target is None:
+        raise Illegal(f"sprint {to} does not exist ({sprint_file(repo_root, to)}) — run `new` first")
+    if target["state"] == "closed":
+        raise Illegal(f"sprint {to} is closed — a closed sprint cannot take a carried spec")
+    source = read_sprint(repo_root, src) if sm.is_valid_sprint_id(src) else None
+    if source is not None and source["state"] == "closed":
+        raise Illegal(f"sprint {src} is closed — its slate is a record now; {row['id']} is carried or dropped at close, not after")
+
+    writes = []
+    spec_path = Path(row["path"])
+    writes.append((spec_path, set_spec_key(read_spec_text(spec_path), "sprint", to)))
+    if source is not None:
+        remaining = [r for r in all_rows if r["sprint"] == src and r["id"] != row["id"]]
+        writes.append((Path(source["path"]),
+                       replace_section(read_spec_text(Path(source["path"])), "Slate", render_slate_table(remaining))))
+    else:
+        print(f"  note: sprint {src} has no record under {sprints_dir(repo_root)} — only the spec and the ledger name it")
+    arriving = [r for r in all_rows if r["sprint"] == to] + [dict(row, sprint=to)]
+    writes.append((Path(target["path"]),
+                   replace_section(read_spec_text(Path(target["path"])), "Slate", render_slate_table(arriving))))
+    event = make_event("carried", extras, sprint=src, spec=row["id"], to_sprint=to, by=by, reason=reason)
+    commit(repo_root, writes, [event])
+    print(f"Carried {row['id']}: {src} → {to} (by {by}): {reason}")
+    if target["target"] is not None and len(arriving) > target["target"]:
+        print(f"  WARNING: {to} now holds {len(arriving)} specs, over its target of {target['target']}")
+    return 0
+
+
+def cmd_edit(args, repo_root: Path) -> int:
+    """Change a sprint record's goal after `new`: the frontmatter `goal:` and the `## Goal` section,
+    nothing else, with one `sprint_edited` event. The record is read-only once the sprint is closed."""
+    by = require_human(args.by, "--by")
+    extras = parse_extra_fields(args.field)
+    sprint = _need_sprint(repo_root, args.sprint, "edit")
+    sid = sprint["id"]
+    goal = str(args.goal or "").strip()
+    if not goal:
+        raise Illegal("--goal must be a non-empty sentence — the goal is the sprint's one outcome")
+    if sprint["state"] == "closed":
+        raise Illegal(f"sprint {sid} is closed — its record is read-only now")
+    if goal == sprint["goal"]:
+        print(f"Sprint {sid} goal unchanged — nothing written")
+        return 0
+    path = Path(sprint["path"])
+    text = set_sprint_field(read_spec_text(path), "goal", goal)
+    text = replace_section(text, "Goal", goal)
+    commit(repo_root, [(path, text)], [make_event("sprint_edited", extras, sprint=sid, field="goal", by=by)])
+    print(f"Sprint {sid} goal set by {by}: {goal}")
+    return 0
+
+
 # --- CLI ---------------------------------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1252,13 +1419,35 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--carry-to", default=None, metavar="SNN", help="The sprint carried specs move into")
     p.add_argument("--carry", action="append", default=[], metavar="SPEC=REASON", help="Carry an open spec (repeatable)")
     p.add_argument("--drop", action="append", default=[], metavar="SPEC=REASON", help="Drop an open spec (repeatable)")
+
+    p = sub.add_parser("list", parents=[common], help="Every sprint record with its state and ordinal (read-only)")
+    p.add_argument("--json", action="store_true", help='Emit {"sprints", "active", "count"}')
+
+    p = sub.add_parser("log", parents=[common], help="The ledger lines, verbatim — nothing reshaped or summed (read-only)")
+    p.add_argument("--since", default=None, metavar="YYYY-MM-DD",
+                   help="Only events dated on or after this day (00:00, inclusive); undated lines are kept")
+    p.add_argument("--sprint", default=None, metavar="SNN", help="Only events whose sprint field is this id")
+    p.add_argument("--json", action="store_true",
+                   help='Emit {"events", "count", "since", "path", "exists", "skipped"}')
+
+    p = sub.add_parser("carry", parents=[common, write],
+                       help="Move an open slated spec into a later sprint now, with a reason (close's `carried`, mid-sprint)")
+    p.add_argument("--spec", required=True, metavar="ID")
+    p.add_argument("--to", required=True, metavar="SNN", help="The sprint the spec moves into (must exist and be open)")
+    p.add_argument("--reason", required=True, help="Why it moves (recorded)")
+    p.add_argument("--by", required=True, help="The named human carrying it")
+
+    p = sub.add_parser("edit", parents=[common, write], help="Change a sprint's goal (recorded; closed sprints are read-only)")
+    p.add_argument("--sprint", required=True, metavar="SNN", help="Sprint id, e.g. S07")
+    p.add_argument("--goal", required=True, help="The new one outcome-shaped sentence")
+    p.add_argument("--by", required=True, help="The named human editing the record")
     return parser
 
 
 VERBS = {
     "new": cmd_new, "slate": cmd_slate, "unslate": cmd_unslate, "status": cmd_status,
     "handoff": cmd_handoff, "ack": cmd_ack, "verdict": cmd_verdict, "ready": cmd_ready,
-    "plan": cmd_plan, "close": cmd_close,
+    "plan": cmd_plan, "close": cmd_close, "list": cmd_list, "log": cmd_log, "carry": cmd_carry, "edit": cmd_edit,
 }
 
 

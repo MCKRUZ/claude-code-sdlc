@@ -58,8 +58,11 @@ describe('buildNeighbourhood', () => {
     const dependent = hood.dependents.find((n) => n.id === '0009')!
     expect(dependent.ghost).toBe(false)
     expect(dependent.notReady).toBe(true)
-    expect(dependent.colorToken).toBe(WARN_TOKEN)
-    expect(dependent.chipTone).toBe('warn')
+    // Colour stays the plugin's status word; NOT READY is a dashed ring in the warn token (a
+    // shape cue the legend names), never a second meaning for the body's colour.
+    expect(dependent.colorToken).not.toBe(WARN_TOKEN)
+    expect(dependent.ringToken).toBe(WARN_TOKEN)
+    expect(dependent.chipTone).not.toBe('warn')
     expect(dependent.r).toBe(RISK_RADIUS.LOW * UNIT_PX)
   })
 
@@ -77,8 +80,8 @@ describe('buildNeighbourhood', () => {
     const many = [...ROWS, row({ spec: '0003', dependsOn: ['0008'] }), row({ spec: '0001', dependsOn: ['0008'] })]
     const hood = buildNeighbourhood(many[1], many)!
     expect(hood.dependents.map((n) => n.id)).toEqual(['0001', '0003', '0010'])
-    expect(hood.dependents.every((n) => n.x === hood.width - 56)).toBe(true)
-    expect(hood.dependencies.every((n) => n.x === 56)).toBe(true)
+    expect(hood.dependents.every((n) => n.x === hood.width - 128)).toBe(true)
+    expect(hood.dependencies.every((n) => n.x === 128)).toBe(true)
     expect(hood.centre.x).toBe(hood.width / 2)
     const ys = hood.dependents.map((n) => n.y)
     expect(ys[1] - ys[0]).toBeCloseTo(ys[2] - ys[1])

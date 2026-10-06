@@ -8,6 +8,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SpecStatusView } from '../src/components/SpecStatusView'
+import { SLOT_REASON } from '../src/components/SpecFactsRail'
+import { NO_ACTOR } from '../shared/reasons'
 import type { BoardRow, SpecReadiness, SpecStatus } from '../shared/types'
 
 const ROW: BoardRow = {
@@ -129,12 +131,16 @@ describe('SpecStatusView: where a change got to, read from its pull request', ()
     expect(lint.innerHTML).toContain('status-error')
   })
 
+  // Re-recorded pin (togo-command-center.md §2.7 / §8 honesty check 1): the reason is now the
+  // `reasons.ts` sentence `newerPlugin('sprint-write')` so the reasonsSweep accepts it — the claim
+  // ("these verbs need a wired plugin") is unchanged, only its vocabulary. With a host `onVerb` and
+  // an actor the slots go live and hand the verb to the dialog.
   it('the four sprint verbs are reserved: drawn, disabled, and each says why', async () => {
     await renderView()
     for (const label of ['Verdict', 'Pass next action', 'Acknowledge']) {
       const button = screen.getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement
       expect(button.disabled).toBe(true)
-      expect(button.textContent).toContain('These arrive with a newer plugin')
+      expect(button.textContent).toContain(SLOT_REASON)
     }
     // Two "Mark ready" controls: the live one in the readiness panel, and the reserved sprint verb.
     const marks = screen.getAllByRole('button', { name: /^Mark ready/ }) as HTMLButtonElement[]
@@ -178,8 +184,30 @@ describe('SpecStatusView: the facts rail and the neighbourhood (studio-upgrade-2
     for (const label of ['Verdict', 'Pass next action', 'Acknowledge']) {
       const button = within(rail).getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement
       expect(button.disabled).toBe(true)
-      expect(button.textContent).toContain('These arrive with a newer plugin')
+      expect(button.textContent).toContain(SLOT_REASON)
     }
+  })
+
+  it('with a wired host, sprint-write and an actor the slots go live and hand the verb and the row to the dialog; no actor reads NO_ACTOR', async () => {
+    install()
+    const onVerb = vi.fn()
+    render(<main><SpecStatusView projectPath="/p" row={ROW} onBack={vi.fn()} onHandOff={vi.fn()} capabilities={['sprint-status', 'sprint-write']} actor={{ name: '@sam-k', source: 'roster' }} onVerb={onVerb} /></main>)
+    await screen.findByText(/Owns it/)
+    const rail = screen.getByRole('region', { name: 'Spec facts' })
+    const verdict = within(rail).getByRole('button', { name: 'Verdict' }) as HTMLButtonElement
+    expect(verdict.disabled).toBe(false)
+    expect(verdict.hasAttribute('data-write')).toBe(true)
+    fireEvent.click(verdict)
+    expect(onVerb).toHaveBeenCalledWith('verdict', ROW)
+    fireEvent.click(within(rail).getByRole('button', { name: 'Pass next action' }))
+    expect(onVerb).toHaveBeenLastCalledWith('handoff', ROW)
+    cleanup()
+    install()
+    render(<main><SpecStatusView projectPath="/p" row={ROW} onBack={vi.fn()} onHandOff={vi.fn()} capabilities={['sprint-status', 'sprint-write']} actor={null} onVerb={vi.fn()} /></main>)
+    await screen.findByText(/Owns it/)
+    const ack = within(screen.getByRole('region', { name: 'Spec facts' })).getByRole('button', { name: /^Acknowledge/ }) as HTMLButtonElement
+    expect(ack.disabled).toBe(true)
+    expect(ack.getAttribute('title')).toBe(NO_ACTOR)
   })
 
   it('a dependsOn id is a button only when the Board has fetched that row; otherwise it says why', async () => {

@@ -766,3 +766,28 @@ class TestOnAzureDevOps:
         assert result["host"]["name"] == "github" and result["host"]["source"] == "flag"
         assert not self.az.calls and result["specs"][0]["pull_request"] is None
         assert "Code host:" not in ss.format_all_report(result)
+
+
+# ---------------------------------------------------------------------------
+# Tōgō command center (togo-command-center.md §2.5 row 10): the row carries `deferred_reason`
+# ---------------------------------------------------------------------------
+
+class TestReportAllDeferredReason:
+    def test_a_deferred_spec_carries_its_reason_verbatim(self, tmp_path, monkeypatch):
+        text = SPEC_TEXT.replace("status: in-flight\n",
+                                 "status: deferred\ndeferred_reason: 'the upstream service slipped a quarter'\n")
+        _write_spec(tmp_path, text=text)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["status"] == "deferred"
+        assert row["deferred_reason"] == "the upstream service slipped a quarter"
+
+    def test_a_spec_without_the_key_reads_empty_not_missing(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["deferred_reason"] == ""
+        # Every key the row had before is still there, in the same order, with the new one before `branch`.
+        keys = list(row)
+        assert keys.index("deferred_reason") == keys.index("branch") - 1
+        assert keys[:3] == ["spec", "name", "path"] and keys[-2:] == ["branch", "pull_request"]

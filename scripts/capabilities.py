@@ -52,6 +52,21 @@ CAPABILITIES: dict[str, dict] = {
     # and whether its CLI is usable — the `host` block Studio reads before enabling PR features.
     "code-host": {"script": "code_host.py", "flags": ["--repo", "--state", "--host", "--json"]},
     "import-outcomes": {"script": "import_outcomes.py", "flags": ["--since", "--repo", "--state", "--host", "--json"]},
+    # The Tōgō command center (docs/proposals/togo-command-center.md §2.6). Each name disables one
+    # control on an older plugin, with the reason "arrives with a newer plugin: lacks <name>".
+    # `sprint-write` is true of 1.6.x already — it is what lets an older plugin's omnibar verbs be
+    # disabled honestly rather than fail on argv.
+    "sprint-list": {"script": "sprint.py", "argv": ["list"], "flags": ["--repo", "--state", "--json"]},
+    "sprint-log": {"script": "sprint.py", "argv": ["log"], "flags": ["--since", "--sprint", "--json"]},
+    "sprint-carry": {"script": "sprint.py", "argv": ["carry"], "flags": ["--spec", "--to", "--reason", "--by"]},
+    "sprint-edit": {"script": "sprint.py", "argv": ["edit"], "flags": ["--sprint", "--goal", "--by"]},
+    "sprint-write": {"script": "sprint.py", "argv": ["slate"], "flags": ["--spec", "--by", "--override", "--reason"]},
+    "confirm-tier": {"script": "spec_transition.py", "argv": ["confirm-tier"], "flags": ["--by"]},
+    "assign-roles": {"script": "spec_transition.py", "argv": ["assign"], "flags": ["--developer", "--checker", "--by"]},
+    "handoff-check": {"script": "handoff.py", "flags": ["--check", "--json"]},
+    "findings-json": {"script": "record_findings.py", "argv": ["report"], "flags": ["--json", "--spec"]},
+    # Its presence also means `--spec --json` carries `ladder{}`: both landed in the same change.
+    "readiness-all": {"script": "spec_readiness.py", "flags": ["--all", "--json"]},
 }
 
 

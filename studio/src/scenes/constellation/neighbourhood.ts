@@ -3,7 +3,9 @@
 // that depend on it to its right, this spec in the middle. Owned by P3 — the one constellation
 // file outside P4 — and it imports `constellationModel` read-only so the two figures share one
 // vocabulary: ghost iff the id is absent from what the Board or Sprint fetched, radius by risk tier
-// only, tone by status, a NOT READY row amber (never red). No canvas: inline SVG, drawn by
+// only, colour STRICTLY by the plugin's status word (`toneForStatus`), and a NOT READY row marked
+// by a dashed amber RING (a shape cue the legend names) — never by overriding the body's colour,
+// so colour is never the only signal and never means two things. No canvas: inline SVG, drawn by
 // `SpecNeighbourhood.tsx`.
 //
 // Honesty rules kept structurally: dependents come ONLY from other rows' declared `dependsOn` (a
@@ -29,6 +31,8 @@ export interface NeighbourNode {
   r: number
   colorToken: ColorToken
   chipTone: ChipTone
+  /** A dashed 1 px ring in this token when the plugin says NOT READY; null otherwise. */
+  ringToken: ColorToken | null
 }
 
 export interface NeighbourEdge {
@@ -51,7 +55,10 @@ export interface Neighbourhood {
 /** Pixels per model unit: `RISK_RADIUS` is .32 / .42 / .54 in the 3D figure; here a HIGH body is
  * ~13 px so three rows of nodes fit a 280 px-wide rail. */
 export const UNIT_PX = 24
-export const COLUMN_INSET = 56
+/** The node columns sit this far inside the viewBox: room for a body AND its label (up to two
+ * lines of ident text hang off the outer side), so a right-hand label is never clipped at the
+ * card's edge. */
+export const COLUMN_INSET = 128
 export const ROW_GAP = 44
 export const MIN_HEIGHT = 120
 export const DEFAULT_WIDTH = 560
@@ -89,7 +96,7 @@ function knownSpecs(rows: ReadonlyArray<BoardRow>, slate: ReadonlyArray<SprintSl
 
 function nodeFor(id: string, known: Known | undefined, x: number, y: number): NeighbourNode {
   if (!known) {
-    return { id, label: null, ghost: true, status: null, risk: null, notReady: false, x, y, r: GHOST_RADIUS * UNIT_PX, colorToken: GHOST_TOKEN, chipTone: 'neutral' }
+    return { id, label: null, ghost: true, status: null, risk: null, notReady: false, x, y, r: GHOST_RADIUS * UNIT_PX, colorToken: GHOST_TOKEN, chipTone: 'neutral', ringToken: null }
   }
   const tone = toneForStatus(known.status)
   return {
@@ -102,8 +109,10 @@ function nodeFor(id: string, known: Known | undefined, x: number, y: number): Ne
     x,
     y,
     r: radiusForRisk(known.risk) * UNIT_PX,
-    colorToken: known.notReady ? WARN_TOKEN : tone.token,
-    chipTone: known.notReady ? 'warn' : tone.chip,
+    colorToken: tone.token,
+    chipTone: tone.chip,
+    /** The dashed ring's token: the warn class, only on the plugin's NOT READY. */
+    ringToken: known.notReady ? WARN_TOKEN : null,
   }
 }
 

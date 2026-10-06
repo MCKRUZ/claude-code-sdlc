@@ -64,9 +64,11 @@ SLATEABLE_STATUSES = ("ready", "draft")
 # missing/unknown status) is short of the bar.
 AT_LEAST_READY_STATUSES = ("ready", "in-flight", "merged")
 
-# Ledger events (.sdlc/metrics/sprint-log.jsonl), one line per event.
+# Ledger events (.sdlc/metrics/sprint-log.jsonl), one line per event. Append-only: a name, once
+# written to a ledger, is never renamed or removed (the ledger is replayed, not migrated).
 EVENTS = (
     "slated", "unslated", "handoff", "ack", "verdict", "ready", "closed", "carried", "dropped", "sprint_new",
+    "sprint_edited",  # sprint.py edit: {sprint, field, by} — a record field changed after `new`
 )
 
 # Activity metrics the standard forbids (R4). A superset of scorecard's refusal list.

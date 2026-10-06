@@ -34,7 +34,13 @@ export interface CommandPaletteProps {
   /** Called after the entry's own `run()`, e.g. to remember the pick. */
   onRun?: (entry: PaletteEntry) => void
   placeholder?: string
+  /** The omnibar's verb rows for the typed words (`intents.ts`): zero or one entry, listed first.
+   * Pure — the host builds the closure over its rows and roster; nothing is fetched or spawned. */
+  intents?: (query: string) => PaletteEntry[]
 }
+
+/** A verb row outranks every static row, so the group holding it sorts first (`groupResults`). */
+export const INTENT_SCORE = 10_000
 
 /** Re-rank Flip: 160 ms, no stagger — the rows move together, as one list. */
 export const PALETTE_FLIP_S = 0.16
@@ -46,16 +52,16 @@ export function resetPaletteFirstOpen(): void {
   firstOpenPlayed = false
 }
 
-export function CommandPalette({ open, onClose, entries, recentIds = [], onRun, placeholder = 'Search or jump to…' }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, entries, recentIds = [], onRun, placeholder = 'Search or jump to…', intents }: CommandPaletteProps) {
   // Mount the stateful body only while open so every keystroke's state resets with the dialog
   // and the `<input>` really is absent when closed.
   if (!open) return null
-  return <PaletteBody onClose={onClose} entries={entries} recentIds={recentIds} onRun={onRun} placeholder={placeholder} />
+  return <PaletteBody onClose={onClose} entries={entries} recentIds={recentIds} onRun={onRun} placeholder={placeholder} intents={intents} />
 }
 
 type BodyProps = Omit<CommandPaletteProps, 'open'> & { recentIds: readonly string[]; placeholder: string }
 
-function PaletteBody({ onClose, entries, recentIds, onRun, placeholder }: BodyProps) {
+function PaletteBody({ onClose, entries, recentIds, onRun, placeholder, intents }: BodyProps) {
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -88,7 +94,11 @@ function PaletteBody({ onClose, entries, recentIds, onRun, placeholder }: BodyPr
     }
   }, [])
 
-  const results = useMemo(() => rankEntries(query, entries, { recentIds }), [query, entries, recentIds])
+  const results = useMemo(() => {
+    const ranked = rankEntries(query, entries, { recentIds })
+    const verbs = intents && query.trim() ? intents(query) : []
+    return verbs.length === 0 ? ranked : [...verbs.map((entry) => ({ entry, score: INTENT_SCORE, matches: [] })), ...ranked]
+  }, [query, entries, recentIds, intents])
   const { groups, flat } = useMemo(() => groupResults(results), [results])
   const current = flat.length === 0 ? -1 : Math.min(selected, flat.length - 1)
 

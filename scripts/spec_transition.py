@@ -27,6 +27,21 @@ path with no rule attached, and it would quietly become how everything gets chan
           cannot be deferred: it was built, and recording otherwise makes the backlog a worse
           record than none.
 
+  confirm-tier   The agent proposes a tier; a PERSON confirms it (CLAUDE.md: "The agent proposes
+          the risk tier; a human confirms it"). Until now a tier left as proposed was unrecorded —
+          only a CHANGE was. This writes `risk_confirmed_by:` with the confirmer's name
+          (`add_if_missing`, the `deferred_reason` precedent, because the protected spec template
+          can never carry the key: "unconfirmed" means the key is absent or empty). Refuses an AI
+          name — the same regex the findings ledger uses to stop an AI signing off its own work.
+          Idempotent. `risk` CLEARS the confirmation whenever the tier changes: a confirmation of
+          HIGH says nothing about MEDIUM.
+
+  assign  Set `developer:` and/or `checker:` without starting a build. Refuses a handle the
+          roster does not list (when there is a roster), the developer being their own checker
+          (the hand-off rule, one constant shared with handoff.py), and a developer change on a
+          spec already in flight or merged — the branch names who is building it, not this file.
+          A checker may always change. Needs `--by`, a named human, for the record.
+
 Writes the file in place and nothing else — no commit, no branch, no push. Saving belongs to
 whoever called this, which for Studio is spec 0009's save.
 
@@ -45,8 +60,13 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_spec as cs
+import findings_model as fmodel
 import risk_model as rm
 import spec_readiness as sr
+import validate_team as vt
+from handoff import SELF_CHECK_MESSAGE
+
+CONFIRMED_BY_FIELD = "risk_confirmed_by"
 
 
 class TransitionError(Exception):
@@ -262,11 +282,117 @@ def set_risk(spec_path: Path, new_tier: str, authorised_by: str | None = None) -
         # would be a field nothing else knows about.
         updated = _note_downgrade(updated, current, new_tier, authorised_by.strip())
 
+    # A confirmation names a TIER. Once the tier is different the confirmation is of something
+    # that no longer stands, so it is cleared (set to the template's empty shape, not deleted)
+    # and the caller is told — a card that showed "confirmed by Priya" must stop showing it.
+    confirmed_by = (fm.get(CONFIRMED_BY_FIELD) or "").strip() if fm else ""
+    if confirmed_by:
+        updated = set_frontmatter_field(updated, CONFIRMED_BY_FIELD, '""')
+
     spec_path.write_text(updated, encoding="utf-8")
     return {"ok": True, "changed": True, "risk": new_tier, "lowered": lowering,
             "authorised_by": authorised_by.strip() if lowering else None,
+            "confirmation_cleared": bool(confirmed_by),
             "message": f"Risk tier set to {new_tier}."
-                       + (f", lowered from {current} on {authorised_by.strip()}'s authority." if lowering else "")}
+                       + (f", lowered from {current} on {authorised_by.strip()}'s authority." if lowering else "")
+                       + (f" The {current} confirmation by {confirmed_by} no longer applies and was cleared."
+                          if confirmed_by else "")}
+
+
+def _require_person(name: str | None, flag: str) -> str:
+    """A named human, or a refusal. The AI regex is the findings ledger's (`findings_model`), so
+    the same name is refused at a sign-off and at a tier confirmation. Labelling, not a lock:
+    it cannot verify identity, only refuse the obvious."""
+    clean = (name or "").strip()
+    if not clean:
+        raise TransitionError(f"{flag} is required — a named human, not a role or a blank", "not_a_person")
+    if fmodel.is_ai_actor(clean):
+        raise TransitionError(
+            f"{flag} '{clean}' reads as an AI/automation, not a named human. A person confirms a tier "
+            f"or assigns a role; an agent may not be that name.", "not_a_person")
+    return clean
+
+
+def confirm_tier(spec_path: Path, by: str | None) -> dict:
+    """Record that a PERSON confirmed the tier as written. Idempotent; never changes the tier."""
+    by = _require_person(by, "--by")
+    text = spec_path.read_text(encoding="utf-8")
+    fm, _ = cs.parse_frontmatter(text)
+    if not fm:
+        raise TransitionError("Spec has no parseable frontmatter", "malformed")
+    tier = rm.normalize_tier(fm.get("risk"))
+    if tier is None:
+        raise TransitionError(
+            f"'{(fm.get('risk') or '').strip()}' is not a risk tier — nothing to confirm. "
+            f"Expected one of {', '.join(rm.RISK_TIERS)}", "unknown_tier")
+
+    existing = (fm.get(CONFIRMED_BY_FIELD) or "").strip()
+    if existing:
+        return {"ok": True, "changed": False, "risk": tier, "confirmed_by": existing,
+                "message": f"{tier} was already confirmed by {existing}. Nothing changed."}
+
+    updated = set_frontmatter_field(text, CONFIRMED_BY_FIELD, _yaml_scalar(by), add_if_missing=True)
+    spec_path.write_text(updated, encoding="utf-8")
+    return {"ok": True, "changed": True, "risk": tier, "confirmed_by": by,
+            "message": f"{tier} tier confirmed by {by}."}
+
+
+def _handle_value(handle: str, flag: str) -> str:
+    """A roster handle as a one-line, double-quoted frontmatter value — the shape handoff.py
+    writes for `developer`, so the two writers leave the same bytes."""
+    clean = (handle or "").strip()
+    if not clean:
+        raise TransitionError(f"{flag} needs a handle, e.g. @sam-k", "bad_value")
+    if '"' in clean or any(c in clean for c in "\r\n#"):
+        raise TransitionError(f"{flag} '{clean}' is not a handle — no quotes, hashes or line breaks", "bad_value")
+    return clean
+
+
+def assign(spec_path: Path, developer: str | None = None, checker: str | None = None,
+           roster_path: Path | None = None) -> dict:
+    """Set `developer` and/or `checker` on a spec, under the hand-off's own rules."""
+    if developer is None and checker is None:
+        raise TransitionError("assign needs --developer and/or --checker", "nothing_to_assign")
+    new_dev = _handle_value(developer, "--developer") if developer is not None else None
+    new_chk = _handle_value(checker, "--checker") if checker is not None else None
+
+    text = spec_path.read_text(encoding="utf-8")
+    fm, _ = cs.parse_frontmatter(text)
+    if not fm:
+        raise TransitionError("Spec has no parseable frontmatter", "malformed")
+    status = (fm.get("status") or "").strip()
+    cur_dev = (fm.get("developer") or "").strip()
+    cur_chk = (fm.get("checker") or "").strip()
+
+    if roster_path is not None and roster_path.exists():
+        handles = vt.people_handles(vt.load_yaml(roster_path))
+        for handle, kind in ((new_dev, "unknown_developer"), (new_chk, "unknown_checker")):
+            if handle is not None and handle not in handles:
+                raise TransitionError(f"'{handle}' is not listed in the roster ({roster_path})", kind)
+
+    final_dev = new_dev if new_dev is not None else cur_dev
+    final_chk = new_chk if new_chk is not None else cur_chk
+    if final_dev and final_dev == final_chk:
+        raise TransitionError(SELF_CHECK_MESSAGE.format(developer=final_dev), "developer_is_checker")
+    if new_dev is not None and new_dev != cur_dev and status in ("in-flight", "merged"):
+        raise TransitionError(
+            f"This spec is {status} — its branch names who is building it, and this file cannot "
+            f"change that. A new developer is a new hand-off.", "already_in_flight")
+
+    if final_dev == cur_dev and final_chk == cur_chk:
+        return {"ok": True, "changed": False, "developer": cur_dev, "checker": cur_chk,
+                "message": "Already assigned as asked. Nothing changed."}
+
+    updated = text
+    if new_dev is not None and new_dev != cur_dev:
+        updated = set_frontmatter_field(updated, "developer", f'"{new_dev}"', add_if_missing=True)
+    if new_chk is not None and new_chk != cur_chk:
+        updated = set_frontmatter_field(updated, "checker", f'"{new_chk}"', add_if_missing=True)
+    spec_path.write_text(updated, encoding="utf-8")
+    parts = ([f"developer {final_dev}"] if new_dev is not None and new_dev != cur_dev else []) + \
+            ([f"checker {final_chk}"] if new_chk is not None and new_chk != cur_chk else [])
+    return {"ok": True, "changed": True, "developer": final_dev, "checker": final_chk,
+            "message": "Assigned " + " and ".join(parts) + "."}
 
 
 def _note_downgrade(text: str, was: str, now: str, who: str) -> str:
@@ -294,7 +420,7 @@ def resolve_roster(args) -> Path | None:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="The three spec transitions a person makes by hand")
+    parser = argparse.ArgumentParser(description="The spec transitions a person makes by hand")
     parser.add_argument("--spec", required=True, help="Path to specs/NNNN-name.md")
     parser.add_argument("--state", help="Path to .sdlc/state.yaml (enables the roster cross-check)")
     parser.add_argument("--json", action="store_true", help="Emit the outcome as JSON")
@@ -311,6 +437,17 @@ def main():
     deferred.add_argument("--reason", required=True,
                           help="Why this was not built, in your own words — it outlives you being asked")
 
+    confirm = sub.add_parser("confirm-tier",
+                             help="A person confirms the risk tier as written (writes risk_confirmed_by)")
+    confirm.add_argument("--by", required=True, metavar="NAME",
+                         help="The named human confirming the tier — an AI name is refused")
+
+    assigned = sub.add_parser("assign", help="Set developer and/or checker without starting a build")
+    assigned.add_argument("--developer", default=None, metavar="HANDLE", help="Roster handle, e.g. @sam-k")
+    assigned.add_argument("--checker", default=None, metavar="HANDLE",
+                          help="Roster handle; may not be the developer")
+    assigned.add_argument("--by", required=True, metavar="NAME", help="The named human making the assignment")
+
     args = parser.parse_args()
     spec_path = Path(args.spec)
 
@@ -321,6 +458,11 @@ def main():
             result = mark_ready(spec_path, resolve_roster(args))
         elif args.action == "defer":
             result = defer(spec_path, args.reason)
+        elif args.action == "confirm-tier":
+            result = confirm_tier(spec_path, args.by)
+        elif args.action == "assign":
+            _require_person(args.by, "--by")
+            result = assign(spec_path, args.developer, args.checker, resolve_roster(args))
         else:
             result = set_risk(spec_path, args.tier, args.authorised_by)
     except TransitionError as e:

@@ -84,8 +84,12 @@ test.describe('[observatory S2] the dependency constellation on the Sprint scree
     page.on('pageerror', (err) => pageErrors.push(String(err)))
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('constellation project').click()
-    await expect(page.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
-    await openBuildView(page, 'Sprint')
+    // Recorded pin changes (togo-command-center.md §1, §3.1, §8): the strip's navigation is the
+    // landing fact (the Build station expands only on click), and the Sprint view is now "Home".
+    // The slate constellation stays behind SceneShell's toggle with `sprint-slate` as its Table
+    // twin, so every assertion below is unchanged.
+    await expect(page.getByRole('navigation', { name: 'Project' })).toBeVisible({ timeout: 30_000 })
+    await openBuildView(page, 'Home')
     await expect(page.getByTestId('sprint-slate')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('constellation-sprint')).toBeVisible({ timeout: 60_000 })
   })

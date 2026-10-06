@@ -2,7 +2,7 @@
 // root, the row / card staggers, the "pop" for small elements, and the §4 tween budget. Each
 // preset is a pair of `from` / `to` vars rather than a function that tweens, so a choreography
 // can place it on its own timeline and the stub can read the end state off `to`.
-import type { EnterPreset } from './contract'
+import type { EnterPreset, FamiliarityTier } from './contract'
 import { MAX_CONCURRENT_TWEENS, MOTION_DURATIONS, MOTION_EASES, REDUCED_CROSSFADE_S } from './contract'
 import { staggerFor } from './tokens'
 import { gsap } from 'gsap'
@@ -119,4 +119,47 @@ export function activeTweenCount(): number {
 
 export function underTweenBudget(wanted: number): boolean {
   return activeTweenCount() + wanted <= MAX_CONCURRENT_TWEENS
+}
+
+// --- command-center shapes (togo-command-center.md §4, visual §7) ---------------------------
+
+/** #30 baton pass: POP 100 ms (`back.out(1.4)`, the glyph is 24 px) then a slide along the lane
+ * edge over `dur-3` `expo.out`; 420 ms in all. The slide's `x`/`y` are the host's geometry. */
+export const BATON_POP_S = 0.1
+export const BATON_POP: TweenPair = {
+  from: { scale: 0.6 },
+  to: { scale: 1, duration: BATON_POP_S, ease: MOTION_EASES.pop, clearProps: 'transform' },
+}
+export const BATON_SLIDE: TweenPair = {
+  from: { opacity: 1 },
+  to: { duration: MOTION_DURATIONS['dur-3'], ease: MOTION_EASES['dur-3'], clearProps: 'transform' },
+}
+export const BATON_PASS_TOTAL_S = BATON_POP_S + MOTION_DURATIONS['dur-3']
+
+/** #31 verdict seal: the `SEAM` (accent, 2 px, 300 ms) and the chip crossfade at 150 ms. */
+export const VERDICT_SEAL: TweenPair = SEAM
+export const VERDICT_CHIP_AT_S = 0.15
+
+/** #32 strip draw: the rail over `dur-5` `expo.inOut`; stations POP with `stagger-2`. */
+export const STRIP_DRAW_S = MOTION_DURATIONS['dur-5']
+export const STRIP_DRAW_EASE = MOTION_EASES['dur-5']
+
+/** Strip lean-in: the viewing ring scales 1→1.12 over `dur-1` — navigation, not ceremony. */
+export const STRIP_LEAN_SCALE = 1.12
+
+/** A later Today row rises alone (y 6→0, 240 ms `power3.out`) by identity key — never a re-stagger. */
+export const TODAY_ROW_RISE: TweenPair = ENTER_PRESETS.rise
+
+/** Calm by day 30 (visual §7): which motion each familiarity tier keeps. `full` plays
+ * draw/stagger/slide/pulse, `quiet` keeps pops, the seam and the baton (evidence of a verb),
+ * `settled` keeps only verb-triggered crossfades and counters. The DOM after `progress(1)` is
+ * identical across tiers — a tier changes how a state is reached, never what it is. */
+export type MotionFeature = 'stagger' | 'draw' | 'pulse' | 'pop' | 'seam' | 'slide' | 'crossfade' | 'counter'
+export const TIER_FEATURES: Readonly<Record<FamiliarityTier, ReadonlySet<MotionFeature>>> = {
+  full: new Set<MotionFeature>(['stagger', 'draw', 'pulse', 'pop', 'seam', 'slide', 'crossfade', 'counter']),
+  quiet: new Set<MotionFeature>(['pop', 'seam', 'slide', 'crossfade', 'counter']),
+  settled: new Set<MotionFeature>(['crossfade', 'counter']),
+}
+export function tierAllows(tier: FamiliarityTier | undefined, feature: MotionFeature): boolean {
+  return TIER_FEATURES[tier ?? 'full'].has(feature)
 }

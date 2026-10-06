@@ -231,6 +231,8 @@ contract list stops and asks rather than editing a file it does not own.
 
 ## 5. Acceptance — the full verification recipe
 
+> **Superseded for the command center (2026-10-06):** the shell this recipe pins (the sidebar, the Sprint view) was reorganised by `togo-command-center.md`; its §8 is the recipe and pin list that holds now, including the recorded pin changes (#1–#4). The `observatory-v11-*` series replaces v10.
+
 ```sh
 cd studio
 npm run typecheck && npm run typecheck:test

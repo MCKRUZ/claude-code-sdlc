@@ -42,6 +42,10 @@ from github_import import GitHubImportError, run_gh
 
 BRANCH_PREFIX = "spec/"
 
+# The no-self-check rule in ONE sentence, shared with `spec_transition.py assign` so a checker set
+# ahead of the hand-off is refused in exactly the words the hand-off itself would use.
+SELF_CHECK_MESSAGE = "'{developer}' is this spec's checker — a person cannot check their own build"
+
 
 class HandoffError(Exception):
     """A refusal, or a local-git failure. Raised before any mutation, or the mutation
@@ -242,16 +246,17 @@ def resolve_repo_root(args) -> Path:
     return Path(args.repo).resolve()
 
 
-def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason: str | None,
-            host: str | None = None) -> dict:
-    """Run every refusal check, then (if none fire) the git mutation. Returns a summary
-    dict. Raises HandoffError for any refusal — the caller decides how to report it.
+def check_preconditions(repo_root: Path, spec_path: Path, developer: str,
+                        over_limit_reason: str | None) -> dict:
+    """Every refusal, in the order the hand-off applies them, and NOTHING else — no git write, no
+    code-host call. Raises HandoffError for a refusal; returns the facts the mutation would use.
 
-    `host` is the resolved code host (`github` / `azure-devops` / `none`); None detects it from
-    the checkout. It decides only the assignment step — the refusals and the git half are the
-    same on every host."""
-    if host is None:
-        host = code_host.detect_host(repo_root).host
+    One function, two callers: `handoff()` runs it and then mutates; `check_handoff()` runs it
+    and stops. That is what makes a `--check` honest — it cannot say "would succeed" by a rule
+    the live path does not apply, or refuse by one it does not, because there is only one list.
+
+    `already_in_flight` is read from the spec's branch on origin (the one fact everyone shares),
+    so it still needs `git ls-remote` — a read, never a write."""
     if not spec_path.exists():
         raise HandoffError(f"Spec not found: {spec_path}")
     text = spec_path.read_text(encoding="utf-8")
@@ -285,19 +290,18 @@ def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason:
 
     checker = (fm.get("checker") or "").strip()
     if checker and checker == developer:
-        raise HandoffError(
-            f"'{developer}' is this spec's checker — a person cannot check their own build",
-            "developer_is_checker",
-        )
+        raise HandoffError(SELF_CHECK_MESSAGE.format(developer=developer), "developer_is_checker")
 
     # --- Team WIP limit (spec 0003) ---
     team = (fm.get("team") or "").strip()
     limits, _cadence_errors = cp.load_limits(repo_root)
+    in_flight_after = None
     if team in limits:
         specs = ts.scan_specs(repo_root / "specs")
         summary = ts.summarize(specs)
         in_flight_by_team = ts.team_in_flight_counts(summary["in_flight"])
         n = in_flight_by_team.get(team, 0)
+        in_flight_after = n + 1
         limit = limits[team]["wip_limit"]
         if n + 1 > limit and not over_limit_reason:
             raise HandoffError(
@@ -305,6 +309,53 @@ def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason:
                 f"would make {n + 1}. Use --over-limit \"<reason>\" to proceed anyway.",
                 "team_at_limit",
             )
+
+    return {
+        "already_in_flight": False,
+        "text": text,
+        "spec_id": spec_id,
+        "spec_name": spec_name,
+        "branch": branch_name,
+        "spec_rel_path": spec_rel_path,
+        "developer": developer,
+        "checker": checker or None,
+        "team": team or None,
+        # A count only where a cap exists to compare it to — "no cap set" is not "0 in flight".
+        "in_flight_after": in_flight_after,
+    }
+
+
+def check_handoff(repo_root: Path, spec_path: Path, developer: str,
+                  over_limit_reason: str | None) -> dict:
+    """The dry run: what a hand-off WOULD do, or the refusal it would meet — the repository
+    untouched either way. Stops before `resolve_base_branch`, so it never needs the default
+    branch, never creates a worktree, never pushes. Raises HandoffError exactly as `handoff` would."""
+    facts = check_preconditions(repo_root, spec_path, developer, over_limit_reason)
+    if facts["already_in_flight"]:
+        return {"ok": True, "already_in_flight": True, "developer": facts["developer"], "would": None}
+    return {
+        "ok": True,
+        "already_in_flight": False,
+        "would": {k: facts[k] for k in ("branch", "developer", "checker", "team", "in_flight_after")},
+    }
+
+
+def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason: str | None,
+            host: str | None = None) -> dict:
+    """Run every refusal check, then (if none fire) the git mutation. Returns a summary
+    dict. Raises HandoffError for any refusal — the caller decides how to report it.
+
+    `host` is the resolved code host (`github` / `azure-devops` / `none`); None detects it from
+    the checkout. It decides only the assignment step — the refusals and the git half are the
+    same on every host."""
+    if host is None:
+        host = code_host.detect_host(repo_root).host
+
+    facts = check_preconditions(repo_root, spec_path, developer, over_limit_reason)
+    if facts["already_in_flight"]:
+        return {"already_in_flight": True, "developer": facts["developer"]}
+    text, spec_id, spec_name = facts["text"], facts["spec_id"], facts["spec_name"]
+    branch_name, spec_rel_path, checker = facts["branch"], facts["spec_rel_path"], facts["checker"] or ""
 
     # --- The mutation: branch, frontmatter, push ---
     base_branch = resolve_base_branch(repo_root)
@@ -337,6 +388,35 @@ def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason:
     }
 
 
+def run_check(repo_root: Path, spec_path: Path, args, detection) -> int:
+    """`--check`: print the dry run (JSON or text) and return the exit code — 0 for a hand-off
+    that would go through, 1 for a refusal, with the same `kind`/`message` the live path gives."""
+    import json
+    try:
+        result = check_handoff(repo_root, spec_path, args.developer, args.over_limit)
+    except HandoffError as e:
+        if args.json:
+            print(json.dumps({"ok": False, "refusal": {"kind": e.kind, "message": str(e)},
+                              "host": host_json(detection)}, indent=2))
+        else:
+            print(f"Refused: {e}")
+        return 1
+    if args.json:
+        print(json.dumps({**result, "host": host_json(detection)}, indent=2))
+        return 0
+    if result["already_in_flight"]:
+        print(f"Already in flight — developer: {result['developer']}. A hand-off would change nothing.")
+        return 0
+    would = result["would"]
+    extras = [f"checker: {would['checker']}" if would["checker"] else "no checker set"]
+    if would["team"]:
+        extras.append(f"team {would['team']}" + (
+            f", {would['in_flight_after']} in flight after" if would["in_flight_after"] is not None else ""))
+    print(f"Would hand off: {would['branch']} -> {would['developer']} ({'; '.join(extras)})")
+    print("  Nothing was changed. Run without --check to hand off.")
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description="Hand a ready spec to a developer")
     src = parser.add_mutually_exclusive_group()
@@ -347,6 +427,9 @@ def main():
     parser.add_argument("--over-limit", default=None, metavar="REASON",
                          help="Proceed even if the team is at its WIP limit; written into the commit")
     parser.add_argument("--open", action="store_true", help="Also start Claude Code on the branch")
+    parser.add_argument("--check", action="store_true",
+                        help="Dry run: apply every refusal and report what the hand-off WOULD do, "
+                             "without a branch, a commit, a push or a code-host call")
     parser.add_argument("--json", action="store_true",
                         help="Emit the outcome (including a refusal and its kind) as JSON")
     parser.add_argument("--host", choices=code_host.HOSTS, default=None,
@@ -357,6 +440,9 @@ def main():
     repo_root = resolve_repo_root(args)
     spec_path = Path(args.spec)
     detection = code_host.detect_host(repo_root, args.host)
+
+    if args.check:
+        sys.exit(run_check(repo_root, spec_path, args, detection))
 
     try:
         result = handoff(repo_root, spec_path, args.developer, args.over_limit, host=detection.host)

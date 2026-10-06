@@ -40,8 +40,9 @@ function buildViewEntries(input: PaletteIndexInput): PaletteEntry[] {
     id: `build:${view.id}`,
     group: 'build',
     title: `Go to ${view.label}`,
-    // No subtitle: the row already sits under the Build group heading.
-    keywords: [view.id, view.label, 'build'],
+    // No subtitle: the row already sits under the Build group heading. Every Build view answers
+    // to "sprint" too — Planning, Closing and the home are the sprint's screens.
+    keywords: [view.id, view.label, 'build', 'sprint'],
     run: () => input.navigate(targetForBuildView(view.id)),
   }))
 }

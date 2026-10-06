@@ -5,6 +5,7 @@ import { PALETTE_GROUP_ORDER } from './types'
 import type { PaletteGroup, ScoredEntry } from './types'
 
 export const GROUP_LABEL: Record<PaletteGroup, string> = {
+  verbs: 'Verbs',
   recent: 'Recent',
   stages: 'Stages',
   build: 'Build',

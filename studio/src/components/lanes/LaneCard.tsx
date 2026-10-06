@@ -1,0 +1,164 @@
+// One card in a lane (togo-command-center.md §3.1, visual §4): three lines — the id in
+// `--text-ident` with the risk chip right-aligned; the name; the people as 20 px rings (the
+// signed-in person alone wears the `you-ring`) plus the PR facts in `ink-3`. Everything on it is
+// a plugin field shown as written: the PR number and `waiting_on` sentence from `spec_status.py
+// --all`, the review-lane words from `sprint.py status`, the Checking wait as the plugin's
+// `since_business_days` (tinted `today-wait-*` ONLY when `> 1` or the host's `over_alarm`). The
+// "next up" card carries the accent left edge and the plugin's three words. No host → the card
+// drops its PR facts and says why in the host's own sentence. The card writes nothing.
+import { forwardRef, type KeyboardEvent, type MouseEvent, type RefObject } from 'react'
+import type { RosterPerson, SprintVerdictPending } from '../../../shared/types'
+import { samePerson } from '../../../shared/identity'
+import { NEXT_UP, NO_PR_YET } from '../../../shared/reasons'
+import { businessDays, laneBadge, riskTone } from '../../../shared/sprintModel'
+import { Chip, cn } from '../../ui'
+import { useCountUp } from '../../motion/useCountUp'
+import { useRoomLit } from '../../stores/roomStore'
+import { PersonRing } from '../brand/figures'
+import { LANE_TONE } from '../SprintSlateTable'
+import { distinctPeople, waitIsLong, type LaneRow } from './laneModel'
+
+/** Risk chips keep the kit's tones (visual §2): HIGH error, MEDIUM warn, LOW neutral — the one
+ * table in `shared/sprintModel`, re-exported for the callers that import it from here. */
+export { riskTone }
+
+/** Rings overlap by 4 px only when a row names more than two people (visual §4); two or fewer
+ * sit side by side with a 4 px gap, so a pair never reads as one run of letters. */
+export function ringsOverlap(count: number): boolean {
+  return count > 2
+}
+
+/** The two letters a ring shows, from the roster NAME when the roster knows the handle (never a
+ * digit from a handle — `PersonRing` strips any defensively). */
+export function initialsFor(handle: string, roster: readonly RosterPerson[] | null): string {
+  const person = roster?.find((p) => samePerson(p.handle, handle))
+  const name = person?.name?.trim()
+  if (name) return name.split(/\s+/).map((w) => w[0] ?? '').join('')
+  return handle.replace(/^@/, '').split(/[-_.]/).map((w) => w[0] ?? '').join('')
+}
+
+export interface LaneCardProps {
+  row: LaneRow
+  me: string | null
+  roster: readonly RosterPerson[] | null
+  /** The host's own sentence when the PR facts cannot be read; null when they can. */
+  hostReason: string | null
+  /** Roving focus: only the active card is in the tab order. */
+  active: boolean
+  onOpen: (row: LaneRow) => void
+  onFocus: (row: LaneRow) => void
+}
+
+export const LaneCard = forwardRef<HTMLButtonElement, LaneCardProps>(function LaneCard(
+  { row, me, roster, hostReason, active, onOpen, onFocus }, ref,
+) {
+  const lit = useRoomLit()
+  const people = distinctPeople(row)
+  const isLit = lit !== null && people.some((h) => samePerson(h, lit))
+  const dimmed = lit !== null && !isLit
+  const pr = row.board?.pullRequest ?? null
+  const nextUp = row.lane === 'ready' && row.isNextUp
+  const showReviews = row.lane === 'building' || row.lane === 'checking'
+
+  const open = (e: MouseEvent | KeyboardEvent) => {
+    e.preventDefault()
+    onOpen(row)
+  }
+  return (
+    <button
+      ref={ref}
+      type="button"
+      data-lane-card=""
+      data-testid="lane-card"
+      data-spec={row.id}
+      data-lane={row.lane}
+      data-flip-id={`spec:${row.id}`}
+      data-lit={isLit ? '' : undefined}
+      data-next-up={nextUp ? '' : undefined}
+      data-reveal=""
+      tabIndex={active ? 0 : -1}
+      aria-label={`${row.id} ${row.slate.name}`}
+      onClick={open}
+      onFocus={() => onFocus(row)}
+      className={cn(
+        'relative block w-full rounded-[10px] border border-line-1 bg-surface-1 p-3 text-left text-ink-1',
+        'transition-[border-color,box-shadow,opacity] duration-[120ms] hover:border-line-2 motion-safe:hover:shadow-1',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)',
+        nextUp && 'border-l-2 border-l-today-act-line',
+        isLit && 'border-card-lit',
+        dimmed && 'opacity-55',
+      )}
+    >
+      <span data-seam="" aria-hidden="true" className="pointer-events-none absolute left-1/2 top-0 h-[2px] w-full -translate-x-1/2 bg-accent-600 opacity-0" />
+      <span className="flex items-center justify-between gap-2">
+        <span className="font-mono text-ident tabular-nums text-ink-2" title="spec id (sprint.py status --json · slate[].id)">{row.id}</span>
+        <Chip tone={riskTone(row.slate.risk)} size="xs" title="risk (slate[].risk)">{row.slate.risk || 'no tier'}</Chip>
+      </span>
+      <span className="mt-1 line-clamp-2 block text-sm font-medium leading-5 text-ink-1">{row.slate.name}</span>
+      {nextUp && <span className="mt-1 block text-xs font-medium text-accent-text" title="sprint.py status --json · next_up">{NEXT_UP}</span>}
+      <span className="mt-2 flex items-center gap-2">
+        <span className={cn('flex items-center py-0.5', !ringsOverlap(people.length) && 'gap-1')} aria-label={people.length === 0 ? 'nobody named' : undefined} data-rings={ringsOverlap(people.length) ? 'stacked' : 'spaced'}>
+          {people.map((handle, i) => (
+            // Earlier rings sit ABOVE later ones (a descending z-index), so the you-ring's 4 px
+            // shadow never paints over the letters of the ring before it.
+            <PersonRing
+              key={handle}
+              initials={initialsFor(handle, roster)}
+              name={handle}
+              you={samePerson(handle, me)}
+              lit={isLit && samePerson(handle, lit)}
+              stacked={ringsOverlap(people.length)}
+              className={cn('relative', ringsOverlap(people.length) && i > 0 && '-ml-1')}
+              style={{ zIndex: people.length - i }}
+            />
+          ))}
+          {people.length === 0 && <span className="text-xs text-ink-3">nobody named</span>}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs leading-4 text-ink-3" data-pr-facts="">
+          {hostReason !== null
+            ? null // no host: the card drops its pull-request facts; the board says why once
+            : pr
+              ? <span title={`spec_status.py --all --json · pull_request`}><span className="font-mono tabular-nums">#{pr.number}</span> · {pr.waitingOn}</span>
+              : row.board ? <span title="spec_status.py --all --json · pull_request: null">{NO_PR_YET}</span> : null}
+        </span>
+      </span>
+      {showReviews && (
+        <span className="mt-2 flex flex-wrap items-center gap-1" data-reviews="">
+          <ReviewChip lane="eng" value={row.slate.engReview} />
+          <ReviewChip lane="data" value={row.slate.dataReview} />
+        </span>
+      )}
+      {row.lane === 'checking' && row.verdictsPending.length > 0 && (
+        <span className="mt-2 flex flex-wrap gap-1" data-waits="">
+          {row.verdictsPending.map((v) => <Wait key={v.lane} v={v} row={row} />)}
+        </span>
+      )}
+    </button>
+  )
+})
+
+function ReviewChip({ lane, value }: { lane: 'eng' | 'data'; value: string }) {
+  const badge = laneBadge(value)
+  return (
+    <Chip tone={LANE_TONE[badge.tone]} size="xs" data-review-chip={lane} title={`sprint.py status --json · slate[].${lane}_review`}>
+      {lane} · {badge.label}
+    </Chip>
+  )
+}
+
+/** The plugin's wait, tweened number→number only; null is the words "no data". */
+function Wait({ v, row }: { v: SprintVerdictPending; row: LaneRow }) {
+  const long = waitIsLong(v, row)
+  const count = useCountUp(`wait:${row.id}:${v.lane}`, v.sinceBusinessDays, { format: (n) => businessDays(Math.round(n)) })
+  return (
+    <span
+      data-wait={v.lane}
+      data-long={long ? '' : undefined}
+      title="sprint.py status --json · verdicts_pending[].since_business_days"
+      className={cn('inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 font-mono text-ident tabular-nums', long ? 'bg-today-wait-bg text-today-wait-ink' : 'bg-surface-2 text-ink-2')}
+    >
+      <span className="text-ink-3">{v.lane}</span>
+      <span ref={count.ref as RefObject<HTMLSpanElement>}>{count.text}</span>
+    </span>
+  )
+}

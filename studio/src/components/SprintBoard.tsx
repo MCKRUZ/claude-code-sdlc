@@ -39,11 +39,21 @@ import { SprintPages } from './SprintPages'
  * lists "id — first gap" and keeps the rest behind a closed `Disclosure`; verdicts pending are
  * grouped per spec by `groupVerdicts` (a grouping, never a new number). */
 export function SprintBoard({
-  projectPath, sprintId, capabilities, compact = false, onOpenSpec, onView,
+  projectPath, sprintId, capabilities, compact = false, onOpenSpec, onView, view, twin = false, onRefresh,
 }: {
   projectPath: string
   /** A sprint to show instead of the active one. */
   sprintId?: string
+  /** Command center (togo-command-center.md §3.1): the view the sprint home ALREADY fetched through
+   * `getCommandCenter`, so the board draws it without a second `sprint.py status` spawn. Given →
+   * no read of its own; `onRefresh` is then the host's re-read. */
+  view?: SprintView | null
+  /** The Table twin behind the slate constellation's Graph / Table toggle: the slate, the fact
+   * sections and the page buttons WITHOUT the header card — the sprint home's `SprintHeader`
+   * carries `sprint-header / -state / -target / -wip` once. Refresh stays inside the twin so the
+   * three-button pin (Planning page / Refresh / Review page) holds inside `sprint-board`. */
+  twin?: boolean
+  onRefresh?: () => void
   /** What the installed plugin says it can do. Undefined when nothing has said: then the view is
    * drawn and the plugin's own answer decides. */
   capabilities?: string[]
@@ -62,7 +72,34 @@ export function SprintBoard({
       </div>
     )
   }
+  if (view !== undefined) {
+    return <SprintGiven projectPath={projectPath} view={view} compact={compact} twin={twin} onOpenSpec={onOpenSpec} onRefresh={onRefresh} testId={testId} />
+  }
   return <SprintBoardBody projectPath={projectPath} sprintId={sprintId} compact={compact} onOpenSpec={onOpenSpec} onView={onView} testId={testId} />
+}
+
+/** The board over a view the host already holds (the command center's `sprint` block). Same
+ * motion hooks as the fetching body — the stagger plays once per view, Back Flips into the row. */
+function SprintGiven({
+  projectPath, view, compact, twin, onOpenSpec, onRefresh, testId,
+}: {
+  projectPath: string; view: SprintView | null; compact: boolean; twin: boolean; onOpenSpec?: (row: BoardRow) => void
+  onRefresh?: () => void; testId: string
+}) {
+  const root = useRef<HTMLDivElement>(null)
+  useListReveal(root, view ? `${projectPath}|given|${view.sprint?.id ?? ''}|${view.slate.length}` : null)
+  useStudioGSAP(() => {
+    const el = root.current
+    if (!el || !view) return
+    sharedElementBack.play(contextFrom(el, { enabled: motion.enabled(), reduced: motion.reduced() }, motion), { container: el })
+  }, { scope: root, dependencies: [view !== null] })
+  return (
+    <div ref={root} data-testid={testId} className={compact ? 'mt-2 space-y-2 text-xs text-ink-2' : 'space-y-6'}>
+      {view === null
+        ? <p role="status" className="text-sm text-ink-3">{NO_DATA} — the sprint block could not be read</p>
+        : <SprintViewBody view={view} projectPath={projectPath} compact={compact} twin={twin} onOpenSpec={onOpenSpec} onRefresh={onRefresh} />}
+    </div>
+  )
 }
 
 /** The full view as App mounts it: the plugin's capabilities come from the stage readiness Frame
@@ -163,8 +200,8 @@ function SprintBoardBody({
 // --- the view ----------------------------------------------------------------------------------
 
 function SprintViewBody({
-  view, projectPath, compact, onOpenSpec, onRefresh,
-}: { view: SprintView; projectPath: string; compact: boolean; onOpenSpec?: (row: BoardRow) => void; onRefresh?: () => void }) {
+  view, projectPath, compact, twin = false, onOpenSpec, onRefresh,
+}: { view: SprintView; projectPath: string; compact: boolean; twin?: boolean; onOpenSpec?: (row: BoardRow) => void; onRefresh?: () => void }) {
   const { sprint } = view
   // The kit's one "nothing here, and why" frame (G4-9); the sentence is the plugin's, verbatim,
   // and the testid rides on the frame's root so its text is exactly that sentence.
@@ -175,8 +212,15 @@ function SprintViewBody({
   const verdictGroups = groupVerdicts(view.verdictsPending)
   return (
     <>
-      <SprintHeader view={view} compact={compact} onRefresh={onRefresh} />
-      {!compact && view.note && <p className="text-xs text-status-warn-ink">{view.note}</p>}
+      {twin ? (
+        // The twin's header is one row: what this table is, and Refresh (the sprint home's own
+        // header above carries the facts and their test ids once).
+        <div className="flex items-center justify-between gap-3">
+          <Eyebrow as="h3">Slate · {sprint.id}</Eyebrow>
+          {onRefresh && <Button size="sm" icon={RefreshCw} onClick={onRefresh}>Refresh</Button>}
+        </div>
+      ) : <SprintHeader view={view} compact={compact} onRefresh={onRefresh} />}
+      {!compact && !twin && view.note && <p className="text-xs text-status-warn-ink">{view.note}</p>}
       {empty ? <EmptyState data-testid="sprint-empty" title={empty} />
         : !compact && <SlateTable rows={view.slate} onOpenSpec={onOpenSpec} />}
       <div className={compact ? 'space-y-1' : 'grid gap-3 md:grid-cols-2'}>

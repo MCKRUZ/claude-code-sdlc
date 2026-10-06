@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardRow, SprintSlateRow } from '../../shared/types'
-import { laneBadge, slateToBoardRow, statusTone, type ChipTone } from '../../shared/sprintModel'
+import { dorChipTone, laneBadge, riskTone, slateToBoardRow, statusTone, type ChipTone } from '../../shared/sprintModel'
 import { ChevronRight } from 'lucide-react'
-import { Chip, DataTable, Icon, type ChipTone as KitChipTone, type DataTableColumn } from '../ui'
+import { CHIP_TONE, Chip, DataTable, Icon, type ChipTone as KitChipTone, type DataTableColumn } from '../ui'
 
 /** The sprint model's four tones on the kit's chip. `muted` keeps the neutral chip and dims the
  * text itself, since the kit has no "quieter neutral" and inventing one would be a new colour. */
@@ -24,19 +24,23 @@ export function SprintChip({ tone, children, testId }: { tone: ChipTone; childre
 /** The DoR column keeps its `<details>` INSIDE the cell rather than in the table's details row:
  * the sprint spec counts `details[open]` after clicking the first NOT READY summary, and the
  * SprintBoard test reads the summary's tag name — both hold only if the disclosure is the
- * checker's lines and nothing else. NOT READY keeps its exact text and the `<summary>` tag: it is
- * a warn-class fact (warn ink, never red) and three exact-text matches are pinned on it. The cell
- * is wide enough for the two words on one line (`min-w-[7rem] whitespace-nowrap`) — the v7 table
- * broke "NOT / READY" across two lines in every row. C8: the default `::marker` triangle is
- * hidden and the kit's chevron (a sibling SVG, never a text node, so `summary.textContent` is
- * still exactly "NOT READY") turns on `[open]` — the same recipe as `Disclosure`, applied here by
- * hand because the cell's tags and text are pinned. */
+ * checker's lines and nothing else. NOT READY keeps its exact text and the `<summary>` tag, and
+ * both verdicts wear the ONE DoR chip tone every screen uses (`dorChipTone`: READY is "now",
+ * never green; NOT READY is the warn class the checker's MUST lines earn). The `<summary>` IS the
+ * chip — the kit's tone classes on the summary element itself, its dot an `aria-hidden` span
+ * with no text — so the words "NOT READY" stay a direct text child of the summary (the
+ * SprintBoard test reads that tag name) and `summary.textContent` is still exactly "NOT READY"
+ * for the three exact-text matches pinned on it. The cell is wide enough for the two words on one
+ * line (`min-w-[7rem] whitespace-nowrap`). C8: the default `::marker` triangle is hidden and the
+ * kit's chevron (a sibling SVG, never a text node) turns on `[open]` — the same recipe as
+ * `Disclosure`, applied here by hand because the cell's tags and text are pinned. */
 function DorCell({ row }: { row: SprintSlateRow }) {
-  if (row.dor === 'READY') return <span className="font-medium text-status-ok-ink">READY</span>
+  if (row.dor === 'READY') return <Chip tone={dorChipTone('READY')} casing="state" dot>READY</Chip>
   return (
     <details className="group min-w-[7rem]">
-      <summary className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap font-medium text-status-warn-ink [&::-webkit-details-marker]:hidden [&::marker]:hidden">
+      <summary className={`inline-flex h-[18px] cursor-pointer list-none items-center gap-1 whitespace-nowrap rounded-full px-1.5 text-[11px] font-medium leading-none [&::-webkit-details-marker]:hidden [&::marker]:hidden ${CHIP_TONE[dorChipTone('NOT READY')]}`} data-dor-chip="">
         <Icon icon={ChevronRight} size={12} className="transition-transform duration-[160ms] ease-[var(--ease-out)] group-open:rotate-90" />
+        <span aria-hidden="true" className="h-[5px] w-[5px] rounded-full bg-status-warn-fill" />
         NOT READY
       </summary>
       <ul className="mt-1 space-y-0.5 whitespace-normal text-ink-2">
@@ -64,7 +68,7 @@ function columnsFor(onOpenSpec?: (row: BoardRow) => void): DataTableColumn<Sprin
       ) : row.id),
     },
     { id: 'name', header: 'Name', cell: (row) => row.name },
-    { id: 'risk', header: 'Risk', cell: (row) => <span className="font-medium">{row.risk}</span> },
+    { id: 'risk', header: 'Risk', cell: (row) => <Chip size="xs" casing="identifier" tone={riskTone(row.risk)}>{row.risk || 'no tier'}</Chip> },
     { id: 'type', header: 'Type', cell: (row) => row.type || '—' },
     { id: 'status', header: 'Status', cell: (row) => <Chip size="xs" casing="state" tone={statusTone(row.status)}>{row.status}</Chip> },
     { id: 'dor', header: <span title="Definition of Ready">DoR</span>, cell: (row) => <DorCell row={row} /> },

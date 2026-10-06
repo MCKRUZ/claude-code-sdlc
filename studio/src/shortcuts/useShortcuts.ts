@@ -2,10 +2,24 @@
 // other component that wants a key reads the map rather than adding a listener of its own, so
 // two screens can never both answer the same key. Handlers live in a ref: the listener is
 // attached once and reads the latest callbacks, so a parent re-render costs no re-subscribe.
+//
+// Command center (togo-command-center.md §1, §3.1): the default table is `SHORTCUT_MAP` plus
+// `COMMAND_CENTER_BINDINGS` — `g l` the lifecycle home, `g t` steering mode, and the lane board's
+// `j k ↵ h v Esc`, which are live ONLY while the event comes from inside
+// `[data-shortcut-scope="lanes"]`, exactly as the graph's keys are for `scene`.
 import { useEffect, useRef } from 'react'
-import { CHORD_WINDOW_MS, SHORTCUT_MAP, chordFromEvent, inSceneScope, isMacPlatform, normalizeChord } from './shortcutMap'
-import type { SceneCommand, ShortcutAction, ShortcutBinding, ShortcutScope } from './shortcutMap'
-import type { BuildView } from '../../shared/nav'
+import {
+  CHORD_WINDOW_MS, COMMAND_CENTER_BINDINGS, SHORTCUT_MAP, chordFromEvent, inLaneScope, inSceneScope, isMacPlatform, normalizeChord,
+} from './shortcutMap'
+import type { CommandCenterAction, LaneCommand, SceneCommand, ShortcutAction, ShortcutBinding, ShortcutScope } from './shortcutMap'
+import type { BuildView, Home } from '../../shared/nav'
+
+/** Every action the listener can dispatch: the §6.2 map and the command center's additions. */
+export type AnyShortcutAction = ShortcutAction | CommandCenterAction
+export type AnyShortcutBinding = ShortcutBinding<AnyShortcutAction>
+
+/** The full table — what the listener reads by default and what the help renders. */
+export const ALL_BINDINGS: readonly AnyShortcutBinding[] = [...SHORTCUT_MAP, ...COMMAND_CENTER_BINDINGS]
 
 export interface ShortcutHandlers {
   openPalette?: () => void
@@ -29,13 +43,20 @@ export interface ShortcutHandlers {
    * figure runs its own keydown first and consumes the event, so this fires only for a host that
    * routes graph keys itself. */
   sceneCommand?: (command: SceneCommand) => void
+  /** A lane key, dispatched only while the lane board has focus (`inLaneScope`); the board runs
+   * its own keydown first (`laneCommandFor`), as the graph does. */
+  laneCommand?: (command: LaneCommand) => void
+  /** `g s` / `g l`: the two homes (togo-command-center.md §1). `g s` arrives as `goBuildView('sprint')`. */
+  goHome?: (home: Home) => void
+  /** `g t`: steering mode. */
+  steering?: () => void
 }
 
 export interface UseShortcutsOptions {
   handlers: ShortcutHandlers
   /** The scopes that are live on the current screen; `global` is always live. */
   scopes?: readonly ShortcutScope[]
-  bindings?: readonly ShortcutBinding[]
+  bindings?: readonly AnyShortcutBinding[]
   /** Esc layering, outermost first: each closer returns true when it closed something, which
    * ends the chain (close dialog → clear 3D hover → clear Board search). */
   escLayers?: readonly (() => boolean)[]
@@ -63,7 +84,7 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return role === 'textbox' || role === 'combobox' || role === 'searchbox'
 }
 
-export function dispatchShortcut(action: ShortcutAction, h: ShortcutHandlers): boolean {
+export function dispatchShortcut(action: AnyShortcutAction, h: ShortcutHandlers): boolean {
   switch (action.type) {
     case 'palette': return call(h.openPalette)
     case 'shortcuts': return call(h.openShortcuts)
@@ -81,6 +102,9 @@ export function dispatchShortcut(action: ShortcutAction, h: ShortcutHandlers): b
     case 'documentStep': return call(h.stepDocument, action.delta)
     case 'saveField': return call(h.saveField)
     case 'scene': return call(h.sceneCommand, action.command)
+    case 'lane': return call(h.laneCommand, action.command)
+    case 'home': return call(h.goHome, action.home)
+    case 'steering': return call(h.steering)
   }
 }
 
@@ -112,10 +136,13 @@ export function useShortcuts(options: UseShortcutsOptions): void {
       if (!chord) return
       const editable = isEditableTarget(e.target)
       const live = new Set<ShortcutScope>(['global', ...(o.scopes ?? [])])
-      // The graph's keys exist only while the graph has focus — never from the host's scopes.
+      // The graph's and the lanes' keys exist only while that figure has focus — never from the
+      // host's scopes.
       if (inSceneScope(e.target)) live.add('scene')
       else live.delete('scene')
-      const candidates = (o.bindings ?? SHORTCUT_MAP).filter((b) => live.has(b.scope) && (b.inInputs || !editable))
+      if (inLaneScope(e.target)) live.add('lanes')
+      else live.delete('lanes')
+      const candidates = (o.bindings ?? ALL_BINDINGS).filter((b) => live.has(b.scope) && (b.inInputs || !editable))
       // Date.now(), not e.timeStamp: the latter is set at construction and a test cannot
       // control it, while fake timers control this.
       const now = Date.now()

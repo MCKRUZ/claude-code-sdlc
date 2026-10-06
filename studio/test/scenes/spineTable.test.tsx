@@ -99,7 +99,7 @@ describe('SpineTable', () => {
     const onActivate = vi.fn()
     render(<SpineTable data={data()} onActivate={onActivate} />)
     const build = screen.getByRole('button', { name: /Phase build/ })
-    expect(build.closest('li')?.textContent ?? "").toContain('Board · Sprint · How it is going · Closing · Documents')
+    expect(build.closest('li')?.textContent ?? "").toContain('Home · Planning · Board · How it is going · Closing · Documents')
     fireEvent.click(build)
     fireEvent.click(screen.getByRole('button', { name: /Phase 9/ }))
     expect(onActivate.mock.calls).toEqual([['build'], ['9']])

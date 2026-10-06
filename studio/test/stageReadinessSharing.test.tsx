@@ -10,10 +10,17 @@
 //
 // ChatPanel.tsx does not yet consume this shared value on this branch — spec 0018's own
 // `readinessFlow` call hasn't rebased onto this work yet (see this spec's Decision List) — so
-// these tests prove what IS true today: StageHome and Frame's own sidebar doc-count line share
-// exactly one fetch, and a refresh triggered from StageHome goes through the SAME shared
-// `refresh()` rather than a second, StageHome-only re-fetch. Once ChatPanel adopts the context,
-// the "exactly one call" assertions below continue to hold with no change to this file.
+// these tests prove what IS true today: StageHome and the shell share exactly one fetch, and a
+// refresh triggered from StageHome goes through the SAME shared `refresh()` rather than a
+// second, StageHome-only re-fetch. Once ChatPanel adopts the context, the "exactly one call"
+// assertions below continue to hold with no change to this file.
+//
+// Recorded pin change (togo-command-center.md §1, §8 #1): the sidebar — and with it its own
+// "N of M documents complete" line and the second fetch it made for the TRUE current stage while a
+// different stage was viewed — retired with the LifecycleStrip (lifecycleStrip.test.tsx). The
+// strip reads `status.stages` and the command center, never stage readiness, so the shell now
+// makes exactly ONE readiness fetch, for the viewed stage; the assertions that counted the
+// sidebar's second call are re-recorded below to the one call that remains.
 
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -128,8 +135,8 @@ describe('Frame as the single owner of stage readiness (spec 0019)', () => {
     renderFrame(undefined)
 
     await waitFor(() => expect(screen.getByText('Phase 1: Stage 1')).toBeTruthy())
-    // The sidebar's doc-count line, derived from the SAME fetch.
-    await waitFor(() => expect(screen.getByText('1 of 1 documents complete')).toBeTruthy())
+    // The strip (the sidebar's successor) reads no readiness of its own: still ONE fetch.
+    expect(screen.getByRole('navigation', { name: 'Project' })).toBeTruthy()
 
     expect(getStageReadiness).toHaveBeenCalledTimes(1)
     expect(getStageReadiness).toHaveBeenCalledWith('/p', '1')
@@ -164,12 +171,11 @@ describe('Frame as the single owner of stage readiness (spec 0019)', () => {
 
     const { rerender } = renderFrame('0')
     await waitFor(() => expect(screen.getByText('Phase 0: Stage 0')).toBeTruthy())
-    // Two calls on first render: the viewed stage ('0', the shared fetch StageHome reads) and
-    // the project's actual current stage ('1', the sidebar's own current-stage line — see the
-    // fix for finding #2, which this '0'-is-not-current scenario exercises on every render).
-    await waitFor(() => expect(getStageReadiness).toHaveBeenCalledTimes(2))
+    // ONE call on first render: the viewed stage ('0', the shared fetch StageHome reads). The
+    // sidebar's own current-stage line, which used to make a second call for '1', retired with
+    // the sidebar (recorded pin change, header comment).
+    await waitFor(() => expect(getStageReadiness).toHaveBeenCalledTimes(1))
     expect(getStageReadiness).toHaveBeenCalledWith('/p', '0')
-    expect(getStageReadiness).toHaveBeenCalledWith('/p', '1')
 
     rerender(
       <Frame
@@ -195,19 +201,17 @@ describe('Frame as the single owner of stage readiness (spec 0019)', () => {
 
     await waitFor(() => expect(screen.getByText('Phase 2: Stage 2')).toBeTruthy())
     expect(screen.queryByText('Phase 0: Stage 0')).toBeNull()
-    // Exactly ONE more call, for the newly viewed stage ('2') — the current stage is still '1'
-    // in both renders, so the sidebar's own current-stage fetch does not re-fire.
-    expect(getStageReadiness).toHaveBeenCalledTimes(3)
-    expect(getStageReadiness).toHaveBeenNthCalledWith(3, '/p', '2')
+    // Exactly ONE more call, for the newly viewed stage ('2').
+    expect(getStageReadiness).toHaveBeenCalledTimes(2)
+    expect(getStageReadiness).toHaveBeenNthCalledWith(2, '/p', '2')
   })
 
-  it('the sidebar shows the TRUE current stage\'s real document count even while viewing a DIFFERENT stage — never mislabeled, never a false "In progress"', async () => {
+  it('viewing a DIFFERENT stage never mislabels it as current: the screen shows the viewed stage\'s own documents and the strip lights the true current station', async () => {
     // Viewing stage '0' (signed off, 1 of 1 docs) while stage '1' is the project's actual
-    // current stage (2 of 3 docs). Before spec 0019 these were two genuinely independent
-    // fetches (the sidebar's own `useCurrentStageDocs` always read the TRUE current stage), and
-    // that spec's Out-of-Scope section promises no UI-visible behavior change — so the sidebar's
-    // line must keep showing stage 1's real count, not stage 0's count mislabeled as current,
-    // and not the "In progress" placeholder (that's reserved for before real data arrives).
+    // current stage (2 of 3 docs). The sidebar's own current-stage count line retired with the
+    // sidebar (recorded pin change, header comment); what must still hold is that nothing on
+    // screen shows stage 0's count as if it were the current stage's, and that the strip marks
+    // the current station ('1') from `status.stages`, not from the viewed stage's readiness.
     const docsByStage: Record<string, StageDocument[]> = {
       '0': [doc('doc-0.md', true)],
       '1': [doc('doc-1a.md', true), doc('doc-1b.md', false), doc('doc-1c.md', true)],
@@ -220,14 +224,16 @@ describe('Frame as the single owner of stage readiness (spec 0019)', () => {
     renderFrame('0')
     await waitFor(() => expect(screen.getByText('Phase 0: Stage 0')).toBeTruthy())
 
-    // Both fetches happened: the viewed stage (what StageHome reads, via the shared context) and
-    // the actual current stage (for the sidebar's own line) — stage_readiness.py answers for one
-    // stage per call, so there is no way to derive stage 1's count from stage 0's fetch alone.
+    // ONE fetch, for the viewed stage; nothing asks for stage 1's readiness on stage 0's behalf.
     expect(getStageReadiness).toHaveBeenCalledWith('/p', '0')
-    await waitFor(() => expect(getStageReadiness).toHaveBeenCalledWith('/p', '1'))
+    expect(getStageReadiness).toHaveBeenCalledTimes(1)
+    expect(getStageReadiness).not.toHaveBeenCalledWith('/p', '1')
 
-    await waitFor(() => expect(screen.getByText('2 of 3 documents complete')).toBeTruthy())
-    expect(screen.queryByText('1 of 1 documents complete')).toBeNull()
+    // Stage 0's count is never labelled as the current stage's, and no placeholder stands in.
+    expect(screen.queryByText('2 of 3 documents complete')).toBeNull()
     expect(screen.queryByText('In progress')).toBeNull()
+    const nav = screen.getByRole('navigation', { name: 'Project' })
+    expect(nav.querySelector('[data-station="current"]')?.closest('li')?.getAttribute('data-stage-id')).toBe('1')
+    expect(nav.querySelector('[data-viewing]')?.closest('li')?.getAttribute('data-stage-id')).toBe('0')
   })
 })

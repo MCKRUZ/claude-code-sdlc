@@ -19,6 +19,7 @@ Standalone or Workflow (CLAUDE.md design rule):
 """
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import re
@@ -27,6 +28,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import check_spec as cs
 import findings_model as fm
 
 # Columns the grader writes in the `## Gate Results` table (see agents/multi-reviewer.md).
@@ -198,6 +200,102 @@ def find_fixed_claim_mismatches(ledger: list[dict]) -> list[dict]:
     return mismatches
 
 
+def findings_rows(ledger: list[dict]) -> list[dict]:
+    """One row per fingerprint — the finding's CURRENT state plus how it got there.
+
+    Everything is the latest ledger entry's own words (disposition, severity, target, detail,
+    evidence); `off_books` is `findings_model.validate_disposition` applied to that entry, so a
+    SPLIT without an id and owner, or an AI signing an ACCEPTED_RISK, reads as still on the books
+    exactly as it counts. `rounds` is how many ledger entries carry the fingerprint — one per
+    recorded report — which is what "seen N times across reports" means. Order: ledger order of
+    first appearance, so the oldest open finding is first."""
+    by_fp: dict[str, list[dict]] = {}
+    for e in ledger:
+        fp = e.get("fingerprint")
+        if fp:
+            by_fp.setdefault(fp, []).append(e)
+    rows = []
+    for fp, entries in by_fp.items():
+        latest = entries[-1]
+        off_books, reason = fm.validate_disposition(latest)
+        row = {
+            "fingerprint": fp,
+            "id": latest.get("id", ""),
+            "category": latest.get("category", ""),
+            "severity": fm.normalize_severity(latest.get("severity")) or latest.get("severity", ""),
+            "target": latest.get("target", ""),
+            "disposition": fm.normalize_disposition(latest.get("disposition")) or latest.get("disposition", ""),
+            "detail": latest.get("detail", ""),
+            "evidence": {k: latest[k] for k in EVIDENCE_FIELDS if latest.get(k)},
+            "off_books": off_books,
+            "off_books_reason": reason,
+            "first_seen": entries[0].get("timestamp"),
+            "last_seen": latest.get("timestamp"),
+            "rounds": len(entries),
+            "report": latest.get("report", ""),
+        }
+        rows.append(row)
+    return rows
+
+
+def recurrence_of(rows: list[dict]) -> dict[str, int]:
+    """fingerprint -> rounds, for the rows given (filtered or not)."""
+    return {r["fingerprint"]: r["rounds"] for r in rows}
+
+
+_SCOPE_PATH_RE = re.compile(r"`([^`\n]+)`")
+
+
+def scope_paths(spec_text: str) -> list[str]:
+    """The backticked paths under the spec's `## Scope` > `### In scope` — the only place a spec
+    says what files a change may touch. Returns [] when the section or the backticks are absent;
+    nothing is inferred from prose."""
+    _fm, body = cs.parse_frontmatter(spec_text)
+    scope = cs.extract_section(body, "Scope")
+    if scope is None:
+        return []
+    inside = cs.extract_subsection(scope, "In scope")
+    if inside is None:
+        return []
+    paths = []
+    for line in cs.strip_comments_and_blanks(inside):
+        for raw in _SCOPE_PATH_RE.findall(line):
+            cleaned = raw.strip().replace("\\", "/")
+            if cleaned.startswith("./"):
+                cleaned = cleaned[2:]
+            if cleaned and cleaned not in paths:
+                paths.append(cleaned)
+    return paths
+
+
+def target_under(target: str, scope_path: str) -> bool:
+    """Does a finding's target file fall under one scope path? Globs (`src/Claims/**`, `*.cs`)
+    match with fnmatch where `**` reads as "anything"; a plain path matches itself or anything
+    beneath it as a directory. Case-sensitive, like the paths themselves."""
+    file_part = str(target or "").split(":", 1)[0].strip().replace("\\", "/")
+    if file_part.startswith("./"):
+        file_part = file_part[2:]
+    if not file_part:
+        return False
+    if any(ch in scope_path for ch in "*?["):
+        return fnmatch.fnmatchcase(file_part, scope_path.replace("**", "*"))
+    scope = scope_path.rstrip("/")
+    return file_part == scope or file_part.startswith(scope + "/")
+
+
+def attribute_to_spec(rows: list[dict], paths: list[str]) -> tuple[list[dict], dict]:
+    """The rows whose target is under one of the spec's scope paths, and the honest tally.
+
+    The ledger has no spec id — a finding is keyed by category and target FILE — so "this spec's
+    findings" can only ever mean "findings at files this spec says it touches". The method is
+    named in the payload so a card can say so, and `unattributed` is stated, never hidden."""
+    if not paths:
+        return [], {"method": "scope-paths", "scope_paths": [], "attributed": 0, "unattributed": len(rows)}
+    mine = [r for r in rows if any(target_under(r["target"], p) for p in paths)]
+    return mine, {"method": "scope-paths", "scope_paths": paths,
+                  "attributed": len(mine), "unattributed": len(rows) - len(mine)}
+
+
 def resolve_base_and_metrics(args) -> tuple[Path, Path]:
     """(repo_base_dir, metrics_dir) from --state (the .sdlc beside it) or --repo (<repo>/.sdlc)."""
     if args.state:
@@ -263,18 +361,41 @@ def format_report(ledger: list[dict]) -> tuple[str, int]:
 def cmd_report(args) -> int:
     _, metrics_dir = resolve_base_and_metrics(args)
     ledger = load_ledger(metrics_dir / "findings-log.jsonl")
+    spec_path = Path(args.spec) if getattr(args, "spec", None) else None
+    if spec_path is not None and not spec_path.exists():
+        print(f"Error: Spec not found: {spec_path}")
+        return 1
+
+    rows = findings_rows(ledger)
+    attribution = None
+    if spec_path is not None:
+        rows, attribution = attribute_to_spec(rows, scope_paths(spec_path.read_text(encoding="utf-8")))
+
     if args.json:
         states = list(current_state(ledger).values())
+        # The three counts stay project-wide (they are what they always were); only the listing
+        # narrows under --spec, and the attribution block says by how much.
         payload = {
             "tracked": len(states),
             "open_debt": len(fm.open_debt(states)),
             "fixed_claim_mismatches": len(find_fixed_claim_mismatches(ledger)),
+            "findings": rows,
+            "recurrence": recurrence_of(rows),
         }
+        if attribution is not None:
+            payload["attribution"] = attribution
         print(json.dumps(payload, indent=2))
         mism = payload["fixed_claim_mismatches"]
     else:
         text, mism = format_report(ledger)
         print(text)
+        if attribution is not None:
+            print("")
+            print(f"Findings under {spec_path.name}'s scope paths: {attribution['attributed']} "
+                  f"({attribution['unattributed']} elsewhere in the ledger)")
+            for r in rows:
+                print(f"  - [{r['severity'] or '?'}] {r['category'] or '?'} @ {r['target'] or '—'}: "
+                      f"{r['disposition']} (seen {r['rounds']}x)")
     return 2 if (args.strict and mism) else 0
 
 
@@ -293,6 +414,9 @@ def main() -> None:
     p_rep = sub.add_parser("report", parents=[common], help="Report open debt + the FIXED-claim check")
     p_rep.add_argument("--strict", action="store_true", help="Exit 2 if any FIXED_CLAIM_MISMATCH (factual, may block)")
     p_rep.add_argument("--json", action="store_true", help="Emit a JSON summary")
+    p_rep.add_argument("--spec", default=None, metavar="PATH",
+                       help="Narrow the findings listing to targets under this spec's `## Scope` In paths "
+                            "(the ledger has no spec id; attribution is by path and says so)")
 
     args = parser.parse_args()
     sys.exit(cmd_record(args) if args.command == "record" else cmd_report(args))

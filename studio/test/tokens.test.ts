@@ -50,6 +50,42 @@ const DENSITY = Object.keys({ '--pad-card': 1, '--pad-row': 1, '--gap-list': 1 }
 const DURATIONS = Object.keys({ 'dur-1': 1, 'dur-2': 1, 'dur-3': 1, 'dur-4': 1, 'dur-5': 1 } satisfies Record<DurationToken, 1>)
 const STAGGERS = Object.keys({ 'stagger-1': 1, 'stagger-2': 1 } satisfies Record<StaggerToken, 1>)
 
+/** Command center (togo-command-center-visual.md §2): exactly the tokens P0 adds — hex rows and
+ * alias rows alike must be declared on :root, mapped to a utility, and restated in dark's first
+ * block. Not a `TypeToken`/`ColorToken` union on purpose (tokens.d.ts is the kit's; these are the
+ * command center's) — the list is the contract here. */
+const CC_HEX_LIGHT: Record<string, string> = {
+  lane: '#eef2f7', 'lane-header': '#e9eef5', 'lane-line': '#dce3ec', 'card-lit': '#1a99a3', baton: '#0e7c86', 'baton-bg': '#d3f3f3',
+  'baton-ink': '#0b6470', 'you-ring': '#0e7c86', 'plan-says': '#edfafa', 'plan-says-line': '#a7e6e7', 'rung-pending': '#0369a1',
+  'steer-bg': '#ffffff', 'steer-tile': '#f8fafc',
+}
+const CC_HEX_DARK: Record<string, string> = {
+  lane: '#0e1727', 'lane-header': '#121c2f', 'lane-line': '#1b2639', 'card-lit': '#22a3ad', baton: '#22a3ad', 'baton-bg': '#0c363b',
+  'baton-ink': '#6fd1d4', 'you-ring': '#6fd1d4', 'plan-says': '#0a2a2e', 'plan-says-line': '#0f4a50', 'rung-pending': '#38bdf8',
+  'steer-bg': '#070c16', 'steer-tile': '#111a2b',
+}
+const CC_ALIAS: Record<string, string> = {
+  'strip-lit': 'stage-signed-fill', 'strip-unlit': 'line-2', 'strip-viewing': 'stage-current-fill',
+  'today-act-bg': 'stage-current-bg', 'today-act-ink': 'stage-current-ink', 'today-act-line': 'stage-current-line',
+  'today-wait-bg': 'status-warn-bg', 'today-wait-ink': 'status-warn-ink', 'today-wait-line': 'status-warn-line',
+  'today-late-bg': 'status-error-bg', 'today-late-ink': 'status-error-ink', 'today-late-line': 'status-error-line',
+  'plan-backlog': 'lane', 'plan-slate': 'surface-1', 'rung-pass': 'status-ok-fill', 'rung-fail': 'status-error-fill',
+  'rung-none': 'ink-4', 'rung-rail': 'line-2', 'ledger-open-bg': 'status-warn-bg', 'ledger-open-ink': 'status-warn-ink',
+  'ledger-fixed-bg': 'status-ok-bg', 'ledger-fixed-ink': 'status-ok-ink', 'ledger-split-bg': 'stage-current-bg',
+  'ledger-split-ink': 'stage-current-ink', 'ledger-accepted-bg': 'stage-signed-bg', 'ledger-accepted-ink': 'stage-signed-ink',
+  'ledger-postponed-bg': 'stage-later-bg', 'ledger-postponed-ink': 'stage-later-ink', 'ledger-offbooks': 'status-error-fill',
+  'steer-tile-line': 'line-1', 'steer-number-ink': 'ink-1', 'steer-label-ink': 'ink-2', 'steer-nodata-ink': 'ink-3',
+}
+const CC_TOKENS = [...Object.keys(CC_HEX_LIGHT), ...Object.keys(CC_ALIAS)]
+const CC_TYPE: Record<string, [string, string, string, string]> = {
+  'sprint-title': ['32px', '36px', '-0.02em', '650'],
+  'lane-count': ['20px', '24px', '-0.01em', '600'],
+  metric: ['26px', '30px', '-0.015em', '600'],
+  ident: ['13px', '16px', '0.01em', '500'],
+  'steer-number': ['56px', '60px', '-0.025em', '650'],
+  'steer-label': ['24px', '32px', '0', '500'],
+}
+
 const tones = (groups: string[]) => groups.flatMap((g) => SLOTS.map((s) => `${g}-${s}`))
 const accent = STEPS.map((s) => `accent-${s}`)
 const brand = STEPS.map((s) => `brand-${s}`)
@@ -133,6 +169,40 @@ describe('tokens.css (light)', () => {
       expect(tokens, s).toContain(`--${s}: ${ms}ms;`)
     }
     expect(tokens).toMatch(/:root\s*\{[^}]*color-scheme: light;/)
+  })
+})
+
+describe('command center tokens (togo-command-center-visual.md §2–§3)', () => {
+  it('declares all 46 on :root — the 13 hex rows with the written light values, the 33 alias rows as var() of the token they name', () => {
+    expect(CC_TOKENS).toHaveLength(46)
+    for (const [name, hex] of Object.entries(CC_HEX_LIGHT)) expect(tokens, name).toContain(`--color-${name}: ${hex};`)
+    for (const [name, target] of Object.entries(CC_ALIAS)) expect(tokens, name).toContain(`--color-${name}: var(--color-${target});`)
+  })
+
+  it('maps every one to a utility in @theme inline reference', () => {
+    for (const name of CC_TOKENS) expect(tokens, `--color-${name} mapped`).toContain(`--color-${name}: var(--color-${name});`)
+  })
+
+  it('restates every one inside the FIRST dark block (tokenContrast.test reads only that block)', () => {
+    const first = dark.slice(dark.indexOf('[data-theme="dark"] {'), dark.indexOf('}', dark.indexOf('[data-theme="dark"] {')))
+    for (const [name, hex] of Object.entries(CC_HEX_DARK)) expect(first, name).toContain(`--color-${name}: ${hex};`)
+    for (const [name, target] of Object.entries(CC_ALIAS)) expect(first, name).toContain(`--color-${name}: var(--color-${target});`)
+  })
+
+  it('none of the colour names shadows a type token, and the six type tokens carry the written size / line / tracking / weight', () => {
+    for (const t of Object.keys(CC_TYPE)) {
+      expect(CC_TOKENS, `--color-${t} would shadow text-${t}`).not.toContain(t)
+      const [size, line, tracking, weight] = CC_TYPE[t]
+      expect(type, t).toContain(`--text-${t}: ${size};`)
+      expect(type, t).toContain(`--text-${t}--line-height: ${line};`)
+      expect(type, t).toContain(`--text-${t}--letter-spacing: ${tracking};`)
+      expect(type, t).toContain(`--text-${t}--font-weight: ${weight};`)
+    }
+  })
+
+  it('adds no gradient, no shadow and no Depth colour token (visual §8)', () => {
+    const added = tokens.slice(tokens.indexOf('/* Command center (togo-command-center-visual.md'), tokens.indexOf('/* Every semantic colour'))
+    expect(added).not.toMatch(/gradient|--shadow-|--color-mark/)
   })
 })
 

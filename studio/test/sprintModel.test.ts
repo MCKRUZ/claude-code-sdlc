@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   businessDays, decisionsLabel, emptyMessage, isSprintId, laneBadge, mixChips, nextUpLabel, readinessLabel,
-  remainingLabel, slateToBoardRow, SPRINT_CAPABILITY, stateChip, targetLabel, wipLabel,
+  remainingLabel, slateToBoardRow, SPRINT_CAPABILITY, stateChip, targetLabel, wipLabel, sprintStateChip, riskTone, dorChipTone,
 } from '../shared/sprintModel'
 import type { SprintRecord, SprintSlateRow, SprintView } from '../shared/types'
 
@@ -156,5 +156,29 @@ describe('counts only', () => {
     const mod = await import('../shared/sprintModel')
     const names = Object.keys(mod)
     expect(names.filter((n) => /perPerson|byOwner|byPerson|velocity|points|estimate/i.test(n))).toEqual([])
+  })
+})
+
+describe('the command center\'s one chip per fact (fixer round)', () => {
+  it('sprintStateChip: planning is neutral with a dot, ready is "now", closed is neutral and muted — never amber, never green', () => {
+    expect(sprintStateChip('planning')).toEqual({ label: 'planning', tone: 'neutral', dot: true, muted: false })
+    expect(sprintStateChip('ready')).toEqual({ label: 'ready', tone: 'current', dot: true, muted: false })
+    expect(sprintStateChip('closed')).toEqual({ label: 'closed', tone: 'neutral', dot: false, muted: true })
+    expect(sprintStateChip('paused')).toEqual({ label: 'paused', tone: 'neutral', dot: false, muted: false })
+    expect(sprintStateChip('')).toEqual({ label: 'unknown', tone: 'neutral', dot: false, muted: false })
+  })
+
+  it('riskTone is the one risk map: HIGH error, MEDIUM warn, anything else neutral', () => {
+    expect(riskTone('HIGH')).toBe('error')
+    expect(riskTone(' medium ')).toBe('warn')
+    expect(riskTone('LOW')).toBe('neutral')
+    expect(riskTone('')).toBe('neutral')
+  })
+
+  it('dorChipTone: READY is the current tone (a verdict, not a host success), NOT READY warn, else neutral', () => {
+    expect(dorChipTone('READY')).toBe('current')
+    expect(dorChipTone('NOT READY')).toBe('warn')
+    expect(dorChipTone(null)).toBe('neutral')
+    expect(dorChipTone('unknown')).toBe('neutral')
   })
 })

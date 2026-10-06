@@ -89,7 +89,22 @@ describe('guides', () => {
     expect(referenced).toContain('welcome-dark')
   })
 
-  it('the guide builder defaults to the v8 shots', () => {
-    expect(readFileSync(join(guideDir, 'build-user-guide.mjs'), 'utf8')).toContain("'observatory-v8'")
+  it('every command-center screen is captured in BOTH themes (visual §9 "dark and light shots both taken")', () => {
+    const produced = new Set([...capture.matchAll(/shot\(page, '([a-z0-9-]+)'\)/g)].map((m) => m[1]!))
+    // The light shot and its dark twin, per screen; steering is dark-first, so its twin is `-light`.
+    const pairs: Array<[string, string]> = [
+      ['sprint-home', 'sprint-home-dark'], ['sprint-graph', 'sprint-graph-dark'], ['sprint-table', 'sprint-table-dark'],
+      ['planning', 'planning-dark'], ['spec-card', 'spec-card-dark'], ['stage-light', 'stage-dark'], ['lifecycle-home', 'lifecycle-home-dark'],
+      ['board-list', 'board-list-dark'], ['board-graph', 'board-graph-dark'], ['palette', 'palette-dark'], ['settings', 'settings-dark'],
+      ['spec-view', 'spec-view-dark'], ['review', 'review-dark'], ['closing', 'closing-dark'], ['steering-light', 'steering'], ['welcome', 'welcome-dark'],
+    ]
+    for (const [light, dark] of pairs) {
+      expect(produced.has(light), `light shot "${light}" is not produced`).toBe(true)
+      expect(produced.has(dark), `dark twin "${dark}" of "${light}" is not produced`).toBe(true)
+    }
+  })
+
+  it('the guide builder defaults to the v11 shots (the command center series)', () => {
+    expect(readFileSync(join(guideDir, 'build-user-guide.mjs'), 'utf8')).toContain("'observatory-v11'")
   })
 })

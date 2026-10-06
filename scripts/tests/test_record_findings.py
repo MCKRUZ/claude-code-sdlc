@@ -184,3 +184,166 @@ class TestCommandsEndToEnd:
         rc = cmd_report(self._args(command="report", state=None, repo=str(tmp_path), strict=True, json=False))
         assert rc == 2
         assert "FIXED_CLAIM_MISMATCH" in capsys.readouterr().out
+
+
+# ---------------------------------------------------------------------------
+# Tōgō command center (togo-command-center.md §2.5 row 9): findings[], recurrence{}, --spec
+# ---------------------------------------------------------------------------
+
+from record_findings import attribute_to_spec, findings_rows, scope_paths, target_under  # noqa: E402
+
+SPEC_WITH_SCOPE = """\
+---
+spec: "0042"
+name: "duplicate-claim"
+status: draft
+risk: LOW
+---
+
+# Spec 0042 — x
+
+## Scope
+
+### In scope
+- `src/Claims/**`
+- the file `design-doc.md`
+
+### Out of scope
+- `src/Billing/`
+
+## Acceptance Checks
+- [ ] something
+"""
+
+
+def _entry(fp, disp, ts, **extra):
+    cat, _, target = fp.partition(":")
+    return {"fingerprint": fp, "category": cat, "target": target, "disposition": disp,
+            "severity": "HIGH", "timestamp": ts, "id": "F1", "detail": "d", "report": "review-report.md", **extra}
+
+
+class TestFindingsRows:
+    def test_the_same_fingerprint_twice_is_one_row_with_two_rounds(self):
+        rows = findings_rows([_entry("auth-gap:x.md", "OPEN", "t1"), _entry("auth-gap:x.md", "FIXED", "t2")])
+        assert len(rows) == 1
+        row = rows[0]
+        assert row["rounds"] == 2 and row["first_seen"] == "t1" and row["last_seen"] == "t2"
+        assert row["disposition"] == "FIXED" and row["off_books"] is True
+
+    def test_a_split_without_its_evidence_is_still_on_the_books(self):
+        row = findings_rows([_entry("leak:y.md", "SPLIT", "t1")])[0]
+        assert row["off_books"] is False and "split_to" in row["off_books_reason"]
+        ok = findings_rows([_entry("leak:y.md", "SPLIT", "t1", split_to="0042", owner="Jane")])[0]
+        assert ok["off_books"] is True and ok["evidence"] == {"split_to": "0042", "owner": "Jane"}
+
+    def test_an_ai_approver_cannot_take_an_accepted_risk_off_the_books(self):
+        row = findings_rows([_entry("leak:y.md", "ACCEPTED_RISK", "t1", approver="Claude", date="d",
+                                    reason="r", review_condition="c")])[0]
+        assert row["off_books"] is False
+
+    def test_rows_keep_first_appearance_order_and_entries_without_a_fingerprint_are_skipped(self):
+        rows = findings_rows([_entry("b:x.md", "OPEN", "t1"), {"disposition": "OPEN"}, _entry("a:y.md", "OPEN", "t2")])
+        assert [r["fingerprint"] for r in rows] == ["b:x.md", "a:y.md"]
+
+
+class TestScopeAttribution:
+    def test_scope_paths_are_the_backticked_in_scope_paths_only(self):
+        assert scope_paths(SPEC_WITH_SCOPE) == ["src/Claims/**", "design-doc.md"]
+        assert scope_paths("# no scope\n") == []
+        assert scope_paths("## Scope\n\n### In scope\n- the claims service\n") == []
+
+    @pytest.mark.parametrize("target, scope, expected", [
+        ("src/Claims/ClaimsController.cs:88", "src/Claims/**", True),
+        ("src/Billing/x.cs", "src/Claims/**", False),
+        ("design-doc.md:12", "design-doc.md", True),
+        ("design-doc.md.bak", "design-doc.md", False),
+        ("src/Claims/a.cs", "src/Claims", True),
+        ("src/Claimsx/a.cs", "src/Claims", False),
+        ("", "src/Claims/**", False),
+    ])
+    def test_target_under(self, target, scope, expected):
+        assert target_under(target, scope) is expected
+
+    def test_attribution_counts_both_sides_and_names_the_method(self):
+        rows = findings_rows([_entry("auth-gap:src/Claims/a.cs", "OPEN", "t1"),
+                              _entry("leak:src/Billing/b.cs", "OPEN", "t2")])
+        mine, attribution = attribute_to_spec(rows, scope_paths(SPEC_WITH_SCOPE))
+        assert [r["fingerprint"] for r in mine] == ["auth-gap:src/Claims/a.cs"]
+        assert attribution == {"method": "scope-paths", "scope_paths": ["src/Claims/**", "design-doc.md"],
+                               "attributed": 1, "unattributed": 1}
+
+    def test_no_scope_paths_attributes_nothing(self):
+        rows = findings_rows([_entry("auth-gap:src/Claims/a.cs", "OPEN", "t1")])
+        mine, attribution = attribute_to_spec(rows, [])
+        assert mine == [] and attribution["attributed"] == 0 and attribution["unattributed"] == 1
+
+
+class TestReportJsonAdditions:
+    def _args(self, **kw):
+        base = dict(command="report", state=None, repo=None, strict=False, json=True, spec=None)
+        return argparse.Namespace(**{**base, **kw})
+
+    def _ledger(self, tmp_path, *entries):
+        metrics = tmp_path / ".sdlc" / "metrics"
+        metrics.mkdir(parents=True, exist_ok=True)
+        with open(metrics / "findings-log.jsonl", "w", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e) + "\n")
+
+    def test_the_three_legacy_keys_are_unchanged_and_the_new_ones_ride_beside(self, tmp_path, capsys):
+        self._ledger(tmp_path, _entry("auth-gap:x.md", "OPEN", "t1"), _entry("auth-gap:x.md", "OPEN", "t2"),
+                     _entry("leak:y.md", "OPEN", "t3"))
+        rc = cmd_report(self._args(repo=str(tmp_path)))
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 0
+        assert (out["tracked"], out["open_debt"], out["fixed_claim_mismatches"]) == (2, 2, 0)
+        assert [r["rounds"] for r in out["findings"]] == [2, 1]
+        assert out["recurrence"] == {"auth-gap:x.md": 2, "leak:y.md": 1}
+        assert "attribution" not in out
+
+    def test_spec_filters_the_listing_but_not_the_counts(self, tmp_path, capsys):
+        self._ledger(tmp_path, _entry("auth-gap:src/Claims/a.cs", "OPEN", "t1"), _entry("leak:src/Billing/b.cs", "OPEN", "t2"))
+        spec = tmp_path / "specs" / "0042-duplicate-claim.md"
+        spec.parent.mkdir()
+        spec.write_text(SPEC_WITH_SCOPE, encoding="utf-8")
+        cmd_report(self._args(repo=str(tmp_path), spec=str(spec)))
+        out = json.loads(capsys.readouterr().out)
+        assert out["tracked"] == 2 and out["open_debt"] == 2
+        assert [r["target"] for r in out["findings"]] == ["src/Claims/a.cs"]
+        assert out["recurrence"] == {"auth-gap:src/Claims/a.cs": 1}
+        assert out["attribution"] == {"method": "scope-paths", "scope_paths": ["src/Claims/**", "design-doc.md"],
+                                      "attributed": 1, "unattributed": 1}
+
+    def test_spec_with_no_scope_paths_attributes_zero(self, tmp_path, capsys):
+        self._ledger(tmp_path, _entry("auth-gap:x.md", "OPEN", "t1"))
+        spec = tmp_path / "spec.md"
+        spec.write_text("---\nspec: \"0001\"\n---\n# s\n\n## Scope\n\n### In scope\n- prose only\n", encoding="utf-8")
+        cmd_report(self._args(repo=str(tmp_path), spec=str(spec)))
+        out = json.loads(capsys.readouterr().out)
+        assert out["findings"] == [] and out["attribution"]["attributed"] == 0
+
+    def test_a_missing_spec_is_an_error_not_an_empty_attribution(self, tmp_path, capsys):
+        self._ledger(tmp_path)
+        assert cmd_report(self._args(repo=str(tmp_path), spec=str(tmp_path / "nope.md"))) == 1
+
+    def test_strict_still_exits_two_on_a_mismatch_with_the_new_keys_present(self, tmp_path, capsys):
+        self._ledger(tmp_path, {**_entry("auth-gap:x.md", "OPEN", "t1"), "target_sha": "sha256:aaaa"},
+                     {**_entry("auth-gap:x.md", "FIXED", "t2"), "target_sha": "sha256:aaaa"})
+        rc = cmd_report(self._args(repo=str(tmp_path), strict=True))
+        out = json.loads(capsys.readouterr().out)
+        assert rc == 2 and out["fixed_claim_mismatches"] == 1 and out["findings"][0]["disposition"] == "FIXED"
+
+    def test_an_empty_ledger_reads_as_empty_lists_not_zeros_in_disguise(self, tmp_path, capsys):
+        cmd_report(self._args(repo=str(tmp_path)))
+        out = json.loads(capsys.readouterr().out)
+        assert out["findings"] == [] and out["recurrence"] == {}
+
+    def test_text_mode_without_spec_is_byte_identical_to_format_report(self, tmp_path, capsys):
+        self._ledger(tmp_path, _entry("auth-gap:x.md", "OPEN", "t1"))
+        cmd_report(self._args(repo=str(tmp_path), json=False))
+        printed = capsys.readouterr().out
+        text, _ = format_report(load_ledger(tmp_path / ".sdlc" / "metrics" / "findings-log.jsonl"))
+        assert printed == text + "\n"
+
+
+from record_findings import format_report  # noqa: E402

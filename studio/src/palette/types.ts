@@ -7,10 +7,12 @@ import type { BacklogStore } from '../stores/contract'
 import type { MotionPreference } from '../motion/contract'
 import type { DensityAttr, ThemePreference } from '../theme/tokens'
 
-/** Group order is also tie-break order in `score.ts`. */
-export type PaletteGroup = 'recent' | 'stages' | 'build' | 'specs' | 'documents' | 'settings' | 'actions'
+/** Group order is also tie-break order in `score.ts`. `verbs` (togo-command-center.md §3.6) is
+ * the omnibar's one dynamic row — a plugin verb parsed from the typed words by `intents.ts` —
+ * and leads, so `↵` on a match opens its dialog rather than the first static row. */
+export type PaletteGroup = 'verbs' | 'recent' | 'stages' | 'build' | 'specs' | 'documents' | 'settings' | 'actions'
 
-export const PALETTE_GROUP_ORDER: readonly PaletteGroup[] = ['recent', 'stages', 'build', 'specs', 'documents', 'settings', 'actions']
+export const PALETTE_GROUP_ORDER: readonly PaletteGroup[] = ['verbs', 'recent', 'stages', 'build', 'specs', 'documents', 'settings', 'actions']
 
 /** Prefix filters: `>` actions · `#` specs · `/` documents · `@` stages. There is no people
  * prefix (no per-person views). */
@@ -49,7 +51,7 @@ export type SettingsAnchor =
  * re-runs the current screen's own P-class read and never `openProject` or `pull`. */
 export type PaletteActionId =
   | 'theme' | 'density' | 'motion' | 'console' | 'chat' | 'spine'
-  | 'surface' | 'fit-graph' | 'focus-next-up' | 'refresh' | 'copy-path' | 'shortcuts' | 'back' | 'new-project' | 'open-folder'
+  | 'surface' | 'fit-graph' | 'focus-next-up' | 'refresh' | 'copy-path' | 'shortcuts' | 'steering' | 'back' | 'new-project' | 'open-folder'
 
 /** What the actions group needs from the host: current values (to label "Theme: Dark →
  * System") and the callbacks that apply them. Absent callback → the entry is omitted, so an
@@ -73,6 +75,8 @@ export interface PaletteActionHooks {
   refreshScreen?: () => void
   copyProjectPath?: () => void
   openShortcuts?: () => void
+  /** Steering mode (togo-command-center.md §3.5) — a navigation, present only inside a project. */
+  steering?: () => void
   back?: () => void
   newProject?: () => void
   openFolder?: () => void

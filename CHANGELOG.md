@@ -1,6 +1,73 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 — 2026-10-06
+
+### Tōgō — the command center
+
+The desktop app reorganises around the Build loop (`docs/proposals/togo-command-center.md`, built
+as eight packages with disjoint file ownership, integrated and verified end to end). The sidebar
+retires; a top band (the mark and project name, the **omnibar** trigger, the needs-you chip, the
+sync chip, Console · Appearance · Settings · `…`) and an SVG **lifecycle strip** of the nine
+stations replace it; a project in the Build loop lands on the **sprint home**, every other
+project on the **lifecycle home**. What a team sees:
+
+- **The sprint home.** Four lanes that are the loop — Ready, Building, Checking, Merged — as a
+  partition of the plugin's own `status`, `dor`, `verdicts_pending` and the pull request's
+  `waiting_on`; the hand-off **baton** on the Building→Checking edge; a Today column ("needs you"
+  by exact handle, "Team is waiting on", "since yesterday" from `sprint.py log`); **In the room**
+  (who holds what — dots, never digits); **Refining** for the next sprint with the checker's own
+  DoR gaps; **How it is going** from the steering scorecard. `j`/`k` move, `↵` opens the spec
+  card, `h` hands off, `v` records a verdict.
+- **The omnibar.** ⌘K takes plain words — `verdict 0002 accepted`, `hand 0006 to Sam`,
+  `defer 0003 to S08 because …`, `decide DL-02 …`, `new sprint` — resolves ids and names only
+  against the board and the roster, and opens a dialog that shows the exact `sprint.py` line, who
+  it is recorded against and what the plugin will check. Nothing runs before Confirm; the answer
+  is the plugin's stdout/stderr verbatim under **Done** / **Not done** / **Refused by the plugin**
+  (exit 0 / 1 / 2). A name the roster does not know is a visible gap, never a guess.
+- **Planning, the spec card, close, steering.** Planning: the refined backlog READY-first, the
+  slate in the plugin's build order with Builder / Checker pickers, what the plugin says, its
+  deterministic proposal, and one **Commit** that runs `slate → ready → plan → report` and stops at
+  the first non-zero exit. The spec card, opened in place: Definition of Ready verbatim, the
+  **checking ladder** coloured only by the code host's conclusions (correctness is always "no
+  data"), the findings ledger with the plugin's dispositions, and a **Hand off** foot disabled
+  with `handoff.py`'s own refusal. Close: outcomes, kept, open specs each carried or dropped with a
+  reason. **Steering mode** (`g t`): the standard's numbers on tiles at 56 px, read-only, no chat,
+  no console, zero write controls.
+- **The truth rule, enforced.** The renderer never spawns, never joins across sources and never
+  derives a status: the main process assembles one `CommandCenter` read model with per-block
+  provenance ("`sprint.py status --json`", "as of 10:42") and runs every write through a closed
+  argv table with the signed-in person as `--by`. "no data" is never a fabricated zero (a count
+  of zero recorded events reads "none recorded in this window", the plugin's own wording); no
+  velocity, points, PR counts, lines or hours anywhere; a disabled control always carries its
+  reason, as a tooltip and as its accessible description.
+- **Visual direction** (`docs/proposals/togo-command-center-visual.md`): 46 colour tokens and six
+  type tokens, every text pair ≥ 4.5:1 and every edge ≥ 3:1 in both themes (measured); the Depth
+  gradient gains one home — the steering lockup; brand figures for every empty state; three new
+  choreography rows (`batonPass`, `verdictSeal`, `stripDraw`) that quieten with familiarity and
+  whose end state equals a cold reload.
+
+### Plugin — additive sprint and spec verbs (1.7.0)
+
+Every existing verb keeps its text and exit codes (goldens pinned); the protected core is
+byte-for-byte unchanged. New, all additive and tested:
+
+- `sprint.py list [--json]` (sprints with 1-based `ordinal`, `active`), `sprint.py log [--since]
+  [--sprint] [--json]` (the ledger's lines verbatim, undated lines kept, corrupt ones counted),
+  `sprint.py carry --spec --to --reason --by` (one `carried` event in close's exact shape) and
+  `sprint.py edit --sprint --goal --by` (`sprint_edited`, appended to `sprint_model.EVENTS`).
+- `spec_transition.py confirm-tier --by` (writes `risk_confirmed_by`; `risk` clears it on a tier
+  change and reports `confirmation_cleared`) and `assign [--developer] [--checker] --by` (roster-
+  checked; refuses `developer == checker` with `handoff.py`'s own sentence).
+- `handoff.py --check` — the dry run: the same refusal kinds and messages as the live hand-off,
+  before any git operation, plus `would{branch, developer, checker, team, in_flight_after}`.
+- `spec_readiness.py --spec --json` gains `ladder{tier, touches_gated_path, rungs[]}` from
+  `risk_model.required_rungs`; `--all [--json]` reads the whole backlog in one pass.
+- `record_findings.py report --json` gains `findings[]` (one row per fingerprint with its latest
+  disposition, `off_books`, `first_seen`/`last_seen`/`rounds`) and `recurrence{}`; `--spec PATH`
+  attributes findings to a spec by its scope paths.
+- `spec_status.py --all` rows carry `deferred_reason`; `capabilities.py` declares `sprint-list`,
+  `sprint-log`, `sprint-carry`, `sprint-edit`, `sprint-write`, `confirm-tier`, `assign-roles`,
+  `handoff-check`, `findings-json`, `readiness-all` — each proven against the real `--help`.
 
 ### Tōgō — upgrade round 2: the instrument, the ceremonies, the craft
 

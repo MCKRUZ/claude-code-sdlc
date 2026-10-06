@@ -150,3 +150,97 @@ class TestRosterResolution:
             state = None
             spec = str(_write(tmp_path, READY_ENOUGH))
         assert sr.resolve_roster(Args()) is None
+
+
+# ---------------------------------------------------------------------------
+# Tōgō command center (togo-command-center.md §2.5 row 8): `ladder{}` and `--all`
+# ---------------------------------------------------------------------------
+
+import json  # noqa: E402
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+
+import pytest  # noqa: E402
+import risk_model as rm  # noqa: E402
+
+SCRIPT = Path(__file__).resolve().parent.parent / "spec_readiness.py"
+LEGACY_KEYS = ["ok", "spec", "risk", "status", "ready", "blocking", "advisory", "passed"]
+
+
+def _run(*argv):
+    proc = subprocess.run([sys.executable, str(SCRIPT), *argv], capture_output=True, text=True,
+                          encoding="utf-8", env={"PYTHONIOENCODING": "utf-8", "PATH": ""})
+    return proc.returncode, proc.stdout
+
+
+class TestLadder:
+    @pytest.mark.parametrize("tier", rm.RISK_TIERS)
+    def test_the_rungs_are_risk_models_own_for_every_tier(self, tmp_path, tier):
+        spec = _write(tmp_path, READY_ENOUGH.replace("risk: LOW", f"risk: {tier}"))
+        ladder = sr.readiness(spec)["ladder"]
+        assert ladder == {"tier": tier, "touches_gated_path": None, "rungs": rm.required_rungs(tier)}
+
+    def test_a_declared_gated_path_adds_the_security_rung_even_at_LOW(self, tmp_path):
+        spec = _write(tmp_path, READY_ENOUGH.replace("risk: LOW\n", "risk: LOW\ngated_path: true\n"))
+        ladder = sr.readiness(spec)["ladder"]
+        assert ladder["touches_gated_path"] is True
+        assert "security pass — blocks" in ladder["rungs"]
+        assert ladder["rungs"] == rm.required_rungs("LOW", touches_gated_path=True)
+
+    def test_not_declared_is_null_and_declared_false_is_false(self, tmp_path):
+        assert sr.readiness(_write(tmp_path, READY_ENOUGH))["ladder"]["touches_gated_path"] is None
+        spec = _write(tmp_path, READY_ENOUGH.replace("risk: LOW\n", "risk: LOW\ngated_path: false\n"))
+        assert sr.readiness(spec)["ladder"]["touches_gated_path"] is False
+
+    def test_a_tier_that_is_not_a_tier_has_no_rungs_rather_than_a_default(self, tmp_path):
+        spec = _write(tmp_path, READY_ENOUGH.replace("risk: LOW", "risk: SEVERE"))
+        assert sr.readiness(spec)["ladder"] == {"tier": "", "touches_gated_path": None, "rungs": []}
+
+    def test_the_legacy_keys_are_byte_identical_to_the_findings_they_always_were(self, tmp_path):
+        spec = _write(tmp_path, READY_ENOUGH)
+        result = sr.readiness(spec)
+        assert list(result)[: len(LEGACY_KEYS)] == LEGACY_KEYS and list(result)[-1] == "ladder"
+        findings = cs.check_spec_text(READY_ENOUGH)
+        assert result["blocking"] + result["advisory"] + result["passed"] == \
+            [f for f in findings if not f["passed"] and f["severity"] == "MUST"] + \
+            [f for f in findings if not f["passed"] and f["severity"] != "MUST"] + \
+            [f for f in findings if f["passed"]]
+
+
+class TestAll:
+    def test_one_row_per_NNNN_file_and_the_template_is_not_a_row(self, tmp_path):
+        _write(tmp_path, READY_ENOUGH, name="0042-duplicate-claim.md")
+        _write(tmp_path, READY_ENOUGH.replace('spec: "0042"', 'spec: "0043"'), name="0043-second.md")
+        _write(tmp_path, READY_ENOUGH, name="spec-template.md")
+        (tmp_path / "specs" / "README.md").write_text("# specs\n", encoding="utf-8")
+        result = sr.readiness_all(tmp_path)
+        assert result["ok"] is True
+        assert [r["spec"] for r in result["specs"]] == ["0042", "0043"]
+        assert [r["path"] for r in result["specs"]] == ["specs/0042-duplicate-claim.md", "specs/0043-second.md"]
+
+    def test_each_row_is_exactly_what_spec_would_say(self, tmp_path):
+        spec = _write(tmp_path, READY_ENOUGH)
+        row = sr.readiness_all(tmp_path)["specs"][0]
+        single = sr.readiness(spec)
+        assert {k: v for k, v in row.items() if k != "path"} == single
+
+    def test_no_specs_directory_is_an_empty_list_not_a_crash(self, tmp_path):
+        assert sr.readiness_all(tmp_path) == {"ok": True, "specs": []}
+
+    def test_the_cli_runs_all_from_repo_and_from_state_with_exit_0(self, tmp_path):
+        _write(tmp_path, READY_ENOUGH)
+        (tmp_path / ".sdlc").mkdir()
+        (tmp_path / ".sdlc" / "state.yaml").write_text("project_name: x\n", encoding="utf-8")
+        code, out = _run("--all", "--repo", str(tmp_path), "--json")
+        assert code == 0 and len(json.loads(out)["specs"]) == 1
+        code, out = _run("--all", "--state", str(tmp_path / ".sdlc" / "state.yaml"), "--json")
+        assert code == 0 and json.loads(out)["specs"][0]["path"] == "specs/0042-duplicate-claim.md"
+        code, out = _run("--all", "--repo", str(tmp_path))
+        assert code == 0 and out.startswith("Spec 0042 — ")
+
+    def test_spec_and_all_together_is_a_usage_error_and_spec_still_works_alone(self, tmp_path):
+        spec = _write(tmp_path, READY_ENOUGH)
+        code, _ = _run("--spec", str(spec), "--all")
+        assert code == 2
+        code, out = _run("--spec", str(spec), "--json")
+        assert code == 0 and json.loads(out)["ladder"]["tier"] == "LOW"

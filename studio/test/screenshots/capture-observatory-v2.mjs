@@ -1,18 +1,23 @@
 // Production-mode screenshots of the Observatory on a RICH fixture — NOT a spec. Unlike
 // capture-observatory.mjs this builds with `npx vite build` (production: motion on, the Ambient
-// field enabled, the Graph surface the default) and walks a six-spec sprint with real verdicts,
-// a hand-off, a roster and a local bare origin (so the Sync chip is not an error). Run from studio/:
+// field enabled, the Graph surface the default) and walks a Build-loop project with a real sprint,
+// verdicts, an open hand-off, a decision clock owned by the signed-in person, a merged spec, a
+// deferred spec with its reason, a not-ready backlog spec, a roster and a local bare origin (so
+// the Sync chip is not an error). Run from studio/:
 //
 //   node test/screenshots/capture-observatory-v2.mjs            # builds first
 //   SKIP_BUILD=1 node test/screenshots/capture-observatory-v2.mjs  # reuse dist/
-//   SHOT_PREFIX=observatory-v3 node test/screenshots/capture-observatory-v2.mjs  # a new series
+//   SHOT_PREFIX=observatory-v11 node test/screenshots/capture-observatory-v2.mjs  # a new series
 //   SHOT_SETTLE=1800 …                                                 # longer settle per shot (ms)
 //
 // Writes test/screenshots/<prefix>-<name>.png (prefix defaults to observatory-v2) and prints DPR +
-// canvas size for sprint-graph. The v8 run (studio-upgrade-2 §4 P7) adds five shots to the twelve:
-// `welcome-dark` (the Welcome's own corner pill), `spec-view-dark`, `palette-dark`, `settings-dark`
-// (the sidebar's Appearance popover, as the stage-dark shot) and `closing` (the Spine with its
-// ledger plates under "Declaring Build finished"). Seventeen files per run.
+// canvas size for sprint-graph. The v8 run (studio-upgrade-2 §4 P7) added five shots to the twelve
+// (`welcome-dark`, `spec-view-dark`, `palette-dark`, `settings-dark`, `closing`). The v11 run
+// (togo-command-center.md §7 P8) adds eight more and walks the command center: `sprint-home`,
+// `sprint-home-dark`, `planning`, `spec-card`, `lifecycle-home`, `review`, `steering`, `omnibar`.
+// Twenty-five files per run. The fixture's signed-in person is whoever `gh api user` says on this
+// machine (added to the roster so the "you" ring and the needs-you chip have someone to address);
+// without a login the decision is owned by a named human and nothing is addressed.
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -92,36 +97,117 @@ git(['config', 'user.name', 'Studio Shots'], project)
 
 const sprintPy = join(SCRIPTS_DIR, 'sprint.py')
 py('init_project', [join(SCRIPTS_DIR, 'init_project.py'), '--profile', join(PLUGIN_ROOT, 'profiles', 'microsoft-enterprise', 'profile.yaml'), '--target', project])
+// The project is IN the Build loop (homeFor → the sprint home); the same edit every Build e2e fixture makes.
+const statePath = join(project, '.sdlc', 'state.yaml')
+writeFileSync(statePath, readFileSync(statePath, 'utf-8').replace(/^current_phase:.*$/m, 'current_phase: "build"').replace(/^phase_name:.*$/m, 'phase_name: "Build"'))
+
 const SPECS = [
   ['duplicate claim 409', 'HIGH'], ['claim export', 'MEDIUM'], ['adjuster notes', 'LOW'],
-  ['fraud score feed', 'MEDIUM'], ['letters batch', 'LOW'], ['payments ledger', 'HIGH'],
+  ['fraud score feed', 'MEDIUM'], ['letters batch', 'LOW'], ['payments ledger', 'HIGH'], ['claims letters i18n', 'LOW'],
 ]
 for (const [name, risk] of SPECS) {
   py(`new_spec ${name}`, [join(SCRIPTS_DIR, 'new_spec.py'), '--repo', project, '--name', name, '--risk', risk, '--owner', '@priya-n', '--team', 'claims'])
 }
 const specFiles = Object.fromEntries(readdirSync(join(project, 'specs')).filter((f) => /^\d{4}-/.test(f)).map((f) => [f.slice(0, 4), join(project, 'specs', f)]))
 const ids = Object.keys(specFiles).sort()
+
+/** The signed-in person on this machine, as the roster will know them. Null without a login. */
+const me = (() => { try { return execFileSync('gh', ['api', 'user', '-q', '.login'], { stdio: 'pipe', encoding: 'utf-8' }).trim() || null } catch { return null } })()
+const meHandle = me ? `@${me}` : null
+
+/** A spec body that passes the Definition of Ready (the plugin test fixture's READY spec, with
+ * this spec's id and name), so the Ready lane and "next up" have something true to show. */
+const readyBody = (id, name, risk) => `
+# Spec ${id} — ${name}
+
+## Goal
+A duplicate claim submission is rejected instead of double-processed.
+
+## Why
+Double-processed claims cause duplicate payouts and reconciliation work.
+
+## Scope
+
+### In scope
+- \`src/Claims/ClaimsController.cs\`
+- \`src/Claims/DuplicateGuard.cs\`
+
+### Out of scope
+- The payout pipeline under \`src/Payments/**\` — must not change.
+
+## Acceptance Checks
+- [ ] A duplicate submission returns 409 with body \`{ "error": "duplicate claim" }\`
+- [ ] The first submission of an id returns 201 and persists one row
+- [ ] Two concurrent submissions of the same id persist exactly 1 row
+
+## Risk Tier
+**Tier:** ${risk}
+**Why this tier:** touches client claim data and the persistence path.
+
+## Delegation Plan
+- **Scope (file patterns):** \`src/Claims/**\`
+- **Context (pattern to reuse):** the ClaimsController validation filter
+- **Permissions:** build/test/lint auto; migrations confirm-required
+- **Gated paths touched:** none
+
+## Checking Plan
+**Ladder depth:** ${risk}
+**Specifics:** grader${risk === 'HIGH' ? ' + correctness + security pass + named sign-off in the PR' : risk === 'MEDIUM' ? ' + non-author Checker' : ' advisory + light human look'}.
+
+## Decision List
+- none
+`
+const makeReady = (id) => {
+  const text = readFileSync(specFiles[id], 'utf-8')
+  const end = text.indexOf('\n---', 4)
+  const name = (text.match(/^name:\s*"?([^"\n]+)"?/m) ?? [])[1] ?? id
+  const risk = (text.match(/^risk:\s*(\w+)/m) ?? [])[1] ?? 'LOW'
+  writeFileSync(specFiles[id], text.slice(0, end + 4) + readyBody(id, name.trim(), risk))
+  setFm(specFiles[id], 'harness_context', 'the ClaimsController validation filter')
+}
+
+// Roster: the plugin's example, plus @sam-k so the demo's developer resolves, plus the signed-in
+// person so the needs-you chip and the "you" ring have someone to address.
+const roster = readFileSync(join(PLUGIN_ROOT, 'templates', 'team', 'team.example.yaml'), 'utf-8')
+  + '\n  - handle: "@sam-k"\n    name: "Sam Kowalski"\n    team: claims\n    roles: [developer, checker]\n    signs_off: ["build"]\n'
+  + (meHandle ? `  - handle: "${meHandle}"\n    name: "${me}"\n    team: claims\n    roles: [owner, checker, lead]\n    signs_off: ["build"]\n` : '')
+writeFileSync(join(project, '.sdlc', 'team.yaml'), roster)
+
+// The sprint: S07, six slated (slate BEFORE the statuses — the plugin refuses to slate a merged spec).
+py('sprint new', [sprintPy, 'new', '--repo', project, '--sprint', 'S07', '--goal', 'Adjusters file without a phone call',
+  '--start', '2026-09-28', '--target', '6', '--mix', 'HIGH:2,MEDIUM:2,LOW:2', '--by', 'Pod Lead'])
+py('sprint slate', [sprintPy, 'slate', '--repo', project, '--sprint', 'S07', '--by', 'Pod Lead', ...ids.slice(0, 5).flatMap((id) => ['--spec', id])])
 const demo = {
-  '0001': { status: 'ready' }, '0002': { status: 'ready', depends_on: '0001' }, '0003': { status: 'draft', depends_on: '0001' },
-  '0004': { status: 'in-flight', developer: '@sam-k' }, '0005': { status: 'ready', depends_on: '0002, 0004' }, '0006': { status: 'draft', depends_on: '0005' },
+  '0001': { status: 'merged' },
+  '0002': { status: 'ready', depends_on: '0001' },
+  '0003': { status: 'in-flight', developer: '@sam-k', checker: meHandle ?? '@priya-n', depends_on: '0001' },
+  '0004': { status: 'in-flight', developer: '@priya-n', checker: '@sam-k' },
+  '0005': { status: 'ready', depends_on: '0002, 0004' },
+  '0006': { status: 'draft', depends_on: '0005' },
 }
 for (const [id, fields] of Object.entries(demo)) {
   if (!specFiles[id]) { failures.push(`spec ${id} was not created`); continue }
   for (const [k, v] of Object.entries(fields)) setFm(specFiles[id], k, v)
 }
-py('sprint new', [sprintPy, 'new', '--repo', project, '--sprint', 'S07', '--goal', 'Adjusters file without a phone call',
-  '--start', '2026-09-28', '--target', '6', '--mix', 'HIGH:2,MEDIUM:2,LOW:2', '--by', 'Pod Lead'])
-py('sprint slate', [sprintPy, 'slate', '--repo', project, '--sprint', 'S07', '--by', 'Pod Lead', ...ids.flatMap((id) => ['--spec', id])])
-for (const id of ['0001', '0002', '0005']) {
+for (const id of ['0002', '0005']) if (specFiles[id]) makeReady(id)
+for (const id of ['0001', '0002', '0004']) {
   py(`verdict eng ${id}`, [sprintPy, 'verdict', '--repo', project, '--spec', id, '--lane', 'eng', '--verdict', 'accepted', '--by', 'Eng Lead'])
   py(`verdict data ${id}`, [sprintPy, 'verdict', '--repo', project, '--spec', id, '--lane', 'data', '--verdict', 'n-a', '--reason', 'no new data', '--by', 'Data Lead'])
 }
+py('verdict eng 0005', [sprintPy, 'verdict', '--repo', project, '--spec', '0005', '--lane', 'eng', '--verdict', 'accepted', '--by', 'Eng Lead'])
 py('handoff 0003', [sprintPy, 'handoff', '--repo', project, '--spec', '0003', '--to', '@sam-k', '--by', 'Pod Lead', '--note', 'take the notes spec next'])
-
-// Roster: the example, plus @sam-k so the demo's developer resolves.
-const roster = readFileSync(join(PLUGIN_ROOT, 'templates', 'team', 'team.example.yaml'), 'utf-8')
-  + '\n  - handle: "@sam-k"\n    name: "Sam Kowalski"\n    team: claims\n    roles: [developer, checker]\n    signs_off: ["build"]\n'
-writeFileSync(join(project, '.sdlc', 'team.yaml'), roster)
+// A deferral with its reason, through the verb that records it.
+if (specFiles['0007']) py('defer 0007', [join(SCRIPTS_DIR, 'spec_transition.py'), '--spec', specFiles['0007'], 'defer', '--reason', 'the letters vendor ships its locale pack next quarter'])
+// Decision clocks: one overdue and owned by the signed-in person (needs you), one open for Priya.
+const decisionsPy = join(SCRIPTS_DIR, 'track_decisions.py')
+py('decision DL-01', [decisionsPy, '--repo', project, 'open', '--decision', 'Confirm risk tier for 0006 (proposed HIGH)', '--owner', meHandle ?? 'Pod Lead', '--opened', '2026-09-30'])
+py('decision DL-02', [decisionsPy, '--repo', project, 'open', '--decision', 'Fail open or closed when the adjuster API is down?', '--owner', '@priya-n'])
+// The scorecard: the standard's numbers come from recorded outcomes, never invented.
+const scorecardPy = join(SCRIPTS_DIR, 'scorecard.py')
+py('scorecard merged 1', [scorecardPy, 'record', '--repo', project, '--type', 'spec_merged', '--field', 'accepted_as_is=true', '--field', 'risk=HIGH'])
+py('scorecard merged 2', [scorecardPy, 'record', '--repo', project, '--type', 'spec_merged', '--field', 'accepted_as_is=false', '--field', 'risk=LOW'])
+py('scorecard wait', [scorecardPy, 'record', '--repo', project, '--type', 'review_wait', '--field', 'wait_hours=5.5'])
+py('scorecard deploy', [scorecardPy, 'record', '--repo', project, '--type', 'deploy', '--field', 'env=prod', '--field', 'succeeded=true', '--field', 'lead_time_hours=20'])
 try {
   git(['add', '-A'], project)
   git(['commit', '-q', '-m', 'observatory fixture'], project)
@@ -206,7 +292,8 @@ async function ghostProbe(page) {
   lines.push(`surface-0 ${surfaceHex} → ${surface.join(',')}`)
   await page.getByRole('button', { name: /^Build Loop/ }).click()
   const t0 = Date.now()
-  await page.getByRole('button', { name: GHOST_TARGET === 'board' ? 'Board' : 'Sprint', exact: true }).click()
+  // v11: the sprint target is the sprint HOME (`Home` under Build Loop); its header is the band's anchor.
+  await page.getByRole('button', { name: GHOST_TARGET === 'board' ? 'Board' : 'Home', exact: true }).click()
   if (GHOST_TARGET === 'board') await page.getByRole('button', { name: 'Everything' }).waitFor({ timeout: 60_000 })
   else await page.getByTestId('sprint-header').waitFor({ timeout: 60_000 })
   const tHeader = Date.now() - t0
@@ -218,9 +305,9 @@ async function ghostProbe(page) {
     await figure.getByRole('button', { name: 'Table', exact: true }).click()
     surfaceNote = 'TABLE (bisect 5)'
   } else {
-    const graph = figure.getByRole('button', { name: 'Graph', exact: true })
-    if (await graph.count() && (await graph.getAttribute('aria-pressed')) !== 'true') { await graph.click(); surfaceNote = 'graph (clicked)' }
-    await figure.locator('canvas').first().waitFor({ timeout: 30_000 }).catch(() => lines.push('no canvas appeared'))
+    // The slate constellation sits below the lanes on the sprint home; the probe measures the band
+    // above the header, so the figure is only noted, never scrolled to (the pointer stays put).
+    surfaceNote = (await figure.count()) ? `graph figure present (${await figure.getAttribute('data-surface')})` : 'no figure'
   }
   const tSurface = Date.now() - t0
   lines.push(`header at ${tHeader} ms, surface ${surfaceNote} at ${tSurface} ms; pointer left where the last click put it`)
@@ -229,17 +316,21 @@ async function ghostProbe(page) {
     if (wait > 0) await page.waitForTimeout(wait)
     const band = await page.evaluate(() => {
       const filterRow = document.querySelector('[data-filter-row]')
-      const heading = Array.from(document.querySelectorAll('main h2[data-page-heading]')).find((h) => h.textContent?.trim() === 'Sprint')
-        ?? document.querySelector('[data-testid="sprint-board"] h2')
-      const header = filterRow ? filterRow.parentElement : heading?.closest('header, [data-testid="sprint-board"] > div')
+      // v11: the sprint home's header (`SprintHeader`, test id `sprint-header`) sits under <main>'s
+      // 24 px padding, so the 25 px band above it is all ground.
+      const header = filterRow ? filterRow.parentElement : document.querySelector('[data-testid="sprint-header"]')
       const main = document.getElementById('main')
       if (!header || !main) return null
       const r = header.getBoundingClientRect(); const m = main.getBoundingClientRect()
       // The Sprint header sits under <main>'s 24 px padding, so the 25 px band is all ground. The
       // Board's filter bar sits 24 px (`space-y-6`) under the team chips: the 25th row up is the
       // chips' own bottom edge, real content — so that target measures the 24 px gap exactly.
-      const height = filterRow ? 24 : 25
-      return { x: Math.round(m.left), y: Math.round(r.top) - height, width: Math.round(m.width), height, stuck: header.hasAttribute('data-stuck'), surface: document.querySelector('[data-testid="constellation-sprint"]')?.getAttribute('data-surface') ?? 'list' }
+      const wanted = filterRow ? 24 : 25
+      // The band never reaches above <main>'s own top edge: the row there is the strip's hairline
+      // (`border-b border-line-1`, by design), not ground — measuring it would report the shell.
+      const y = Math.max(Math.round(m.top) + 1, Math.round(r.top) - wanted)
+      const height = Math.round(r.top) - y
+      return { x: Math.round(m.left), y, width: Math.round(m.width), height, stuck: header.hasAttribute('data-stuck'), surface: document.querySelector('[data-testid="constellation-sprint"]')?.getAttribute('data-surface') ?? 'list' }
     })
     const atMs = Date.now() - t0
     if (!band) { lines.push(`t=${atMs} ms: no header found`); continue }
@@ -287,9 +378,10 @@ try {
   await page.waitForTimeout(400)
 
   await page.getByText('observatory project').click()
-  await page.getByText('Documents').first().waitFor({ timeout: 60_000 })
-  await page.waitForTimeout(2_500) // readiness poll lands; StageHome shows rows, not its skeleton
+  await page.getByRole('navigation', { name: 'Project' }).waitFor({ timeout: 60_000 })
+  // The shell band is the first <aside> (TopBand + LifecycleStrip): Appearance, Settings, More.
   const sidebar = page.locator('aside').first()
+  const nav = page.getByRole('navigation', { name: 'Project' })
 
   if (PROBE === 'ghost') {
     // The probe is the whole run: no walk, no shots, the pointer untouched after the last click.
@@ -303,37 +395,46 @@ try {
     if (await graph.count() && (await graph.getAttribute('aria-pressed')) !== 'true') await graph.click()
     await figure.locator('canvas').first().waitFor({ timeout: 30_000 }).catch(() => notes.push('no canvas appeared'))
   }
-  const spine = page.getByTestId('spine-band')
-  await ensureGraph(spine)
-  await settle(page)
-  await shot(page, 'stage-light')
-
   const setTheme = async (label) => {
     await sidebar.getByRole('button', { name: 'Appearance' }).click()
     await sidebar.getByRole('group', { name: 'Theme' }).getByRole('button', { name: label }).click()
     await sidebar.getByRole('button', { name: 'Appearance' }).click()
-    await page.mouse.move(720, 450) // the popover closes under the pointer; park it off the sidebar
+    await page.mouse.move(720, 450) // the popover closes under the pointer; park it over <main>
     await page.waitForTimeout(400)
   }
+  const openBuild = async (view) => {
+    const build = nav.getByRole('button', { name: /^Build Loop/ })
+    if ((await build.getAttribute('aria-expanded')) !== 'true') await build.click()
+    await nav.getByRole('button', { name: view, exact: true }).click()
+  }
+  const scrollTop = async () => { await page.evaluate(() => document.getElementById('main')?.scrollTo({ top: 0 })); await page.waitForTimeout(300) }
+
+  // --- the sprint home: a Build-loop project lands here (homeFor) -------------------------------
+  const home = page.getByTestId('sprint-home')
+  await home.waitFor({ timeout: 60_000 })
+  await page.getByTestId('lane-card').first().waitFor({ timeout: 60_000 }).catch(() => notes.push('sprint-home: no lane card'))
+  await page.waitForTimeout(2_500) // the command-center read lands; lanes, Today, the room and Refining fill
+  await page.mouse.move(720, 870)
+  await settle(page, 1_800)
+  await shot(page, 'sprint-home')
+  notes.push(`needs-you chip: ${(await page.getByTestId('needs-you-chip').textContent().catch(() => null)) ?? 'absent'}`)
   await setTheme('Dark')
-  await settle(page)
-  await shot(page, 'stage-dark')
-  await sidebar.getByRole('button', { name: /Design\. / }).hover()
-  await settle(page)
-  await shot(page, 'stage-dark-hover')
-  await page.mouse.move(720, 450)
+  await settle(page, 1_200)
+  await shot(page, 'sprint-home-dark')
   await setTheme('Light')
 
-  const openBuild = async (view) => {
-    await page.getByRole('button', { name: /^Build Loop/ }).click()
-    await page.getByRole('button', { name: view, exact: true }).click()
-  }
-  await openBuild('Sprint')
-  await page.getByTestId('sprint-header').waitFor({ timeout: 60_000 })
+  // The slate constellation keeps its Graph surface below the lanes; its Table twin is the slate.
+  const slate = page.locator('section[aria-label="Slate"]')
+  await slate.scrollIntoViewIfNeeded()
   const figure = page.getByTestId('constellation-sprint')
   await ensureGraph(figure)
   await settle(page, 1_800)
   await shot(page, 'sprint-graph')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'sprint-graph-dark')
+  await setTheme('Light')
+  await settle(page, 600)
   notes.push(`devicePixelRatio: ${await page.evaluate(() => window.devicePixelRatio)}`)
   notes.push(`sprint-graph canvas: ${await page.evaluate(() => {
     const c = document.querySelector('[data-testid="constellation-sprint"] canvas')
@@ -350,43 +451,115 @@ try {
   await figure.getByRole('button', { name: 'Table', exact: true }).click()
   await settle(page)
   await shot(page, 'sprint-table')
-  if (process.env.SHOT_PROBE) {
-    // Layout probe for the slate scroller (observatory v6): who clips, and does the fade render?
-    const probe = await page.evaluate(() => {
-      const scroller = document.querySelector('[aria-label="Sprint slate, scrolls sideways"]')
-      const kit = scroller?.firstElementChild
-      const table = kit?.querySelector('table')
-      const cs = (el) => (el ? getComputedStyle(el) : null)
-      const r = (el) => el ? el.getBoundingClientRect().toJSON() : null
-      return {
-        scroller: scroller && { sw: scroller.scrollWidth, cw: scroller.clientWidth, ov: cs(scroller).overflowX, rect: r(scroller), more: scroller.hasAttribute('data-more-right') },
-        kit: kit && { tag: kit.tagName, cls: kit.className, ov: cs(kit).overflow, sw: kit.scrollWidth, cw: kit.clientWidth, rect: r(kit) },
-        table: table && { w: table.getBoundingClientRect().width, layout: cs(table).tableLayout, width: cs(table).width },
-        fade: !!document.querySelector('[data-testid="sprint-slate-fade"]'),
-        main: (() => { const m = document.getElementById('main'); return m && { sw: m.scrollWidth, cw: m.clientWidth } })(),
-      }
-    })
-    console.log('PROBE', JSON.stringify(probe))
-  }
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'sprint-table-dark')
+  await setTheme('Light')
+  await settle(page, 600)
+  await figure.getByRole('button', { name: 'Graph', exact: true }).click().catch(() => {})
+  await scrollTop()
 
+  // --- planning -------------------------------------------------------------------------------
+  await openBuild('Planning')
+  await page.getByTestId('planning-backlog').waitFor({ timeout: 60_000 })
+  await page.waitForTimeout(2_000)
+  await settle(page)
+  await shot(page, 'planning')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'planning-dark')
+  await setTheme('Light')
+  await settle(page, 600)
+
+  // --- the spec card, opened in place from Refining -------------------------------------------
+  await openBuild('Home')
+  await home.waitFor({ timeout: 60_000 })
+  const refining = page.getByTestId('refining')
+  await refining.locator('[data-testid="refining-row"]').first().waitFor({ timeout: 60_000 }).catch(() => notes.push('no refining row'))
+  await refining.scrollIntoViewIfNeeded()
+  const refine = refining.locator('[data-refine]').first()
+  if (await refine.count()) {
+    await refine.click()
+    await page.getByTestId('spec-card').waitFor({ timeout: 60_000 })
+    await page.waitForTimeout(2_000)
+    await settle(page)
+    await shot(page, 'spec-card')
+    await setTheme('Dark')
+    await settle(page, 1_200)
+    await shot(page, 'spec-card-dark')
+    await setTheme('Light')
+    await settle(page, 600)
+    await page.keyboard.press('Escape')
+    await home.waitFor({ timeout: 60_000 })
+  } else notes.push('spec-card: no "refine in place →" to click')
+  await scrollTop()
+
+  // --- the lifecycle home: lean into a station ------------------------------------------------
+  await nav.getByRole('button', { name: /^Phase 0/ }).click()
+  await page.getByTestId('lifecycle-home').waitFor({ timeout: 60_000 })
+  await page.waitForTimeout(2_500) // readiness poll lands; StageHome shows rows, not its skeleton
+  const spine = page.getByTestId('spine-band')
+  await ensureGraph(spine)
+  await settle(page)
+  await shot(page, 'stage-light')
+  await setTheme('Dark')
+  await settle(page)
+  await shot(page, 'stage-dark')
+  await nav.getByRole('button', { name: /^Phase 2/ }).hover()
+  await settle(page)
+  await shot(page, 'stage-dark-hover')
+  await page.mouse.move(720, 450)
+  await setTheme('Light')
+  // Build's lifecycle home (the `Documents` view): the Spine, Build's documents, the Today band and
+  // "Go to the sprint home →". (The station itself opens the Board, as it always has.)
+  await openBuild('Documents')
+  await page.getByRole('button', { name: 'Go to the sprint home →' }).waitFor({ timeout: 60_000 }).catch(() => notes.push('lifecycle-home: no "Go to the sprint home" button'))
+  await page.waitForTimeout(1_500)
+  await settle(page)
+  await shot(page, 'lifecycle-home')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'lifecycle-home-dark')
+  await setTheme('Light')
+  await settle(page, 600)
+
+  // --- the Board ---------------------------------------------------------------------------------
   await openBuild('Board')
   await page.getByRole('button', { name: 'Everything' }).waitFor({ timeout: 60_000 })
   await page.getByRole('button', { name: 'Everything' }).click()
   await settle(page)
   await shot(page, 'board-list')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'board-list-dark')
+  await setTheme('Light')
+  await settle(page, 600)
   await page.getByRole('group', { name: 'Board surface' }).getByRole('button', { name: 'Graph', exact: true }).click()
   await page.locator('canvas').first().waitFor({ timeout: 30_000 }).catch(() => notes.push('board: no canvas'))
   await settle(page, 1_800)
   await shot(page, 'board-graph')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'board-graph-dark')
+  await setTheme('Light')
+  await settle(page, 600)
   await page.getByRole('group', { name: 'Board surface' }).getByRole('button', { name: 'List', exact: true }).click()
 
+  // --- the palette and the omnibar -------------------------------------------------------------
   await page.keyboard.press('Meta+K')
   await page.getByTestId('command-palette').waitFor({ timeout: 10_000 })
   await page.keyboard.type('sprint')
   await settle(page, 600)
   await shot(page, 'palette')
   await page.keyboard.press('Escape')
+  await page.keyboard.press('Meta+K')
+  await page.getByTestId('command-palette').waitFor({ timeout: 10_000 })
+  await page.keyboard.type('verdict 0003 accepted')
+  await settle(page, 600)
+  await shot(page, 'omnibar')
+  await page.keyboard.press('Escape')
 
+  // --- Settings, the spec view, the dark twins -------------------------------------------------
   await sidebar.getByRole('button', { name: 'Settings' }).click()
   const appearance = page.locator('#appearance')
   await appearance.waitFor({ timeout: 60_000 })
@@ -401,9 +574,6 @@ try {
   await page.waitForTimeout(2_000)
   await settle(page)
   await shot(page, 'spec-view')
-
-  // v8 dark twins — the spec view where we stand, then the palette over the Board (as the light
-  // shot) and Settings scrolled to Appearance (as the light shot).
   await setTheme('Dark')
   await settle(page)
   await shot(page, 'spec-view-dark')
@@ -422,13 +592,53 @@ try {
   await shot(page, 'settings-dark')
   await setTheme('Light')
 
-  // v8: Closing — the Spine with every plate carrying its ledger line (I4) above the Build
-  // stage's own sign-off questions. The Graph toggle in <main> is the Spine's; no other figure.
+  // --- review / close, above the unchanged "Declaring Build finished" --------------------------
   await openBuild('Closing')
-  await page.getByRole('heading', { name: 'Declaring Build finished' }).waitFor({ timeout: 60_000 })
+  await page.getByTestId('sprint-close').waitFor({ timeout: 60_000 })
+  await page.getByTestId('close-outcomes').waitFor({ timeout: 60_000 }).catch(() => notes.push('review: no outcomes section'))
+  await page.waitForTimeout(1_500)
+  await settle(page)
+  await shot(page, 'review')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'review-dark')
+  await setTheme('Light')
+  await settle(page, 600)
+  const declaring = page.getByRole('heading', { name: 'Declaring Build finished' })
+  await declaring.waitFor({ timeout: 60_000 })
+  await declaring.scrollIntoViewIfNeeded()
   await ensureGraph(page.locator('main#main'))
   await settle(page, 1_800)
   await shot(page, 'closing')
+  await setTheme('Dark')
+  await settle(page, 1_200)
+  await shot(page, 'closing-dark')
+  await setTheme('Light')
+  await settle(page, 600)
+
+  // --- steering mode (the committee's room): the light room first, then the dark one ------------
+  // The band is a presentation in steering (mark · name · Leave), so the theme is set BEFORE
+  // entering and the room is left (Esc) before switching.
+  await sidebar.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('menuitem', { name: 'Steering mode' }).or(page.getByRole('button', { name: 'Steering mode' })).first().click()
+  await page.getByTestId('steering-mode').waitFor({ timeout: 60_000 })
+  await page.getByTestId('steering-tiles').waitFor({ timeout: 60_000 }).catch(() => notes.push('steering: no tiles'))
+  await page.waitForTimeout(1_500)
+  await settle(page)
+  await shot(page, 'steering-light')
+  await page.keyboard.press('Escape')
+  await page.getByTestId('steering-mode').waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {})
+  await setTheme('Dark')
+  await sidebar.getByRole('button', { name: 'More' }).click()
+  await page.getByRole('menuitem', { name: 'Steering mode' }).or(page.getByRole('button', { name: 'Steering mode' })).first().click()
+  await page.getByTestId('steering-mode').waitFor({ timeout: 60_000 })
+  await page.getByTestId('steering-tiles').waitFor({ timeout: 60_000 }).catch(() => notes.push('steering: no tiles'))
+  await page.waitForTimeout(1_500)
+  await settle(page)
+  await shot(page, 'steering')
+  await page.keyboard.press('Escape')
+  await page.getByTestId('steering-mode').waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {})
+  await setTheme('Light')
 } catch (e) {
   if (!(e instanceof ProbeDone)) throw e
 } finally {

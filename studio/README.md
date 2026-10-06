@@ -54,13 +54,94 @@ fail loudly rather than skipping, on purpose; run only the rest with
 │   ├── motion/       The one motion rule and the GSAP choreographies
 │   ├── palette/      Command palette
 │   ├── shortcuts/    Keyboard map (shortcutMap.ts) and listener
-│   ├── scenes/       3D scenes: core shell, spine, constellation, ambient
+│   ├── scenes/       3D scenes: core shell, spine (+ the SVG strip), constellation, ambient
 │   └── components/   Screens, composed from the kit
+│       ├── lanes/    The sprint home's four lanes, the baton, the verdict dialog, `j k ↵ h v`
+│       ├── today/    The Today column and the "How it is going" panel
+│       ├── planning/ Sprint planning: backlog · slate · what the plugin says · Commit
+│       ├── SpecCard/ The spec card: DoR, the checking ladder, the findings ledger, Hand off
+│       └── brand/    The mark, the wordmark and the command center's figures (`figures/`)
+├── shared/           Types and pure models both processes use (`nav.ts`, `sprintVerbArgv.ts`, `reasons.ts`, `identity.ts`, `ladderJoin.ts`)
 └── test/             Unit and end-to-end tests
-    └── e2e/
+    └── e2e/          Playwright, incl. `cc/` for the command center
 ```
 
-Files under `electron/` are compiled into `dist-electron/`.
+Files under `electron/` are compiled into `dist-electron/`. The main process's command-center
+bridge is `electron/main/{commandCenter,commandCenterReaders,sprintWrites,decisions,specCard,actor}.ts`.
+
+## Command center
+
+`docs/proposals/togo-command-center.md` (2026-10-06) reorganised the app around the Build loop.
+The sidebar is gone. Every project screen sits under one shell: the **top band** (the mark and
+project name as one button that leans out to the lifecycle home · the **omnibar** trigger, a
+button that reads "⌘K · a spec id, a verb, or a place" and is never an `<input>` at rest · the
+**needs-you** chip, the length of the list the main process addressed to you by exact handle ·
+the sync chip · Console · Appearance · Settings · a `…` menu with Chat, Shortcuts, Steering mode,
+New project and Open folder) and the **lifecycle strip** — nine SVG stations on a lit rail from
+`spineModel`, the Build station reading "Build Loop · S08 · 8th sprint" from `sprint.py list`,
+expanding on click to Build's views: Home · Planning · Board · How it is going · Closing ·
+Documents. Exactly one entry carries `aria-current="page"`; the viewed station carries
+`data-viewing`. The strip is the first `<aside>` and the chat the second, so the a11y pins hold.
+
+**Two homes, one pure choice.** `homeFor(status, sprintProbe, capabilities)` (`shared/nav.ts`) lands a
+project in the Build loop on the **sprint home** when the plugin declares `sprint-status`, and every
+other project on the **lifecycle home** (today's stage home with a Today column). Chosen once per
+open, never on a timer; `g s` / `g l` switch, the strip and the palette too.
+
+**The sprint home** (`SprintHome.tsx`) draws one read, `getCommandCenter`: the header with the
+business-day bar; four lanes — Ready, Building, Checking, Merged — a *partition* of the plugin's
+`status`, `dor`, `verdicts_pending` and the pull request's `waiting_on` (anything else is listed
+as "slated, not in a lane"); the hand-off **baton** on the Building→Checking edge (`↵` acks); the
+Today column ("needs you" with one action each, "Team is waiting on", "since yesterday" from
+`sprint.py log`, Tōgō's own record of Claude's work, Standup notes disabled with its reason);
+**In the room** (roster people with lane dots — presence, never digits; hover lights their cards);
+**Refining** for the next sprint with the checker's own DoR gaps; **How it is going** from the
+scorecard. The slate constellation keeps its Graph surface below, with the slate table as its twin.
+
+**The omnibar** (`palette/intents.ts`, `VerbDialog.tsx`). ⌘K takes plain words — `pull 0005`,
+`verdict 0002 accepted`, `hand 0006 to Sam`, `ack 0006`, `defer 0003 because …`, `defer 0003 to S08
+because …`, `unslate 0004 because …`, `decide DL-02 …`, `decision …`, `confirm tier 0007`, `ready
+S08`, `close S07`, `new sprint` — and resolves ids and names only against the board's rows and the
+roster. A match is the first palette row ("Run: sprint.py verdict --spec 0002 --lane eng --verdict
+accepted --by @arjun"); `↵` opens the dialog, never runs. The dialog shows the exact argv, the
+actor and where that identity came from, what the plugin will check, and one Confirm; the answer
+is stdout/stderr verbatim under **Done** / **Not done** / **Refused by the plugin** (exit 0 / 1 /
+2). A name the roster does not know is a visible gap — the Confirm is present and disabled with the
+reason, a roster picker beside it — never a guess.
+
+**Planning** (`planning/`, `g p`): the refined backlog READY-first ("Add to slate" is enabled for
+drafts — the plugin, not the UI, lists the gaps at `ready`), the slate in the plugin's build order
+with Builder / Checker pickers (`assign`) and the Security signer slot disabled with its reason,
+what the plugin says, its deterministic proposal ("Apply proposal" previews in the dialog), and
+**Commit the sprint**: a dialog that lists the lines it will run, then `slate → ready → plan →
+open report → decisions`, stopping at the first non-zero exit with each step's answer.
+
+**The spec card** (`SpecCard/`), opened in place from a lane card or a Refining row (the home stays
+mounted beneath, inert and out of flow, so Back / Esc hand focus back to the opener): the
+Definition of Ready verbatim, scope and `harness_context` from the document, the channel's
+dimensions when one is bound, the **checking ladder** (`ladder.rungs[]` joined by a fixed table to
+the host's fields; a rung is coloured only by the host's conclusion; correctness is always "no
+data"), the **findings ledger** with the plugin's dispositions and "off the books", and a **Hand
+off** foot disabled with `handoff.py --check`'s own refusal.
+
+**Close and steering** (`SprintClose.tsx`, `SteeringMode.tsx`): the close screen above the
+unchanged *Declaring Build finished* — outcomes, kept, open specs each Carry or Drop with a
+required reason and a per-row Carry-to picker (one `--carry-to`; "create S09 first →" opens
+`new`) — then one `close` dialog whose exit-1 text names an undecided spec by id. Steering mode
+(`g t`, the `…` menu) is the committee's read-only room: tiles at 56 px, every number naming its
+field, no chat, no console, zero `button[data-write]`, `Esc` returns to the screen it was entered
+from.
+
+**The truth rule.** The renderer never spawns, never joins across sources and never derives a
+status. The main process assembles one `CommandCenter` document with per-block provenance
+(`source`, `fetchedAt`, `ok`, `data`, `error` — `data: null` reads "no data", never 0) and runs
+every write through `shared/sprintVerbArgv.ts`, a closed argv table with the signed-in person as
+`--by` (`electron/main/actor.ts`; no actor → every write refuses before spawning). After an exit 0
+the screens re-read — never before. "Refresh this screen" drops main's cache and re-reads. A count
+of zero recorded events reads "none recorded in this window" (the plugin's own wording for a
+ledger with nothing in it); no velocity, points, PR counts, lines or hours appear anywhere; a
+disabled control always carries its reason, as a tooltip and as its accessible description
+(`aria-describedby`), and every such sentence is in `shared/reasons.ts` or is the plugin's own.
 
 ### The kit
 
@@ -105,13 +186,13 @@ release. A packaged Tōgō finds the plugin in Claude Code's marketplace cache
 
 ## Appearance
 
-Settings › **Appearance** (also the sidebar's "Appearance" button) holds four per-person
+Settings › **Appearance** (also the top band's "Appearance" button) holds four per-person
 preferences. Each is stored in `localStorage` and takes effect without a reload.
 
 | Preference | Options | Stored as | Notes |
 |---|---|---|---|
 | Theme | System / Light / Dark | `studio.theme` | System follows the operating system. The dark theme is a remap of the colour ramps, so every screen flips at once. |
-| Density | Comfortable / Compact | `studio.density` | Compact tightens the vertical rhythm; the sidebar and chat keep their width. |
+| Density | Comfortable / Compact | `studio.density` | Compact tightens the vertical rhythm; the band, the strip and the chat keep their size. |
 | Animations | Auto / On / Off | `studio.motion` | Auto honours the OS reduced-motion setting. **On** is an explicit opt-in that overrides it; Off turns every animation off. Animations are always off under test. The opening flourishes (project assemble, Welcome field, Spine draw) quieten with familiarity — opens 1–3 in full, 4–10 brisk, then not at all; a hashed per-project counter in `studio.opens.<hash>`. **Play the opening again** resets it (disabled outside a project, saying why). |
 | Visuals default | Graph / Table | `studio.sprint.surface` | Which surface the Sprint constellation opens on. The Table twin is always one click away, and is what shows when graphics are unavailable. |
 
@@ -133,8 +214,12 @@ typed within 800 ms. Shortcuts marked † also fire while an input has focus.
 | `Mod+\` † | in a project | Toggle the chat panel |
 | `Mod+,` † | in a project | Settings |
 | `g` `0`…`g` `9`, `g` `.` | in a project | Go to Phase 0–9, or Close |
-| `g` `b` / `g` `s` / `g` `h` / `g` `c` / `g` `d` | in a project | Board / Sprint / How it is going / Closing / Build documents |
+| `g` `s` / `g` `l` | in a project | The sprint home / the lifecycle home |
+| `g` `p` / `g` `b` / `g` `h` / `g` `c` / `g` `d` | in a project | Planning / Board / How it is going / Closing / Build documents |
+| `g` `t` | in a project | Steering mode (`Esc` leaves) |
 | `[` / `]` | in a project | Previous / next stage |
+| `j` / `k` | in the lanes | Previous / next card (roving focus across the four lanes) |
+| `↵` / `h` / `v` / `Esc` | in the lanes | Open the spec card / hand off / record a verdict / clear |
 | `1` / `2` / `3` | stage home | Workflow / Documents / Guide tab |
 | `Alt+↑` / `Alt+↓` | document view | Previous / next document |
 | `Mod+S` † | document view | Save the open field |
@@ -145,7 +230,9 @@ typed within 800 ms. Shortcuts marked † also fire while an input has focus.
 "In a graph" bindings fire only while a Constellation figure (the Sprint or Board graph) has
 keyboard focus — the Spine carries no keyboard scope — and
 the same two commands — *Fit the graph*, *Focus next up* — sit in the palette while a graph is on
-screen. They move a camera and a focus ring; nothing is fetched or written.
+screen. They move a camera and a focus ring; nothing is fetched or written. "In the lanes"
+bindings fire only while focus is inside the sprint home's board (`data-shortcut-scope="lanes"`);
+`h` and `v` open dialogs — nothing runs without Confirm.
 
 ⌘W / ⌘Q / ⌘R / ⌘1–9 and the F-keys are deliberately absent: Electron and the OS own them.
 Escape always closes the innermost thing (palette, dialog, hover card) and never discards an
@@ -159,8 +246,13 @@ a fallback. The Table is what renders when WebGL is unavailable, the window is u
 the canvas has crashed, or Tōgō is under test. Scenes draw only what the plugin reports —
 Tōgō computes no status of its own, and a value the plugin reports as null reads "no data".
 
+- **Lifecycle strip** (`scenes/spine/SpineStrip.tsx`) — the shell's navigation: the same nine
+  stations as the Spine, as plain SVG (no canvas) from `spineModel` — a 2 px lit rail for the
+  signed-off count (`role="progressbar"`), shape-coded station rings, the viewed station ringed
+  `strip-viewing`, the current one pulsing three times on a full-tier open. It draws at the
+  `"spine"` label of the frame assemble (`stripDraw`, `full` tier only).
 - **Lifecycle Spine** (`scenes/spine/`) — the stage order and each stage's sign-off state, as a
-  band above a stage's home and on the Closing screen. Station plates carry short names
+  band above a stage's home (the lifecycle home) and on the Closing screen. Station plates carry short names
   (`STAGE_SHORT_LABEL`; the full name on hover and on the current station); a thin accent
   reticle marks the stage whose home is open ("The accent ring marks the stage you are
   viewing" — `data-viewing` on the Table twin, never `aria-current`); on Closing every plate
@@ -168,7 +260,9 @@ Tōgō computes no status of its own, and a value the plugin reports as null rea
   "completed · no name recorded", "not started"). Sign-off plays a short ceremony along the
   rail; the end state equals a cold reload.
 - **Dependency Constellation** (`scenes/constellation/`) — specs as nodes, `depends_on` as
-  edges, on the Sprint screen and the Board (Graph in the filter bar). A node's size comes from
+  edges, below the lanes on the sprint home, on planning (Slate / Proposal surfaces — a proposed
+  set draws every body at `buildOrderIndex: null` with the caption "order arrives when the slate
+  is committed") and on the Board (Graph in the filter bar). A node's size comes from
   its risk tier alone; a dependency on an id with no spec is a ghost node drawn from the id; a
   dependency outside the slate on an unmerged spec is warn-toned. The Sprint's Table twin is the
   slate itself; the Board's is the list. The Board host spreads bodies into a band and fits the
@@ -184,16 +278,18 @@ Tōgō computes no status of its own, and a value the plugin reports as null rea
 
 ## Bundle
 
-Measured on the production `vite build` of the v8 capture after upgrade round 2 (2026-10-06):
-main chunk `dist/assets/index-*.js` **641.8 KB** (gzip 194.8 KB; budget ≤ 800 KB, enforced by
-`test/bundleSize.test.ts` — the `--mode=test` build measures 641.4 KB), `scene-core-*.js`
-**966.9 KB** (three, R3F, d3-force-3d — loaded on the first Canvas mount only), per-scene chunks
-2–26 KB (ConstellationScene 26, SpineScene 18, Plates 9), `gsap` 70 KB, the choreography 30 KB
-and its presets 30 KB, the kit 46 KB and `shared/format` 1.5 KB as shared chunks, CSS 73 KB.
-Round 1 measured 574.8 / 941.8 KB; the main chunk grew 67 KB for the kit's new primitives, the
-ceremonies, the palette's Flip and the spec neighbourhood. Fonts (Inter Variable, JetBrains Mono
-Variable) are bundled woff2; nothing is fetched over the network, and the Content-Security-Policy
-in `index.html` is unchanged.
+Measured on the production `vite build` of the v11 capture after the command center (2026-10-06):
+main chunk `dist/assets/index-*.js` **715.7 KB** (gzip 213.3 KB; budget ≤ 800 KB, enforced by
+`test/bundleSize.test.ts` — the `--mode=test` build measures 732.3 KB), `scene-core-*.js`
+**944.2 KB** (gzip 250.4 KB; three, R3F, d3-force-3d — loaded on the first Canvas mount only),
+the command center's lazy chunks `Planning` 30.0 KB, `SpecCard` 19.4 KB, `SprintClose` 12.5 KB and
+`SteeringMode` 6.1 KB, per-scene chunks ConstellationScene 25.6 KB and SpineScene 17.6 KB, `gsap`
+68 KB, the choreography 31 KB and its presets 29 KB, the kit 46 KB, CSS 86.5 KB (gzip 18.5 KB).
+Round 2 measured 641.8 / 966.9 KB; the main chunk grew 74 KB for the shell (band, strip, omnibar
+grammar and dialog), the sprint home (lanes, Today, the room, Refining) and the brand figures —
+the sprint home is the default screen in Build and stays eager; everything behind a click is a
+chunk. Fonts (Inter Variable, JetBrains Mono Variable) are bundled woff2; nothing is fetched over
+the network, and the Content-Security-Policy in `index.html` is unchanged.
 
 ## Security
 
@@ -235,6 +331,8 @@ The specs in the repository's `specs/` directory (0008 onward) record Tōgō's b
 `docs/proposals/studio-improvements.md` is the plan (Batches 1–2 built; its D4/D5 became the
 code-host providers plan, built through Wave 7), `docs/proposals/studio-observatory.md` the visual
 overhaul (spec 0033, built), `docs/proposals/studio-upgrade-2.md` the second round (built;
-its status line records what P7 verified), and `docs/brand/togo/` the identity — the solid
-Macron is the mark; its Depth gradient lives at hero size only (Welcome, the opening card, the
-app icon), regenerated by `docs/brand/togo/build-assets.mjs`.
+its status line records what P7 verified), `docs/proposals/togo-command-center.md` the command
+center (built as P0–P8; its status line and §8 record what P8 verified and which pins moved, with
+evidence), and `docs/brand/togo/` the identity — the solid Macron is the mark; its Depth gradient
+lives at hero size only (Welcome, the opening card, the app icon, the steering lockup),
+regenerated by `docs/brand/togo/build-assets.mjs`.

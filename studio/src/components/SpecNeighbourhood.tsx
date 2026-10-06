@@ -10,7 +10,7 @@ import { useBacklogStore } from '../stores/backlogStore'
 import { buildNeighbourhood, edgePath, nodeName, type NeighbourNode } from '../scenes/constellation/neighbourhood'
 
 export const NEIGHBOURHOOD_EMPTY = "Open the Board once to see this spec's neighbourhood"
-export const NEIGHBOURHOOD_LEGEND = 'Left: what this spec depends on. Right: what depends on it. Size is the risk tier; a dashed body is a spec the Board has not shown.'
+export const NEIGHBOURHOOD_LEGEND = 'Left: what this spec depends on. Right: what depends on it. Size is the risk tier; colour is the plugin\'s status word (ready teal · in-flight blue · merged green · deferred grey); a dashed amber ring is its NOT READY; a dashed body is a spec the Board has not shown.'
 
 /** I7 — where this spec sits among its dependencies (studio-upgrade-2 §4 P3). Inline SVG for the
  * edges and HTML buttons for the bodies, laid over the same viewBox: no canvas, no second WebGL
@@ -114,14 +114,23 @@ function NodeButton({
   const body = (
     <span
       aria-hidden="true"
+      data-not-ready={node.ringToken ? '' : undefined}
       className={cn('block shrink-0 rounded-full', node.ghost && 'border border-dashed border-ink-4 bg-transparent', centre && 'ring-2 ring-accent-500 ring-offset-2 ring-offset-surface-1')}
-      style={{ width: diameter, height: diameter, backgroundColor: node.ghost ? undefined : `var(--color-${node.colorToken})` }}
+      style={{
+        width: diameter,
+        height: diameter,
+        backgroundColor: node.ghost ? undefined : `var(--color-${node.colorToken})`,
+        // The plugin's NOT READY as a SHAPE cue (a dashed warn ring), the body keeping its status colour.
+        outline: node.ringToken ? `1px dashed var(--color-${node.ringToken})` : undefined,
+        outlineOffset: node.ringToken ? 2 : undefined,
+      }}
     />
   )
+  // Two lines at most, never a cut word: the id in the ident face, the name beneath it.
   const label = (
-    <span className={cn('block max-w-[9rem] truncate text-xs', node.ghost ? 'text-ink-3' : 'text-ink-1')}>
-      <span className="font-mono tabular-nums">{node.id}</span>
-      {node.label && <span className="ml-1 text-ink-3">{node.label}</span>}
+    <span className={cn('block max-w-[7.5rem] text-xs leading-4', node.ghost ? 'text-ink-3' : 'text-ink-1')}>
+      <span className="block font-mono text-ident tabular-nums">{node.id}</span>
+      {node.label && <span className="line-clamp-2 block text-ink-3">{node.label}</span>}
     </span>
   )
   const reason = onOpen ? null : centre ? 'This is the spec you are reading.' : 'Open the Board once to open this spec from here.'

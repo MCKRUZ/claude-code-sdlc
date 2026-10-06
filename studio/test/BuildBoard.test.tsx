@@ -6,7 +6,7 @@
  * transformation of what was already fetched: `getBoard` is still called exactly once. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { BuildBoard, constellationFrom } from '../src/components/BuildBoard'
+import { BuildBoard, constellationFrom, ROW_GRID } from '../src/components/BuildBoard'
 import { backlogStore } from '../src/stores/backlogStore'
 import type { Board, BoardRow } from '../shared/types'
 
@@ -130,14 +130,15 @@ describe('BuildBoard: one read, many views', () => {
     expect(screen.getByText(/Nobody is signed in, so this view cannot say what is waiting on you/)).toBeTruthy()
   })
 
-  it('a code host that could not be reached is a warning, in amber, with every row still shown', async () => {
+  it('a code host that could not be reached is information — a status notice, never amber (amber is a measured wait) — with every row still shown', async () => {
     install({ ...BOARD, codeHostAvailable: false, error: 'gh: not signed in' } as Board)
     render(<main><BuildBoard projectPath="/p" account={null} onOpenSpec={vi.fn()} /></main>)
     await screen.findByRole('heading', { name: 'Build' })
     const notice = screen.getByRole('status')
     expect(notice.textContent).toContain('Showing what the spec files say.')
     expect(notice.textContent).toContain('gh: not signed in')
-    expect(notice.className).toContain('amber')
+    expect(notice.className).not.toContain('amber')
+    expect(notice.className).not.toMatch(/status-(warn|error)/)
     fireEvent.click(screen.getByRole('button', { name: 'Everything' }))
     expect(document.querySelectorAll('main li button').length).toBe(3)
   })
@@ -158,7 +159,7 @@ describe('BuildBoard: the round-2 shape (studio-upgrade-2 S6)', () => {
     expect(header.contains(screen.getByRole('button', { name: 'Refresh' }))).toBe(true)
   })
 
-  it('every row wears its status as a chip, in the one tone map the slate uses', async () => {
+  it('every row wears its status as a chip, in the one tone map the slate uses; the risk tier in the one risk map (HIGH error, MEDIUM warn, LOW neutral)', async () => {
     await renderBoard()
     fireEvent.click(screen.getByRole('button', { name: 'Everything' }))
     const chips = screen.getAllByTestId('spec-status-chip')
@@ -166,6 +167,15 @@ describe('BuildBoard: the round-2 shape (studio-upgrade-2 S6)', () => {
     expect(chips[0].className).toContain('stage-current')
     expect(chips[2].className).toContain('accent')
     expect(document.querySelectorAll('main li button').length).toBe(3)
+    const risk = (text: string) => Array.from(document.querySelectorAll('main li button span.rounded-full')).find((c) => c.textContent === text) as HTMLElement
+    expect(risk('HIGH').className).toContain('status-error')
+    expect(risk('MEDIUM').className).toContain('status-warn')
+    expect(risk('LOW').className).toContain('surface-2')
+  })
+
+  it('every row shares one set of tracks: the last column is fixed, so a row without the "mine" chip does not squeeze its neighbours\' columns', () => {
+    expect(ROW_GRID).toContain('grid-cols-[3.5rem_minmax(0,1fr)_4.25rem_5.75rem_minmax(0,11rem)_5.5rem]')
+    expect(ROW_GRID).not.toMatch(/_auto\]/)
   })
 
   it('the filter bar is a deliberate two-row wrap, both rows marked', async () => {

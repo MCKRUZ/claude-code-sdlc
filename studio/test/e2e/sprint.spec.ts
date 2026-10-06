@@ -78,7 +78,10 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
     page = await app.firstWindow()
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('sprint project').click()
-    await expect(page.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
+    // Recorded pin change (togo-command-center.md §1, §8): the lifecycle strip replaced the
+    // sidebar and the Build station expands only on click, so "Documents" is no longer visible at
+    // rest. The landing fact is the strip's `nav[aria-label=Project]` — a11y.spec's own wait.
+    await expect(page.getByRole('navigation', { name: 'Project' })).toBeVisible({ timeout: 30_000 })
   })
 
   test.afterAll(async () => {
@@ -95,16 +98,20 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
     }
   })
 
-  test('Sprint sits beside the Board under Build Loop and opens the sprint the scripts made', async () => {
-    await openBuildView(page, 'Sprint')
-    await expect(page.getByRole('heading', { name: 'Sprint' })).toBeVisible({ timeout: 60_000 })
+  // Recorded pin change (togo-command-center.md §1, §7 P0/P7): the Build view `sprint` is
+  // relabelled "Home" (nav.ts BUILD_VIEWS — the loop is the work) and the screen is the sprint
+  // home, `[data-testid=sprint-home]`, whose header keeps the `sprint-header/-state/-target/-wip`
+  // ids. The sprint the scripts made is still what it opens.
+  test('Home sits first under Build Loop and opens the sprint the scripts made', async () => {
+    await openBuildView(page, 'Home')
+    await expect(page.getByTestId('sprint-home')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('sprint-header')).toBeVisible({ timeout: 60_000 })
     await expect(page.getByTestId('sprint-header')).toContainText('Sprint S07')
     await expect(page.getByTestId('sprint-header')).toContainText('Adjusters file without a phone call')
     await expect(page.getByTestId('sprint-state')).toHaveText('planning')
     await expect(page.getByTestId('sprint-target')).toHaveText('3 specs')
-    // The Sprint entry is the lit one, not Board.
-    await expect(page.getByRole('button', { name: 'Sprint', exact: true })).toHaveAttribute('aria-current', 'page')
+    // The Home entry is the lit one, not Board.
+    await expect(page.getByRole('button', { name: 'Home', exact: true })).toHaveAttribute('aria-current', 'page')
   })
 
   test('the slate has the three slated specs, each NOT READY in the checker\'s words', async () => {
@@ -134,8 +141,11 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
     await expect(page.getByTestId('sprint-verdicts')).toContainText(`${specIds[1]} · eng`)
   })
 
-  test('the view offers no control that changes the sprint', async () => {
-    // The only buttons are Refresh and the two pages; no inputs, no textarea but the chat composer.
+  test('the slate twin offers no control that changes the sprint', async () => {
+    // Recorded pin change (togo-command-center.md §6, §8 (2)): the sprint home has more controls
+    // by design (the brief's screen 1); the three-button assertion is scoped to
+    // `[data-testid=sprint-board]`, the slate's Table twin, where exactly these three remain.
+    // No inputs anywhere in <main>, no textarea but the chat composer — unchanged.
     const buttons = await page.getByTestId('sprint-board').getByRole('button').allTextContents()
     const names = buttons.filter((b) => !specIds.includes(b.trim()))
     expect(names.sort()).toEqual(['Planning page', 'Refresh', 'Review page'])
@@ -211,7 +221,8 @@ test.describe('[studio-improvements B2] a project with no sprint, in the real wi
     barePage = await bareApp.firstWindow()
     await expect(barePage.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await barePage.getByText('no sprint project').click()
-    await expect(barePage.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
+    // Same recorded change as above: the strip's navigation is the landing fact.
+    await expect(barePage.getByRole('navigation', { name: 'Project' })).toBeVisible({ timeout: 30_000 })
   })
 
   test.afterAll(async () => {
@@ -225,7 +236,7 @@ test.describe('[studio-improvements B2] a project with no sprint, in the real wi
   })
 
   test('says there is no sprint and where to start one; shows no table and no count', async () => {
-    await openBuildView(barePage, 'Sprint')
+    await openBuildView(barePage, 'Home')
     // The plugin's own note wins when it gives one ("no sprint record under … — create one with
     // `sprint.py new`"); Studio's sentence is the fallback. Either names where to start.
     await expect(barePage.getByTestId('sprint-empty')).toHaveText(/no sprint record|No sprint — open one with \/sdlc-sprint new\./, { timeout: 60_000 })

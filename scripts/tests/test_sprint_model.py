@@ -669,9 +669,24 @@ class TestSlateIdsFromLedger:
 # --- ledger entries ------------------------------------------------------------------------------
 
 class TestEventEntry:
+    # Re-recorded 2026-10-06 (togo-command-center §2.5 row 4): `sprint.py edit` appends `sprint_edited`.
+    # EVENTS is append-only — the first ten names, in this order, are pinned forever; a new verb may
+    # only add a name at the end, never rename or remove one (ledgers are replayed, not migrated).
+    ORIGINAL_TEN = ("slated", "unslated", "handoff", "ack", "verdict", "ready", "closed",
+                    "carried", "dropped", "sprint_new")
+
     def test_vocabulary(self):
-        assert sm.EVENTS == ("slated", "unslated", "handoff", "ack", "verdict", "ready", "closed",
-                             "carried", "dropped", "sprint_new")
+        assert sm.EVENTS[:10] == self.ORIGINAL_TEN
+        assert sm.EVENTS == (*self.ORIGINAL_TEN, "sprint_edited")
+
+    def test_events_are_unique_and_append_only(self):
+        assert len(set(sm.EVENTS)) == len(sm.EVENTS)
+        assert sm.EVENTS.index("sprint_edited") == len(sm.EVENTS) - 1
+
+    def test_sprint_edited_entry_shape(self):
+        e = sm.event_entry("2026-10-06T10:00:00+00:00", "sprint_edited", sprint="S07", field="goal", by="Priya")
+        assert e == {"ts": "2026-10-06T10:00:00+00:00", "event": "sprint_edited", "sprint": "S07",
+                     "field": "goal", "by": "Priya"}
 
     def test_entry_shape_uses_caller_ts(self):
         e = sm.event_entry("2026-09-30T10:00:00+00:00", "slated", sprint="S07", spec="0001", by="Priya")

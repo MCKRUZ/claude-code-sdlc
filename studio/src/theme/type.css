@@ -51,6 +51,34 @@
   --text-eyebrow--letter-spacing: 0.08em;
   --text-eyebrow--font-weight: 600;
 
+  /* Command center type scale (togo-command-center-visual.md §3). None of these names has a
+     `--color-*` namesake (ccVisualSpec.test), so `text-sprint-title` resolves to the size. */
+  --text-sprint-title: 32px;
+  --text-sprint-title--line-height: 36px;
+  --text-sprint-title--letter-spacing: -0.02em;
+  --text-sprint-title--font-weight: 650;
+  --text-lane-count: 20px;
+  --text-lane-count--line-height: 24px;
+  --text-lane-count--letter-spacing: -0.01em;
+  --text-lane-count--font-weight: 600;
+  --text-metric: 26px;
+  --text-metric--line-height: 30px;
+  --text-metric--letter-spacing: -0.015em;
+  --text-metric--font-weight: 600;
+  /* `--text-ident` is set in JetBrains Mono by the caller (`font-mono`): ids, dates, paths. */
+  --text-ident: 13px;
+  --text-ident--line-height: 16px;
+  --text-ident--letter-spacing: 0.01em;
+  --text-ident--font-weight: 500;
+  --text-steer-number: 56px;
+  --text-steer-number--line-height: 60px;
+  --text-steer-number--letter-spacing: -0.025em;
+  --text-steer-number--font-weight: 650;
+  --text-steer-label: 24px;
+  --text-steer-label--line-height: 32px;
+  --text-steer-label--letter-spacing: 0;
+  --text-steer-label--font-weight: 500;
+
   /* Skeleton shimmer: a highlight crossing a fixed shape says "coming" without pulsing the whole
      block. `[data-motion="off"]` and reduced motion zero `animation-duration` in base.css. */
   --animate-shimmer: shimmer 1.6s linear infinite;

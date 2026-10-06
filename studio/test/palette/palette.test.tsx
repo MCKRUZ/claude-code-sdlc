@@ -2,9 +2,10 @@
 // The palette's contract with the rest of Studio: it does not exist in the DOM while closed
 // (two Playwright specs count `input` elements and expect zero), it is a proper combobox while
 // open, and it never calls `window.studio.*` — the index is built from state already on screen.
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommandPalette, resetPaletteFirstOpen } from '../../src/palette/CommandPalette'
+import { intentEntries, type IntentContext } from '../../src/palette/intents'
 import { groupResults } from '../../src/palette/paletteResults'
 import { rankEntries } from '../../src/palette/score'
 import { buildIndex, EMPTY_SPECS_ENTRY_ID, SETTINGS_ANCHOR_LABEL } from '../../src/palette/paletteIndex'
@@ -106,14 +107,15 @@ describe('CommandPalette', () => {
     expect(screen.getByText('No results')).toBeTruthy()
   })
 
-  it('fuzzy order: "sp" ranks the Sprint view first; ↓ then Enter runs the selected entry', () => {
+  // The sprint view is relabelled Home (togo-command-center.md §1/§7 P0); its id and target are unchanged.
+  it('fuzzy order: "sp" ranks the sprint home (labelled Home) first; ↓ then Enter runs the selected entry', () => {
     const navigate = vi.fn()
     const onRun = vi.fn()
     const onClose = vi.fn()
     const { combobox } = renderOpen(buildIndex(input({ navigate })), { onRun, onClose })
     fireEvent.change(combobox, { target: { value: 'sp' } })
     const options = screen.getAllByRole('option')
-    expect(options[0].textContent).toContain('Go to Sprint')
+    expect(options[0].textContent).toContain('Go to Home')
     fireEvent.keyDown(combobox, { key: 'ArrowDown' })
     fireEvent.keyDown(combobox, { key: 'ArrowUp' })
     fireEvent.keyDown(combobox, { key: 'Enter' })
@@ -131,7 +133,8 @@ describe('CommandPalette', () => {
     expect(combobox.getAttribute('aria-activedescendant')).toBe(options[0].id)
     fireEvent.keyDown(combobox, { key: 'Tab' })
     const selected = screen.getAllByRole('option').find((o) => o.getAttribute('aria-selected') === 'true')!
-    expect(within(selected).getByText(/Go to Board/)).toBeTruthy()
+    // The build group now leads with the sprint home (BUILD_VIEWS order, togo-command-center.md §1).
+    expect(within(selected).getByText(/Go to Home/)).toBeTruthy()
     fireEvent.keyDown(combobox, { key: 'End' })
     expect(combobox.getAttribute('aria-activedescendant')).toBe(options[options.length - 1].id)
   })
@@ -193,17 +196,17 @@ describe('CommandPalette', () => {
       motion: { value: 'on', set: hook('motion') as never },
       toggleConsole: hook('console'), toggleChat: hook('chat'), toggleSpine: hook('spine'), toggleSurface: hook('surface'),
       fitGraph: hook('fit-graph'), focusNextUp: hook('focus-next-up'),
-      refreshScreen: hook('refresh'), copyProjectPath: hook('copy-path'), openShortcuts: hook('shortcuts'), back: hook('back'),
+      refreshScreen: hook('refresh'), copyProjectPath: hook('copy-path'), openShortcuts: hook('shortcuts'), steering: hook('steering'), back: hook('back'),
       newProject: hook('new-project'), openFolder: hook('open-folder'),
     }
     const entries = buildActionEntries(hooks)
     expect(entries.map((e) => e.id)).toEqual([
       'action:theme', 'action:density', 'action:motion', 'action:console', 'action:chat', 'action:spine', 'action:surface',
       'action:fit-graph', 'action:focus-next-up',
-      'action:refresh', 'action:copy-path', 'action:shortcuts', 'action:back', 'action:new-project', 'action:open-folder',
+      'action:refresh', 'action:copy-path', 'action:shortcuts', 'action:steering', 'action:back', 'action:new-project', 'action:open-folder',
     ])
     for (const e of entries) e.run()
-    expect(calls).toEqual(['theme', 'density', 'motion', 'console', 'chat', 'spine', 'surface', 'fit-graph', 'focus-next-up', 'refresh', 'copy-path', 'shortcuts', 'back', 'new-project', 'open-folder'])
+    expect(calls).toEqual(['theme', 'density', 'motion', 'console', 'chat', 'spine', 'surface', 'fit-graph', 'focus-next-up', 'refresh', 'copy-path', 'shortcuts', 'steering', 'back', 'new-project', 'open-folder'])
     // Labels say what WILL happen: the cycles are system → light → dark and auto → on → off.
     expect(entries[0].title).toBe('Theme: Dark → System')
     expect(entries[2].title).toBe('Animations: On → Off')
@@ -317,5 +320,37 @@ describe('CommandPalette', () => {
     expect(empty.querySelector('kbd')!.className).toContain('rounded-[5px]')
     const footer = screen.getByText('move').closest('div')!
     expect(footer.className).toContain('text-ink-3')
+  })
+
+  // --- the omnibar (togo-command-center.md §3.6) ---------------------------------------------------
+
+  /** A verb typed in plain words is ONE row in a leading `verbs` group; `↵` on it hands the
+   * intent to the host (which opens the dialog) and spawns nothing — the `afterEach` above proves
+   * zero `window.studio` calls. A prefix query never parses as a verb. */
+  it('the verbs group leads for a typed verb; Enter opens the intent, never runs it; prefixes bypass it', () => {
+    const onIntent = vi.fn()
+    const ctx: IntentContext = {
+      rows: [{ spec: '0002', status: 'draft', sprint: 'S08', path: 'specs/0002-b.md' }], roster: [], activeSprint: 'S08', sprintIds: ['S08'],
+      capabilities: ['sprint-status', 'sprint-write'], actor: '@arjun',
+    }
+    const intents = (q: string) => intentEntries(q, ctx, onIntent)
+    const onClose = vi.fn()
+    render(<CommandPalette open onClose={onClose} entries={buildIndex(input())} intents={intents} />)
+    const combobox = screen.getByRole('combobox') as HTMLInputElement
+    expect(document.querySelectorAll('[data-entry-id="verb:intent"]')).toHaveLength(0)
+    fireEvent.change(combobox, { target: { value: 'verdict 0002 accepted' } })
+    const options = screen.getAllByRole('option')
+    expect(options[0].getAttribute('data-entry-id')).toBe('verb:intent')
+    expect(options[0].textContent).toContain('Run: sprint.py verdict --spec 0002 --lane eng --verdict accepted --by @arjun')
+    expect(options[0].getAttribute('aria-selected')).toBe('true')
+    const groupLabel = document.getElementById(options[0].closest('[role="group"]')!.getAttribute('aria-labelledby')!)!
+    expect(groupLabel.textContent).toBe('Verbs')
+    fireEvent.keyDown(combobox, { key: 'Enter' })
+    expect(onIntent).toHaveBeenCalledTimes(1)
+    expect(onClose).toHaveBeenCalled()
+    cleanup()
+    render(<CommandPalette open onClose={vi.fn()} entries={buildIndex(input())} intents={intents} />)
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: '>verdict 0002 accepted' } })
+    expect(document.querySelectorAll('[data-entry-id="verb:intent"]')).toHaveLength(0)
   })
 })

@@ -1,8 +1,9 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { BoardRow, ClashChoice, DocumentFocus, FileClash, ProjectStatus, RecentProject, Settings, SyncState, ToolingReport } from '../shared/types'
+import type { BoardRow, ClashChoice, CommandCenter, DocumentFocus, FileClash, ProjectStatus, RecentProject, Settings, SprintVerb, SyncState, ToolingReport } from '../shared/types'
 import type { Area, NavTarget } from '../shared/nav'
-import { BUILD_STAGE_ID, targetForBuildView, targetForStage } from '../shared/nav'
+import { BUILD_STAGE_ID, homeFor, targetForBuildView, targetForHome, targetForStage } from '../shared/nav'
 import { slateToBoardRow } from '../shared/sprintModel'
+import type { IntentMatch } from './palette/intents'
 import { consoleStore } from './stores/consoleStore'
 import { dirtyStore } from './stores/dirtyStore'
 import { backlogStore } from './stores/backlogStore'
@@ -29,10 +30,10 @@ import { WelcomeScreen } from './components/WelcomeScreen'
 import { SetupFlow } from './components/SetupFlow'
 import { Frame, type FrameShellHooks } from './components/Frame'
 import { ShortcutsHelp } from './components/ShortcutsHelp'
-import { StageHome } from './components/StageHome'
+import { LifecycleHome } from './components/LifecycleHome'
 import { DocumentView } from './components/DocumentView'
 import { BuildBoard } from './components/BuildBoard'
-import { SprintScreen } from './components/SprintBoard'
+import { SprintHome } from './components/SprintHome'
 import { SpecStatusView } from './components/SpecStatusView'
 import { OpeningOverlay } from './components/OpeningOverlay'
 
@@ -44,6 +45,28 @@ const HandoffDialog = lazy(() => import('./components/HandoffDialog').then((m) =
 const SettingsScreen = lazy(() => import('./components/SettingsScreen').then((m) => ({ default: m.SettingsScreen })))
 const ExplainViews = lazy(() => import('./components/ExplainViews').then((m) => ({ default: m.ExplainViews })))
 const FeatureCompleteScreen = lazy(() => import('./components/FeatureCompleteScreen').then((m) => ({ default: m.FeatureCompleteScreen })))
+// The omnibar's dialog (togo-command-center.md §3.6): opened by a matched verb, never at rest.
+const VerbDialog = lazy(() => import('./components/VerbDialog').then((m) => ({ default: m.VerbDialog })))
+// The command center's other screens (§3.2, §3.3, §3.5) — each its own chunk; the sprint home is
+// the default in Build and stays in the main chunk.
+const Planning = lazy(() => import('./components/planning/Planning').then((m) => ({ default: m.Planning })))
+const SpecCard = lazy(() => import('./components/SpecCard/SpecCard').then((m) => ({ default: m.SpecCard })))
+const SprintClose = lazy(() => import('./components/SprintClose').then((m) => ({ default: m.SprintClose })))
+const SteeringMode = lazy(() => import('./components/SteeringMode').then((m) => ({ default: m.SteeringMode })))
+
+/** The one read model (§2.3), when this build's bridge has it. The main process assembles it;
+ * the renderer only asks. Null on a bridge without `getCommandCenter` (an older preload) or when
+ * the read itself failed — then every element that reads it shows "no data", never a zero. */
+async function readCommandCenter(projectPath: string, refresh = false): Promise<CommandCenter | null> {
+  const studio = window.studio as Partial<typeof window.studio>
+  if (typeof studio.getCommandCenter !== 'function') return null
+  try {
+    // `refresh` is "Refresh this screen": main drops its cache for the project and re-reads.
+    return await studio.getCommandCenter(projectPath, undefined, refresh || undefined)
+  } catch {
+    return null
+  }
+}
 
 /** What a lazy screen shows for the few ms its chunk takes: a bare paragraph, no wrapper — so
  * `main.firstElementChild` is still a screen-shaped root (workflow.spec:191) and nothing styled
@@ -138,12 +161,13 @@ function navigationAnnouncement(args: {
     }
     return stages.find((s) => s.id === stageId)?.display ?? 'Stage'
   }
-  if (area === 'build' || area === 'sprint') {
+  if (area === 'build' || area === 'sprint' || area === 'planning') {
     if (openSpec && handingOff) return `Hand off spec ${openSpec.spec}`
     if (openSpec) return `Spec ${openSpec.spec}`
-    return area === 'build' ? 'Board' : 'Sprint'
+    return area === 'build' ? 'Board' : area === 'planning' ? 'Planning' : 'Sprint home'
   }
   if (area === 'explain') return 'How it is going'
+  if (area === 'steering') return 'Steering mode'
   if (area === 'closing') return 'Closing'
   return 'Settings'
 }
@@ -258,6 +282,30 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
    * hand-off is a decision taken FROM a spec, not a different place in the app. */
   const [openSpec, setOpenSpec] = useState<BoardRow | null>(null)
   const [handingOff, setHandingOff] = useState(false)
+  /** The command center's read model (togo-command-center.md §2.3): read once per project open
+   * and again after every exit 0 — never on a timer. The shell's chip and the strip's Build
+   * station read it; the sprint home runs its own read of the same cached document. */
+  const [commandCenter, setCommandCenter] = useState<CommandCenter | null>(null)
+  /** The omnibar verb awaiting Confirm (§3.6); the dialog is mounted only while one is. */
+  const [verbIntent, setVerbIntent] = useState<IntentMatch | null>(null)
+  /** Bumped after every exit 0 this component learns of (the omnibar's dialog, a needs-you action,
+   * "Refresh this screen") — AFTER the command center has been re-read, so the screens' own
+   * re-reads find the refreshed document. Nothing on screen moves before that (§2.4). */
+  const [refreshKey, setRefreshKey] = useState(0)
+  /** The spec this person just handed off with exit 0: the sprint home plays the baton once the
+   * refreshed read holds it (§4 #30). */
+  const [handedOff, setHandedOff] = useState<string | null>(null)
+  /** The control that opened the spec card (a lane card, a Refining row), so Back / Esc hand focus
+   * back to it when the home returns (§3.3). */
+  const [specOpener, setSpecOpener] = useState<{ spec: string; where: 'lane' | 'refining'; seq: number } | null>(null)
+  const openSeq = useRef(0)
+  /** Where steering mode was entered from: `Esc` leaves, back to that screen (§3.5). */
+  const steeringFrom = useRef<Area>('sprint')
+  // The spec card opens at the top of <main>, wherever the home was scrolled to.
+  useEffect(() => {
+    if (openSpec && (area === 'sprint' || area === 'planning')) document.getElementById('main')?.scrollTo({ top: 0 })
+  }, [openSpec, area])
+  const areaRef = useRef<Area>('documents')
   /** A Settings section the palette asked for; scrolled to once Settings has mounted it. */
   const [pendingAnchor, setPendingAnchor] = useState<SettingsAnchor | null>(null)
   /** The last tooling report, kept for one derived fact: whether the installed Claude Code
@@ -345,11 +393,22 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
         // the last project showed (§4 #11). Belt and braces with the per-project id scoping in
         // `useCountUp` — this clears the memory, that keeps the ids apart even if it did not.
         valueMemory.clear()
+        // The home is chosen ONCE per open (togo-command-center.md §1): the sprint home iff the
+        // project is in Build AND the plugin declares `sprint-status`; the lifecycle home
+        // otherwise. The capabilities come from the command-center read, awaited here so the
+        // choice is made on facts, not on a guess that a later read would overturn.
+        const cc = await readCommandCenter(projectPath)
+        const currentStageId = result.status.stages.find((s) => s.stage_state === 'current')?.id ?? result.status.current_phase?.id ?? null
+        const home = homeFor(result.status, cc?.sprint.data ? { hasData: cc.sprint.data.hasData } : null, cc?.capabilities ?? null)
+        const landing = targetForHome(home, currentStageId)
+        setCommandCenter(cc)
         setScreen({ kind: 'project', status: result.status, projectPath })
         setOpenDoc(null)
         setOpenSpec(null)
         setHandingOff(false)
-        setArea('documents')
+        setVerbIntent(null)
+        setArea(landing.area)
+        // The lifecycle home opens on the project's current stage — the same default as before.
         setViewedStageId(undefined)
         connectionStore.clear()
         window.studio.getConnectionInfo(projectPath).then((info) => {
@@ -388,6 +447,16 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     }
   }, [screen])
 
+  /** After an exit 0 (§2.4): re-run the P-class reads this component holds — the command center
+   * and the status — never before. Nothing on screen moves until both have landed. `refresh` is
+   * the explicit "Refresh this screen": main drops its cache first. The screens re-read on
+   * `refreshKey`, bumped only once the document is in hand. */
+  const refreshCommandCenter = useCallback(async (refresh = false) => {
+    if (screen.kind !== 'project') return
+    setCommandCenter(await readCommandCenter(screen.projectPath, refresh))
+    setRefreshKey((k) => k + 1)
+  }, [screen])
+
   const handleOverride = useCallback(
     async (kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh' | 'az', path: string) => {
       await window.studio.setToolOverride(kind, path)
@@ -402,18 +471,65 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
   // function identity every time something unrelated in this component changes. Everything it
   // touches is a state setter, which React already keeps stable.
   const handleNavigate = useCallback((target: NavTarget) => {
+    // Steering remembers the screen it was entered from, so `Esc` returns there (§3.5).
+    if (target.area === 'steering' && areaRef.current !== 'steering') steeringFrom.current = areaRef.current
     setArea(target.area)
     if (target.area === 'documents') {
       setOpenDoc(null)
       setShowHistory(false)
       setViewedStageId(target.stageId)
     }
-    if (target.area === 'build' || target.area === 'sprint') {
-      // Choosing Board or Sprint again returns to the list, not to whichever spec was open.
+    if (target.area === 'build' || target.area === 'sprint' || target.area === 'planning') {
+      // Choosing Board, Home or Planning again returns to the list, not to whichever spec was open.
       setOpenSpec(null)
+      setSpecOpener(null)
       setHandingOff(false)
     }
   }, [])
+
+  /** A spec opened from the sprint home or planning (§3.3): remembers the opener so focus can
+   * return to it — a lane card, or a Refining row's "refine in place →" — and opens the card. */
+  const openSpecFromHome = useCallback((row: BoardRow) => {
+    const el = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null
+    const where = el?.closest('[data-lane-card]') ? 'lane' : el?.closest('[data-testid="refining-row"]') ? 'refining' : null
+    openSeq.current += 1
+    setSpecOpener(where ? { spec: row.spec, where, seq: openSeq.current } : null)
+    setHandingOff(false)
+    setOpenSpec(row)
+  }, [])
+
+  /** `h` on a lane card, the facts rail's slot, the omnibar's "hand NNNN to NAME": the sprint
+   * layer's hand-off (`sprint.py handoff`, the baton), through the dialog — the recipient is
+   * picked from the roster there; no free text reaches `--to`. */
+  const openSprintVerb = useCallback((verb: SprintVerb, row: BoardRow) => {
+    if (verb === 'handoff') {
+      setVerbIntent({
+        intent: { kind: 'sprint', request: { verb: 'handoff', spec: row.spec, to: '' } },
+        title: `Hand off ${row.spec}`,
+        subtitle: 'sprint.py handoff — the baton passes to a person on the roster; the plugin checks they are a person and the spec is in the sprint',
+      })
+    } else if (verb === 'ack') {
+      setVerbIntent({ intent: { kind: 'sprint', request: { verb: 'ack', spec: row.spec } }, title: `Acknowledge the hand-off of ${row.spec}`, subtitle: 'sprint.py ack — recorded against you' })
+    } else if (verb === 'unslate') {
+      setVerbIntent({ intent: { kind: 'sprint', request: { verb: 'unslate', spec: row.spec, reason: '' } }, title: `Take ${row.spec} off the slate`, subtitle: 'sprint.py unslate — the reason goes in the ledger line' })
+    }
+  }, [])
+
+  /** The `new` sprint dialog; `suggestedId` ("S09" after "S08") pre-fills the id field only. */
+  const openNewSprint = useCallback((suggestedId?: string) => {
+    setVerbIntent({ intent: { kind: 'new-sprint', sprint: suggestedId }, title: 'New sprint', subtitle: 'sprint.py new — id, goal, start, length and target, recorded against you' })
+  }, [])
+
+  /** "pull NNNN" on a slated, READY spec (and a needs-you hand-off row): the existing hand-off
+   * flow for that spec, from the rows the Board or the sprint already fetched. */
+  const openHandOffFor = useCallback((specId: string) => {
+    const row = backlogStore.rows.find((r) => r.spec === specId)
+      ?? (() => { const s = backlogStore.slate.find((r) => r.id === specId); return s ? slateToBoardRow(s) : undefined })()
+    if (!row) { handleNavigate({ area: 'build' }); return }
+    setArea((a) => (a === 'sprint' ? a : 'build'))
+    setOpenSpec(row)
+    setHandingOff(true)
+  }, [handleNavigate])
 
   // --- palette landings: the row opens the item, not just its area --------------------------------
 
@@ -453,6 +569,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
   // --- shell wiring: shortcuts, Esc back, focus, announcement -------------------------------------
 
   const inProject = screen.kind === 'project'
+  areaRef.current = area
   const stages = inProject ? screen.status.stages : null
   const currentStageId = stages?.find((s) => s.stage_state === 'current')?.id
   // Which screen is actually in <main>: the digit shortcuts and the Spine rows exist only on the
@@ -468,17 +585,23 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
   // list or stage home is showing — there is nothing behind it to go back to.
   const back = useMemo<(() => void) | undefined>(() => {
     if (!inProject) return undefined
-    if (area === 'build' || area === 'sprint') {
+    if (area === 'build' || area === 'sprint' || area === 'planning') {
       if (handingOff) return () => setHandingOff(false)
       if (openSpec) return () => setOpenSpec(null)
       return undefined
     }
+    // Steering mode: Esc leaves (§3.5), back to the screen it was entered from.
+    if (area === 'steering') return () => setArea(steeringFrom.current)
     if (area === 'documents' && openDoc) {
       return showHistory ? () => setShowHistory(false) : () => setOpenDoc(null)
     }
     return undefined
   }, [inProject, area, handingOff, openSpec, openDoc, showHistory])
 
+  const openIntent = useCallback((match: IntentMatch) => setVerbIntent(match), [])
+  // "Refresh this screen" (the palette): the one explicit re-read — main drops its cache, then
+  // every screen re-reads. On the stage home Frame routes the row to the readiness refresh instead.
+  const refreshScreen = useCallback(() => { void refreshCommandCenter(true) }, [refreshCommandCenter])
   const shell = useMemo<FrameShellHooks>(() => ({
     openSpec: openSpecByPath,
     openDocument: openDocumentAt,
@@ -486,12 +609,19 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     back,
     stageHomeShowing,
     sprintShowing,
-  }), [openSpecByPath, openDocumentAt, openSettingsAt, back, stageHomeShowing, sprintShowing])
+    refreshScreen,
+    openIntent,
+    newProject: startNewProject,
+    openFolder: handlePickFolder,
+  }), [openSpecByPath, openDocumentAt, openSettingsAt, back, stageHomeShowing, sprintShowing, refreshScreen, openIntent, startNewProject, handlePickFolder])
 
   useShortcuts({
     handlers: {
       stageTab: (tab) => stageTabStore.request(tab),
       goBuildView: (view) => handleNavigate(targetForBuildView(view)),
+      // `g l` the lifecycle home (`g s`, the sprint home, arrives as the `sprint` build view).
+      goHome: (home) => handleNavigate(targetForHome(home, currentStageId ?? null)),
+      steering: () => handleNavigate({ area: 'steering' }),
       goStage: (stageId) => { if (stages?.some((s) => s.id === stageId)) handleNavigate(targetForStage(stageId)) },
       stepStage: (delta) => {
         if (!stages || keyboardStageId === undefined) return
@@ -633,9 +763,32 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
         area={area}
         viewedStageId={viewedStageId}
         actor={actor}
+        commandCenter={commandCenter}
+        steering={area === 'steering'}
         onNavigate={handleNavigate}
         shell={shell}
       >
+        {/* The omnibar's dialog (§3.6): mounted only while a verb awaits Confirm; portalled, so
+            `<main>`'s first child stays the screen. After an exit 0 the reads this component holds
+            are re-run — never before. */}
+        {verbIntent && (
+          <Suspense fallback={null}>
+            <VerbDialog
+              projectPath={projectPath}
+              match={verbIntent}
+              roster={(commandCenter?.roster.data?.people ?? []).map((p) => ({ handle: p.handle, name: p.name ?? p.handle, team: p.team }))}
+              capabilities={commandCenter?.capabilities ?? null}
+              onClose={() => setVerbIntent(null)}
+              onDone={() => {
+                // The baton plays for THIS person's hand-off only, once the refreshed read holds it.
+                if (verbIntent.intent.kind === 'sprint' && verbIntent.intent.request.verb === 'handoff') setHandedOff(verbIntent.intent.request.spec)
+                void refreshCommandCenter(); void refreshStatus()
+              }}
+              onHandOff={openHandOffFor}
+              onNavigate={handleNavigate}
+            />
+          </Suspense>
+        )}
         {/* Inline, never also a toast (§6.6): a hard error stays where the reader can re-read it.
             Rendered only while one stands, so the screen root is still `<main>`'s first child. */}
         {error && (
@@ -647,27 +800,50 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             right now, in the §7.1 sentence. Same placement rule as the error above — rendered
             only while there is something to say and not yet dismissed. The Board and a spec
             page carry their own host notice, so the banner steps aside there: one sentence per screen. */}
-        {!dismissedHostNotice.has(projectPath) && area !== 'build' && !openSpec && (
+        {!dismissedHostNotice.has(projectPath) && area !== 'build' && area !== 'steering' && !openSpec && (
           <CodeHostNotice
             connection={connection}
             onDismiss={() => setDismissedHostNotice((prev) => new Set(prev).add(projectPath))}
           />
         )}
         {area === 'closing' ? (
+          // Closing (§3.5): the sprint's close screen above the unchanged FeatureCompleteScreen
+          // while a sprint is active (the command center's own read says so); the declaration
+          // screen alone otherwise.
           <Suspense fallback={OPENING}>
-            <FeatureCompleteScreen
-              projectPath={projectPath}
-              actor={actor}
-              status={status}
-              onNavigate={handleNavigate}
-              buildStage={status.stages.find((s) => s.id === 'build') ?? null}
-            />
+            {commandCenter?.sprint.data?.sprint ? (
+              <SprintClose projectPath={projectPath} refreshKey={refreshKey} onNewSprint={openNewSprint}>
+                <FeatureCompleteScreen
+                  projectPath={projectPath}
+                  actor={actor}
+                  status={status}
+                  onNavigate={handleNavigate}
+                  buildStage={status.stages.find((s) => s.id === 'build') ?? null}
+                  embedded
+                />
+              </SprintClose>
+            ) : (
+              <FeatureCompleteScreen
+                projectPath={projectPath}
+                actor={actor}
+                status={status}
+                onNavigate={handleNavigate}
+                buildStage={status.stages.find((s) => s.id === 'build') ?? null}
+              />
+            )}
+          </Suspense>
+        ) : area === 'steering' ? (
+          // Steering mode (§3.5): the read-only view of "How it is going" for a committee. The
+          // Frame hides the chat and the console and withdraws the omnibar's verbs; the screen
+          // has no write control of its own; `Esc` returns to the screen it was entered from.
+          <Suspense fallback={OPENING}>
+            <SteeringMode projectPath={projectPath} sprintId={commandCenter?.sprint.data?.sprint?.id ?? null} onExit={() => setArea(steeringFrom.current)} />
           </Suspense>
         ) : area === 'explain' ? (
           <Suspense fallback={OPENING}><ExplainViews projectPath={projectPath} /></Suspense>
         ) : area === 'settings' ? (
           <Suspense fallback={OPENING}><SettingsScreen projectPath={projectPath} actor={actor} connection={connection} /></Suspense>
-        ) : area === 'build' || area === 'sprint' ? (
+        ) : area === 'build' || area === 'sprint' || area === 'planning' ? (
           // A spec opened from the sprint's slate is the same spec view the board opens, and
           // Back returns to wherever it was opened from.
           handingOff && openSpec ? (
@@ -684,28 +860,87 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
                 }}
               />
             </Suspense>
-          ) : openSpec ? (
-            <SpecStatusView
-              key={openSpec.spec}
-              projectPath={projectPath}
-              row={openSpec}
-              onBack={() => setOpenSpec(null)}
-              onHandOff={() => setHandingOff(true)}
-              // I7: a node in the spec's dependency neighbourhood opens that spec in this same
-              // view (the key remounts it); Back still returns to wherever the first one came from.
-              onOpenSpec={(next) => {
-                setHandingOff(false)
-                setOpenSpec(next)
-              }}
-            />
-          ) : area === 'sprint' ? (
-            <SprintScreen
-              projectPath={projectPath}
-              onOpenSpec={(row) => {
-                setHandingOff(false)
-                setOpenSpec(row)
-              }}
-            />
+          ) : openSpec && area === 'build' ? (
+            // One object, one screen (§3.3): the Board's row opens the same spec card the lanes
+            // open, with the old view's facts rail and neighbourhood folded into it. The legacy
+            // SpecStatusView remains only for a plugin whose command-center read never landed.
+            commandCenter ? (
+              <Suspense fallback={OPENING}>
+                <SpecCard
+                  key={openSpec.spec}
+                  projectPath={projectPath}
+                  row={openSpec}
+                  roster={commandCenter.roster.data?.people ?? null}
+                  capabilities={commandCenter.capabilities}
+                  actor={commandCenter.actor}
+                  onBack={() => setOpenSpec(null)}
+                  onHandOff={() => setHandingOff(true)}
+                  onVerb={openSprintVerb}
+                  // I7: a neighbour opens in this same card (the key remounts it); Back still
+                  // returns to the Board.
+                  onOpenSpec={(next) => {
+                    setHandingOff(false)
+                    setOpenSpec(next)
+                  }}
+                />
+              </Suspense>
+            ) : (
+              <SpecStatusView
+                key={openSpec.spec}
+                projectPath={projectPath}
+                row={openSpec}
+                capabilities={undefined}
+                actor={null}
+                onVerb={openSprintVerb}
+                onBack={() => setOpenSpec(null)}
+                onHandOff={() => setHandingOff(true)}
+                onOpenSpec={(next) => {
+                  setHandingOff(false)
+                  setOpenSpec(next)
+                }}
+              />
+            )
+          ) : area === 'sprint' || area === 'planning' ? (
+            // The sprint home (§3.1) or planning (§3.2), with the spec card (§3.3) opened IN PLACE
+            // over it: the home stays mounted beneath — out of flow, invisible and inert while the
+            // card shows — so Back / Esc return to the very DOM that opened it and the opener takes
+            // focus again at once, with no re-read. `h` and the slate's slots open the dialog; every
+            // write re-reads before anything moves.
+            <div className="relative">
+              <div className={openSpec ? 'invisible absolute inset-x-0 top-0 h-0 overflow-hidden' : undefined} inert={openSpec ? true : undefined} aria-hidden={openSpec ? true : undefined}>
+                {area === 'planning' ? (
+                  <Suspense fallback={OPENING}>
+                    <Planning projectPath={projectPath} onOpenSpec={openSpecFromHome} onNewSprint={() => openNewSprint()} onIntent={openIntent} refreshKey={refreshKey} />
+                  </Suspense>
+                ) : (
+                  <SprintHome
+                    projectPath={projectPath}
+                    onOpenSpec={openSpecFromHome}
+                    onHandOff={(row) => openSprintVerb('handoff', row)}
+                    onNewSprint={() => openNewSprint()}
+                    handedOff={handedOff}
+                    refreshKey={refreshKey}
+                    focusBack={openSpec ? null : specOpener}
+                  />
+                )}
+              </div>
+              {openSpec && (
+                <Suspense fallback={OPENING}>
+                  <SpecCard
+                    key={openSpec.spec}
+                    projectPath={projectPath}
+                    row={openSpec}
+                    roster={commandCenter?.roster.data?.people ?? null}
+                    capabilities={commandCenter?.capabilities}
+                    actor={commandCenter?.actor ?? null}
+                    onBack={() => setOpenSpec(null)}
+                    onHandOff={() => setHandingOff(true)}
+                    onVerb={openSprintVerb}
+                    onOpenSpec={(next) => { setHandingOff(false); setOpenSpec(next) }}
+                  />
+                </Suspense>
+              )}
+            </div>
           ) : (
             <BuildBoard
               projectPath={projectPath}
@@ -740,19 +975,31 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             onOpenDocument={(next) => openDocumentAt(next, viewedStageId)}
           />
         ) : (
-          <StageHome
+          // The lifecycle home (§3.4): StageHome with the Today column beside it.
+          <LifecycleHome
             projectPath={projectPath}
             stageId={viewedStageId}
             status={status}
+            commandCenter={commandCenter}
             onNavigate={handleNavigate}
             actor={actor}
             setOpening={setOpening}
-            onSignedOff={refreshStatus}
+            onSignedOff={() => { void refreshStatus(); void refreshCommandCenter() }}
             onGoToClosing={() => setArea('closing')}
             onOpenDocument={(relPath, focus) => {
               setShowHistory(false)
               setOpenDocFocus(focus)
               setOpenDoc(relPath)
+            }}
+            onNeedsYou={(item) => {
+              // One action per item (§2.3): the verb the item names, through the dialog.
+              if (item.kind === 'ack' && item.spec) setVerbIntent({ intent: { kind: 'sprint', request: { verb: 'ack', spec: item.spec } }, title: `ack ${item.spec}`, subtitle: item.text })
+              else if (item.kind === 'confirm-tier' && item.spec) {
+                const row = backlogStore.rows.find((r) => r.spec === item.spec)
+                if (row) setVerbIntent({ intent: { kind: 'confirm-tier', spec: row.spec, path: row.path }, title: `confirm tier ${row.spec}`, subtitle: item.text })
+                else handleNavigate({ area: 'sprint' })
+              } else if (item.kind === 'review' && item.spec) openSpecByPath(backlogStore.rows.find((r) => r.spec === item.spec)?.path ?? '')
+              else handleNavigate({ area: 'sprint' })
             }}
           />
         )}

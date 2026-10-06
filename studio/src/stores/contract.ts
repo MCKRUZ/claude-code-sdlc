@@ -69,3 +69,18 @@ export interface SpineStore extends ExternalStore<SpineSnapshot> {
   hover: string | null
   setHover(stageId: string | null): void
 }
+
+// --- room (togo-command-center.md §3.1 "In the room") ------------------------------------------
+
+/** `{ litHandle }`: the roster person whose chip is hovered or focused in "In the room". Cards on
+ * the lanes whose `owner`/`developer`/`checker`/`nextOwner` is the same person (`identity.
+ * samePerson`) carry `data-lit`; everyone else dims — decoration only, never a filter. Written by
+ * `InTheRoom`, read by `LaneCard` and the Refining rows. Hover state, nothing more; no IPC. */
+export interface RoomSnapshot {
+  litHandle: string | null
+}
+
+export interface RoomStore extends ExternalStore<RoomSnapshot> {
+  litHandle: string | null
+  setLit(handle: string | null): void
+}

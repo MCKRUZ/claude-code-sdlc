@@ -2,7 +2,7 @@
 // rendered markup reads `<button type="button" disabled="">` (workflowTab.test.ts:218 compares
 // attribute order), and the primary variant spells out `bg-brand-600` literally
 // (board.spec.ts:127,148 locates it by class). Everything else is a plain variant table.
-import { forwardRef } from 'react'
+import { forwardRef, useId } from 'react'
 import { Loader2 } from 'lucide-react'
 import type { ButtonProps, ButtonVariant, ControlSize } from './contract'
 import { cn } from './cn'
@@ -51,12 +51,14 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   ref,
 ) {
   const isDisabled = Boolean(disabled || loading)
+  // The reason's element id, so the disabled control is DESCRIBED by its reason (aria-describedby).
+  const reasonId = useId()
   return (
     <button
       type={type}
       disabled={isDisabled}
       aria-busy={loading || undefined}
-      {...disabledReasonProps(disabledReason, disabled)}
+      {...disabledReasonProps(disabledReason, disabled, reasonId)}
       ref={ref}
       className={cn(BUTTON_BASE, BUTTON_VARIANT[variant], BUTTON_SIZE[size], block && 'flex w-full', className)}
       {...rest}
@@ -64,7 +66,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {loading ? <Icon icon={Loader2} size={14} className="animate-spin" /> : icon ? <Icon icon={icon} size={14} /> : null}
       {loading && loadingLabel ? loadingLabel : children}
       {!loading && iconEnd ? <Icon icon={iconEnd} size={14} /> : null}
-      <DisabledReason reason={disabledReason} disabled={disabled} />
+      <DisabledReason reason={disabledReason} disabled={disabled} id={reasonId} />
     </button>
   )
 })

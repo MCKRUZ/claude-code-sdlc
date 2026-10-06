@@ -8,6 +8,7 @@ import { enabled as motionEnabled, motion, reduced as motionReduced } from '../m
 import { useStudioGSAP } from '../motion/useStudioGSAP'
 import { Button, Card, Chip, EYEBROW_CLASS, EmptyState, IconButton, Notice, Textarea, cn } from '../ui'
 import { useRegisterDirty } from '../stores/dirtyStore'
+import { chatTurnStore } from '../stores/chatTurnStore'
 import { AiProposalCard } from './AiProposalCard'
 import { ChatActivityLine } from './ChatActivityLine'
 import { ChatResizeHandle } from './ChatResizeHandle'
@@ -22,7 +23,7 @@ import { useClaudeIssue } from './ClaudeIssueContext'
  * `max-h-[35vh]` / `sm:max-h-none`, chatLook pins the exact 380 px width on double-click (so no
  * width transition), and Frame's assemble choreography (§4 #2) moves the INNER wrapper
  * (`[data-chat-inner]`), never this element. */
-const ASIDE_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-[var(--chat-width)]'
+const ASIDE_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-line-1 bg-surface-1 sm:max-h-none sm:w-[var(--chat-width)]'
 
 /** Why Stop is greyed: there is no cancel verb for a chat turn yet, and a button that looked
  * live would promise one. Said in the person's words, not the backlog's (C5). */
@@ -121,9 +122,11 @@ export function ChatPanel({
       setState(loaded)
       if (loaded.messages.length === 0) {
         setBusy(true)
+        chatTurnStore.publish(projectPath, stageId, 'running')
         const result = await window.studio.ensureChatStarted(projectPath, stageId)
         if (cancelled) return // a stale reply for a stage the person already navigated away from
         setBusy(false)
+        chatTurnStore.publish(projectPath, stageId, result.ok ? 'ended' : 'failed')
         if (!result.ok) setError(result.error ?? 'The assistant could not start.')
         setState(result.state)
       }
@@ -141,6 +144,7 @@ export function ChatPanel({
       // resetting it here too, `busy` stays stuck true forever for this stage: the composer
       // (bound to `disabled={busy}`) never re-enables, even once the error below is showing.
       setBusy(false)
+      chatTurnStore.publish(projectPath, stageId, 'failed')
       setError(err instanceof Error ? err.message : 'The assistant could not start.')
       // Finding #4 (PR #76 round 2): without this, `state` stays null forever once this half
       // settles below — ChatMessageList's `state === null` check keeps rendering "Starting the
@@ -217,7 +221,9 @@ export function ChatPanel({
     const forStage = stageId
     setBusy(true)
     setError(null)
+    chatTurnStore.publish(projectPath, stageId, 'running')
     const result = await window.studio.sendChatMessage(projectPath, stageId, text)
+    chatTurnStore.publish(projectPath, forStage, result.ok ? 'ended' : 'failed')
     if (currentStageId.current !== forStage) return { sent: true } // the person moved on; this reply is now stale
     setBusy(false)
     // Always render the result, success or failure: on failure, `result.state` still carries
@@ -247,7 +253,9 @@ export function ChatPanel({
     const forStage = stageId
     setBusy(true)
     setError(null)
+    chatTurnStore.publish(projectPath, stageId, 'running')
     const result = await window.studio.answerChatQuestion(projectPath, stageId, questionId, option)
+    chatTurnStore.publish(projectPath, forStage, result.ok ? 'ended' : 'failed')
     if (currentStageId.current !== forStage) return
     setBusy(false)
     setState(result.state)
@@ -258,7 +266,9 @@ export function ChatPanel({
     const forStage = stageId
     setBusy(true)
     setError(null)
+    chatTurnStore.publish(projectPath, stageId, 'running')
     const result = await window.studio.resolveChatProposal(projectPath, stageId, proposalId, outcome, finalValue, actor || 'unknown')
+    chatTurnStore.publish(projectPath, forStage, result.ok ? 'ended' : 'failed')
     if (currentStageId.current !== forStage) return
     setBusy(false)
     setState(result.state)
@@ -410,6 +420,16 @@ function ChatEmptyState({ startError, stageDisplay }: {
   stageDisplay: string | null
 }) {
   const facts = [stageDisplay, 'read-only until you accept a proposal'].filter((f): f is string => Boolean(f))
+  if (startError) {
+    // A failed start is a quiet fact, not a hero: one small block in `ink-3` with the host's words
+    // in their own span and the retry hint — the same sentences, no figure (fixer round, v11).
+    return (
+      <div data-testid="chat-empty-state" className="px-1 py-2 text-xs leading-4 text-ink-3">
+        <p><span className="font-medium text-ink-2">The assistant could not start.</span>{' '}<span>{startError}</span> Type a message to try again, or open a document to edit it directly.</p>
+        <span className="mt-1.5 block" data-testid="chat-empty-facts">{facts.join(' · ')}</span>
+      </div>
+    )
+  }
   return (
     <EmptyState
       figure="conversation"

@@ -6,7 +6,7 @@ import {
   daysWaiting, filterBoard, groupBoard, isOverdue, rolesFor, samePerson, teamLoad,
 } from '../../shared/boardModel'
 import { formatRelative } from '../../shared/format'
-import { statusTone } from '../../shared/sprintModel'
+import { riskTone, statusTone } from '../../shared/sprintModel'
 import {
   Button, Card, Chip, Disclosure, EmptyState, Eyebrow, Field, HoverCard, Input, Notice, PageHeader, Segmented, Select,
   SkeletonRows, VisuallyHidden, cn,
@@ -37,8 +37,11 @@ const ROW_SELECTOR = '[data-flip-id^="spec:"]'
 type Surface = 'list' | 'graph'
 
 /** The row grid (S6): id · title + people · risk · status · where it is + last moved · mine.
- * One template for every row so the columns line up down the whole board. */
-const ROW_GRID = 'grid w-full grid-cols-[3.5rem_minmax(0,1fr)_4.25rem_5.75rem_minmax(0,11rem)_auto] items-start gap-x-4 px-4 py-2.5 text-left hover:bg-surface-2'
+ * One template for every row so the columns line up down the whole board — every track FIXED or
+ * flexible-by-the-same-rule: the last column (the "mine" chip, present on some rows only) was
+ * `auto`, so a row without it squeezed its tracks ~55 px left of its neighbours' (the v11 board
+ * shot). A fixed 5.5rem keeps every row on the same tracks. */
+export const ROW_GRID = 'grid w-full grid-cols-[3.5rem_minmax(0,1fr)_4.25rem_5.75rem_minmax(0,11rem)_5.5rem] items-start gap-x-4 px-4 py-2.5 text-left hover:bg-surface-2'
 
 /** Every spec, across every team (spec 0011).
  *
@@ -192,8 +195,10 @@ export function BuildBoard({
         // Every row is still here — an empty board would read as "there is no work", which is
         // a different claim from "we could not reach the code host". ONE line: the headline, the
         // §7.1 reason, the host's own words behind an inline disclosure (G4-10), and the
-        // team-load chips on the right, so the notice and the facts share a row.
-        <Notice tone="warn" actions={teamChips ?? undefined}>
+        // team-load chips on the right, so the notice and the facts share a row. The INFO tone
+        // (visual §8 #4): amber is a measured wait or a mix warning; an unreachable host is a
+        // degraded read — information, said once, never an alarm.
+        <Notice tone="info" role="status" data-testid="code-host-degraded" actions={teamChips ?? undefined}>
           <span className="font-medium">Showing what the spec files say.</span>{' '}
           {codeHostDownReason}
           {board.error && (
@@ -414,7 +419,7 @@ function SpecRow({
               </span>
             </span>
             <span>
-              {row.risk && <Chip tone="mono" size="xs" casing="identifier">{row.risk}</Chip>}
+              {row.risk && <Chip tone={riskTone(row.risk)} size="xs" casing="identifier">{row.risk}</Chip>}
             </span>
             <span>
               <Chip tone={statusTone(row.status)} size="xs" casing="state" data-testid="spec-status-chip">
@@ -457,7 +462,7 @@ function SpecHoverContent({ row, account }: { row: BoardRow; account: string | n
       </span>
       <span className="flex flex-wrap items-center gap-1">
         <Chip tone={statusTone(row.status)} casing="state" dot>{row.status || 'no status'}</Chip>
-        {row.risk && <Chip tone="mono" casing="identifier">{row.risk}</Chip>}
+        {row.risk && <Chip tone={riskTone(row.risk)} casing="identifier">{row.risk}</Chip>}
         {row.team && <Chip tone="neutral">{row.team}</Chip>}
         {row.sprint && <Chip tone="mono" casing="identifier">{row.sprint}</Chip>}
       </span>

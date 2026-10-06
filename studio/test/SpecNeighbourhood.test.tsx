@@ -47,6 +47,11 @@ describe('SpecNeighbourhood', () => {
     expect(ghost.getAttribute('title')).toContain('Open the Board once')
     expect(screen.getByRole('button', { name: 'Spec 0008: Claim export' }).getAttribute('title')).toBe('This is the spec you are reading.')
     expect(figure.querySelector('figcaption')?.textContent).toContain('Size is the risk tier')
+    // The legend names what colour means and what the ring means — colour is never the only signal.
+    expect(figure.querySelector('figcaption')?.textContent).toMatch(/colour is the plugin's status word/)
+    expect(figure.querySelector('figcaption')?.textContent).toMatch(/dashed amber ring is its NOT READY/)
+    // Labels are two lines (id, then name), never truncated.
+    expect(figure.querySelector('button span.truncate')).toBeNull()
   })
 
   it('without an opener every body is drawn but none opens, each with its reason', () => {

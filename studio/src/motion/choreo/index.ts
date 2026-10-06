@@ -33,6 +33,11 @@ export { handoffCeremony, type HandoffCeremonyRefs } from './handoffCeremony' //
 export { edgeDraw, type EdgeDrawRefs } from './edgeDraw' // #27
 export { spineCollapse, type SpineCollapseRefs } from './spineCollapse' // #28
 export { sceneCrossfade, type SceneCrossfadeRefs } from './sceneCrossfade' // #29
+// Command-center rows (togo-command-center.md §4). P0 placeholders with frozen names, ref shapes
+// and gates; P5 (#30, #31) and P4 (#32) replace the bodies.
+export { batonPass, batonPassDue, type BatonPassRefs } from './batonPass' // #30
+export { verdictSeal, verdictSealDraws, type VerdictSealRefs } from './verdictSeal' // #31
+export { stripDraw, stripDrawPlays, type StripDrawRefs } from './stripDraw' // #32
 
 import type { Choreo } from '../contract'
 import { welcomeOpen } from './welcomeOpen'
@@ -64,10 +69,15 @@ import { handoffCeremony } from './handoffCeremony'
 import { edgeDraw } from './edgeDraw'
 import { spineCollapse } from './spineCollapse'
 import { sceneCrossfade } from './sceneCrossfade'
+import { batonPass } from './batonPass'
+import { verdictSeal } from './verdictSeal'
+import { stripDraw } from './stripDraw'
 
-/** The number of rows, asserted once in `test/motion/catalogue.test.ts`: §4.2's 25 plus the
- * four round-2 rows (#26 hand-off, #27 edge draw, #28 spine collapse, #29 scene crossfade). */
-export const CATALOGUE_ROWS = 29
+/** The number of rows, asserted once in `test/motion/catalogue.test.ts`: §4.2's 25, the four
+ * round-2 rows (#26 hand-off, #27 edge draw, #28 spine collapse, #29 scene crossfade) and the
+ * three command-center rows (#30 baton pass, #31 verdict seal, #32 strip draw — the one recorded
+ * pin change of togo-command-center.md §8). */
+export const CATALOGUE_ROWS = 32
 
 /** Row number → the row's primary choreography, in row order. */
 export const CATALOGUE: ReadonlyArray<Choreo<never>> = [
@@ -76,4 +86,5 @@ export const CATALOGUE: ReadonlyArray<Choreo<never>> = [
   openingOverlay, hoverPlate, constellationSettle, spineParallax, consoleToggle, findingFocus,
   clashResolve, syncChip, resizeHandle, themeChange,
   handoffCeremony, edgeDraw, spineCollapse, sceneCrossfade,
+  batonPass, verdictSeal, stripDraw,
 ] as ReadonlyArray<Choreo<never>>

@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { groupSpecsByTeam } from '../../shared/boardModel'
 import { formatDateTime, plural, pluralWord } from '../../shared/format'
 import { targetForBuildView, targetForStage, type NavTarget } from '../../shared/nav'
 import type { AdvanceResult, DeclarationStatus, HandoffReportResult, ProjectStage, ProjectStatus } from '../../shared/types'
-import { Button, Card, Chip, Eyebrow, Notice, PageHeader, SkeletonRows, toast } from '../ui'
+import { Button, Card, Chip, Disclosure, Eyebrow, Notice, PageHeader, SkeletonRows, toast } from '../ui'
+import { riskTone } from '../../shared/sprintModel'
 import { announce } from '../a11y/LiveAnnouncer'
 import { signOffCeremony } from '../motion/choreo'
 import { useCountUp } from '../motion/useCountUp'
@@ -39,6 +40,7 @@ export function FeatureCompleteScreen({
   buildStage,
   status: projectStatus,
   onNavigate,
+  embedded = false,
 }: {
   projectPath: string
   actor: string
@@ -52,6 +54,11 @@ export function FeatureCompleteScreen({
   status?: ProjectStatus
   /** A station on the Spine opens that stage; absent, the band is display only. */
   onNavigate?: (target: NavTarget) => void
+  /** Rendered beneath `SprintClose` (togo-command-center.md §3.5): the close screen above already
+   * draws the lifecycle and lists every open spec with Carry / Drop, so this screen draws no
+   * Spine band of its own and folds its per-spec rows (the Defer control — a different verb,
+   * `spec_transition.py defer`, so it stays reachable) behind a disclosure with a count line. */
+  embedded?: boolean
 }) {
   const [status, setStatus] = useState<DeclarationStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -143,7 +150,7 @@ export function FeatureCompleteScreen({
   // does on every stage home. Tailwind 4 writes `space-y-*` as `:where(& > :not(:last-child))` —
   // zero specificity — and SceneShell's `<figure>` carries `m-0`, so a bare figure as a direct
   // child of the root cancelled the gap (observatory v9 closing: the caption sat on the eyebrow).
-  const band = spine && (
+  const band = spine && !embedded && (
     <section aria-label="Lifecycle" className="space-y-1">
       <div>
         <SceneSlot id="spine" data={spine} height={200} onActivate={(id) => onNavigate?.(targetForStage(id))} />
@@ -234,7 +241,7 @@ export function FeatureCompleteScreen({
           title={`${plural(status.blockers.length, 'thing', 'things')} ${pluralWord(status.blockers.length, 'blocks', 'block')} the declaration`}
           className="text-sm"
         >
-          <div className="mt-1 divide-y divide-amber-200">
+          <div className="mt-1 divide-y divide-status-warn-line">
           {status.blockers.map((blocker) => (
             // The plugin's own words. It knows what is outstanding, and a refusal that names
             // the items is a to-do list rather than a wall.
@@ -243,45 +250,50 @@ export function FeatureCompleteScreen({
               {blocker.specs && blocker.specs.length > 0 && (
                 // Gathered by team, because that is how the decisions get made: each lead
                 // confirms their OWN team's list, and a lead working down a flat list of
-                // everybody's specs has to keep re-finding which ones are theirs.
-                <div className="mt-2 space-y-3">
-                  {groupSpecsByTeam(blocker.specs).map((group) => (
+                // everybody's specs has to keep re-finding which ones are theirs. Amber marks the
+                // frame, the blocker's sentence and the "needs a decision" chip — the rows
+                // themselves are ink on a card, so five rows do not read as five alarms.
+                <BlockerSpecs
+                  embedded={embedded}
+                  count={blocker.specs.length}
+                  groups={groupSpecsByTeam(blocker.specs).map((group) => (
                     <div key={group.team}>
-                      {/* C3: a caps label is the eyebrow voice, in the notice's warn ink. */}
                       <Eyebrow className="text-status-warn-ink">
                         {group.hasLead
                           ? <>{group.team} · {group.specs.length}</>
                           : <>No team · {group.specs.length} · nobody can confirm these</>}
                       </Eyebrow>
-                      <ul className="mt-1 space-y-2">
+                      <ul className="mt-1 space-y-1">
                         {group.specs.map((spec) => (
-                          <li key={spec.spec} className="text-sm" data-reveal="">
-                            <span className="font-mono text-xs text-status-warn-ink">{spec.spec}</span>{' '}
-                            <span className="text-status-warn-ink">{spec.name}</span>
-                            {/* The plugin's reading of what this spec's own state says about
-                                whether anybody has decided to finish it. Shown against the spec
-                                rather than only as a count, because the one that needs a person
-                                is the one they have to be able to pick out. */}
-                            {spec.intent === 'needs_a_call' && (
-                              <Chip tone="warn" dot className="ml-2 uppercase tracking-wide">needs a decision</Chip>
-                            )}
-                            <span className="ml-2 text-xs text-status-warn-ink">
-                              {spec.status}
-                              {/* Risk is shown because spec 0014 asks for it, and because it is
-                                  what makes "finish it or defer it" a different question for
-                                  different specs. */}
-                              {spec.risk ? ` · ${spec.risk} risk` : ''}
-                              {spec.developer ? ` · ${spec.developer}` : ' · nobody assigned'}
+                          <li key={spec.spec} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-[10px] bg-surface-1 px-3 py-2 text-sm" data-reveal="" data-blocker-spec={spec.spec}>
+                            <span className="font-mono text-ident text-ink-2">{spec.spec}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-ink-1">{spec.name}</span>
+                              <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+                                <span>{spec.status}</span>
+                                {/* Risk is shown because spec 0014 asks for it, and because it is
+                                    what makes "finish it or defer it" a different question for
+                                    different specs — in the one risk map. */}
+                                {spec.risk ? <Chip tone={riskTone(spec.risk)} size="xs" casing="identifier">{spec.risk}</Chip> : null}
+                                <span>{spec.developer ? spec.developer : 'nobody assigned'}</span>
+                                {/* The plugin's reading of what this spec's own state says about
+                                    whether anybody has decided to finish it. */}
+                                {spec.intent === 'needs_a_call' && (
+                                  <Chip tone="warn" dot className="uppercase tracking-wide">needs a decision</Chip>
+                                )}
+                              </span>
                             </span>
-                            {blocker.kind === 'unfinished_specs' && (
-                              <DeferControl projectPath={projectPath} specName={spec.name} actor={actor} onDeferred={load} onRefused={setRefusal} />
-                            )}
+                            <span className="justify-self-end">
+                              {blocker.kind === 'unfinished_specs' && (
+                                <DeferControl projectPath={projectPath} specName={spec.name} actor={actor} onDeferred={load} onRefused={setRefusal} />
+                              )}
+                            </span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   ))}
-                </div>
+                />
               )}
               {blocker.teams && blocker.teams.length > 0 && (
                 <ul className="mt-2 space-y-2">
@@ -318,6 +330,22 @@ export function FeatureCompleteScreen({
             </span>}
       </div>
     </div>
+  )
+}
+
+/** Under `SprintClose` the same open specs are listed above with Carry / Drop, so the rows fold
+ * behind a count line that points up; the Defer verb inside stays one click away. Standalone the
+ * rows are open. */
+export function blockerFoldLabel(count: number): string {
+  return `${plural(count, 'open spec', 'open specs')} — carry or drop them above, or defer one here`
+}
+
+function BlockerSpecs({ embedded, count, groups }: { embedded: boolean; count: number; groups: ReactNode }) {
+  if (!embedded) return <div className="mt-2 space-y-3">{groups}</div>
+  return (
+    <Disclosure className="mt-2" data-testid="blocker-specs-fold" summary={<span className="text-sm text-ink-2">{blockerFoldLabel(count)}</span>}>
+      <div className="mt-2 space-y-3">{groups}</div>
+    </Disclosure>
   )
 }
 

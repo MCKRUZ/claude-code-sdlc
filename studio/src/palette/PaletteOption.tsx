@@ -35,6 +35,7 @@ export function highlightRuns(title: string, matches: readonly number[]): { text
 
 export function PaletteOption({ id, item, selected, onHover, onRun, kbd }: PaletteOptionProps) {
   const { entry, matches } = item
+  const isVerb = entry.group === 'verbs'
   return (
     <li
       id={id}
@@ -48,18 +49,20 @@ export function PaletteOption({ id, item, selected, onHover, onRun, kbd }: Palet
       // fight over focus before the row ran.
       onMouseDown={(e) => { e.preventDefault(); onRun() }}
       className={cn(
-        'mx-1 flex cursor-default items-center gap-3 rounded-md px-2 py-[7px] text-sm',
+        'mx-1 flex cursor-default items-start gap-3 rounded-md px-2 py-[7px] text-sm',
         // surface-3, not -2: the row must read as selected against the palette's own surface.
         selected ? 'bg-surface-3 text-ink-1' : 'text-ink-2',
       )}
     >
       <span className="min-w-0 flex-1">
-        <span className="block truncate">
+        {/* A verb row's title IS the argv the plugin will run — the one line a person must read
+            before Enter, including `--by`: it wraps in the ident face and is never truncated. */}
+        <span className={cn('block', isVerb ? 'whitespace-normal break-words font-mono text-ident' : 'truncate')} data-verb-argv={isVerb ? '' : undefined}>
           {highlightRuns(entry.title, matches).map((run, i) => (
             run.hit ? <strong key={i} className="font-semibold text-ink-1">{run.text}</strong> : <span key={i}>{run.text}</span>
           ))}
         </span>
-        {entry.subtitle && <span className="block truncate text-xs text-ink-3">{entry.subtitle}</span>}
+        {entry.subtitle && <span className={cn('block text-xs text-ink-3', isVerb ? 'whitespace-normal' : 'truncate')}>{entry.subtitle}</span>}
       </span>
       {kbd && <span className="shrink-0 text-ink-3">{kbd}</span>}
     </li>

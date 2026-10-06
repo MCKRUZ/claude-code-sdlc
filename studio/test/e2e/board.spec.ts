@@ -103,7 +103,10 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     page = await app.firstWindow()
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('board project').click()
-    await expect(page.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
+    // Recorded pin change (togo-command-center.md §1, §8): the strip replaced the sidebar and the
+    // Build station expands only on click, so "Documents" is not visible at rest; the landing
+    // fact is `nav[aria-label=Project]`, as a11y.spec waits. Every other pin here is unchanged.
+    await expect(page.getByRole('navigation', { name: 'Project' })).toBeVisible({ timeout: 30_000 })
   })
 
   test.afterAll(async () => {

@@ -1296,3 +1296,384 @@ class TestStudioContract:
         header = next(ln for ln in out.splitlines() if ln.strip().startswith("spec"))
         assert header.split() == ["spec", "name", "risk", "type", "status", "DoR", "eng", "data", "next", "owner"]
         assert "rel_path" not in out
+
+
+# --- list (read; togo-command-center §2.5 row 1) ---------------------------------------------------------------
+
+LIST_TOP_KEYS = {"sprints", "active", "count"}
+LIST_ROW_KEYS = {"id", "state", "goal", "start", "end", "ordinal"}
+
+
+class TestList:
+    def test_empty_dir_is_one_document_with_no_data(self, repo, capsys):
+        code, out = run(capsys, "list", "--repo", repo, "--json")
+        assert code == 0
+        assert json.loads(out) == {"sprints": [], "active": None, "count": 0}
+        code, out = run(capsys, "list", "--repo", repo)
+        assert code == 0 and out.startswith("Sprints: no data — no sprint record under ")
+
+    def test_three_sprints_one_closed_ordinals_and_active(self, sprint_repo, capsys, render_calls):
+        for sid, start in (("S08", "2026-10-12"), ("S09", "2026-10-26")):
+            assert run(capsys, "new", "--repo", sprint_repo, "--sprint", sid, "--goal", f"Goal {sid}", "--start", start,
+                       "--target", "2", "--by", "Priya")[0] == 0
+        assert run(capsys, "close", "--repo", sprint_repo, "--sprint", "S09", "--by", "Priya")[0] == 0  # empty slate closes clean
+        code, out = run(capsys, "list", "--repo", sprint_repo, "--json")
+        assert code == 0
+        doc = json.loads(out)
+        assert set(doc) == LIST_TOP_KEYS and doc["count"] == 3
+        assert [s["id"] for s in doc["sprints"]] == ["S07", "S08", "S09"]
+        assert [s["ordinal"] for s in doc["sprints"]] == [1, 2, 3]
+        assert [s["state"] for s in doc["sprints"]] == ["planning", "planning", "closed"]
+        assert doc["active"] == "S08"  # the highest NON-closed sprint, not the highest id
+        assert doc["active"] == sprint.active_sprint_id(sprint_repo)
+        for s in doc["sprints"]:
+            assert set(s) == LIST_ROW_KEYS
+        assert doc["sprints"][0] == {"id": "S07", "state": "planning", "goal": "Warranty lookup answers in one turn",
+                                     "start": "2026-09-28", "end": "2026-10-09", "ordinal": 1}
+
+    def test_malformed_record_reads_state_null_not_planning(self, sprint_repo, capsys):
+        (sprint_repo / ".sdlc" / "sprints" / "S08.md").write_text("# Sprint S08\n\nno frontmatter at all\n", encoding="utf-8")
+        (sprint_repo / ".sdlc" / "sprints" / "S09.md").write_text('---\nsprint: "S09"\nstate: done\n---\n', encoding="utf-8")
+        code, out = run(capsys, "list", "--repo", sprint_repo, "--json")
+        assert code == 0
+        rows = {s["id"]: s for s in json.loads(out)["sprints"]}
+        assert rows["S08"]["state"] is None and rows["S08"]["goal"] == "" and rows["S08"]["ordinal"] == 2
+        assert rows["S09"]["state"] is None and rows["S09"]["ordinal"] == 3
+        assert rows["S07"]["state"] == "planning"
+
+    def test_text_mode_is_one_line_per_sprint(self, sprint_repo, capsys):
+        assert run(capsys, "new", "--repo", sprint_repo, "--sprint", "S08", "--goal", "Next", "--start", "2026-10-12",
+                   "--target", "2", "--by", "Priya")[0] == 0
+        code, out = run(capsys, "list", "--repo", sprint_repo)
+        assert code == 0
+        lines = out.splitlines()
+        assert lines[0].startswith("Sprints: 2 record(s) under ") and lines[0].endswith("· active S08")
+        assert len(lines) == 3
+        assert lines[1].split()[:3] == ["S07", "#1", "planning"] and "Warranty lookup answers in one turn" in lines[1]
+        assert lines[2].split()[:3] == ["S08", "#2", "planning"] and "2026-10-12 → 2026-10-23" in lines[2]
+
+    def test_list_only_matches_sprint_ids(self, sprint_repo, capsys):
+        (sprint_repo / ".sdlc" / "sprints" / "notes.md").write_text("# notes\n", encoding="utf-8")
+        code, out = run(capsys, "list", "--repo", sprint_repo, "--json")
+        assert [s["id"] for s in json.loads(out)["sprints"]] == ["S07"]
+
+    def test_status_json_is_unchanged_by_list(self, slated_repo, capsys):
+        assert run(capsys, "list", "--repo", slated_repo, "--json")[0] == 0
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S07", "--json")
+        assert code == 0 and set(json.loads(out)) == STATUS_TOP_KEYS
+
+    def test_help_advertises_the_capability_flags(self, capsys):
+        code, out = run(capsys, "list", "--help")
+        assert code == 0 and all(f in out for f in ("--repo", "--state", "--json"))
+        assert "--by" not in out and "--field" not in out  # a read, never a write
+
+
+# --- log (read; togo-command-center §2.5 row 2) ----------------------------------------------------------------
+
+LOG_TOP_KEYS = {"events", "count", "since", "path", "exists", "skipped"}
+
+
+def write_ledger_lines(repo: Path, lines: list[str]) -> Path:
+    path = repo / ".sdlc" / "metrics" / "sprint-log.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(ln + "\n" for ln in lines), encoding="utf-8")
+    return path
+
+
+class TestLog:
+    def test_missing_ledger_reads_exists_false_never_an_error(self, repo, capsys):
+        code, out = run(capsys, "log", "--repo", repo, "--json")
+        assert code == 0
+        doc = json.loads(out)
+        assert doc == {"events": [], "count": 0, "since": None,
+                       "path": str(repo / ".sdlc" / "metrics" / "sprint-log.jsonl"), "exists": False, "skipped": 0}
+        code, out = run(capsys, "log", "--repo", repo)
+        assert code == 0 and out.startswith("Sprint log: no data — no ledger at ")
+
+    def test_lines_are_verbatim_and_no_aggregate_key_exists(self, slated_repo, capsys):
+        code, out = run(capsys, "log", "--repo", slated_repo, "--json")
+        assert code == 0
+        doc = json.loads(out)
+        assert set(doc) == LOG_TOP_KEYS
+        assert doc["events"] == ledger(slated_repo)  # exactly the lines on disk, in file order, nothing reshaped
+        assert doc["count"] == len(doc["events"]) == 4 and doc["exists"] is True and doc["skipped"] == 0
+        assert [e["event"] for e in doc["events"]] == ["sprint_new", "slated", "slated", "slated"]
+        assert not ({"velocity", "points", "per_person", "by_person", "totals"} & all_keys(doc))
+
+    def test_since_is_inclusive_at_midnight_and_keeps_undated_lines(self, repo, capsys):
+        write_ledger_lines(repo, [
+            json.dumps({"ts": "2026-09-30T23:59:59+00:00", "event": "slated", "sprint": "S07", "spec": "0007", "by": "Priya"}),
+            json.dumps({"ts": "2026-10-01T00:00:00+00:00", "event": "slated", "sprint": "S07", "spec": "0009", "by": "Priya"}),
+            json.dumps({"ts": "2026-10-02T09:00:00+00:00", "event": "handoff", "spec": "0009", "to": "Sam", "by": "Priya"}),
+            json.dumps({"event": "ack", "spec": "0009", "by": "Sam"}),  # undated: cannot be placed, so it is kept
+        ])
+        code, out = run(capsys, "log", "--repo", repo, "--since", "2026-10-01", "--json")
+        assert code == 0
+        doc = json.loads(out)
+        assert doc["since"] == "2026-10-01" and doc["count"] == 3
+        assert [e.get("spec") for e in doc["events"]] == ["0009", "0009", "0009"]
+        assert doc["events"][-1] == {"event": "ack", "spec": "0009", "by": "Sam"}
+
+    def test_sprint_filter_keeps_only_lines_naming_that_sprint(self, repo, capsys):
+        write_ledger_lines(repo, [
+            json.dumps({"ts": "2026-10-01T00:00:00+00:00", "event": "sprint_new", "sprint": "S07", "by": "Priya"}),
+            json.dumps({"ts": "2026-10-01T00:00:01+00:00", "event": "sprint_new", "sprint": "S08", "by": "Priya"}),
+            json.dumps({"ts": "2026-10-02T09:00:00+00:00", "event": "handoff", "spec": "0009", "to": "Sam", "by": "Priya"}),
+        ])
+        code, out = run(capsys, "log", "--repo", repo, "--sprint", "S08", "--json")
+        doc = json.loads(out)
+        assert code == 0 and doc["count"] == 1 and doc["events"][0]["sprint"] == "S08"
+        code, out = run(capsys, "log", "--repo", repo, "--sprint", "S99", "--json")
+        assert code == 0 and json.loads(out)["events"] == []
+
+    def test_corrupt_lines_are_counted_in_skipped_not_dropped_silently(self, repo, capsys):
+        write_ledger_lines(repo, [
+            json.dumps({"ts": "2026-10-01T00:00:00+00:00", "event": "sprint_new", "sprint": "S07", "by": "Priya"}),
+            "not json", "", "[1, 2]", "   ",
+        ])
+        code, out = run(capsys, "log", "--repo", repo, "--json")
+        doc = json.loads(out)
+        assert code == 0 and doc["count"] == 1 and doc["skipped"] == 2  # blank lines are neither
+        code, out = run(capsys, "log", "--repo", repo)
+        assert code == 0 and "1 event(s)" in out.splitlines()[0] and "2 unreadable line(s) skipped" in out.splitlines()[0]
+
+    def test_read_ledger_behaviour_is_unchanged(self, repo):
+        write_ledger_lines(repo, [json.dumps({"ts": "t", "event": "ready", "sprint": "S07"}), "garbage"])
+        assert sprint.read_ledger(repo) == [{"ts": "t", "event": "ready", "sprint": "S07"}]
+        assert sprint.read_ledger_lines(repo) == ([{"ts": "t", "event": "ready", "sprint": "S07"}], 1)
+
+    def test_bad_since_is_exit_1_like_today(self, repo, capsys):
+        code, out = run(capsys, "log", "--repo", repo, "--since", "yesterday")
+        assert code == 1 and "--since must be an ISO date" in out
+
+    def test_text_mode_one_line_per_event(self, slated_repo, capsys):
+        code, out = run(capsys, "log", "--repo", slated_repo, "--sprint", "S07", "--since", "2020-01-01")
+        assert code == 0
+        lines = out.splitlines()
+        assert lines[0].startswith("Sprint log: 4 event(s) since 2020-01-01 for S07 — ")
+        assert len(lines) == 5
+        assert lines[1].split()[1] == "sprint_new" and "sprint=S07" in lines[1] and "by=Priya" in lines[1]
+        assert lines[2].split()[1] == "slated" and "spec=0007" in lines[2]
+
+    def test_help_advertises_the_capability_flags(self, capsys):
+        code, out = run(capsys, "log", "--help")
+        assert code == 0 and all(f in out for f in ("--since", "--sprint", "--json"))
+        assert "--by" not in out and "--field" not in out
+
+
+# --- carry (write; togo-command-center §2.5 row 3) -------------------------------------------------------------
+
+def slate_table_ids(record: Path) -> list[str]:
+    section = check_spec.extract_section(record.read_text(encoding="utf-8"), "Slate") or ""
+    return [ln.split("|")[1].strip() for ln in section.splitlines()
+            if ln.startswith("| ") and not ln.startswith("| spec")]
+
+
+class TestCarry:
+    @pytest.fixture
+    def two_sprints(self, slated_repo, capsys):
+        """S07 slated with 0007/0009/0011; S08 open with target 2 and nothing slated."""
+        assert run(capsys, "new", "--repo", slated_repo, "--sprint", "S08", "--goal", "Next", "--start", "2026-10-12",
+                   "--target", "2", "--by", "Priya")[0] == 0
+        return slated_repo
+
+    def test_carry_rewrites_sprint_both_slate_tables_and_one_event(self, two_sprints, capsys):
+        repo = two_sprints
+        n_before = len(ledger(repo))
+        code, out = run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "vendor sandbox slipped", "--by", "Priya")
+        assert code == 0
+        assert out.splitlines()[0] == "Carried 0011: S07 → S08 (by Priya): vendor sandbox slipped"
+        assert fm_of(repo / "specs" / "0011-copy-polish.md")["sprint"] == "S08"
+        assert slate_table_ids(repo / ".sdlc" / "sprints" / "S07.md") == ["0007", "0009"]
+        assert slate_table_ids(repo / ".sdlc" / "sprints" / "S08.md") == ["0011"]
+        events = ledger(repo)
+        assert len(events) == n_before + 1
+        e = events[-1]
+        assert {k: v for k, v in e.items() if k != "ts"} == {
+            "event": "carried", "sprint": "S07", "spec": "0011", "to_sprint": "S08", "by": "Priya",
+            "reason": "vendor sandbox slipped"}
+
+    def test_event_field_set_equals_the_close_paths(self, two_sprints, capsys, render_calls):
+        repo = two_sprints
+        assert run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "slipped", "--by", "Priya")[0] == 0
+        mid_sprint = ledger(repo)[-1]
+        merge(repo, "0007")
+        assert run(capsys, "close", "--repo", repo, "--sprint", "S07", "--by", "Priya", "--carry-to", "S08", "--carry", "0009=late")[0] == 0
+        at_close = next(e for e in reversed(ledger(repo)) if e["event"] == "carried" and e["spec"] == "0009")
+        assert set(mid_sprint) == set(at_close)
+        assert list(mid_sprint) == list(at_close)  # same key order too — one shape, two paths
+
+    def test_status_on_the_receiving_sprint_lists_carried_in_with_the_reason(self, two_sprints, capsys):
+        repo = two_sprints
+        assert run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "slipped", "--by", "Priya")[0] == 0
+        code, out = run(capsys, "status", "--repo", repo, "--sprint", "S08", "--json")
+        view = json.loads(out)
+        assert code == 0
+        assert view["carried_in"] == [{"spec": "0011", "from_sprint": "S07", "reason": "slipped"}]
+        assert [r["id"] for r in view["slate"]] == ["0011"]
+        code, out = run(capsys, "status", "--repo", repo, "--sprint", "S07", "--json")
+        assert [r["id"] for r in json.loads(out)["slate"]] == ["0007", "0009"]
+
+    def test_spec_bytes_outside_the_sprint_key_are_untouched(self, two_sprints, capsys):
+        repo = two_sprints
+        path = repo / "specs" / "0011-copy-polish.md"
+        before_body, before_verdict = body_of(path), verdict_of(path)
+        assert run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "slipped", "--by", "Priya")[0] == 0
+        assert body_of(path) == before_body and verdict_of(path) == before_verdict
+
+    @pytest.mark.parametrize("argv, needle", [
+        (["--spec", "0013", "--to", "S08", "--reason", "x"], "is not in a sprint"),
+        (["--spec", "0007", "--to", "S07", "--reason", "x"], "carry forward, not in place"),
+        (["--spec", "0007", "--to", "S09", "--reason", "x"], "sprint S09 does not exist"),
+        (["--spec", "0007", "--to", "sprint-8", "--reason", "x"], "is not a sprint id"),
+        (["--spec", "0007", "--to", "S08", "--reason", "   "], "--reason is required"),
+        (["--spec", "0099", "--to", "S08", "--reason", "x"], "unknown spec"),
+    ])
+    def test_illegal_carries_exit_1_and_write_nothing(self, two_sprints, capsys, argv, needle):
+        repo = two_sprints
+        before = {p: p.read_bytes() for p in list((repo / "specs").iterdir()) + list((repo / ".sdlc" / "sprints").iterdir())}
+        n = len(ledger(repo))
+        code, out = run(capsys, "carry", "--repo", repo, *argv, "--by", "Priya")
+        assert code == 1 and out.startswith("Error: ") and needle in out
+        assert {p: p.read_bytes() for p in before} == before and len(ledger(repo)) == n
+
+    def test_merged_spec_cannot_be_carried(self, two_sprints, capsys):
+        merge(two_sprints, "0007")
+        code, out = run(capsys, "carry", "--repo", two_sprints, "--spec", "0007", "--to", "S08", "--reason", "x", "--by", "Priya")
+        assert code == 1 and "is merged" in out
+        assert fm_of(two_sprints / "specs" / "0007-warranty-lookup.md")["sprint"] == "S07"
+
+    def test_into_a_closed_sprint_is_exit_1(self, two_sprints, capsys, render_calls):
+        assert run(capsys, "close", "--repo", two_sprints, "--sprint", "S08", "--by", "Priya")[0] == 0
+        code, out = run(capsys, "carry", "--repo", two_sprints, "--spec", "0011", "--to", "S08", "--reason", "x", "--by", "Priya")
+        assert code == 1 and "sprint S08 is closed" in out
+
+    def test_out_of_a_closed_sprint_is_exit_1_its_slate_is_a_record(self, two_sprints, capsys, render_calls):
+        repo = two_sprints
+        merge(repo, "0007")
+        assert run(capsys, "close", "--repo", repo, "--sprint", "S07", "--by", "Priya", "--carry-to", "S08",
+                   "--carry", "0009=late", "--drop", "0011=x")[0] == 0
+        path = repo / "specs" / "0013-audit-fields.md"  # a hand edit puts a spec back into the closed sprint
+        path.write_bytes(sprint.set_spec_key(path.read_bytes().decode("utf-8"), "sprint", "S07").encode("utf-8"))
+        code, out = run(capsys, "carry", "--repo", repo, "--spec", "0013", "--to", "S08", "--reason", "x", "--by", "Priya")
+        assert code == 1 and "sprint S07 is closed" in out and "record" in out
+        assert fm_of(path)["sprint"] == "S07"
+
+    def test_ai_actor_and_forbidden_field_exit_2_nothing_written(self, two_sprints, capsys):
+        repo = two_sprints
+        n = len(ledger(repo))
+        code, out = run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "x", "--by", "Claude")
+        assert code == 2 and "reads as an AI" in out
+        code, out = run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "x", "--by", "Priya", "--field", "points=3")
+        assert code == 2 and "activity metric" in out
+        assert fm_of(repo / "specs" / "0011-copy-polish.md")["sprint"] == "S07" and len(ledger(repo)) == n
+
+    def test_over_target_warns_but_does_not_block(self, two_sprints, capsys):
+        repo = two_sprints
+        for sid in ("0007", "0009", "0011"):
+            code, out = run(capsys, "carry", "--repo", repo, "--spec", sid, "--to", "S08", "--reason", "re-plan", "--by", "Priya")
+            assert code == 0
+        assert "WARNING: S08 now holds 3 specs, over its target of 2" in out
+        assert slate_table_ids(repo / ".sdlc" / "sprints" / "S08.md") == ["0007", "0009", "0011"]
+        assert slate_table_ids(repo / ".sdlc" / "sprints" / "S07.md") == []
+
+    def test_ledger_append_failure_prints_drift_exit_1(self, two_sprints, capsys):
+        repo = two_sprints
+        lp = repo / ".sdlc" / "metrics" / "sprint-log.jsonl"
+        lp.unlink()
+        lp.mkdir()
+        code, out = run(capsys, "carry", "--repo", repo, "--spec", "0011", "--to", "S08", "--reason", "x", "--by", "Priya")
+        assert code == 1 and "DRIFT" in out
+        assert fm_of(repo / "specs" / "0011-copy-polish.md")["sprint"] == "S08"  # frontmatter went first
+
+    def test_help_advertises_the_capability_flags(self, capsys):
+        code, out = run(capsys, "carry", "--help")
+        assert code == 0 and all(f in out for f in ("--spec", "--to", "--reason", "--by", "--field"))
+
+
+# --- edit (write; togo-command-center §2.5 row 4) --------------------------------------------------------------
+
+class TestEdit:
+    OLD = "Warranty lookup answers in one turn"
+    NEW = "Warranty lookup answers in one turn, every time"
+
+    def test_goal_replaced_in_frontmatter_and_section_all_else_byte_identical(self, sprint_repo, capsys):
+        record = sprint_repo / ".sdlc" / "sprints" / "S07.md"
+        before = record.read_bytes().decode("utf-8")
+        assert before.count(self.OLD) == 2  # frontmatter goal: + the ## Goal section
+        code, out = run(capsys, "edit", "--repo", sprint_repo, "--sprint", "S07", "--goal", self.NEW, "--by", "Priya")
+        assert code == 0 and out == f"Sprint S07 goal set by Priya: {self.NEW}\n"
+        after = record.read_bytes().decode("utf-8")
+        assert after == before.replace(self.OLD, self.NEW)
+        assert fm_of(record)["goal"] == self.NEW
+        assert (check_spec.extract_section(after, "Goal") or "").strip() == self.NEW
+
+    def test_status_json_and_log_json_reflect_the_edit(self, slated_repo, capsys):
+        assert run(capsys, "edit", "--repo", slated_repo, "--sprint", "S07", "--goal", self.NEW, "--by", "Priya")[0] == 0
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S07", "--json")
+        assert code == 0 and json.loads(out)["sprint"]["goal"] == self.NEW
+        code, out = run(capsys, "log", "--repo", slated_repo, "--json")
+        last = json.loads(out)["events"][-1]
+        assert {k: v for k, v in last.items() if k != "ts"} == {"event": "sprint_edited", "sprint": "S07", "field": "goal", "by": "Priya"}
+        code, out = run(capsys, "status", "--repo", slated_repo, "--sprint", "S07")
+        assert code == 0 and f'Sprint S07 — "{self.NEW}"' in out
+
+    def test_unchanged_goal_writes_nothing(self, sprint_repo, capsys):
+        record = sprint_repo / ".sdlc" / "sprints" / "S07.md"
+        before, n = record.read_bytes(), len(ledger(sprint_repo))
+        code, out = run(capsys, "edit", "--repo", sprint_repo, "--sprint", "S07", "--goal", f"  {self.OLD} ", "--by", "Priya")
+        assert code == 0 and "unchanged" in out
+        assert record.read_bytes() == before and len(ledger(sprint_repo)) == n
+
+    def test_closed_sprint_is_exit_1(self, sprint_repo, capsys, render_calls):
+        assert run(capsys, "close", "--repo", sprint_repo, "--sprint", "S07", "--by", "Priya")[0] == 0
+        record = sprint_repo / ".sdlc" / "sprints" / "S07.md"
+        before = record.read_bytes()
+        code, out = run(capsys, "edit", "--repo", sprint_repo, "--sprint", "S07", "--goal", self.NEW, "--by", "Priya")
+        assert code == 1 and "sprint S07 is closed" in out and record.read_bytes() == before
+
+    @pytest.mark.parametrize("argv, needle", [
+        (["--sprint", "S07", "--goal", "   "], "--goal must be a non-empty sentence"),
+        (["--sprint", "S99", "--goal", "x"], "sprint S99 does not exist"),
+        (["--sprint", "sprint-7", "--goal", "x"], "is not a sprint id"),
+    ])
+    def test_illegal_edits_exit_1(self, sprint_repo, capsys, argv, needle):
+        n = len(ledger(sprint_repo))
+        code, out = run(capsys, "edit", "--repo", sprint_repo, *argv, "--by", "Priya")
+        assert code == 1 and out.startswith("Error: ") and needle in out and len(ledger(sprint_repo)) == n
+
+    def test_ai_name_hash_in_goal_and_forbidden_field_exit_2(self, sprint_repo, capsys):
+        record = sprint_repo / ".sdlc" / "sprints" / "S07.md"
+        before, n = record.read_bytes(), len(ledger(sprint_repo))
+        code, out = run(capsys, "edit", "--repo", sprint_repo, "--sprint", "S07", "--goal", self.NEW, "--by", "Claude")
+        assert code == 2 and "reads as an AI" in out
+        code, out = run(capsys, "edit", "--repo", sprint_repo, "--sprint", "S07", "--goal", "ship it # fast", "--by", "Priya")
+        assert code == 2 and out.startswith("Refused:") and "'#'" in out
+        code, out = run(capsys, "edit", "--repo", sprint_repo, "--sprint", "S07", "--goal", self.NEW, "--by", "Priya", "--field", "velocity=9")
+        assert code == 2 and "activity metric" in out
+        assert record.read_bytes() == before and len(ledger(sprint_repo)) == n
+
+    def test_sprint_is_required(self, sprint_repo, capsys):
+        assert run(capsys, "edit", "--repo", sprint_repo, "--goal", "x", "--by", "Priya")[0] == 2  # argparse usage error
+
+    def test_help_advertises_the_capability_flags(self, capsys):
+        code, out = run(capsys, "edit", "--help")
+        assert code == 0 and all(f in out for f in ("--sprint", "--goal", "--by", "--field"))
+
+
+class TestNewVerbsInWorkflowMode:
+    def test_list_log_carry_edit_never_touch_state_yaml(self, state_yaml, tmp_path, capsys):
+        repo = tmp_path
+        make_backlog(repo)
+        state_bytes = state_yaml.read_bytes()
+        S = ["--state", state_yaml]
+        assert run(capsys, "new", *S, "--sprint", "S07", "--goal", "G", "--start", "2026-09-28", "--target", "3", "--by", "Priya")[0] == 0
+        assert run(capsys, "new", *S, "--sprint", "S08", "--goal", "H", "--start", "2026-10-12", "--target", "3", "--by", "Priya")[0] == 0
+        assert run(capsys, "slate", *S, "--sprint", "S07", "--by", "Priya", "--spec", "0007")[0] == 0
+        assert run(capsys, "edit", *S, "--sprint", "S07", "--goal", "G2", "--by", "Priya")[0] == 0
+        assert run(capsys, "carry", *S, "--spec", "0007", "--to", "S08", "--reason", "r", "--by", "Priya")[0] == 0
+        code, out = run(capsys, "list", *S, "--json")
+        assert code == 0 and json.loads(out)["count"] == 2
+        code, out = run(capsys, "log", *S, "--json")
+        assert code == 0 and [e["event"] for e in json.loads(out)["events"]][-2:] == ["sprint_edited", "carried"]
+        assert state_yaml.read_bytes() == state_bytes

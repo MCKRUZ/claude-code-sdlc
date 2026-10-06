@@ -44,7 +44,14 @@ import {
   getDeclarationStatus,
   getSpecReadiness, getSpecStatus, transitionSpec,
 } from './board'
-import { handOff } from './handoff'
+import { checkHandOff, handOff } from './handoff'
+import { getCommandCenter, invalidateCommandCenter } from './commandCenter'
+import { resolveActor } from './actor'
+import { runSprintVerb } from './sprintWrites'
+import { decideDecision, getDecisions, openDecision } from './decisions'
+import { assignRoles, confirmTier, getReadinessAll, getSpecCard } from './specCard'
+import { getSlateProposal } from './sprint'
+import type { SinceWindow, SprintVerbRequest } from '../../shared/types'
 import type { ChatActivity, ClashChoice, DraftOutcome } from '../../shared/types'
 
 /** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
@@ -198,6 +205,7 @@ function registerIpcHandlers() {
         // belong to that project and must not be read as this one's.
         invalidateCodeHost(openProjectPath)
         forgetTypedActor(openProjectPath)
+        invalidateCommandCenter(openProjectPath, 'all')
       }
       openProjectPath = projectPath
       startPullTimer()
@@ -477,6 +485,7 @@ function registerIpcHandlers() {
     ) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
+      invalidateCommandCenter(projectPath)
       return setRosterPerson(projectPath, scriptsDir, handle, fields)
     },
   )
@@ -484,6 +493,7 @@ function registerIpcHandlers() {
   ipcMain.handle('studio:setTeamLimit', async (_event, projectPath: string, team: string, limit: number) => {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) return noPluginSetting
+    invalidateCommandCenter(projectPath)
     return setTeamLimit(projectPath, scriptsDir, team, limit)
   })
 
@@ -529,6 +539,7 @@ function registerIpcHandlers() {
     async (_event, projectPath: string, specPath: string, reason: string, actor?: string) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
+      invalidateCommandCenter(projectPath)
       return deferSpec(projectPath, scriptsDir, specPath, reason, actor)
     },
   )
@@ -582,6 +593,7 @@ function registerIpcHandlers() {
   ipcMain.handle('studio:markSpecReady', async (_event, projectPath: string, specPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) return noPlugin
+    invalidateCommandCenter(projectPath)
     return transitionSpec(projectPath, scriptsDir, specPath, { kind: 'ready' })
   })
 
@@ -590,6 +602,7 @@ function registerIpcHandlers() {
     async (_event, projectPath: string, specPath: string, tier: string, authorisedBy?: string) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPlugin
+      invalidateCommandCenter(projectPath)
       return transitionSpec(projectPath, scriptsDir, specPath, { kind: 'risk', tier, authorisedBy })
     },
   )
@@ -608,9 +621,102 @@ function registerIpcHandlers() {
         return { ok: false, refusal: { kind: 'other' as const,
                  message: 'claude-code-sdlc plugin scripts not found' } }
       }
+      // A hand-off moves a spec to in-flight on the code host: the host block goes too.
+      invalidateCommandCenter(projectPath, 'all')
       return handOff(projectPath, scriptsDir, specPath, developer, overLimitReason)
     },
   )
+
+  // --- the command center (togo-command-center.md §2.2, §2.4) --------------------------------
+  // Reads are P-class (never pull/sync); every write resolves the actor HERE and runs through
+  // the closed argv table. `track_decisions.py --json` rejecting is passed through as an IPC
+  // error rather than an all-zero view.
+
+  const noPluginBlock = (source: string) => ({ source, fetchedAt: new Date().toISOString(), ok: false, data: null, error: 'claude-code-sdlc plugin scripts not found' })
+
+  ipcMain.handle('studio:getCommandCenter', async (_event, projectPath: string, since?: SinceWindow, refresh?: boolean) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    const window: SinceWindow = since === 3 ? 3 : 1
+    if (!scriptsDir) {
+      const b = noPluginBlock
+      return {
+        projectPath, fetchedAt: new Date().toISOString(), actor: null, capabilities: [],
+        sprint: b('sprint.py status --json'), sprints: b('sprint.py list --json'), board: b('spec_status.py --all --json + track_specs.py --json'),
+        decisions: b('track_decisions.py --json'), findings: b('record_findings.py report --json'), scorecard: b('scorecard.py report --json'),
+        roster: b('project_settings.py --json'), log: b('sprint.py log --json'),
+        needsYou: [], needsYouReason: 'claude-code-sdlc plugin scripts not found', sinceYesterday: [], since: window,
+      }
+    }
+    return getCommandCenter(projectPath, scriptsDir, window, { refresh: refresh === true })
+  })
+
+  ipcMain.handle('studio:getSlateProposal', async (_event, projectPath: string, sprintId: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    const r = await getSlateProposal(projectPath, scriptsDir, sprintId)
+    if (!r.ok) throw new Error(r.error)
+    return r.data
+  })
+
+  ipcMain.handle('studio:getSpecCard', async (_event, projectPath: string, specPath: string, developer?: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    return getSpecCard(projectPath, scriptsDir, specPath, developer)
+  })
+
+  ipcMain.handle('studio:getReadinessAll', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, specs: [] }
+    return getReadinessAll(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle('studio:getDecisions', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    return getDecisions(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle('studio:runSprintVerb', async (_event, projectPath: string, request: SprintVerbRequest) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { ok: false, exitCode: null, refused: false, stdout: '', stderr: 'claude-code-sdlc plugin scripts not found', argv: [], verb: request?.verb ?? 'slate' }
+    }
+    const actor = await resolveActor(projectPath, scriptsDir)
+    return runSprintVerb(projectPath, scriptsDir, request, actor)
+  })
+
+  ipcMain.handle('studio:openDecision', async (_event, projectPath: string, decision: string, owner?: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, stderr: 'claude-code-sdlc plugin scripts not found' }
+    return openDecision(projectPath, scriptsDir, decision, owner, await resolveActor(projectPath, scriptsDir))
+  })
+
+  ipcMain.handle('studio:decideDecision', async (_event, projectPath: string, id: string, resolution: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, stderr: 'claude-code-sdlc plugin scripts not found' }
+    return decideDecision(projectPath, scriptsDir, id, resolution, await resolveActor(projectPath, scriptsDir))
+  })
+
+  ipcMain.handle('studio:confirmTier', async (_event, projectPath: string, specPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return noPlugin
+    return confirmTier(projectPath, scriptsDir, specPath, await resolveActor(projectPath, scriptsDir))
+  })
+
+  ipcMain.handle(
+    'studio:assignRoles',
+    async (_event, projectPath: string, specPath: string, roles: { developer?: string; checker?: string }) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPlugin
+      return assignRoles(projectPath, scriptsDir, specPath, roles ?? {}, await resolveActor(projectPath, scriptsDir))
+    },
+  )
+
+  ipcMain.handle('studio:checkHandOff', async (_event, projectPath: string, specPath: string, developer: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return noPlugin
+    return checkHandOff(projectPath, scriptsDir, specPath, developer)
+  })
 
   ipcMain.handle('studio:openDocument', async (_event, projectPath: string, relPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
@@ -796,7 +902,16 @@ function registerIpcHandlers() {
     },
   )
 
+  let pulling = false
   onSyncState((state) => {
+    // A pull that completed may have brought other people's spec, sprint and decision edits:
+    // the command center's local blocks are stale the moment it lands. Saves are this machine's
+    // own writes and already invalidated at their IPC; nothing here reads on a timer.
+    if (state.kind === 'pulling') pulling = true
+    else if (pulling && state.kind !== 'saving') {
+      pulling = false
+      if (openProjectPath) invalidateCommandCenter(openProjectPath)
+    }
     sendToWindow('studio:syncState', state)
   })
 
