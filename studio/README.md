@@ -83,6 +83,26 @@ Round 2 (`docs/proposals/studio-upgrade-2.md`) added the pieces every screen now
   place a plugin value becomes words. It formats what the plugin reported and derives nothing;
   a value the plugin did not give reads "no data" / "no date recorded", never 0 or today.
 
+## Releases — the .dmg and the .exe
+
+Installers are never committed: `studio/release/` is gitignored and the artifacts live on GitHub
+Releases. `.github/workflows/release.yml` builds them on a version tag — the `.dmg` (and `.zip`)
+on a macOS runner, the `.exe` installer on a Windows runner, both from `electron-builder.json`
+with the Tōgō icon and bundle id `com.splashthree.togo` — and attaches them to one Release with
+install notes. The tag must match `.claude-plugin/plugin.json`'s version:
+
+```bash
+git tag v1.7.0 && git push origin v1.7.0
+```
+
+Locally, `npm run build` produces the same files under `release/<version>/`. Signing is switched
+on by secrets alone (macOS: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
+`APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`; Windows: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`);
+without them the builds are unsigned and the first launch needs right-click → Open on macOS or
+SmartScreen's "run anyway" on Windows. There is no auto-update channel: people install the new
+release. A packaged Tōgō finds the plugin in Claude Code's marketplace cache
+(`/plugin install claude-code-sdlc@togo`), or at the path set in Settings.
+
 ## Appearance
 
 Settings › **Appearance** (also the sidebar's "Appearance" button) holds four per-person

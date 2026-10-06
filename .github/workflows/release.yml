@@ -1,0 +1,133 @@
+# Tōgō — build the desktop installers and attach them to a GitHub Release.
+#
+# Trigger: a version tag (`v1.7.0`) pushed to the repository, or Run workflow by hand.
+# The .dmg (+ .zip) is built on a macOS runner and the .exe installer on a Windows runner by
+# electron-builder from studio/electron-builder.json; both land as assets on one Release, so the
+# installers never live in the repository (studio/release/ is gitignored).
+#
+# Signing is OPTIONAL and switched on only by secrets:
+#   macOS  — CSC_LINK (base64 .p12 Developer ID Application cert), CSC_KEY_PASSWORD,
+#            APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID (notarization)
+#   Windows — WIN_CSC_LINK (base64 .pfx), WIN_CSC_KEY_PASSWORD
+# Without them the builds are unsigned: macOS asks for right-click → Open the first time,
+# Windows shows SmartScreen's "more info → run anyway". Nothing else differs.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and attach to (e.g. v1.7.0)
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  installers:
+    name: ${{ matrix.label }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS (.dmg, .zip)
+          - os: windows-latest
+            label: Windows (.exe)
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: studio
+    env:
+      PYTHONUTF8: '1'
+      # electron-builder tries to publish when it sees GH_TOKEN; the release step below does it.
+      PUBLISH: never
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: npm ci
+      - name: Check the tag matches the plugin version
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="$(node -p "require('../.claude-plugin/plugin.json').version")"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG does not match plugin.json version $VERSION"; exit 1
+          fi
+          echo "building Tōgō $VERSION"
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            echo "no signing certificate in secrets — building unsigned"
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          npx vite build
+          npx electron-builder --mac --publish never
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: |
+          [ -z "$WIN_CSC_LINK" ] && echo "no signing certificate in secrets — building unsigned"
+          npx vite build
+          npx electron-builder --win --publish never
+      - name: List artifacts
+        shell: bash
+        run: ls -la release/*/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: togo-${{ runner.os }}
+          path: |
+            studio/release/*/*.dmg
+            studio/release/*/*.zip
+            studio/release/*/*.exe
+            studio/release/*/*.blockmap
+          if-no-files-found: error
+
+  release:
+    name: Attach to the GitHub Release
+    needs: installers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Release notes
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          {
+            echo "Tōgō $TAG — desktop installers."
+            echo
+            echo "- macOS: the .dmg (or .zip). Unsigned builds: right-click → Open the first time."
+            echo "- Windows: the .exe installer (choose the folder; settings survive uninstall). Unsigned builds: SmartScreen → More info → Run anyway."
+            echo
+            echo "The app needs Claude Code, uv and git on the machine, and the plugin installed in Claude Code:"
+            echo '`/plugin marketplace add splashthree/claude-code-sdlc` then `/plugin install claude-code-sdlc@togo`.'
+            echo "gh or az are optional (pull-request features only). See docs/guide/togo-setup-guide.html."
+          } > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: Tōgō ${{ github.event.inputs.tag || github.ref_name }}
+          body_path: notes.md
+          files: artifacts/*

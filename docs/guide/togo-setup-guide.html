@@ -190,6 +190,10 @@ cd claude-code-sdlc/scripts &amp;&amp; uv sync   <span class="c"># optional warm
 
 <!-- 3 ------------------------------------------------------------------ -->
 <h2 id="studio">3. Start the desktop app</h2>
+<h3>Install a release (most people)</h3>
+<p>Download the installer for your machine from the repository's <b>Releases</b> page: the <code>.dmg</code> on macOS, the <code>.exe</code> on Windows. Each release is built by CI from a version tag, so the file name carries the plugin version it matches (<code>Tōgō_1.7.0.dmg</code>). The installers are not in the repository itself.</p>
+<p>First launch of an unsigned build: on macOS right-click the app and choose <i>Open</i>, then <i>Open</i> again; on Windows choose <i>More info → Run anyway</i> on the SmartScreen prompt. A signed release has neither prompt. The app still needs Claude Code, <code>uv</code> and <code>git</code> on the machine (§1) and the plugin installed in Claude Code (§2): a packaged Tōgō finds the plugin in Claude Code's marketplace cache on its own.</p>
+<h3>Run from source (developers)</h3>
 <p>The app is a Node project inside the plugin repository. Everything runs from <code>studio/</code>, not the repository root.</p>
 <pre><code>cd claude-code-sdlc/studio
 npm ci
