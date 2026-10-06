@@ -96,9 +96,17 @@ export interface ThemeRevealEnvironment {
 const defaultRevealEnvironment: ThemeRevealEnvironment = {
   motionOn: () => motionEnabled() && !motionReduced(),
   startViewTransition(update) {
-    const doc = document as Document & { startViewTransition?: (cb: () => void) => { finished: Promise<unknown> } }
+    type Transition = { finished: Promise<unknown>; ready?: Promise<unknown>; updateCallbackDone?: Promise<unknown> }
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => Transition }
     if (typeof doc.startViewTransition !== 'function') return null
-    return doc.startViewTransition(update)
+    const transition = doc.startViewTransition(update)
+    // A transition the browser skips (a second one starts, the window is hidden, the walk is
+    // quick) rejects `ready` with "Transition was skipped" while `finished` still settles. Nobody
+    // waits on `ready`, so the rejection surfaced as an uncaught page error — observe it here.
+    const swallow = () => {}
+    transition.ready?.then(swallow, swallow)
+    transition.updateCallbackDone?.then(swallow, swallow)
+    return transition
   },
 }
 

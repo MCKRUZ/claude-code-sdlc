@@ -258,8 +258,19 @@ const app = await electron.launch({
   env: { ...process.env, NODE_ENV: 'development' },
 })
 const notes = []
+const consoleLines = []
+const GPU_ERROR = /GLSL|shader|useProgram|WebGL|THREE\.WebGL|program not valid|CONTEXT_LOST/i
 try {
   const page = await app.firstWindow()
+  // GPU-side smoke test: a shader that fails to compile reports itself only on the renderer's
+  // console (three logs the GLSL error, then `useProgram: program not valid` every frame) and the
+  // scene silently draws nothing — the ground grid did exactly that for a reserved word. Every
+  // console error/warning the walk sees is collected; GPU ones fail the run below.
+  page.on('console', (msg) => {
+    const type = msg.type()
+    if (type === 'error' || type === 'warning') consoleLines.push(`[${type}] ${msg.text().split('\n')[0].slice(0, 220)}`)
+  })
+  page.on('pageerror', (err) => consoleLines.push(`[pageerror] ${String(err.message ?? err).split('\n')[0].slice(0, 220)}`))
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.getByRole('heading', { level: 1, name: 'Tōgō' }).waitFor({ timeout: 30_000 })
   await settle(page)
@@ -428,3 +439,7 @@ for (const n of notes) console.log(n)
 if (failures.length) { console.log('fixture commands that failed:'); for (const f of failures) console.log(`  - ${f}`) }
 else console.log('fixture: every command succeeded')
 console.log(`wrote ${readdirSync(here).filter((f) => f.startsWith(`${PREFIX}-`)).length} ${PREFIX}-*.png to ${here}`)
+const gpu = consoleLines.filter((l) => GPU_ERROR.test(l))
+console.log(`renderer console: ${consoleLines.length} error/warning line(s), ${gpu.length} GPU-related`)
+for (const l of consoleLines.slice(0, 12)) console.log(`  ${l}`)
+if (gpu.length) { console.log('GPU errors are a failed capture: a scene drew less than it claims.'); process.exitCode = 2 }

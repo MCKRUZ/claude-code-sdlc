@@ -82,6 +82,34 @@ describe('M10 dusk reveal', () => {
     expect(start).not.toHaveBeenCalled()
   })
 
+  it('a transition the browser skips rejects `ready` — observed by the default environment, never an uncaught error', async () => {
+    // The production walk saw "[pageerror] Transition was skipped" on every theme flip that was
+    // superseded: Chromium rejects `ready` with an AbortError while `finished` still settles, and
+    // nobody waited on `ready`. This goes through the DEFAULT environment's startViewTransition
+    // (only motionOn is overridden), with the document stub a real browser would provide.
+    const unhandled: unknown[] = []
+    const onUnhandled = (e: PromiseRejectionEvent) => { unhandled.push(e.reason); e.preventDefault?.() }
+    window.addEventListener('unhandledrejection', onUnhandled)
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
+    const ready = Promise.reject(new DOMException('Transition was skipped', 'AbortError'))
+    doc.startViewTransition = vi.fn((cb: () => void) => { cb(); return { finished: Promise.resolve(), ready, updateCallbackDone: Promise.resolve() } })
+    try {
+      configureThemeRevealForTests({ motionOn: () => true })
+      applyTheme('light')
+      expect(applyTheme('dark')).toBe('dark')
+      expect(doc.startViewTransition).toHaveBeenCalledTimes(1)
+      // Let every promise in the chain settle, then the microtask the browser would use to report.
+      await new Promise((r) => setTimeout(r, 0))
+      await new Promise((r) => setTimeout(r, 0))
+      expect(unhandled).toEqual([])
+      expect(html().getAttribute('data-theme')).toBe('dark')
+      expect(html().hasAttribute('data-view-transition')).toBe(false)
+    } finally {
+      window.removeEventListener('unhandledrejection', onUnhandled)
+      delete doc.startViewTransition
+    }
+  })
+
   it('with motion on runs the flip INSIDE startViewTransition, marks data-view-transition for its duration and writes the origin', async () => {
     let finish: () => void = () => {}
     const finished = new Promise<void>((resolve) => { finish = resolve })
