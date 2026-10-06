@@ -27,7 +27,7 @@ export const Badge = forwardRef<HTMLSpanElement, BadgeProps>(function Badge({ ki
       className={cn('inline-flex h-[18px] items-center gap-1 rounded-full px-1.5 text-[11px] font-medium leading-none', tone, className)}
       {...rest}
     >
-      <Icon icon={icon} size={14} className="h-3 w-3" />
+      <Icon icon={icon} size={12} />
       {children}
     </span>
   )

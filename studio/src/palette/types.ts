@@ -49,7 +49,7 @@ export type SettingsAnchor =
  * re-runs the current screen's own P-class read and never `openProject` or `pull`. */
 export type PaletteActionId =
   | 'theme' | 'density' | 'motion' | 'console' | 'chat' | 'spine'
-  | 'surface' | 'refresh' | 'copy-path' | 'shortcuts' | 'back' | 'new-project' | 'open-folder'
+  | 'surface' | 'fit-graph' | 'focus-next-up' | 'refresh' | 'copy-path' | 'shortcuts' | 'back' | 'new-project' | 'open-folder'
 
 /** What the actions group needs from the host: current values (to label "Theme: Dark →
  * System") and the callbacks that apply them. Absent callback → the entry is omitted, so an
@@ -65,6 +65,10 @@ export interface PaletteActionHooks {
   toggleSpine?: () => void
   /** Only when a scene is on screen. */
   toggleSurface?: () => void
+  /** Round 2 (I6): only while a graph is on screen — the figure's own camera / focus commands
+   * (`scenes/core/sceneActions`), screen callbacks that reach no IPC. */
+  fitGraph?: () => void
+  focusNextUp?: () => void
   /** The current screen's own refresh (`StageReadinessContext.refresh`, the board's reload…). */
   refreshScreen?: () => void
   copyProjectPath?: () => void

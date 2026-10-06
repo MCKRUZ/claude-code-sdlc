@@ -62,6 +62,27 @@ fail loudly rather than skipping, on purpose; run only the rest with
 
 Files under `electron/` are compiled into `dist-electron/`.
 
+### The kit
+
+Every screen is composed from `src/ui/` (typed contracts in `contract.ts`, exports in `index.ts`).
+Round 2 (`docs/proposals/studio-upgrade-2.md`) added the pieces every screen now shares:
+
+- `PageHeader` — area eyebrow ("BUILD · BOARD"), the `h2[data-page-heading]` with the heading
+  text byte-identical to before, a lede as the h2's next sibling, right-aligned actions;
+  `sticky` uses the one sticky recipe (`components/useStuck.ts`: transparent at rest, `surface-0`
+  and a hairline only once scrolled — the ghost-strip fix).
+- `Disclosure` — a `<details>` with a chevron summary and no `::marker`; closed by default.
+- `EmptyState figure=…` — six small figures in the product's own vocabulary (`emptyFigures.tsx`).
+- `Dialog scrollBody` — a scrolling body with the footer pinned; rows stagger in (cap 8).
+- Toasts anchor over `<main>` (never over the chat composer), dedupe a same-title update within
+  2 s in place, and their rail is a clock that pauses while hovered.
+- Text: `text-accent-text` / `hover:text-accent-text-hover` for every link-coloured word (readable
+  in dark too); `Eyebrow` / `EYEBROW_TYPE_CLASS` for the label voice — `ink-4` is decoration only,
+  never a word, and a bare `text-eyebrow` class is the colour utility alone.
+- `shared/format.ts` — `plural`, `formatDate`, `formatRelative`, `formatHours`, `NO_DATA`: the one
+  place a plugin value becomes words. It formats what the plugin reported and derives nothing;
+  a value the plugin did not give reads "no data" / "no date recorded", never 0 or today.
+
 ## Appearance
 
 Settings › **Appearance** (also the sidebar's "Appearance" button) holds four per-person
@@ -71,7 +92,7 @@ preferences. Each is stored in `localStorage` and takes effect without a reload.
 |---|---|---|---|
 | Theme | System / Light / Dark | `studio.theme` | System follows the operating system. The dark theme is a remap of the colour ramps, so every screen flips at once. |
 | Density | Comfortable / Compact | `studio.density` | Compact tightens the vertical rhythm; the sidebar and chat keep their width. |
-| Animations | Auto / On / Off | `studio.motion` | Auto honours the OS reduced-motion setting. **On** is an explicit opt-in that overrides it; Off turns every animation off. Animations are always off under test. |
+| Animations | Auto / On / Off | `studio.motion` | Auto honours the OS reduced-motion setting. **On** is an explicit opt-in that overrides it; Off turns every animation off. Animations are always off under test. The opening flourishes (project assemble, Welcome field, Spine draw) quieten with familiarity — opens 1–3 in full, 4–10 brisk, then not at all; a hashed per-project counter in `studio.opens.<hash>`. **Play the opening again** resets it (disabled outside a project, saying why). |
 | Visuals default | Graph / Table | `studio.sprint.surface` | Which surface the Sprint constellation opens on. The Table twin is always one click away, and is what shows when graphics are unavailable. |
 
 ## Keyboard shortcuts
@@ -97,6 +118,14 @@ typed within 800 ms. Shortcuts marked † also fire while an input has focus.
 | `1` / `2` / `3` | stage home | Workflow / Documents / Guide tab |
 | `Alt+↑` / `Alt+↓` | document view | Previous / next document |
 | `Mod+S` † | document view | Save the open field |
+| `Home` / `n` | in a graph | Fit the graph / focus the spec the plugin named next up |
+| `Shift+←→↑↓` / `+` `−` | in a graph | Orbit / zoom the camera |
+| `↑` / `↓` / `Esc` | in a graph | Previous / next spec in build order / clear the hover |
+
+"In a graph" bindings fire only while a Constellation figure (the Sprint or Board graph) has
+keyboard focus — the Spine carries no keyboard scope — and
+the same two commands — *Fit the graph*, *Focus next up* — sit in the palette while a graph is on
+screen. They move a camera and a focus ring; nothing is fetched or written.
 
 ⌘W / ⌘Q / ⌘R / ⌘1–9 and the F-keys are deliberately absent: Electron and the OS own them.
 Escape always closes the innermost thing (palette, dialog, hover card) and never discards an
@@ -111,25 +140,40 @@ the canvas has crashed, or Tōgō is under test. Scenes draw only what the plugi
 Tōgō computes no status of its own, and a value the plugin reports as null reads "no data".
 
 - **Lifecycle Spine** (`scenes/spine/`) — the stage order and each stage's sign-off state, as a
-  band above a stage's home and on the Closing screen. Sign-off plays a short ceremony along the
+  band above a stage's home and on the Closing screen. Station plates carry short names
+  (`STAGE_SHORT_LABEL`; the full name on hover and on the current station); a thin accent
+  reticle marks the stage whose home is open ("The accent ring marks the stage you are
+  viewing" — `data-viewing` on the Table twin, never `aria-current`); on Closing every plate
+  carries its ledger line word for word from the plugin's row ("signed off · name · date",
+  "completed · no name recorded", "not started"). Sign-off plays a short ceremony along the
   rail; the end state equals a cold reload.
 - **Dependency Constellation** (`scenes/constellation/`) — specs as nodes, `depends_on` as
   edges, on the Sprint screen and the Board (Graph in the filter bar). A node's size comes from
   its risk tier alone; a dependency on an id with no spec is a ghost node drawn from the id; a
   dependency outside the slate on an unmerged spec is warn-toned. The Sprint's Table twin is the
-  slate itself; the Board's is the list.
+  slate itself; the Board's is the list. The Board host spreads bodies into a band and fits the
+  camera to the host's aspect (bodies fill ≥ 60 % of the figure); y carries no meaning. A spec
+  page draws its own dependency neighbourhood as plain SVG (`SpecNeighbourhood`), no canvas.
+- **Materials and light** (`scenes/core/`) — bodies carry a fresnel rim in their own status colour
+  and a soft specular dot; rings and the rail are shaded so the token colour is the brightest
+  pixel; a three-point rig, a contact pool under every body (scale from radius only) and a
+  theme-aware grid. Nothing takes geometry, brightness or size from time, people or activity.
 - **Ambient field** (`scenes/ambient/`) — a slow particle background behind the entry screens
   only (Welcome, New project, Setup), gated by `AMBIENT_ENABLED && motion.enabled() &&
   canUseWebGL()`; never on a project screen and never under test.
 
 ## Bundle
 
-Measured on `vite build --mode=test` after the Observatory (2026-10-05): main chunk
-`dist/assets/index-*.js` **574.8 KB** (budget ≤ 800 KB, enforced by `test/bundleSize.test.ts`),
-`scene-core-*.js` **941.8 KB** (three, R3F, d3-force-3d — loaded on the first Canvas mount only),
-per-scene chunks 4–18 KB, `gsap` 68 KB and the choreography presets 58 KB as shared chunks, CSS
-60 KB. Fonts (Inter Variable, JetBrains Mono Variable) are bundled woff2; nothing is fetched over
-the network, and the Content-Security-Policy in `index.html` is unchanged.
+Measured on the production `vite build` of the v8 capture after upgrade round 2 (2026-10-06):
+main chunk `dist/assets/index-*.js` **641.8 KB** (gzip 194.8 KB; budget ≤ 800 KB, enforced by
+`test/bundleSize.test.ts` — the `--mode=test` build measures 641.4 KB), `scene-core-*.js`
+**966.9 KB** (three, R3F, d3-force-3d — loaded on the first Canvas mount only), per-scene chunks
+2–26 KB (ConstellationScene 26, SpineScene 18, Plates 9), `gsap` 70 KB, the choreography 30 KB
+and its presets 30 KB, the kit 46 KB and `shared/format` 1.5 KB as shared chunks, CSS 73 KB.
+Round 1 measured 574.8 / 941.8 KB; the main chunk grew 67 KB for the kit's new primitives, the
+ceremonies, the palette's Flip and the spec neighbourhood. Fonts (Inter Variable, JetBrains Mono
+Variable) are bundled woff2; nothing is fetched over the network, and the Content-Security-Policy
+in `index.html` is unchanged.
 
 ## Security
 
@@ -170,4 +214,7 @@ updated, while the project itself stays readable.
 The specs in the repository's `specs/` directory (0008 onward) record Tōgō's build order;
 `docs/proposals/studio-improvements.md` is the plan (Batches 1–2 built; its D4/D5 became the
 code-host providers plan, built through Wave 7), `docs/proposals/studio-observatory.md` the visual
-overhaul (spec 0033, built), and `docs/brand/togo/` the identity.
+overhaul (spec 0033, built), `docs/proposals/studio-upgrade-2.md` the second round (built;
+its status line records what P7 verified), and `docs/brand/togo/` the identity — the solid
+Macron is the mark; its Depth gradient lives at hero size only (Welcome, the opening card, the
+app icon), regenerated by `docs/brand/togo/build-assets.mjs`.

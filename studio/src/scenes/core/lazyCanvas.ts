@@ -7,3 +7,23 @@
 export function loadCanvasHost() {
   return import('./CanvasHost')
 }
+
+const MODE: string = import.meta.env.MODE
+
+/** Round 2 (I8): warm the scene chunk before anyone toggles to Graph — on hover of the toggle,
+ * on idle after a screen settles — so the first canvas mounts without the chunk's round trip.
+ * Guarded: a no-op under `MODE === 'test'` (the sceneShell pin that no chunk is requested unless
+ * a test asks for the graph still holds) and after the first call. Errors are swallowed: a
+ * prefetch that fails simply leaves the real `lazy()` to try again. */
+let prefetched = false
+export function prefetchCanvasHost(): boolean {
+  if (MODE === 'test' || prefetched) return false
+  prefetched = true
+  loadCanvasHost().catch(() => { prefetched = false })
+  return true
+}
+
+/** For tests. */
+export function resetCanvasPrefetch(): void {
+  prefetched = false
+}

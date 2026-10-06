@@ -4,7 +4,7 @@
  * ceiling the work is handed back in steps rather than blocking the first paint. */
 
 import { describe, expect, it } from 'vitest'
-import { computeLayout, INCREMENTAL_MAX_STEPS, INCREMENTAL_PER_STEP } from '../../src/scenes/core/layout/forceLayout'
+import { computeLayout, INCREMENTAL_MAX_STEPS, INCREMENTAL_PER_STEP, LAYOUT_POLICY, Y_CLAMP } from '../../src/scenes/core/layout/forceLayout'
 import type { LayoutInput } from '../../src/scenes/core/layout/forceLayout'
 import { layoutCacheKey, loadLayoutCache } from '../../src/scenes/core/layout/layoutCache'
 import { fnv1a, mulberry32, seededPosition } from '../../src/scenes/core/layout/hash'
@@ -100,6 +100,49 @@ describe('computeLayout', () => {
       const q = carried.positions.get(k)!
       expect(Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2])).toBeLessThan(0.5)
     }
+  })
+})
+
+/** Round 2 (I9): the Board's aspect policy. y carries no meaning, so the Board spreads it into a
+ * band inside ±Y_CLAMP and gathers x — a graph with no build order is otherwise spread three
+ * times wider than its host by repulsion alone. The Sprint policy is empty: its layout is
+ * byte-identical to the design's slab. */
+describe('LAYOUT_POLICY (I9)', () => {
+  const board: LayoutInput = {
+    nodes: ['0001', '0002', '0003', '0004', '0005', '0006'].map((id) => ({ id, buildOrderIndex: null })),
+    links: [{ from: '0002', to: '0001' }, { from: '0004', to: '0002' }, { from: '0005', to: '0002' }, { from: '0006', to: '0005' }, { from: '0003', to: '0001' }],
+  }
+
+  it('the Sprint policy is the plain layout', () => {
+    expect(LAYOUT_POLICY.sprint).toEqual({})
+    const plain = computeLayout(chain(6))
+    const sprint = computeLayout(chain(6), LAYOUT_POLICY.sprint)
+    expect([...sprint.positions.entries()]).toEqual([...plain.positions.entries()])
+  })
+
+  it('the Board policy forms a band: every y inside ±Y_CLAMP, the y range wider than a line, x gathered, and no two bodies touching', () => {
+    const { positions } = computeLayout(board, LAYOUT_POLICY.board)
+    const ys = [...positions.values()].map((p) => p[1])
+    const xs = [...positions.values()].map((p) => p[0])
+    for (const y of ys) expect(Math.abs(y)).toBeLessThanOrEqual(Y_CLAMP + 1e-9)
+    expect(Math.max(...ys) - Math.min(...ys)).toBeGreaterThan(1.5)
+    const plain = computeLayout(board)
+    const plainXs = [...plain.positions.values()].map((p) => p[0])
+    expect(Math.max(...xs) - Math.min(...xs)).toBeLessThan(Math.max(...plainXs) - Math.min(...plainXs))
+    const pts = [...positions.values()]
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      expect(Math.hypot(pts[i][0] - pts[j][0], pts[i][1] - pts[j][1], pts[i][2] - pts[j][2])).toBeGreaterThan(1)
+    }
+  })
+
+  it('x stays monotonic in build order under the Board policy too', () => {
+    const { positions } = computeLayout(chain(6), LAYOUT_POLICY.board)
+    const xs = Array.from({ length: 6 }, (_, i) => positions.get(id(i))![0])
+    for (let i = 1; i < xs.length; i++) expect(xs[i]).toBeGreaterThan(xs[i - 1])
+  })
+
+  it('is deterministic', () => {
+    expect([...computeLayout(board, LAYOUT_POLICY.board).positions.entries()]).toEqual([...computeLayout(board, LAYOUT_POLICY.board).positions.entries()])
   })
 })
 

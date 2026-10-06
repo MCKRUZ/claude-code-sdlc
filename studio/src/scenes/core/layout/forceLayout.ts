@@ -12,7 +12,7 @@
 // Up to SYNC_LAYOUT_MAX nodes the 240 ticks run synchronously (≈ 5–15 ms). Above it, 60 ticks run
 // now and the caller advances the rest with `step()` across frames — no worker, because the CSP
 // forbids blob workers and a few frames of settling is cheap enough.
-import { forceCenter, forceLink, forceManyBody, forceSimulation, forceY, forceZ } from 'd3-force-3d'
+import { forceCenter, forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, forceZ } from 'd3-force-3d'
 import type { Force, SimulationLink, SimulationNode } from 'd3-force-3d'
 import { SYNC_LAYOUT_MAX } from '../sceneDefaults'
 import { fnv1a, mulberry32, seededPosition } from './hash'
@@ -37,9 +37,25 @@ export interface LayoutInput {
   initial?: ReadonlyMap<string, Position> | null
 }
 
+/** Round 2 (I9): the per-host ASPECT policy. y carries no meaning, so a host may spread it to
+ * fill its figure — the Board's 720 × 280 host projected a width-fitted slab to ≈ 90 px of air
+ * above a thin line of bodies. A weaker y flatten lets the seeded y (hashed from the id, never a
+ * fact) form a band inside `yClamp`; `compactX` pulls x toward the centre so a graph with NO
+ * build order (the Board has none) is not spread three times wider than its host by repulsion
+ * alone. x stays monotonic in build order wherever the plugin gave one (`forceOrderX`). */
 export interface LayoutOptions {
   /** Test hook; defaults to `SYNC_LAYOUT_MAX`. */
   syncMax?: number
+  /** `forceY(0)` strength; default `FLATTEN_Y_STRENGTH`. */
+  flattenY?: number
+  /** Hard clamp on y after the layout settles (world units); default none. */
+  yClamp?: number
+  /** `forceX(0)` strength; default 0 (off). Weaker than `forceOrderX`, so an ordered graph still
+   * reads left → right. */
+  compactX?: number
+  /** `forceCollide` radius (world units); default 0 (off). Gathered bodies must not touch: the
+   * largest drawn body is HIGH × the fit's `BODY_SCALE_MAX`, under one unit across. */
+  collide?: number
 }
 
 export interface LayoutResult {
@@ -61,6 +77,18 @@ export const ORDER_SPACING = 2.2
 export const ORDER_STRENGTH = 0.6
 export const FLATTEN_Y_STRENGTH = 0.3
 export const FLATTEN_Z_STRENGTH = 0.6
+/** The Board policy (I9): y spread into a band, x gathered toward the host's aspect. */
+export const BOARD_FLATTEN_Y_STRENGTH = 0.08
+export const Y_CLAMP = 1.4
+export const BOARD_COMPACT_X_STRENGTH = 0.4
+export const BOARD_COLLIDE_RADIUS = 1.0
+
+/** The layout options per body source. The Sprint keeps the design's slab (its x is the plugin's
+ * build order, which already spaces the bodies); the Board gets the aspect policy. */
+export const LAYOUT_POLICY: Readonly<Record<'sprint' | 'board', LayoutOptions>> = {
+  sprint: {},
+  board: { flattenY: BOARD_FLATTEN_Y_STRENGTH, yClamp: Y_CLAMP, compactX: BOARD_COMPACT_X_STRENGTH, collide: BOARD_COLLIDE_RADIUS },
+}
 /** Every z is clamped to this slab after the layout settles. Perspective resizes bodies by depth,
  * and radius must read as the risk tier alone — a LOW near the camera must never look HIGH. */
 export const Z_CLAMP = 0.6
@@ -93,6 +121,20 @@ export function forceOrderX(spacing = ORDER_SPACING, strength = ORDER_STRENGTH):
   return force
 }
 
+/** Hold y inside ±`limit` DURING the simulation (not only on read), so the collision force sees
+ * the clamped positions and two bodies pushed to the same edge still keep their distance. */
+export function forceClampY(limit: number): Force<SimNode> {
+  let nodes: SimNode[] = []
+  const force: Force<SimNode> = () => {
+    for (const n of nodes) {
+      if (n.y > limit) { n.y = limit; n.vy = Math.min(0, n.vy ?? 0) }
+      else if (n.y < -limit) { n.y = -limit; n.vy = Math.max(0, n.vy ?? 0) }
+    }
+  }
+  force.initialize = (ns) => { nodes = ns }
+  return force
+}
+
 function toSimNodes(input: LayoutInput): SimNode[] {
   return input.nodes.map((n) => {
     const [x, y, z] = input.initial?.get(n.id) ?? seededPosition(n.id)
@@ -100,13 +142,16 @@ function toSimNodes(input: LayoutInput): SimNode[] {
   })
 }
 
-function readPositions(nodes: SimNode[], into: Map<string, Position>): Map<string, Position> {
-  for (const n of nodes) into.set(n.id, [n.x, n.y, Math.max(-Z_CLAMP, Math.min(Z_CLAMP, n.z))])
+function readPositions(nodes: SimNode[], into: Map<string, Position>, yClamp = Infinity): Map<string, Position> {
+  for (const n of nodes) {
+    into.set(n.id, [n.x, Math.max(-yClamp, Math.min(yClamp, n.y)), Math.max(-Z_CLAMP, Math.min(Z_CLAMP, n.z))])
+  }
   return into
 }
 
 export function computeLayout(input: LayoutInput, options: LayoutOptions = {}): LayoutResult {
   const syncMax = options.syncMax ?? SYNC_LAYOUT_MAX
+  const yClamp = options.yClamp ?? Infinity
   const nodes = toSimNodes(input)
   const known = new Set(nodes.map((n) => n.id))
   const links: SimLink[] = input.links
@@ -121,25 +166,28 @@ export function computeLayout(input: LayoutInput, options: LayoutOptions = {}): 
     .force('charge', forceManyBody<SimNode>().strength(-3.5))
     .force('center', forceCenter<SimNode>())
     .force('z', forceZ<SimNode>(0).strength(FLATTEN_Z_STRENGTH))
-    .force('y', forceY<SimNode>(0).strength(FLATTEN_Y_STRENGTH))
+    .force('y', forceY<SimNode>(0).strength(options.flattenY ?? FLATTEN_Y_STRENGTH))
     .force('orderX', forceOrderX())
     .stop()
+  if (options.compactX) sim.force('compactX', forceX<SimNode>(0).strength(options.compactX))
+  if (Number.isFinite(yClamp)) sim.force('clampY', forceClampY(yClamp))
+  if (options.collide) sim.force('collide', forceCollide<SimNode>(options.collide))
 
   const positions = new Map<string, Position>()
 
   if (nodes.length <= syncMax) {
     sim.tick(SYNC_TICKS)
-    return { positions: readPositions(nodes, positions), settled: true }
+    return { positions: readPositions(nodes, positions, yClamp), settled: true }
   }
 
   sim.tick(INCREMENTAL_FIRST)
-  readPositions(nodes, positions)
+  readPositions(nodes, positions, yClamp)
   let steps = 0
   const step = (): boolean => {
     if (steps >= INCREMENTAL_MAX_STEPS || sim.alpha() < sim.alphaMin()) return true
     sim.tick(INCREMENTAL_PER_STEP)
     steps += 1
-    readPositions(nodes, positions)
+    readPositions(nodes, positions, yClamp)
     return steps >= INCREMENTAL_MAX_STEPS || sim.alpha() < sim.alphaMin()
   }
   return { positions, settled: false, step }

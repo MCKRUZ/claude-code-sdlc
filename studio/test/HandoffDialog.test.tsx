@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { HandoffDialog } from '../src/components/HandoffDialog'
 import { RosterPicker, filterRoster } from '../src/components/RosterPicker'
 import { clearToasts, getSnapshot } from '../src/ui/toastStore'
+import { configureMotionForTests } from '../src/motion/motion'
+import { gsap } from 'gsap'
 import type { BoardRow } from '../shared/types'
 import type { RosterEntry } from '../src/ui'
 
@@ -134,5 +136,29 @@ describe('RosterPicker: a combobox over the roster the host holds', () => {
     expect(screen.queryByRole('combobox')).toBeNull()
     expect(screen.getByLabelText('Developer').tagName).toBe('INPUT')
     expect(screen.getByText(/the hand-off command checks it/)).toBeTruthy()
+  })
+})
+
+describe('HandoffDialog: M9 with the engine ON leaves the success card visible', () => {
+  afterEach(() => {
+    configureMotionForTests(null)
+    gsap.globalTimeline.clear()
+  })
+
+  it('the form root fades to 0 and is unmounted; "Handed off" mounts on a fresh node at opacity 1', async () => {
+    configureMotionForTests({ isTestMode: () => false })
+    install()
+    render(<main><HandoffDialog projectPath="/p" row={ROW} roster={ROSTER} onClose={vi.fn()} onHandedOff={vi.fn()} /></main>)
+    const formRoot = screen.getByText('Hand off 0008').closest('.space-y-4') as HTMLElement
+    fireEvent.change(screen.getByRole('combobox', { name: 'Developer' }), { target: { value: '@lee-w' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Hand off' }))
+    const heading = await screen.findByText('Handed off', undefined, { timeout: 5000 })
+    const cardRoot = heading.closest('.space-y-4') as HTMLElement
+    // A different DOM node than the form's — the one the ceremony tweened to opacity 0 is gone.
+    expect(cardRoot).not.toBe(formRoot)
+    expect(formRoot.isConnected).toBe(false)
+    expect(cardRoot.style.opacity === '' || Number(cardRoot.style.opacity) === 1).toBe(true)
+    expect(getComputedStyle(cardRoot).opacity).not.toBe('0')
+    expect(screen.getByRole('button', { name: 'Back to the board' })).toBeTruthy()
   })
 })

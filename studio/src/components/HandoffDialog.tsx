@@ -1,8 +1,11 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BoardRow, HandoffResult } from '../../shared/types'
-import { Button, Card, DefinitionList, Eyebrow, Field, Input, Notice, toast } from '../ui'
+import { Button, Card, Chip, DefinitionList, Eyebrow, Field, Input, Notice, toast } from '../ui'
 import type { RosterEntry } from '../ui'
 import { useEnter } from '../motion/useEnter'
+import { contextFrom, handoffCeremony } from '../motion/choreo'
+import { handoffCeremonyDue } from '../motion/choreo/handoffCeremony'
+import { enabled as motionEnabled, motion, reduced as motionReduced } from '../motion/motion'
 import { useRegisterDirty } from '../stores/dirtyStore'
 import { RosterPicker } from './RosterPicker'
 import { TypedActorForm } from './TypedActorForm'
@@ -45,6 +48,19 @@ export function HandoffDialog({
   const [busy, setBusy] = useState(false)
   // Typed text is unsaved work until the hand-off succeeds; Esc-as-back waits for it (§6.2).
   useRegisterDirty(() => result?.ok !== true && (developer.trim() !== '' || reason.trim() !== ''))
+  // M9: the success card's cells the ceremony moves — the developer's name (BUILDS IT), and the
+  // branch / PR chips. The dialog half (the form fading, 120 ms) plays in `submit` before the
+  // success card replaces it; this half plays once the card is in the DOM.
+  const developerRef = useRef<HTMLSpanElement>(null)
+  const branchRef = useRef<HTMLElement>(null)
+  const prRef = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root || !handoffCeremonyDue(result, true)) return
+    const ctx = contextFrom(root, { enabled: motionEnabled(), reduced: motionReduced() }, motion)
+    const tl = handoffCeremony.play(ctx, { buildsCell: developerRef.current, prChips: [branchRef.current, prRef.current] })
+    return () => { tl.kill() }
+  }, [result])
 
   const refusal = result?.ok === false ? result.refusal! : null
   const atLimit = refusal?.kind === 'team_at_limit'
@@ -63,31 +79,44 @@ export function HandoffDialog({
     // Sending it pre-emptively would let someone breach a limit they were never told about,
     // which is the whole value of having one.
     const next = await window.studio.handOff(projectPath, row.path, developer.trim(), atLimit ? reason : undefined)
+    if (next.ok && rootRef.current) {
+      // The plugin said yes: the form fades (M9's first beat) before the card takes its place. A
+      // refusal skips this — nothing plays, the Notice below says why in the plugin's words.
+      const ctx = contextFrom(rootRef.current, { enabled: motionEnabled(), reduced: motionReduced() }, motion)
+      await handoffCeremony.play(ctx, { dialog: rootRef.current }).then()
+    }
     setResult(next)
     setBusy(false)
     if (next.ok) {
       toast({
         tone: 'ok',
         title: next.alreadyInFlight ? `${row.spec} was already with a developer` : `${row.spec} handed off`,
+        // The plugin's own value, never a guess at who it chose.
         detail: next.developer ? `Now with ${next.developer}` : undefined,
       })
     }
   }
 
+  // The two roots are KEYED: M9's first beat tweens the form's root to opacity 0 and leaves it
+  // there (the form is about to go). Without a key React would reuse that same <div> for the
+  // success card — same type, same position — and "Handed off" would inherit the inline
+  // `opacity: 0`. A fresh node starts at its natural state, which is what a cold reload shows.
   if (result?.ok) {
     return (
-      <div ref={rootRef} className="space-y-4">
+      <div key="handed-off" ref={rootRef} className="space-y-4">
         <h3 className="text-lg text-ink-1" data-page-heading>
           {result.alreadyInFlight ? 'Already with a developer' : 'Handed off'}
         </h3>
         <Card className="text-sm">
           <p className="text-ink-1">
-            {row.spec} → <span className="font-medium">{result.developer}</span>
+            {row.spec} → <span ref={developerRef} className="font-medium" data-testid="handoff-developer">{result.developer}</span>
             {result.checker && <span className="text-ink-3"> · {result.checker} checks it</span>}
           </p>
-          {result.branch && <p className="mt-1 font-mono text-xs text-ink-4">{result.branch}</p>}
-          {result.prUrl && (
-            <p className="mt-1 text-xs text-ink-3">Pull request opened.</p>
+          {(result.branch || result.prUrl) && (
+            <p className="mt-2 flex flex-wrap items-center gap-1.5">
+              {result.branch && <Chip ref={branchRef} casing="identifier" tone="mono" size="sm">{result.branch}</Chip>}
+              {result.prUrl && <Chip ref={prRef} tone="accent" size="sm" dot>Pull request opened.</Chip>}
+            </p>
           )}
           {result.assignmentError && (
             // The branch and the commit are real; nobody was told. Hiding this would leave
@@ -106,7 +135,7 @@ export function HandoffDialog({
   }
 
   return (
-    <div ref={rootRef} className="space-y-4">
+    <div key="form" ref={rootRef} className="space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           {/* Detail-screen rank (G4-1): the same size the spec view's title wears. */}
@@ -126,14 +155,15 @@ export function HandoffDialog({
           columns={3}
           className="text-sm"
           items={[
-            { term: <Eyebrow as="span">Owns it</Eyebrow>, detail: row.owner || <span className="text-ink-4">nobody</span> },
+            // C2: a WORD is never `ink-4` (decoration only) — these placeholders are words.
+            { term: <Eyebrow as="span">Owns it</Eyebrow>, detail: row.owner || <span className="text-ink-3">nobody</span> },
             {
               term: <Eyebrow as="span">Builds it</Eyebrow>,
-              detail: developer.trim() || <span className="text-ink-4">choose below</span>,
+              detail: developer.trim() || <span className="text-ink-3">choose below</span>,
             },
             {
               term: <Eyebrow as="span">Checks it</Eyebrow>,
-              detail: row.checker || <span className="text-ink-4">nobody yet</span>,
+              detail: row.checker || <span className="text-ink-3">nobody yet</span>,
             },
           ]}
         />

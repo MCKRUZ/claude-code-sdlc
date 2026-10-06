@@ -127,6 +127,7 @@ function TabInner<V extends string>(
       tabIndex={selected ? 0 : -1}
       data-value={value}
       data-tab-underline={selected ? '' : undefined}
+      data-pressable=""
       onClick={() => {
         if (!selected) ctx.onChange(value)
       }}

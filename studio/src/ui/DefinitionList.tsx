@@ -20,7 +20,7 @@ export const DefinitionList = forwardRef<HTMLDListElement, DefinitionListProps>(
     <dl ref={ref} className={cn('grid gap-x-4 gap-y-2 text-xs', COLUMNS[columns], className)} {...rest}>
       {items.map((item, i) => (
         <div key={item.key ?? i} className="min-w-0">
-          <dt className="text-ink-4">{item.term}</dt>
+          <dt className="text-ink-3">{item.term}</dt>
           <dd className="mt-0.5 text-ink-1">{item.detail}</dd>
         </div>
       ))}

@@ -71,6 +71,10 @@ export interface DialogProps {
   /** False renders no header band or close button (the command palette owns its own input
    * row). Escape and the scrim still close it. Default true. */
   chrome?: boolean
+  /** Round 2 (M5): the body becomes its own scroll box, `max-h-[min(60vh,560px)]`, so a long
+   * list (ShortcutsHelp, the palette) scrolls inside the panel while the header and footer stay
+   * put; the footer takes `rounded-b-[inherit]`. Default false. */
+  scrollBody?: boolean
 }
 
 // --- #20 Popover / HoverCard -------------------------------------------------------------------
@@ -116,7 +120,8 @@ export interface BackLinkProps extends Rest<'button', 'type'> {
 
 // --- #24 Icon ----------------------------------------------------------------------------------
 
-export type IconSize = 14 | 16 | 18
+/** 12 is for chip and badge glyphs only (C5) — a 14 px icon in a 20 px chip crowds the text. */
+export type IconSize = 12 | 14 | 16 | 18
 
 /** `aria-hidden` unless `label` is given (then `role="img"`). */
 export interface IconProps {

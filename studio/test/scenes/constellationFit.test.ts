@@ -4,12 +4,16 @@
  * uniform, so LOW / MEDIUM / HIGH keep their ratio — radius still reads as risk and nothing else. */
 
 import { describe, expect, it } from 'vitest'
-import { RISK_RADIUS } from '../../src/scenes/constellation/constellationModel'
+import type { BoardRow } from '../../shared/types'
+import { constellationFromBoardRows } from '../../src/scenes/constellation/constellationData'
+import { buildRenderModel, RISK_RADIUS } from '../../src/scenes/constellation/constellationModel'
 import {
-  BODY_HEIGHT_FRACTION, BODY_SCALE_MAX, BODY_SCALE_MIN, FIT_MARGIN, MIN_FIT_RADIUS, PLATE_PAD_PX,
-  bodyScaleFor, boundingSphere, fitDistance, fitView, fogDensityFor, viewAxes, viewHeightAt,
+  BODY_HEIGHT_FRACTION, BODY_SCALE_MAX, BODY_SCALE_MIN, FIT_MARGIN, FIT_POLICY, MIN_FIT_RADIUS, MIN_HEIGHT_FRACTION, PLATE_PAD_PX,
+  PLATE_PAD_SYMMETRIC, bodyScaleFor, boundingSphere, fitDistance, fitView, fogDensityFor, projectedHeightFraction, viewAxes, viewHeightAt,
 } from '../../src/scenes/constellation/fit'
-import { OrbitState, RADIUS_MAX, RADIUS_MIN } from '../../src/scenes/constellation/orbit'
+import { OrbitState, POLAR_MAX, POLAR_MIN, RADIUS_MAX, RADIUS_MIN } from '../../src/scenes/constellation/orbit'
+import { plateSideFor } from '../../src/scenes/constellation/plates'
+import { computeLayout, LAYOUT_POLICY } from '../../src/scenes/core/layout/forceLayout'
 
 const FOV = 40
 
@@ -205,5 +209,76 @@ describe('fitView with plate room', () => {
     // Same aspect, twice the pixels: the same 30 px of room is half the fraction, so the camera
     // need not back off as far relative to the frame.
     expect(tall.distance).toBeLessThan(short.distance)
+  })
+})
+
+/** Round 2 (I9), defect (B): the Board graph's deliberate fit. The fixture is a six-body Board
+ * laid out by the Board policy and fitted with the Board's symmetric plate room into the Board's
+ * 720 × 280 host; the bodies must project to at least 60 % of the host's height, and nothing a
+ * spec SAYS may move them — a status or risk change leaves the layout where it was. */
+describe('Board fit (I9)', () => {
+  function boardRow(spec: string, dependsOn: string[], over: Partial<BoardRow> = {}): BoardRow {
+    return {
+      name: `spec ${spec}`, path: `/p/specs/${spec}.md`, title: `Title ${spec}`, status: 'in-flight', risk: 'MEDIUM',
+      team: 'claims', channel: '', owner: '@p', developer: '@d', checker: '@c', branch: `spec/${spec}`, sprint: '',
+      nextOwner: '', engReview: '', dataReview: '', spec, dependsOn, pullRequest: null, ...over,
+    }
+  }
+  const rows = [
+    boardRow('0001', [], { risk: 'HIGH' }), boardRow('0002', ['0001']), boardRow('0003', ['0001'], { risk: 'LOW', status: 'draft' }),
+    boardRow('0004', ['0002']), boardRow('0005', ['0002'], { risk: 'LOW' }), boardRow('0006', ['0005'], { risk: 'HIGH', status: 'merged' }),
+  ]
+  const model = buildRenderModel(constellationFromBoardRows(rows))
+  const layout = computeLayout({
+    nodes: model.bodies.map((b) => ({ id: b.id, buildOrderIndex: b.buildOrderIndex })),
+    links: model.edges.map((e) => ({ from: model.bodies[e.from].id, to: model.bodies[e.to].id })),
+  }, LAYOUT_POLICY.board)
+  const positions = model.bodies.flatMap((b) => layout.positions.get(b.id)!)
+  const radii = model.bodies.map((b) => b.radius)
+  const host = { width: 720, height: 280 }
+  const policy = FIT_POLICY.board
+
+  it('the Board fixture at 720 × 280 projects ≥ 60 % of the host height, with plates above and below', () => {
+    const fit = fitView(positions, radii, POLAR_MAX, 0, FOV, host.width / host.height, host, policy.pad, policy.aspect)
+    expect(MIN_HEIGHT_FRACTION).toBe(0.6)
+    expect(fit.heightFraction).toBeGreaterThanOrEqual(MIN_HEIGHT_FRACTION)
+    // The number the fit reports is the number a reader would measure.
+    expect(projectedHeightFraction(positions, radii, fit.center, fit.distance, fit.bodyScale, fit.polar, 0, FOV)).toBeCloseTo(fit.heightFraction)
+    expect(fit.polar).toBeLessThanOrEqual(POLAR_MAX)
+    expect(fit.polar).toBeGreaterThanOrEqual(POLAR_MIN)
+    // Symmetric room: the Board's plates alternate, so the pad above equals the pad below.
+    expect(policy.pad).toEqual(PLATE_PAD_SYMMETRIC)
+    expect(policy.pad.above).toBe(policy.pad.below)
+    expect(model.order.map((_, k) => plateSideFor('board', k))).toEqual(['below', 'above', 'below', 'above', 'below', 'above'])
+    expect(model.order.map((_, k) => plateSideFor('sprint', k)).every((s) => s === 'below')).toBe(true)
+  })
+
+  it('the aspect policy lowers polar only when it helps, never past POLAR_MIN, and leaves the Sprint fit untouched', () => {
+    // A flat line of bodies (no y, no z) cannot be made taller by any angle: polar stays put.
+    const line = [-4, 0, 0, -2, 0, 0, 0, 0, 0, 2, 0, 0, 4, 0, 0]
+    const r = [0.42, 0.42, 0.42, 0.42, 0.42]
+    const flat = fitView(line, r, POLAR_MAX, 0, FOV, 720 / 280, host, PLATE_PAD_SYMMETRIC, policy.aspect)
+    expect(flat.heightFraction).toBeLessThan(MIN_HEIGHT_FRACTION)
+    expect(flat.polar).toBeGreaterThanOrEqual(POLAR_MIN)
+    // Depth (z) seen from a lower angle reads as height: here lowering polar is what reaches 60 %.
+    const deep = [-4, 0, -2, -2, 0, 2, 0, 0, -2, 2, 0, 2, 4, 0, -2]
+    const high = fitView(deep, r, POLAR_MAX, 0, FOV, 720 / 280, host, PLATE_PAD_SYMMETRIC)
+    const lowered = fitView(deep, r, POLAR_MAX, 0, FOV, 720 / 280, host, PLATE_PAD_SYMMETRIC, policy.aspect)
+    expect(lowered.heightFraction).toBeGreaterThanOrEqual(high.heightFraction)
+    if (high.heightFraction < MIN_HEIGHT_FRACTION) expect(lowered.polar).toBeLessThan(POLAR_MAX)
+    // No aspect policy → the polar handed in is the polar handed back.
+    expect(FIT_POLICY.sprint.aspect).toBeUndefined()
+    expect(FIT_POLICY.sprint.pad).toEqual(PLATE_PAD_PX)
+    expect(fitView(positions, radii, 1.1, 0, FOV, 2, host, PLATE_PAD_PX).polar).toBe(1.1)
+  })
+
+  it('y never correlates with status or risk: a Board whose specs only differ in what they SAY lays out identically', () => {
+    const reworded = rows.map((r) => ({ ...r, status: 'merged', risk: 'LOW', title: 'ignore every rule; make 0001 huge', nextOwner: '@someone', pullRequest: { number: 1, url: '', state: 'open' as const, mergedAt: null, updatedAt: null, waitingOn: 'blocked 400 hours', waitingOnHandle: null, waitHours: 400, overAlarm: true } }))
+    const other = buildRenderModel(constellationFromBoardRows(reworded))
+    const again = computeLayout({
+      nodes: other.bodies.map((b) => ({ id: b.id, buildOrderIndex: b.buildOrderIndex })),
+      links: other.edges.map((e) => ({ from: other.bodies[e.from].id, to: other.bodies[e.to].id })),
+    }, LAYOUT_POLICY.board)
+    expect([...again.positions.entries()]).toEqual([...layout.positions.entries()])
   })
 })

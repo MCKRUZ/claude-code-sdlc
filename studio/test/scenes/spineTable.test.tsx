@@ -9,8 +9,9 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ProjectStage } from '../../shared/types'
 import { resetCanvasRegistry } from '../../src/scenes/core/canvasRegistry'
-import { buildSpineData, NO_NAME_RECORDED, SPINE_LEGEND } from '../../src/scenes/spine/spineModel'
-import { SpineTable } from '../../src/scenes/spine/SpineTable'
+import { buildSpineData, NO_NAME_RECORDED, SPINE_CAPTION, SPINE_LEGEND } from '../../src/scenes/spine/spineModel'
+import { SPINE_RETICLE_LEGEND } from '../../src/scenes/spine/spineReticle'
+import { SpineTable, VIEWING_LABEL } from '../../src/scenes/spine/SpineTable'
 import LifecycleSpine from '../../src/scenes/spine/LifecycleSpine'
 
 const seam = vi.hoisted(() => ({ loadCanvasHost: vi.fn(() => Promise.resolve({ default: () => null })) }))
@@ -104,6 +105,30 @@ describe('SpineTable', () => {
     expect(onActivate.mock.calls).toEqual([['build'], ['9']])
   })
 
+  /** Round 2 (I3): the VIEWED stage is a `data-viewing` row with a "Viewing" badge of the kit's
+   * `current` kind — never `aria-current` (the sidebar's one is the page's), never `kind="now"`
+   * (the plugin's "now" stays the Now badge). Null (Closing) marks nothing. */
+  it('marks the viewed stage with data-viewing and a Viewing badge: zero aria-current, one data-viewing, the Now badge untouched', () => {
+    render(<SpineTable data={{ ...data(), viewedStageId: '1' }} onActivate={() => {}} />)
+    const viewing = document.querySelectorAll('[data-viewing]')
+    expect(viewing).toHaveLength(1)
+    expect(viewing[0].getAttribute('data-stage-id')).toBe('1')
+    const badge = viewing[0].querySelector('[data-badge-kind="current"]')
+    expect(badge?.textContent).toContain(VIEWING_LABEL)
+    expect(document.querySelectorAll('[data-badge-kind="now"]')).toHaveLength(1)
+    expect(document.querySelector('[data-badge-kind="now"]')?.closest('li')?.getAttribute('data-stage-id')).toBe('3')
+    expect(document.querySelector('[aria-current]')).toBeNull()
+    cleanup()
+    render(<SpineTable data={{ ...data(), viewedStageId: null }} onActivate={() => {}} />)
+    expect(document.querySelectorAll('[data-viewing]')).toHaveLength(0)
+    expect(document.querySelectorAll('[data-badge-kind="current"]')).toHaveLength(0)
+  })
+
+  it('carries the long legend as its own caption (S3 moved it off the figcaption)', () => {
+    render(<SpineTable data={data()} onActivate={() => {}} />)
+    expect(screen.getByText(SPINE_LEGEND).getAttribute('data-spine-table-caption')).toBe('')
+  })
+
   it('shares hover with the plates: entering a row reports its id, leaving reports null', () => {
     const onHover = vi.fn()
     render(<SpineTable data={data()} onActivate={() => {}} hoverId="2" onHover={onHover} />)
@@ -121,12 +146,26 @@ describe('LifecycleSpine in jsdom (no WebGL)', () => {
     const figure = screen.getByRole('figure', { name: 'Lifecycle' })
     expect(figure.getAttribute('data-surface')).toBe('table')
     expect(within(figure).getAllByRole('button').filter((b) => b.closest('[data-spine-table]'))).toHaveLength(9)
-    expect(within(figure).getByText(SPINE_LEGEND).tagName).toBe('FIGCAPTION')
+    // S3: the figcaption is the condensed line (still "carry no meaning"); the long sentence is
+    // the table's caption. No stage is being viewed here, so no reticle sentence.
+    const caption = figure.querySelector('figcaption')!
+    expect(caption.textContent).toBe(SPINE_CAPTION)
+    expect(SPINE_CAPTION).toContain('carry no meaning')
+    expect(caption.textContent).not.toContain(SPINE_RETICLE_LEGEND)
+    expect(within(figure).getByText(SPINE_LEGEND).tagName).toBe('P')
     // Phase 1 is `signed_off` with no name: the summary counts it as completed, never as signed.
     expect(describedText(figure)).toMatch(/Phase 3 \(4 of 9\) current; 2 signed off, 1 completed without a name; next: Phase build/)
     expect(figure.querySelector('canvas')).toBeNull()
     expect(seam.loadCanvasHost).not.toHaveBeenCalled()
     fireEvent.click(within(figure).getByRole('button', { name: /Phase 2/ }))
     expect(onActivate).toHaveBeenCalledWith('2')
+  })
+
+  it('adds the reticle sentence to the figcaption only while a stage is being viewed', () => {
+    render(<LifecycleSpine id="spine" data={{ ...data(), viewedStageId: '2' }} hoverId={null} onHover={() => {}} onActivate={() => {}} live={false} />)
+    const figure = screen.getByRole('figure', { name: 'Lifecycle' })
+    expect(figure.querySelector('figcaption')?.textContent).toBe(`${SPINE_CAPTION} ${SPINE_RETICLE_LEGEND}`)
+    expect(figure.querySelectorAll('[data-viewing]')).toHaveLength(1)
+    expect(figure.querySelector('[aria-current]')).toBeNull()
   })
 })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FoundationSummary } from '../../shared/types'
-import { Card, Eyebrow, Notice, SkeletonRows } from '../ui'
+import { Card, Eyebrow, Notice, PageHeader, SkeletonRows } from '../ui'
 import { useListReveal } from './screenMotion'
 
 /** What Foundation handed to Build (spec 0013).
@@ -30,7 +30,7 @@ export function FoundationView({ projectPath }: { projectPath: string }) {
   if (loading && !summary) {
     return (
       <div aria-busy="true">
-        <p role="status" className="text-sm text-ink-4">Reading what Foundation delivered…</p>
+        <p role="status" className="text-sm text-ink-3">Reading what Foundation delivered…</p>
         <SkeletonRows rows={3} className="mt-3" />
       </div>
     )
@@ -50,13 +50,19 @@ export function FoundationView({ projectPath }: { projectPath: string }) {
 
   return (
     <div ref={root} className="space-y-4">
+      {/* S1: the kit header; the heading text is byte-identical (board.spec finds it by name). */}
       <div>
-        <h2 data-page-heading tabIndex={-1} className="text-xl font-semibold text-ink-1">What Build inherited</h2>
-        {summary.stage?.description && <p className="mt-0.5 text-sm text-ink-3">{summary.stage.description}</p>}
-        <p className="mt-1 text-xs text-ink-4">
-          Read from the documents themselves, so this cannot describe a Foundation that no
-          longer matches them.
-        </p>
+        <PageHeader
+          eyebrow="Build · How it is going"
+          title="What Build inherited"
+          lede={summary.stage?.description || 'Read from the documents themselves, so this cannot describe a Foundation that no longer matches them.'}
+        />
+        {summary.stage?.description && (
+          <p className="mt-1 text-xs text-ink-3">
+            Read from the documents themselves, so this cannot describe a Foundation that no
+            longer matches them.
+          </p>
+        )}
       </div>
 
       {delivered.length > 0 && (
@@ -67,15 +73,15 @@ export function FoundationView({ projectPath }: { projectPath: string }) {
               <li key={doc.path} className="py-2" data-reveal="">
                 <p className="text-sm font-medium text-ink-1">{doc.name}</p>
                 {/* Where it lives, because a person reading this will want to open it. */}
-                <p className="font-mono text-xs text-ink-4">{doc.path}</p>
+                <p className="font-mono text-xs text-ink-3">{doc.path}</p>
                 {doc.sections.length > 0 ? (
                   <p className="mt-1 text-xs text-ink-2">{doc.sections.join(' · ')}</p>
                 ) : (
-                  <p className="mt-1 text-xs text-ink-4">
+                  <p className="mt-1 text-xs text-ink-3">
                     No sections yet — the document exists but has not been filled in.
                   </p>
                 )}
-                {doc.note && <p className="mt-0.5 text-xs text-amber-700">{doc.note}</p>}
+                {doc.note && <p className="mt-0.5 text-xs text-status-warn-ink">{doc.note}</p>}
               </li>
             ))}
           </ul>

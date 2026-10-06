@@ -6,6 +6,7 @@
 import { forwardRef } from 'react'
 import type { StatTileProps } from './contract'
 import { cn } from './cn'
+import { EYEBROW_CLASS } from './Eyebrow'
 import { NoData } from './NoData'
 
 export const StatTile = forwardRef<HTMLDivElement, StatTileProps>(function StatTile(
@@ -22,7 +23,7 @@ export const StatTile = forwardRef<HTMLDivElement, StatTileProps>(function StatT
       className={cn('rounded-xl border border-line-1 bg-surface-1 px-4 py-3', className)}
       {...rest}
     >
-      <p className="text-xs font-medium uppercase tracking-wide text-ink-4">{label}</p>
+      <p className={EYEBROW_CLASS}>{label}</p>
       <p className="mt-1 text-xl font-semibold tabular-nums text-ink-1" aria-describedby={hintId}>
         {hasValue ? (
           <>

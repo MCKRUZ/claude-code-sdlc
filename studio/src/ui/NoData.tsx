@@ -8,7 +8,7 @@ import { cn } from './cn'
 export const NoData = forwardRef<HTMLSpanElement, NoDataProps>(function NoData({ what, className, ...rest }, ref) {
   return (
     <span ref={ref} className={cn('inline-flex flex-wrap items-baseline gap-x-1.5 text-xs', className)} {...rest}>
-      <span className="font-medium text-ink-4" data-no-data="">
+      <span className="font-medium text-ink-3" data-no-data="">
         no data
       </span>
       <span className="text-ink-3">{what}</span>

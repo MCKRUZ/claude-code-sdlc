@@ -3,6 +3,7 @@ import type {
   ActivityCheckResult, DocumentFocus, StageActivity, StageDocument, StageReadiness, StartActivityResult,
 } from '../../shared/types'
 import { CHECK_CONTROLS, PANEL_CONTROLS } from '../../shared/activityControls'
+import { pluralWord } from '../../shared/format'
 import { sendChatTurn, useChatAvailable } from '../chatBridge'
 import { computeActivityRows, slashCommand, type ActivityRow } from '../workflowSteps'
 import { contextFrom, listStagger } from '../motion/choreo'
@@ -245,6 +246,29 @@ function ErrorLine({ message }: { message: string }) {
   return <Notice tone="error" role="alert" data-testid="activity-error" className="mt-1">{message}</Notice>
 }
 
+/** The ONE way Studio starts a `create` activity's documents from their templates — the plugin's
+ * `ensureDocumentFromTemplate` behind `startActivity` (it never overwrites, and says which files
+ * were created and which already existed). Exported so the Workflow tab's empty step panel
+ * (round 2, S4) offers "Start from template" through this exact call rather than a second write
+ * path. Opens the first file the plugin named, then re-reads the stage so the activity's status
+ * comes from the plugin again. */
+export async function ensureDocumentFromTemplate({
+  projectPath, stageId, activityId, onOpenDocument, onRefresh,
+}: {
+  projectPath: string
+  stageId: string
+  activityId: string
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
+}): Promise<StartActivityResult> {
+  const result = await window.studio.startActivity(projectPath, stageId, activityId)
+  if (!result.ok) return result
+  const first = result.opened ?? result.created[0] ?? result.existing[0]
+  if (first) onOpenDocument(first)
+  await onRefresh?.()
+  return result
+}
+
 function CreateControl({
   activity, disabledReason, projectPath, stageId, onOpenDocument, onRefresh,
 }: { activity: StageActivity; disabledReason: string | null } & RowContext) {
@@ -254,13 +278,8 @@ function CreateControl({
   const start = async () => {
     setPhase({ kind: 'running' })
     try {
-      const result = await window.studio.startActivity(projectPath, stageId, activity.id)
-      if (!alive.current) return
-      setPhase({ kind: 'done', value: result })
-      if (!result.ok) return
-      const first = result.opened ?? result.created[0] ?? result.existing[0]
-      if (first) onOpenDocument(first)
-      await onRefresh?.()
+      const result = await ensureDocumentFromTemplate({ projectPath, stageId, activityId: activity.id, onOpenDocument, onRefresh })
+      if (alive.current) setPhase({ kind: 'done', value: result })
     } catch (err) {
       if (alive.current) setPhase(failure(err, 'Those documents could not be started.'))
     }
@@ -279,9 +298,8 @@ function CreateControl({
 
 const baseName = (path: string) => path.split('/').pop() ?? path
 
-function plural(count: number, one: string, many: string) {
-  return count === 1 ? one : many
-}
+// The shared word rule (`shared/format.ts`, C6) under the name this file already used.
+const plural = pluralWord
 
 /** "Started 2 documents (a.md, b.md); 1 already existed and was left as it was (c.md)." */
 function describeStart({ created, existing }: StartActivityResult): string {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ConnectionInfo, ConnectionReport, ProjectSettings, Scorecard, ToolingReport } from '../../shared/types'
-import { Button, Card, Chip, DefinitionList, Eyebrow, Field, Input, Notice, SkeletonRows } from '../ui'
+import { Button, Card, Chip, DefinitionList, Disclosure, Eyebrow, Field, Input, Notice, PageHeader, SkeletonRows } from '../ui'
 import { useEnter } from '../motion/useEnter'
 import { AppearanceSection } from './AppearanceSection'
 import { GateAuthPanel } from './GateAuthPanel'
@@ -156,7 +156,7 @@ export function SettingsScreen({
   if (loading && !settings) {
     return (
       <div ref={root} aria-busy="true">
-        <p role="status" className="text-sm text-ink-4">Reading this project’s settings…</p>
+        <p role="status" className="text-sm text-ink-3">Reading this project’s settings…</p>
         <SkeletonRows rows={3} className="mt-3" />
       </div>
     )
@@ -168,15 +168,13 @@ export function SettingsScreen({
       {/* The edit bar stays in view while the sections scroll, inside the screen root so `<main>`
           keeps rendering the screen directly. */}
       <div ref={headerRef} className={STICKY_HEADER_CLASS}>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">Settings</h2>
-            <p className="mt-1 max-w-[64ch] text-sm text-ink-3">
-              Every setting here is stored in the project itself, not in Tōgō — so it travels with
-              the repository and changes like any other file.
-            </p>
-          </div>
-          <div className="flex shrink-0 gap-2 pt-0.5">
+        {/* S1: the kit header — "Settings" byte-identical (the e2e finds it by name), the lede
+            unchanged, the Edit toggle as the one action. The sticky block is this screen's. */}
+        <PageHeader
+          eyebrow="Project · Settings"
+          title="Settings"
+          lede="Every setting here is stored in the project itself, not in Tōgō — so it travels with the repository and changes like any other file."
+          actions={(
             <Button
               size="sm"
               variant={editing ? 'secondary' : 'primary'}
@@ -185,8 +183,8 @@ export function SettingsScreen({
             >
               {editing ? 'Done editing' : 'Edit'}
             </Button>
-          </div>
-        </div>
+          )}
+        />
       </div>
 
       {refusal && (
@@ -259,7 +257,7 @@ export function SettingsScreen({
         {editing && connection && (
           <CodeHostOverride value={connection.host} busy={busy} onSet={changeCodeHost} />
         )}
-        <p className="mt-3 text-xs text-ink-4">
+        <p className="mt-3 text-xs text-ink-3">
           Studio reads and writes the project's own documents and specs. It never writes your
           code — that stays read-only, and a save it makes is an ordinary commit with a person
           and a reason on it.
@@ -267,7 +265,7 @@ export function SettingsScreen({
         {/* Stated as best-effort because it is: the real gate is whether a push gets
             rejected, never this probe. Presenting a guess as a fact here would be the same
             mistake as listing an unenforced rule below. */}
-        <p className="mt-1 text-xs text-ink-4">
+        <p className="mt-1 text-xs text-ink-3">
           Whether the branch is protected is a best guess from the code host's settings. What
           actually decides is whether a direct push is refused.
         </p>
@@ -299,15 +297,19 @@ export function SettingsScreen({
               </li>
             ))}
           </ul>
+          {/* C8: the kit's Disclosure — still <details>/<summary>, chevron instead of ::marker. */}
           {Object.keys(report.not_universally_expected).length > 0 && (
-            <details className="mt-3">
-              <summary className="cursor-pointer text-xs text-ink-4">Pipelines not expected of every project</summary>
+            <Disclosure
+              className="mt-3"
+              summary="Pipelines not expected of every project"
+              summaryProps={{ className: 'cursor-pointer text-xs text-ink-3' }}
+            >
               <ul className="mt-1 space-y-0.5">
                 {Object.entries(report.not_universally_expected).map(([name, why]) => (
                   <li key={name} className="text-xs text-ink-3"><span className="font-mono">{name}</span> — {why}</li>
                 ))}
               </ul>
-            </details>
+            </Disclosure>
           )}
         </Section>
       )}
@@ -321,7 +323,7 @@ export function SettingsScreen({
               <li key={person.handle} className="py-2 text-sm" data-reveal="">
                 <span className="font-medium text-ink-1">{person.name || person.handle}</span>
                 <span className="ml-2 text-ink-3">{person.handle}</span>
-                {person.team && <span className="ml-2 text-ink-4">{person.team}</span>}
+                {person.team && <span className="ml-2 text-ink-3">{person.team}</span>}
                 {settings.roster.teams.some((t) => t.lead === person.handle) && <Chip size="xs" className="ml-2">lead</Chip>}
                 <span className="mt-0.5 block text-xs text-ink-3">
                   {person.roles?.length ? `May be: ${person.roles.join(', ')}` : 'No roles listed'}
@@ -331,7 +333,7 @@ export function SettingsScreen({
             ))}
           </ul>
         ) : null}
-        <p className="mt-3 text-xs text-ink-4">
+        <p className="mt-3 text-xs text-ink-3">
           Adding someone here records that they may hold a role. It grants nobody access —
           Studio never invites anyone or changes anyone's repository permissions.
         </p>
@@ -402,7 +404,7 @@ export function SettingsScreen({
             ))}
           </ul>
         ) : null}
-        <p className="mt-3 text-xs text-ink-4">
+        <p className="mt-3 text-xs text-ink-3">
           Where approval is on, changing a signed-off document saves your work to its own branch
           and asks the named person to approve it. Everyone else keeps seeing the signed-off
           version until they do.
@@ -440,7 +442,7 @@ export function SettingsScreen({
         </ul>
       </Card>
 
-      <p className="text-xs text-ink-4">Notifications and project details are not built yet.</p>
+      <p className="text-xs text-ink-3">Notifications and project details are not built yet.</p>
     </div>
   )
 }

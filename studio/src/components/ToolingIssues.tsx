@@ -50,7 +50,7 @@ function IssueRow({
 
   return (
     <Notice tone="warn" title={`${LABELS[toolKey]} wasn't found.`} data-reveal="" className="rounded-xl p-4">
-      <p className="text-xs text-amber-700">{status.error}</p>
+      <p className="text-xs text-status-warn-ink">{status.error}</p>
       <div className="mt-3 flex flex-wrap items-end gap-2">
         <a
           href={INSTALL_LINKS[toolKey]}
@@ -61,7 +61,7 @@ function IssueRow({
           Install instructions
           <Icon icon={ExternalLink} size={14} />
         </a>
-        <span className="pb-1.5 text-xs text-amber-600">or</span>
+        <span className="pb-1.5 text-xs text-ink-3">or</span>
         <Field label={pathLabel} className="min-w-0 flex-1">
           <Input size="sm" mono value={path} onChange={(e) => setPath(e.target.value)} placeholder={pathLabel} />
         </Field>

@@ -8,6 +8,7 @@
 import { forwardRef, type ForwardedRef } from 'react'
 import type { DataTableProps } from './contract'
 import { cn } from './cn'
+import { EYEBROW_CLASS } from './Eyebrow'
 
 function DataTableInner<Row>(
   { columns, rows, rowKey, rowProps, renderDetails, stickyHeader = true, dense = false, empty, label, className, ...rest }: DataTableProps<Row>,
@@ -17,7 +18,7 @@ function DataTableInner<Row>(
   return (
     <div className="overflow-auto rounded-xl border border-line-1 bg-surface-1">
       <table ref={ref} aria-label={label} className={cn('w-full border-collapse text-left text-xs text-ink-1', className)} {...rest}>
-        <thead className={cn('bg-surface-1 text-eyebrow uppercase text-ink-4', stickyHeader && 'sticky top-0 z-10')}>
+        <thead className={cn('bg-surface-1', EYEBROW_CLASS, stickyHeader && 'sticky top-0 z-10')}>
           <tr>
             {columns.map((col) => (
               <th
@@ -44,9 +45,15 @@ function DataTableInner<Row>(
             const extra = rowProps?.(row) ?? {}
             const details = renderDetails?.(row)
             return [
-              <tr key={key} {...extra} className={cn('border-b border-line-1 transition-colors duration-[120ms] last:border-b-0 hover:bg-surface-2/60', extra.className)}>
+              <tr
+                key={key}
+                // M8: a row that acts on click is pressable (attribute only; classes untouched).
+                data-pressable={extra.onClick ? '' : undefined}
+                {...extra}
+                className={cn('border-b border-line-1 transition-colors duration-[120ms] last:border-b-0 hover:bg-surface-2', extra.className)}
+              >
                 {columns.map((col) => (
-                  <td key={col.id} className={cn('align-top', cellPad, col.align === 'end' && 'text-right tabular-nums', col.mono && 'font-mono tabular-nums')}>
+                  <td key={col.id} className={cn('align-baseline', cellPad, col.align === 'end' && 'text-right tabular-nums', col.mono && 'font-mono tabular-nums')}>
                     {col.cell(row)}
                   </td>
                 ))}

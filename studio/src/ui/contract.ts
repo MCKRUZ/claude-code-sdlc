@@ -92,14 +92,17 @@ export interface NoticeProps extends NativeProps<'div', 'title' | 'role'> {
 
 // --- #5 NoData ---------------------------------------------------------------------------------
 
-/** Renders the literal words "no data" in `ink-4` plus `what`: the sentence saying what would
- * produce data ("Merge a spec to start the accepted-as-is line"). Never a 0. */
+/** Renders the literal words "no data" in `ink-3` (a word is never `ink-4`) plus `what`: the
+ * sentence saying what would produce data ("Merge a spec to start the accepted-as-is line").
+ * Never a 0. */
 export interface NoDataProps extends NativeProps<'span'> {
   what: string
 }
 
 // --- #6 Eyebrow --------------------------------------------------------------------------------
 
+/** The label voice: the `--text-eyebrow` type token (11 / 600 / 0.08 em, caps — `EYEBROW_TYPE_CLASS`)
+ * in `--color-eyebrow` (= `ink-3`). A bare `text-eyebrow` class is the colour utility only. */
 export interface EyebrowProps extends NativeProps<'p'> {
   as?: 'p' | 'h3' | 'span'
 }
@@ -109,11 +112,17 @@ export interface EyebrowProps extends NativeProps<'p'> {
 export type ChipTone = 'neutral' | 'accent' | 'ok' | 'warn' | 'error' | 'signed' | 'current' | 'later' | 'mono'
 export type ChipSize = 'xs' | 'sm'
 
+/** How the chip's text is cased — a typographic role, never a colour: `identifier` is mono,
+ * verbatim (spec ids, branches, `HIGH`); `state` is the plugin's status word as written
+ * (`in-flight`, `NOT READY`); `label` is a plain word in sentence case. Default `label`. */
+export type ChipCasing = 'identifier' | 'state' | 'label'
+
 /** Colour is never the only signal: `dot` or an icon rides beside the text. `as="button"` keeps
- * `rounded-full` (chatAuthoring `aside button.rounded-full` pin). */
+ * `rounded-full` (chatAuthoring `aside button.rounded-full` pin) and carries `data-pressable`. */
 export interface ChipProps extends Disableable, NativeProps<'span', 'disabled'> {
   tone?: ChipTone
   size?: ChipSize
+  casing?: ChipCasing
   dot?: boolean
   icon?: LucideIcon
   as?: 'span' | 'button'
@@ -150,9 +159,17 @@ export interface SkeletonTileProps extends NativeProps<'div'> {}
 
 // --- #14 EmptyState ----------------------------------------------------------------------------
 
-/** Existing sentences are passed verbatim as `title` / `body` (tests find them by text). */
+/** The six B6 figures, drawn in the product's own vocabulary (`src/ui/emptyFigures.tsx`): a rail
+ * with hollow stations, three hollow bodies and a dashed tether, a page of rows, two speech
+ * hairlines, a prompt caret, two pages in register. Each ≤ 120×72, `line-2` hairlines, at most
+ * one `accent-400` dot, `aria-hidden`, no `<text>`, no digit. The Scorecard gets none. */
+export type EmptyStateFigure = 'rail' | 'constellation' | 'page' | 'conversation' | 'prompt' | 'aligned'
+
+/** Existing sentences are passed verbatim as `title` / `body` (tests find them by text).
+ * `figure` replaces `icon` when both are given. */
 export interface EmptyStateProps extends NativeProps<'div', 'title'> {
   icon?: LucideIcon
+  figure?: EmptyStateFigure
   title: ReactNode
   body?: ReactNode
   action?: ReactNode
@@ -185,3 +202,47 @@ export interface ProgressBarProps extends NativeProps<'div', 'role'> {
   /** Overrides the default "`value` of `max` `label`" text. */
   valueText?: string
 }
+
+// --- #32 PageHeader (round 2, S1) -------------------------------------------------------------
+
+/** One header for every screen: `Eyebrow` (the area, "BUILD · BOARD") · `h2 data-page-heading
+ * tabIndex=-1` with the screen's heading text BYTE-IDENTICAL to today (heading pins) · `lede`
+ * `max-w-[64ch] text-ink-3` · right-aligned `actions`. `sticky` emits `STICKY_HEADER_CLASS`
+ * (imported by name from `components/useStuck.ts`) and calls `useStuck`: transparent at rest,
+ * opaque `surface-0` only under `data-stuck`. Rendered INSIDE the screen root (never `<main>`'s
+ * first child on its own), so `main.firstElementChild` pins hold. */
+export interface PageHeaderProps extends NativeProps<'header', 'title'> {
+  eyebrow?: ReactNode
+  title: ReactNode
+  lede?: ReactNode
+  actions?: ReactNode
+  sticky?: boolean
+  /** Rest props for the `<h2>` (an `id` for `aria-labelledby`, a `data-flip-id`). */
+  headingProps?: NativeProps<'h2', 'children'>
+}
+
+// --- #33 Disclosure (round 2, C8) -------------------------------------------------------------
+
+/** `<details>` / `<summary>` kept as the tags (sprint.spec counts `details[open]`; the summary's
+ * children text nodes are untouched so text pins hold). Hides `::marker`, draws a lucide
+ * `ChevronRight` rotating 90° on `[open]`, mirrors `open` onto `aria-expanded`. */
+export interface DisclosureProps extends NativeProps<'details', 'open' | 'onToggle' | 'children'> {
+  summary: ReactNode
+  children?: ReactNode
+  /** Controlled open state; omit for the native uncontrolled `<details>`. */
+  open?: boolean
+  /** Uncontrolled initial state. */
+  defaultOpen?: boolean
+  onToggle?: (open: boolean) => void
+  /** Rest props for the `<summary>` (a `data-testid`, a class). */
+  summaryProps?: NativeProps<'summary', 'children'>
+}
+
+// --- brand: TogoMark variant (round 2, B2) ----------------------------------------------------
+
+/** `flat` is the solid Macron in `currentColor` (the mark everywhere in the app, 24 px up).
+ * `depth` fills bar and disc from ONE `linearGradient` (`--mark-depth-a` → `--mark-depth-b`,
+ * userSpaceOnUse 17,9 → 47,56) — hero and icon only, ≥ 48 px, never on a control, chip, status,
+ * data body or behind text. `src/components/brand/TogoMark.tsx` adds `variant?: TogoMarkVariant`
+ * to its own `TogoMarkProps`; this is the frozen name both the component and its tests use. */
+export type TogoMarkVariant = 'flat' | 'depth'

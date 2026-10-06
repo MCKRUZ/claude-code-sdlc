@@ -4,12 +4,13 @@ import type {
   DocumentChange, DocumentFocus, DocumentSection, OpenDocumentResult,
 } from '../../shared/types'
 import { matchesSection } from '../../shared/sections'
-import { BackLink, Button, Notice, SkeletonBlock, toast } from '../ui'
+import { BackLink, Button, Notice, PageHeader, SkeletonBlock, toast } from '../ui'
 import { useEnter } from '../motion/useEnter'
 import { motion } from '../motion/motion'
 import { contextFrom, findingFocus } from '../motion/choreo'
 import { SHORTCUT_MAP } from '../shortcuts/shortcutMap'
 import { useShortcuts } from '../shortcuts/useShortcuts'
+import { DocumentOutline } from './DocumentOutline'
 import { SectionCard } from './DocumentSections'
 import { saveOpenFieldEditor } from './FieldEditor'
 import { TemplateGapsNotice } from './TemplateGapsNotice'
@@ -57,10 +58,14 @@ export function DocumentView({
   // closed here since it lives in the shared context this spec introduced.
   const { refresh: refreshReadiness, readiness } = useStageReadiness()
 
-  /** The section the reader was sent to, resolved once the document is open. Held as the
-   * section KEY rather than the plugin's reported name, because that is what the rendered
-   * cards are addressed by. */
-  const [focusedKey, setFocusedKey] = useState<string | null>(null)
+  /** The section the reader was sent to (a readiness item) or picked (the outline rail),
+   * resolved once the document is open. Held as the section KEY rather than the plugin's
+   * reported name, because that is what the rendered cards are addressed by. `fromFinding`
+   * decides whether the card says "You were sent here…" — an outline click sent nobody. */
+  const [focused, setFocused] = useState<{ key: string; fromFinding: boolean } | null>(null)
+  const focusedKey = focused?.key ?? null
+  /** Bumped on every outline click so picking the SAME section again still scrolls and pulses. */
+  const [pick, setPick] = useState(0)
   const [doc, setDoc] = useState<OpenDocumentResult | null>(null)
   const [changes, setChanges] = useState<DocumentChange[]>([])
   const [editing, setEditing] = useState(false)
@@ -95,18 +100,20 @@ export function DocumentView({
   // (shared/sections.ts) — two different rules here would send the reader to the wrong place
   // and look like a broken link rather than a disagreement.
   useEffect(() => {
-    if (!focus || !doc?.ok) { setFocusedKey(null); return }
+    if (!focus || !doc?.ok) { setFocused(null); return }
     const hit = doc.sections.find((s) => matchesSection(s.key, s.heading, focus.section))
-    setFocusedKey(hit?.key ?? null)
+    setFocused(hit ? { key: hit.key, fromFinding: true } : null)
   }, [focus, doc])
 
   // Scrolled after the card exists, not when the focus arrives — the element is not in the
   // document until the section it belongs to has rendered. Then the ring pulses (§4 #21) so the
-  // eye lands where the scroll did; the classes themselves never change.
+  // eye lands where the scroll did; the classes themselves never change. The outline rail (S5)
+  // reaches the same effect through `focused` + `pick`, so a finding and a click share one ring.
   useEffect(() => {
     const root = rootRef.current
     if (!focusedKey || !root) return
-    const card = root.querySelector(`[data-section-key="${CSS.escape(focusedKey)}"]`)
+    const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(focusedKey) : focusedKey.replace(/"/g, '\\"')
+    const card = root.querySelector(`[data-section-key="${escaped}"]`)
     if (!card) return
     // jsdom has no scrollIntoView; a component test that opens from a finding must still render.
     if (typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'center' })
@@ -115,7 +122,12 @@ export function DocumentView({
       { card },
     )
     return () => { timeline.kill() }
-  }, [focusedKey])
+  }, [focusedKey, pick])
+
+  const pickSection = useCallback((key: string) => {
+    setFocused({ key, fromFinding: false })
+    setPick((n) => n + 1)
+  }, [])
 
   // Listing what changed never marks it seen — that is a separate, explicit act, so merely
   // opening a document can't quietly erase the "here's what moved" signal.
@@ -209,49 +221,54 @@ export function DocumentView({
       {/* Inside the screen root, not around it: `<main>` is the scroll container and the e2e
           measures `main.firstElementChild`. */}
       <div ref={headerRef} className={STICKY_HEADER_CLASS}>
-        <div className="flex items-start justify-between gap-4">
-          <div className="min-w-0">
-            <BackLink
-              label="← Back to the stage"
-              className="mb-1"
-              onClick={() => {
-                // Fire-and-forget, not awaited: the person already asked to leave, so navigation
-                // happens immediately. The refresh updates the shared context in the background —
-                // StageHome only blanks its screen on `loading` while it has no `readiness` yet
-                // (see StageHome.tsx), which is never true here since reaching this screen at all
-                // required a readiness fetch to have already completed. It just silently swaps in
-                // the current data once the fetch resolves, with no flash the person would notice.
-                void refreshReadiness()
-                onBack()
-              }}
-            />
-            <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">{fileName}</h2>
-            {doc.description && <p className="mt-1 max-w-[64ch] text-sm text-ink-3">{doc.description}</p>}
-            {/* Spec 0010: every field shows where the document lives, without leaving the page. */}
-            <p className="mt-1 font-mono text-xs text-ink-4">{relPath}</p>
-          </div>
-          <div className="flex shrink-0 gap-2 pt-0.5">
-            <Button size="sm" icon={History} onClick={onShowHistory}>History</Button>
-            {editing ? (
-              // A toggle in its pressed state, not a brand-painted control: the kit's secondary
-              // look plus `aria-pressed` says "editing is on" without borrowing the primary colour.
-              <Button size="sm" variant="secondary" aria-pressed icon={Check} onClick={() => setEditing(false)}>
-                Done editing
-              </Button>
-            ) : (
-              <Button
-                size="sm"
-                variant="primary"
-                icon={Pencil}
-                onClick={enterEditMode}
-                disabled={!doc.shaped}
-                disabledReason="This document has no shape, so its fields cannot be edited here."
-              >
-                Edit
-              </Button>
-            )}
-          </div>
-        </div>
+        <BackLink
+          label="← Back to the stage"
+          className="mb-1"
+          onClick={() => {
+            // Fire-and-forget, not awaited: the person already asked to leave, so navigation
+            // happens immediately. The refresh updates the shared context in the background —
+            // StageHome only blanks its screen on `loading` while it has no `readiness` yet
+            // (see StageHome.tsx), which is never true here since reaching this screen at all
+            // required a readiness fetch to have already completed. It just silently swaps in
+            // the current data once the fetch resolves, with no flash the person would notice.
+            void refreshReadiness()
+            onBack()
+          }}
+        />
+        {/* S1: the kit header — the stage this document belongs to as the eyebrow, the file name
+            as the heading (byte-identical), the shape's description as the lede, the two controls
+            as actions. The sticky block above is this screen's, so `sticky` is not passed. */}
+        <PageHeader
+          eyebrow={readiness?.ok ? readiness.display : undefined}
+          title={fileName}
+          lede={doc.description || undefined}
+          actions={(
+            <>
+              <Button size="sm" icon={History} onClick={onShowHistory}>History</Button>
+              {editing ? (
+                // A toggle in its pressed state, not a brand-painted control: the kit's secondary
+                // look plus `aria-pressed` says "editing is on" without borrowing the primary colour.
+                <Button size="sm" variant="secondary" aria-pressed icon={Check} onClick={() => setEditing(false)}>
+                  Done editing
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  icon={Pencil}
+                  onClick={enterEditMode}
+                  disabled={!doc.shaped}
+                  disabledReason="This document has no shape, so its fields cannot be edited here."
+                >
+                  Edit
+                </Button>
+              )}
+            </>
+          )}
+        />
+        {/* Spec 0010: every field shows where the document lives, without leaving the page. A
+            path is words, so ink-3 (C2: ink-4 is decoration only). */}
+        <p className="mt-1 font-mono text-xs text-ink-3">{relPath}</p>
       </div>
 
       {changes.length > 0 && (
@@ -275,7 +292,7 @@ export function DocumentView({
             {changes.slice(0, 8).map((c, i) => (
               <li key={`${c.when}-${i}`}>
                 <span className="font-medium">{c.author}</span>
-                <span className="text-ink-4"> · {c.when} · </span>
+                <span className="text-ink-3"> · {c.when} · </span>
                 {c.reason}
               </li>
             ))}
@@ -313,39 +330,54 @@ export function DocumentView({
         <Notice tone="error" data-testid="document-error">{error}</Notice>
       )}
 
-      <div className="space-y-3">
-        {doc.sections.map((section) => (
-          <SectionCard
-            key={section.key}
-            section={section}
-            editing={editing}
-            busy={busy}
-            projectPath={projectPath}
-            relPath={relPath}
-            actor={actor}
-            highlighted={section.key === focusedKey}
-            highlightField={section.key === focusedKey ? focus?.field ?? null : null}
-            onSaveField={saveField}
-          />
-        ))}
-      </div>
+      {/* S5: the sections, with the outline rail beside them from xl up (220 px, sticky under the
+          header). Below xl the rail is not drawn — the sections already read top to bottom. */}
+      <div className="xl:flex xl:items-start xl:gap-6">
+        <div className="min-w-0 flex-1 space-y-6">
+          <div className="space-y-3">
+            {doc.sections.map((section) => (
+              <SectionCard
+                key={section.key}
+                section={section}
+                editing={editing}
+                busy={busy}
+                projectPath={projectPath}
+                relPath={relPath}
+                actor={actor}
+                highlighted={section.key === focusedKey}
+                highlightField={section.key === focusedKey && focused?.fromFinding ? focus?.field ?? null : null}
+                highlightNote={focused?.fromFinding ? undefined : null}
+                onSaveField={saveField}
+              />
+            ))}
+          </div>
 
-      {/* The add control exists ONLY in edit mode, and shows the number it will use before
-          anything is created — spec 0010's acceptance check asks for exactly that.
-          THREE states, never two. "Add another" once meant both "this document has no
-          numbered sections" and "the number has not come back yet", because working it out
-          is a call into another process. A slow answer then looked exactly like no answer —
-          which is how a passing feature came to be reported as an unbuilt one. */}
-      {editing && hasRepeating && (
-        <Button
-          block
-          onClick={addRequirement}
-          disabled={busy || numbering}
-          className="rounded-xl border-dashed py-3 text-sm font-medium text-ink-2 hover:border-accent-500 hover:text-accent-700"
-        >
-          {numbering ? 'Working out the next number…' : nextId ? `Add ${nextId}` : 'Add another'}
-        </Button>
-      )}
+          {/* The add control exists ONLY in edit mode, and shows the number it will use before
+              anything is created — spec 0010's acceptance check asks for exactly that.
+              THREE states, never two. "Add another" once meant both "this document has no
+              numbered sections" and "the number has not come back yet", because working it out
+              is a call into another process. A slow answer then looked exactly like no answer —
+              which is how a passing feature came to be reported as an unbuilt one. */}
+          {editing && hasRepeating && (
+            <Button
+              block
+              onClick={addRequirement}
+              disabled={busy || numbering}
+              className="rounded-xl border-dashed py-3 text-sm font-medium text-ink-2 hover:border-accent-500 hover:text-accent-text-hover"
+            >
+              {numbering ? 'Working out the next number…' : nextId ? `Add ${nextId}` : 'Add another'}
+            </Button>
+          )}
+        </div>
+        <DocumentOutline
+          sections={doc.sections}
+          findings={readiness?.ok ? readiness.findings : []}
+          relPath={relPath}
+          activeKey={focusedKey}
+          onSelect={pickSection}
+          className="hidden xl:sticky xl:top-24 xl:block"
+        />
+      </div>
     </div>
   )
 }

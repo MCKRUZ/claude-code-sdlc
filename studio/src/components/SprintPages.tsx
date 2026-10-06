@@ -42,7 +42,7 @@ export function SprintPages({ projectPath, sprintId }: { projectPath: string; sp
   }
 
   return (
-    <div data-testid="sprint-pages" className="text-xs text-slate-600">
+    <div data-testid="sprint-pages" className="text-xs text-ink-2">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={running} onClick={() => write('planning')} className={PANEL_BUTTON}>
           {state.kind === 'running' && state.page === 'planning' ? 'Working…' : PAGE_LABEL.planning}
@@ -51,7 +51,7 @@ export function SprintPages({ projectPath, sprintId }: { projectPath: string; sp
           {state.kind === 'running' && state.page === 'review' ? 'Working…' : PAGE_LABEL.review}
         </button>
       </div>
-      <p className="mt-1 text-slate-500">Reports stay on this computer; they are not shared with the team.</p>
+      <p className="mt-1 text-ink-3">Reports stay on this computer; they are not shared with the team.</p>
       {state.kind === 'failed' && <PanelError message={state.message} />}
       {state.kind === 'done' && (
         <p data-testid="sprint-page-result" className="mt-1">{PAGE_LABEL[state.page]} written: <span className="font-mono">{state.relOutput}</span></p>

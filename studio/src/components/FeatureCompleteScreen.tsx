@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { groupSpecsByTeam } from '../../shared/boardModel'
-import { targetForStage, type NavTarget } from '../../shared/nav'
+import { formatDateTime, plural, pluralWord } from '../../shared/format'
+import { targetForBuildView, targetForStage, type NavTarget } from '../../shared/nav'
 import type { AdvanceResult, DeclarationStatus, HandoffReportResult, ProjectStage, ProjectStatus } from '../../shared/types'
-import { Button, Card, Chip, Notice, SkeletonRows, toast } from '../ui'
+import { Button, Card, Chip, Eyebrow, Notice, PageHeader, SkeletonRows, toast } from '../ui'
 import { announce } from '../a11y/LiveAnnouncer'
 import { signOffCeremony } from '../motion/choreo'
 import { useCountUp } from '../motion/useCountUp'
@@ -129,12 +130,25 @@ export function FeatureCompleteScreen({
   // The scene's own model builds the band's data (one source of truth with StageHome). This
   // screen holds no stage readiness, so `currentDocs` stays unset — an arc drawn from a guess would
   // be the one fabricated number on it. Height 200: the closing band is the page's hero (§5.1).
+  // Round 2 (I4): `ledger: true` asks every plate for its ledger line, word for word from the
+  // plugin's row; no stage home is open here, so `viewedStageId` is null (no reticle).
   const spine = useMemo(
-    () => (projectStatus ? buildSpineData({ stages: projectStatus.stages, currentPhaseId: projectStatus.current_phase?.id ?? null }) : null),
+    () => (projectStatus
+      ? { ...buildSpineData({ stages: projectStatus.stages, currentPhaseId: projectStatus.current_phase?.id ?? null }), ledger: true, viewedStageId: null }
+      : null),
     [projectStatus],
   )
+  // Wrapped exactly as StageHome's SpineBand wraps its slot (a `<section>` with a body `<div>`), so
+  // the root's `space-y-6` lands on the wrapper and the eyebrow sits 24 px under the caption, as it
+  // does on every stage home. Tailwind 4 writes `space-y-*` as `:where(& > :not(:last-child))` —
+  // zero specificity — and SceneShell's `<figure>` carries `m-0`, so a bare figure as a direct
+  // child of the root cancelled the gap (observatory v9 closing: the caption sat on the eyebrow).
   const band = spine && (
-    <SceneSlot id="spine" data={spine} height={200} onActivate={(id) => onNavigate?.(targetForStage(id))} />
+    <section aria-label="Lifecycle" className="space-y-1">
+      <div>
+        <SceneSlot id="spine" data={spine} height={200} onActivate={(id) => onNavigate?.(targetForStage(id))} />
+      </div>
+    </section>
   )
 
   // Already declared, according to the PROJECT rather than this session. Checked before
@@ -149,7 +163,7 @@ export function FeatureCompleteScreen({
     return (
       <div ref={root} className="space-y-4" aria-busy="true">
         {band}
-        <p role="status" className="text-sm text-ink-4">Reading the backlog…</p>
+        <p role="status" className="text-sm text-ink-3">Reading the backlog…</p>
         <SkeletonRows rows={3} />
       </div>
     )
@@ -169,10 +183,10 @@ export function FeatureCompleteScreen({
             {/* The time comes from the project's record, and only once there IS one. Until the
                 stage moves nothing has recorded when this happened, and printing the current
                 clock would invent the single fact this screen exists to protect. */}
-            {advance?.declaredAt ? <> on {new Date(advance.declaredAt).toLocaleString()}.</> : <>.</>}
+            {advance?.declaredAt ? <> on {formatDateTime(advance.declaredAt)}.</> : <>.</>}
           </p>
           {!advance?.ok && (
-            <p className="mt-1 text-xs text-amber-800">
+            <p className="mt-1 text-xs text-status-warn-ink">
               Not recorded in the project yet — until the stage moves below, this is true on
               this screen and nowhere else.
             </p>
@@ -182,7 +196,7 @@ export function FeatureCompleteScreen({
         <HandoffPanel result={handoff} busy={handoffBusy} onReplace={() => produceHandoff(true)} onRetry={() => produceHandoff(false)} />
         <AdvancePanel result={advance} busy={advanceBusy} onAdvance={moveToNextStage} />
         {status.deferred.length > 0 && <DeferredList deferred={status.deferred} />}
-        <p className="text-xs text-ink-4">
+        <p className="text-xs text-ink-3">
           Late work rides the loop one spec at a time, as usual. Build does not reopen.
         </p>
       </div>
@@ -193,7 +207,17 @@ export function FeatureCompleteScreen({
     <div ref={root} className="space-y-6">
       {band}
       <div>
-        <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">Declaring Build finished</h2>
+        {/* S1: the kit header — the heading text is byte-identical (board.spec finds it by name);
+            the lede says what this screen is for; the one action goes back to the Board, where
+            the undecided specs live. The declare control stays at the foot, beside its name. */}
+        <PageHeader
+          eyebrow="Build · Closing"
+          title="Declaring Build finished"
+          lede="Build ends by a named person declaring it complete, once every spec is decided and each team has confirmed its own list. The plugin refuses anything less."
+          actions={onNavigate && (
+            <Button size="sm" onClick={() => onNavigate(targetForBuildView('board'))}>Open the Board</Button>
+          )}
+        />
         <Totals totals={status.totals} />
       </div>
 
@@ -207,7 +231,7 @@ export function FeatureCompleteScreen({
         // three alarms; one notice says what is true and its body says why.
         <Notice
           tone="warn"
-          title={`${status.blockers.length} thing${status.blockers.length === 1 ? '' : 's'} block${status.blockers.length === 1 ? 's' : ''} the declaration`}
+          title={`${plural(status.blockers.length, 'thing', 'things')} ${pluralWord(status.blockers.length, 'blocks', 'block')} the declaration`}
           className="text-sm"
         >
           <div className="mt-1 divide-y divide-amber-200">
@@ -215,7 +239,7 @@ export function FeatureCompleteScreen({
             // The plugin's own words. It knows what is outstanding, and a refusal that names
             // the items is a to-do list rather than a wall.
             <section key={blocker.kind} aria-label={blocker.message} className="py-2 first:pt-0 last:pb-0">
-              <h3 className="text-sm font-medium text-amber-900">{blocker.message}</h3>
+              <h3 className="text-sm font-medium text-status-warn-ink">{blocker.message}</h3>
               {blocker.specs && blocker.specs.length > 0 && (
                 // Gathered by team, because that is how the decisions get made: each lead
                 // confirms their OWN team's list, and a lead working down a flat list of
@@ -223,16 +247,17 @@ export function FeatureCompleteScreen({
                 <div className="mt-2 space-y-3">
                   {groupSpecsByTeam(blocker.specs).map((group) => (
                     <div key={group.team}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                      {/* C3: a caps label is the eyebrow voice, in the notice's warn ink. */}
+                      <Eyebrow className="text-status-warn-ink">
                         {group.hasLead
                           ? <>{group.team} · {group.specs.length}</>
                           : <>No team · {group.specs.length} · nobody can confirm these</>}
-                      </p>
+                      </Eyebrow>
                       <ul className="mt-1 space-y-2">
                         {group.specs.map((spec) => (
                           <li key={spec.spec} className="text-sm" data-reveal="">
-                            <span className="font-mono text-xs text-amber-800">{spec.spec}</span>{' '}
-                            <span className="text-amber-900">{spec.name}</span>
+                            <span className="font-mono text-xs text-status-warn-ink">{spec.spec}</span>{' '}
+                            <span className="text-status-warn-ink">{spec.name}</span>
                             {/* The plugin's reading of what this spec's own state says about
                                 whether anybody has decided to finish it. Shown against the spec
                                 rather than only as a count, because the one that needs a person
@@ -240,7 +265,7 @@ export function FeatureCompleteScreen({
                             {spec.intent === 'needs_a_call' && (
                               <Chip tone="warn" dot className="ml-2 uppercase tracking-wide">needs a decision</Chip>
                             )}
-                            <span className="ml-2 text-xs text-amber-800">
+                            <span className="ml-2 text-xs text-status-warn-ink">
                               {spec.status}
                               {/* Risk is shown because spec 0014 asks for it, and because it is
                                   what makes "finish it or defer it" a different question for
@@ -288,7 +313,7 @@ export function FeatureCompleteScreen({
         </Button>
         {actor.trim()
           ? <span className="text-xs text-ink-3">Recorded against {actor}.</span>
-          : <span className="text-xs text-amber-800">
+          : <span className="text-xs text-status-warn-ink">
               A declaration needs a name — an unnamed one is an announcement nobody made.
             </span>}
       </div>
@@ -304,7 +329,7 @@ function Totals({ totals }: { totals: DeclarationStatus['totals'] }) {
   const deferred = useCountUp('closing.totals.deferred', totals.deferred)
   return (
     <p className="mt-0.5 text-sm text-ink-3 tabular-nums">
-      <span ref={specs.ref}>{specs.text}</span> spec{totals.specs === 1 ? '' : 's'} in the backlog ·{' '}
+      <span ref={specs.ref}>{specs.text}</span> {pluralWord(totals.specs, 'spec', 'specs')} in the backlog ·{' '}
       <span ref={unfinished.ref}>{unfinished.text}</span> still undecided ·{' '}
       <span ref={deferred.ref}>{deferred.text}</span> deferred
     </p>

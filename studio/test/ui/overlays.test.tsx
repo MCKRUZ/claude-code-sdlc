@@ -2,7 +2,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
-import { HoverCard, Tooltip, Kbd, keyLabel, Spinner, ProgressRing, HOVER_OPEN_DELAY, TOOLTIP_DELAY } from '../../src/ui'
+import { HoverCard, Tooltip, Kbd, keyLabel, Spinner, ProgressRing, HOVER_OPEN_DELAY, HOVER_CLOSE_DELAY, TOOLTIP_DELAY } from '../../src/ui'
 
 beforeEach(() => vi.useFakeTimers())
 afterEach(() => vi.useRealTimers())
@@ -31,6 +31,41 @@ describe('HoverCard', () => {
     })
     expect(screen.getByText('Rich')).toBeTruthy()
     expect(screen.queryByRole('tooltip')).toBeNull()
+  })
+})
+
+describe('HoverCard round 2 (M7)', () => {
+  it('keeps role=tooltip and pointer-events-none, and with motion off leaves at once after the close delay', () => {
+    render(<HoverCard trigger={<button type="button">T</button>} content="Plain words" />)
+    const wrap = screen.getByRole('button').parentElement!
+    fireEvent.mouseEnter(wrap)
+    act(() => {
+      vi.advanceTimersByTime(HOVER_OPEN_DELAY + 1)
+    })
+    const tip = screen.getByRole('tooltip') as HTMLElement
+    expect(tip.className).toContain('pointer-events-none')
+    expect(tip.hasAttribute('data-leaving')).toBe(false)
+    // The arrive row's end state: fully visible, no residual transform.
+    expect(tip.style.transform).toBe('')
+    expect(wrap.getAttribute('aria-describedby')).toBe(tip.id)
+    fireEvent.mouseLeave(wrap)
+    act(() => {
+      vi.advanceTimersByTime(HOVER_CLOSE_DELAY + 1)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    expect(wrap.hasAttribute('aria-describedby')).toBe(false)
+  })
+
+  it('Escape closes synchronously — no delay, no fade', () => {
+    render(<HoverCard trigger={<button type="button">T</button>} content={<p>Rich</p>} />)
+    const wrap = screen.getByRole('button').parentElement!
+    fireEvent.focus(wrap)
+    act(() => {
+      vi.advanceTimersByTime(HOVER_OPEN_DELAY + 1)
+    })
+    expect(screen.getByText('Rich')).toBeTruthy()
+    fireEvent.keyDown(wrap, { key: 'Escape' })
+    expect(screen.queryByText('Rich')).toBeNull()
   })
 })
 

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { formatDateTime, NO_DATE } from '../../shared/format'
 import type { ClashChoice, FileClash } from '../../shared/types'
 import { Button, Card, EmptyState, Eyebrow, Notice } from '../ui'
 import { useCountUp } from '../motion/useCountUp'
@@ -8,9 +9,10 @@ import { useRegisterDirty } from '../stores/dirtyStore'
 import { ClashDiff } from './ClashDiff'
 import { choreoContext } from './entryScreenBits'
 
+/** C6: the shared date formatting; a string the clock cannot read is shown as the plugin wrote it. */
 function formatWhen(iso: string): string {
-  const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+  const formatted = formatDateTime(iso)
+  return formatted === NO_DATE ? iso : formatted
 }
 
 /** One clashing section at a time — spec 0009's own language: "keep mine / keep theirs / let
@@ -114,13 +116,13 @@ export function ClashScreen({
       <div ref={bodyRef} key={currentKey} className="flex flex-col gap-4">
         <div className="grid grid-cols-2 gap-4">
           <Card>
-            <Eyebrow className="text-accent-700">Your version</Eyebrow>
+            <Eyebrow className="text-accent-text">Your version</Eyebrow>
             {clash.localModifiedAt && (
               <p className="mt-1 text-sm text-ink-2">{`Last saved ${formatWhen(clash.localModifiedAt)}`}</p>
             )}
           </Card>
           <Card>
-            <Eyebrow className="text-amber-700">Their version</Eyebrow>
+            <Eyebrow className="text-status-warn-ink">Their version</Eyebrow>
             {clash.remote && (
               <>
                 <p className="mt-1 text-sm text-ink-2">{`Last changed ${formatWhen(clash.remote.when)} by ${clash.remote.author}`}</p>

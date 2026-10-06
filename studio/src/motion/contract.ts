@@ -148,3 +148,84 @@ export interface PulseOptions {
   cycles?: number
   hold?: () => boolean
 }
+
+// --- round 2: familiarity (M3) ----------------------------------------------------------------
+
+/** How many times this person has opened this project, as a tier, from the hashed
+ * `localStorage['studio.opens.<hash>']` counter: opens 1–3 `full`; 4–10 `quiet` (assemble at
+ * `dur-4`, Welcome hero a plain fade, station pulse once); more than ten `settled` (assemble and
+ * pulse skipped). A count, never a date — the tier says "familiar", not "late". */
+export type FamiliarityTier = 'full' | 'quiet' | 'settled'
+export const FAMILIARITY_FULL_MAX_OPENS = 3
+export const FAMILIARITY_QUIET_MAX_OPENS = 10
+
+/** What `motion.ts` adds in round 2 (P2). Callers read `motion.familiarity(key)`; the Frame
+ * records one open per `projectPath`; Appearance's "Play the opening again" resets. */
+export interface FamiliarityApi {
+  familiarity(projectKey: string): FamiliarityTier
+  recordOpen(projectKey: string): void
+  resetFamiliarity(projectKey: string): void
+}
+
+// --- round 2: the ceremony registry (M1) -------------------------------------------------------
+
+/** The Sidebar nodes the sign-off ceremony moves, registered as GETTERS so a re-render never
+ * leaves a stale element behind; `fromFraction` is the progress bar's width before the sign-off. */
+export interface CeremonyRegistryGetters {
+  signedNode(): Element | null
+  connector(): Element | null
+  nextRing(): Element | null
+  nowBadge(): Element | null
+  bar(): Element | null
+  fromFraction(): number | null
+}
+export type CeremonyRegistryKey = keyof CeremonyRegistryGetters
+export type CeremonyRegistryRefs = { [K in CeremonyRegistryKey]: ReturnType<CeremonyRegistryGetters[K]> }
+
+/** `src/motion/ceremonyRegistry.ts` (P2). While `hold()` is held, `sidebarProgress` applies its
+ * end state instead of tweening — the ceremony owns the bar for that second. */
+export interface CeremonyRegistryApi {
+  /** Returns the unregister. Partial: a Sidebar without a next stage registers no `nextRing`. */
+  register(getters: Partial<CeremonyRegistryGetters>): () => void
+  /** Resolve every getter now; an unregistered one reads null. */
+  resolve(): CeremonyRegistryRefs
+  /** Returns the release. Re-entrant: held while any holder is outstanding. */
+  hold(): () => void
+  held(): boolean
+}
+
+// --- round 2: ref shapes of the new catalogue rows (#26–#29) ----------------------------------
+
+/** #26 `handoffCeremony` (P2 plays, P3 passes the refs from `SpecStatusView`). Plays only when
+ * `handOff` resolved `ok` AND the refreshed row arrived; a refusal plays nothing. */
+export interface HandoffCeremonyRefs {
+  /** The dialog panel, faded 120 ms. */
+  dialog?: Element | null
+  /** The BUILDS IT cell: "nobody" → the plugin's `developer`, 200 ms crossfade. */
+  buildsCell?: Element | null
+  /** The status chip: POP (≤ 24 px). */
+  statusChip?: Element | null
+  /** Branch / PR chips: rise, `stagger-2`. */
+  prChips?: ReadonlyArray<Element | null | undefined>
+}
+
+/** #27 `edgeDraw` (P3): SVG edges drawn in via `stroke-dashoffset` over `EDGE_DRAW_S`. */
+export interface EdgeDrawRefs {
+  edges: ReadonlyArray<SVGGeometryElement | null | undefined>
+}
+
+/** #28 `spineCollapse` (P4 plays, P5 wires the chevron): the band's height between its open
+ * measurement and 0, `clearProps: 'height'` at the end so a cold reload and the end state agree. */
+export interface SpineCollapseRefs {
+  band: Element | null
+  collapsed: boolean
+}
+
+/** #29 `sceneCrossfade` (P4, inside `SceneShell`): outgoing `dur-1`, incoming `dur-2`;
+ * `onOutgoingHidden` fires when the outgoing surface is fully transparent — the moment a canvas
+ * may be disposed, never before (one live WebGL canvas at any instant). */
+export interface SceneCrossfadeRefs {
+  outgoing?: Element | null
+  incoming?: Element | null
+  onOutgoingHidden?: () => void
+}

@@ -2,8 +2,8 @@
 <!--
   TEMPLATE. Edit this file, not togo-user-guide.html.
   `{{shot:<name>}}` markers become base64 JPEG data URIs when docs/guide/build-user-guide.mjs runs:
-    node docs/guide/build-user-guide.mjs            # reads studio/test/screenshots/observatory-v4-<name>.png
-    SHOT_PREFIX=observatory-v5 node docs/guide/build-user-guide.mjs
+    node docs/guide/build-user-guide.mjs            # reads studio/test/screenshots/observatory-v8-<name>.png
+    SHOT_PREFIX=observatory-v9 node docs/guide/build-user-guide.mjs
 -->
 <html lang="en">
 <head>
@@ -157,7 +157,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
     <li><a href="#spec">A spec page</a></li>
     <li><a href="#host">Working with the code host</a></li>
     <li><a href="#keys">Command palette and keyboard</a></li>
-    <li><a href="#settings">Appearance and Settings</a></li>
+    <li><a href="#settings">Appearance, Settings and about the mark</a></li>
     <li><a href="#console">The Console</a></li>
     <li><a href="#honesty">Honesty rules the app follows</a></li>
     <li><a href="#trouble">Troubleshooting</a></li>
@@ -434,7 +434,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 <p><kbd>⌘</kbd><kbd>W</kbd>, <kbd>⌘</kbd><kbd>Q</kbd>, <kbd>⌘</kbd><kbd>R</kbd>, <kbd>⌘</kbd><kbd>1</kbd>–<kbd>9</kbd> and the F-keys are deliberately unbound: Electron and the operating system own them.</p>
 
 <!-- 8 ------------------------------------------------------------------ -->
-<h2 id="settings">8. Appearance and Settings</h2>
+<h2 id="settings">8. Appearance, Settings and about the mark</h2>
 <figure class="shot">
   <img src="{{shot:settings}}" width="1200" height="750" loading="lazy" alt="The Settings screen scrolled to its lower sections: Tooling on this machine with the Claude Code version and the plugin scripts path; Appearance with Theme System / Light / Dark, Density Comfortable / Compact, Animations Auto / On / Off and Visuals Graph / Table; and the inset card Fixed here — change these in the playbook, not the project, listing rules with where each is enforced.">
   <figcaption>Settings. Every section names the file it is stored in; the two sections that are not project files — Tooling on this machine and Appearance — say so.</figcaption>
@@ -449,6 +449,13 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
   <tr><td>Animations</td><td>Auto / On / Off</td><td>Auto follows the operating system's reduced-motion setting. On is an opt-in that overrides it. Off turns every animation off; ceremonies and counters then show their end state at once. Also <kbd>⌘</kbd><kbd>⇧</kbd><kbd>M</kbd>.</td></tr>
   <tr><td>Visuals</td><td>Graph / Table</td><td>Which surface the Sprint constellation opens on. The table and the graph show the same data.</td></tr>
 </table>
+
+<h3>About the mark</h3>
+<figure class="shot">
+  <img src="{{shot:welcome-dark}}" width="1200" height="750" loading="lazy" alt="The Welcome screen in the dark theme: the Tōgō mark at hero size in its teal Depth gradient beside the name, the tagline, the two buttons, and the Recent card on the right over a faint field of dots gathered behind the title.">
+  <figcaption>Welcome in dark. The hero mark is the one place on this screen the gradient appears; the dock icon is the same tile, and the small mark in the sidebar stays solid.</figcaption>
+</figure>
+<p>Tōgō's mark is the solid teal macron over a disc: in the sidebar, on the small lockup of the pre-project screens, and in every list it is a flat colour. Three places show its <i>Depth</i> treatment — the same shape filled from one light-to-dark teal gradient: the Welcome hero (56 px), the card that covers the window while a project opens (48 px), and the app icon in the dock, taskbar and Finder (from 64 px; at 16 and 32 px the icon is the flat tile). The gradient follows the theme — darker on light, luminous on dark — and never carries meaning: it is not a status, not a state, and never appears on a control, a chip, a data row or behind text. There is no About dialog yet; the version and the plugin driving the session are under Settings › <i>Tooling on this machine</i>. The brand guide itself is <code>docs/brand/togo/brandbook.html</code>.</p>
 
 <h3>Settings</h3>
 <p>"Every setting here is stored in the project itself, not in Tōgō — so it travels with the repository and changes like any other file." Each section names the file it lives in. A section whose file does not exist says "This project has not set this up. Nothing is wrong — the file simply does not exist yet."; a file that exists but could not be read cleanly is a different answer, shown as a warning with the lines that failed. Nothing changes until <i>Edit</i> is on, and the controls are absent rather than greyed outside it. A change is written by the plugin, which validates before it writes, so a refusal means the file is untouched; the changed files are then listed under <i>Changed here, not yet in the repository</i> with a required <i>Why did this change?</i> that becomes the commit message, and <i>Save to the repository</i> commits them under your name.</p>
@@ -513,7 +520,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 
 <footer>
   <p>Tōgō — plugin 1.6.2 (Unreleased: sprint layer, Observatory, code-host providers).</p>
-  <p>Labels, sentences and behaviour were read from <code>studio/src</code>, <code>studio/shared</code> and <code>studio/electron/main</code> on 2026-10-05; screenshots are the <code>observatory-v4</code> captures in <code>studio/test/screenshots</code>, taken against a sample project with the code host unreachable. Your project's names, counts and dates will differ.</p>
+  <p>Labels, sentences and behaviour were read from <code>studio/src</code>, <code>studio/shared</code> and <code>studio/electron/main</code> on 2026-10-06; screenshots are the <code>observatory-v8</code> captures in <code>studio/test/screenshots</code>, taken against a sample project with the code host unreachable. Your project's names, counts and dates will differ.</p>
 </footer>
 
 </main>

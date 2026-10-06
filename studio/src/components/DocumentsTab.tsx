@@ -77,7 +77,7 @@ export function DocumentsTab({
                     <span className="min-w-0">
                       <span className="block font-medium text-ink-1">
                         {doc.name}
-                        {doc.folder && <span className="ml-2 text-xs font-normal text-ink-4">folder</span>}
+                        {doc.folder && <span className="ml-2 text-xs font-normal text-ink-3">folder</span>}
                       </span>
                       {doc.description && <span className="mt-0.5 block text-xs text-ink-3">{doc.description}</span>}
                     </span>

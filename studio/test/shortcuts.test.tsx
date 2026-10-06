@@ -2,9 +2,11 @@
 // The single keydown listener: chords land within their window and not after it, single keys
 // are suppressed while typing unless the binding says `inInputs`, the primary modifier follows
 // the platform, and Esc walks its layers and never goes back while something is being edited.
-import { act, render } from '@testing-library/react'
+import { act, cleanup as cleanupAll, render } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { chordFromEvent, kbdKeys, normalizeChord, SHORTCUT_MAP } from '../src/shortcuts/shortcutMap'
+import {
+  chordFromEvent, inSceneScope, kbdKeys, normalizeChord, SCENE_BINDINGS, SCENE_SCOPE_ATTR, SCENE_SCOPE_VALUE, sceneCommandFor, SHORTCUT_MAP,
+} from '../src/shortcuts/shortcutMap'
 import { useShortcuts, isEditableTarget } from '../src/shortcuts/useShortcuts'
 import type { ShortcutHandlers, UseShortcutsOptions } from '../src/shortcuts/useShortcuts'
 import { resetStageTabStore, SPINE_COLLAPSED_STORAGE_KEY, stageTabStore, useStageTabRequest, useSpineCollapsed } from '../src/stores/stageTabStore'
@@ -139,6 +141,64 @@ describe('useShortcuts', () => {
     ev.preventDefault()
     document.body.dispatchEvent(ev)
     expect(openPalette).not.toHaveBeenCalled()
+  })
+})
+
+/** Round 2 (I6): the graph's keys live in the `scene` scope, which is live ONLY while the event
+ * comes from inside a `[data-shortcut-scope="scene"]` figure — a host never lists it, and the
+ * same key outside the figure does nothing. `SCENE_BINDINGS` is the one table: the listener, the
+ * figure's own keydown (`sceneCommandFor`) and the help dialog all read it. */
+describe('scene scope (I6)', () => {
+  afterEach(() => setPlatform('MacIntel'))
+
+  function Figure(props: UseShortcutsOptions) {
+    useShortcuts(props)
+    return (
+      <div>
+        <div {...{ [SCENE_SCOPE_ATTR]: SCENE_SCOPE_VALUE }} tabIndex={0} data-testid="figure"><button>plate</button></div>
+        <button data-testid="outside">elsewhere</button>
+      </div>
+    )
+  }
+
+  it('dispatches a graph key only when the target is inside the figure, whatever scopes the host listed', () => {
+    const sceneCommand = vi.fn()
+    const { getByTestId } = render(<Figure handlers={{ sceneCommand }} scopes={['project']} />)
+    press('Home', { target: getByTestId('outside') })
+    expect(sceneCommand).not.toHaveBeenCalled()
+    const ev = press('Home', { target: getByTestId('figure') })
+    expect(sceneCommand).toHaveBeenCalledWith('fit')
+    expect(ev.defaultPrevented).toBe(true)
+    press('n', { target: getByTestId('figure').querySelector('button')! })
+    expect(sceneCommand).toHaveBeenLastCalledWith('nextUp')
+    press('ArrowLeft', { target: getByTestId('figure'), shiftKey: true })
+    expect(sceneCommand).toHaveBeenLastCalledWith('orbitLeft')
+    press('+', { target: getByTestId('figure'), shiftKey: true })
+    expect(sceneCommand).toHaveBeenLastCalledWith('zoomIn')
+    press('ArrowDown', { target: getByTestId('figure') })
+    expect(sceneCommand).toHaveBeenLastCalledWith('stepNext')
+    // A host that listed `scene` itself still gets nothing outside the figure.
+    cleanupAll()
+    const again = vi.fn()
+    const r = render(<Figure handlers={{ sceneCommand: again }} scopes={['project', 'scene']} />)
+    press('Home', { target: r.getByTestId('outside') })
+    expect(again).not.toHaveBeenCalled()
+  })
+
+  it('sceneCommandFor reads the same table as the listener; Escape is clear; a non-graph key is null', () => {
+    const e = (key: string, shiftKey = false) => ({ key, metaKey: false, ctrlKey: false, altKey: false, shiftKey })
+    expect(sceneCommandFor(e('Home'), true)).toBe('fit')
+    expect(sceneCommandFor(e('n'), true)).toBe('nextUp')
+    expect(sceneCommandFor(e('ArrowUp', true), true)).toBe('orbitUp')
+    expect(sceneCommandFor(e('ArrowUp'), true)).toBe('stepPrev')
+    expect(sceneCommandFor(e('-'), true)).toBe('zoomOut')
+    expect(sceneCommandFor(e('='), true)).toBe('zoomIn')
+    expect(sceneCommandFor(e('Escape'), true)).toBe('clear')
+    expect(sceneCommandFor(e('g'), true)).toBeNull()
+    expect(SCENE_BINDINGS.every((b) => b.scope === 'scene' && b.action.type === 'scene')).toBe(true)
+    expect(SHORTCUT_MAP.filter((b) => b.scope === 'scene')).toEqual(SCENE_BINDINGS)
+    expect(normalizeChord('+')).toBe('+')
+    expect(inSceneScope(null)).toBe(false)
   })
 })
 

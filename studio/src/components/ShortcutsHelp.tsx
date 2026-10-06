@@ -1,7 +1,8 @@
 // The Shortcuts help (studio-observatory.md §6.2): a Dialog that renders `SHORTCUT_MAP` grouped
 // by scope, so the help and the listener read the same table and cannot drift. Opened by ⌘/,
 // `?` and the palette's "Keyboard shortcuts" row. Never an `<aside>`, never an `<input>` — the
-// shell's two pins hold with it open.
+// shell's two pins hold with it open. Round 2 (I6): the "In a graph" group comes from the same
+// `SCENE_BINDINGS` the figure's keydown reads — no second list.
 import { useMemo } from 'react'
 import { Dialog } from '../ui/Dialog'
 import { Kbd } from '../ui/Kbd'
@@ -62,9 +63,11 @@ export function ShortcutsHelp({ open, onClose, bindings = SHORTCUT_MAP }: {
     [bindings],
   )
   return (
-    <Dialog open={open} onClose={onClose} title={SHORTCUTS_HELP_TITLE} size="lg" data-testid="shortcuts-help"
+    // Round 2 (I6 / M5): the Dialog's own `scrollBody` is the scroll box, so the header stays put
+    // while the six groups scroll — no second scroll container inside the body.
+    <Dialog open={open} onClose={onClose} title={SHORTCUTS_HELP_TITLE} size="lg" scrollBody data-testid="shortcuts-help"
       description="Single keys are ignored while you are typing in a field.">
-      <div className="max-h-[60vh] space-y-5 overflow-y-auto pr-1">
+      <div className="space-y-5 pr-1">
         {sections.map(({ scope, rows }) => (
           <section key={scope} aria-labelledby={`shortcuts-${scope}`}>
             <h3 id={`shortcuts-${scope}`} className="text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-4">

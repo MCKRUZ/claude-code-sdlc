@@ -5,8 +5,14 @@
 // progress between stations and the plugin never reported one; beyond `uCurrent` it is a dashed
 // hairline at 50 % alpha. `uDraw` sweeps 0 → 1 once on first open so the rail draws itself in.
 // Shaders are inline strings: compiled by WebGL, not fetched, so the CSP never sees them.
+//
+// Round 2 (I1): the tube is shaded by the same fixed-key lambert as the rings (`SHADE_GLSL`,
+// `uShade` 0.18 as a constant). It only darkens, AFTER the span branch, so the lit span's token
+// is still its brightest pixel and the FLAT span between `uLit` and `uCurrent` is still one
+// colour with no gradient along u.
 import { Color, DoubleSide, ShaderMaterial } from 'three'
 import type { IUniform } from 'three'
+import { SHADE_GLSL } from './RingMaterial'
 
 export interface RailUniforms {
   uLit: IUniform<number>
@@ -19,8 +25,10 @@ export interface RailUniforms {
 
 const VERT = /* glsl */ `
   varying vec2 vUv;
+  varying vec3 vNormal;
   void main() {
     vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `
@@ -32,6 +40,8 @@ const FRAG = /* glsl */ `
   uniform vec3 uLine;
   uniform vec3 uSigned;
   varying vec2 vUv;
+  varying vec3 vNormal;
+  ${SHADE_GLSL}
   void main() {
     float u = vUv.x;
     if (u > uDraw) discard;
@@ -47,7 +57,7 @@ const FRAG = /* glsl */ `
       color = uLine;
       alpha = 0.5;
     }
-    gl_FragColor = vec4(color, alpha);
+    gl_FragColor = vec4(color * shadeFactor(vNormal), alpha);
   }
 `
 

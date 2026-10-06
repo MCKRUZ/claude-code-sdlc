@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
-import { BUILD_STAGE_ID, targetForStage, type NavTarget } from '../../shared/nav'
-import type { DocumentFocus, ProjectStatus, SignOffQuestion, StageReadiness } from '../../shared/types'
-import { Button, Card, Eyebrow, IconButton, Notice, SkeletonRows, Tab, TabList, TabPanel, TabsProvider } from '../ui'
+import { BUILD_STAGE_ID, groupStages, targetForStage, type NavTarget } from '../../shared/nav'
+import type { DocumentFocus, PipelineEvidenceResult, ProjectStatus, SignOffQuestion, StageReadiness } from '../../shared/types'
+import { Button, Card, Eyebrow, IconButton, Notice, PageHeader, SkeletonRows, Tab, TabList, TabPanel, TabsProvider } from '../ui'
 import { readDensity, usePreference } from '../ui/preferenceBridge'
 import { useEnter } from '../motion/useEnter'
+import { spineCollapse } from '../motion/choreo'
 import { SceneSlot } from '../scenes/core/SceneSlot'
 import type { SceneDataSpine } from '../scenes/core/types'
 import { buildSpineData } from '../scenes/spine/spineModel'
@@ -15,8 +16,10 @@ import { DocumentsTab } from './DocumentsTab'
 import { GuideTab } from './GuideTab'
 import { PipelineEvidencePanel } from './PipelineEvidencePanel'
 import { SignOffPanel } from './SignOffPanel'
+import { StageSummaryStrip } from './StageSummaryStrip'
 import { WorkflowTab } from './WorkflowTab'
 import { useStageReadiness } from './StageReadinessContext'
+import { choreoContext } from './screenMotion'
 import { STICKY_HEADER_CLASS, useStuck } from './useStuck'
 
 type StageTab = 'workflow' | 'documents' | 'guide'
@@ -45,12 +48,26 @@ const SPINE_HEIGHT = { comfortable: 168, compact: 120 } as const
  * the row whose `stage_state` is `current`, falling back to `current_phase`; `currentDocs` is the
  * readiness this screen already holds, and only when it IS the current stage's — otherwise null,
  * not an empty arc. */
-function spineDataFor(status: ProjectStatus, readiness: StageReadiness | null): SceneDataSpine {
+export function spineDataFor(status: ProjectStatus, readiness: StageReadiness | null): SceneDataSpine {
   const currentPhaseId = status.stages.find((s) => s.stage_state === 'current')?.id ?? status.current_phase?.id ?? null
   const currentDocs = readiness?.ok && currentPhaseId !== null && readiness.stageId === currentPhaseId
     ? { complete: readiness.documents.filter((d) => d.ready).length, total: readiness.documents.length }
     : null
-  return buildSpineData({ stages: status.stages, currentPhaseId, currentDocs })
+  // Round 2 (I3): the stage whose home is open is the one the reticle marks — the readiness we
+  // hold IS that stage's, so its id is the viewed one. Null until readiness has answered.
+  const viewedStageId = readiness?.ok ? readiness.stageId : null
+  return { ...buildSpineData({ stages: status.stages, currentPhaseId, currentDocs }), viewedStageId }
+}
+
+/** The area eyebrow (round 2, S1): "Foundation · Stage 1 of 4" from `groupStages`'s own grouping
+ * and the stage's position inside its group — never a count invented here. Null when the stage is
+ * not in the project's list (then the header simply has no eyebrow). */
+export function stageEyebrow(status: ProjectStatus, stageId: string): string | null {
+  for (const group of groupStages(status.stages)) {
+    const at = group.stages.findIndex((s) => s.id === stageId)
+    if (at >= 0) return `${group.label} · Stage ${at + 1} of ${group.stages.length}`
+  }
+  return null
 }
 
 /** The hero band above the title: the Lifecycle Spine's slot, collapsible, remembered. The
@@ -66,7 +83,39 @@ function SpineBand({ status, readiness, onNavigate }: {
   const hover = useSpineHover()
   const density = usePreference(readDensity)
   const data = useMemo(() => spineDataFor(status, readiness), [status, readiness])
-  const toggle = () => stageTabStore.toggleSpineCollapsed()
+  const bandRef = useRef<HTMLElement | null>(null)
+  // Round 2 (I8): the chevron plays row #28 on the band and the host applies the collapsed/open
+  // state itself (the body mounts or unmounts below), so the end state equals a cold reload whether
+  // the row is the stub or the height tween. The ORDER differs by direction, because the row
+  // measures the band at play time and ends with `clearProps`:
+  //   collapse — play on the OPEN band (it measures the open height), flip the switch when the
+  //              timeline reaches its end (`.add(callback)`, the contract's composition verb:
+  //              synchronous under the stub, so a test sees one commit; at the last frame under
+  //              the engine, before React swaps the markup);
+  //   expand   — flip FIRST so the body is in the DOM, then play from 0 to the newly measured open
+  //              height in a layout effect (before paint), so the first frame is the closed band.
+  const expandPending = useRef(false)
+  const toggle = () => {
+    const band = bandRef.current
+    if (!band) {
+      stageTabStore.toggleSpineCollapsed()
+      return
+    }
+    if (collapsed) {
+      expandPending.current = true
+      stageTabStore.toggleSpineCollapsed()
+      return
+    }
+    spineCollapse.play(choreoContext(band), { band, collapsed: true }).add(() => stageTabStore.toggleSpineCollapsed())
+  }
+  useLayoutEffect(() => {
+    if (collapsed || !expandPending.current) return
+    expandPending.current = false
+    const band = bandRef.current
+    if (!band) return
+    const tl = spineCollapse.play(choreoContext(band), { band, collapsed: false })
+    return () => { tl.kill() }
+  }, [collapsed])
   // One header row: the figure's own eyebrow (SceneShell's) with the chevron beside its toggle.
   // Collapsed, the band shrinks to that same row drawn here, since the figure is gone.
   const chevron = (
@@ -80,7 +129,7 @@ function SpineBand({ status, readiness, onNavigate }: {
     />
   )
   return (
-    <section aria-label="Lifecycle" data-testid="spine-band" data-collapsed={collapsed ? '' : undefined} className="space-y-1">
+    <section ref={bandRef} aria-label="Lifecycle" data-testid="spine-band" data-collapsed={collapsed ? '' : undefined} className="space-y-1">
       {collapsed ? (
         <div className="flex items-center justify-between gap-2">
           <Eyebrow as="span">Lifecycle</Eyebrow>
@@ -150,8 +199,13 @@ export function StageHome({
   const [busyId, setBusyId] = useState<string | null>(null)
   const [confirmError, setConfirmError] = useState<string | null>(null)
   const [tab, setTab] = useState<StageTab>('workflow')
+  /** Foundation's gathered pipeline evidence, lifted from the panel so the summary strip can
+   * state it; forgotten when the stage or project changes (one project's rails never read under
+   * another). Null means "not gathered", which the strip draws as no fact at all. */
+  const [pipeline, setPipeline] = useState<PipelineEvidenceResult | null>(null)
   const root = useRef<HTMLDivElement | null>(null)
   const homeKey = stageHomeKey(projectPath, stageId)
+  useEffect(() => { setPipeline(null) }, [homeKey])
 
   // Opening a DIFFERENT stage — or a different PROJECT — is opening a home page fresh, and
   // Workflow is what a fresh opening lands on (spec 0017), even if the reader had switched to
@@ -219,8 +273,16 @@ export function StageHome({
         {/* Sticky title + tabs INSIDE the screen root (§6.6): `<main>` is the scroll container, the
             negative margin spans its padding, and nothing wraps the root itself. */}
         <div ref={headerRef} className={STICKY_HEADER_CLASS}>
-          <h2 className="text-xl text-ink-1" data-page-heading tabIndex={-1}>{readiness.display}</h2>
-          {readiness.description && <p className="mt-1 max-w-[64ch] text-sm text-ink-3">{readiness.description}</p>}
+          {/* S1: the kit's one header — eyebrow from the stage's group and ordinal, the heading
+              text byte-identical (`readiness.display`), the stage's own description as the lede.
+              Not `sticky` itself: the tab row rides in this sticky block with it. */}
+          <PageHeader
+            eyebrow={status ? stageEyebrow(status, readiness.stageId) ?? undefined : undefined}
+            title={readiness.display}
+            lede={readiness.description || undefined}
+          />
+          {/* S2: the facts between the title and the tabs; each is a button into the tab it lives on. */}
+          <StageSummaryStrip readiness={readiness} pipeline={pipeline} />
           <TabList<StageTab> value={tab} onChange={setTab} label="Stage view" className="mt-3">
             <Tab<StageTab> value="workflow">Workflow</Tab>
             <Tab<StageTab> value="documents">Documents</Tab>
@@ -263,7 +325,7 @@ export function StageHome({
           where a person finds out which have fired, without leaving the app. Keyed on the project
           so one project's evidence never shows under another. */}
       {tab === 'workflow' && readiness.name === 'foundation' && (
-        <PipelineEvidencePanel key={projectPath} projectPath={projectPath} onOpenDocument={onOpenDocument} />
+        <PipelineEvidencePanel key={projectPath} projectPath={projectPath} onOpenDocument={onOpenDocument} onResult={setPipeline} />
       )}
 
       {/* The action itself — sign off and advance — is a whole-stage decision, not a tab's

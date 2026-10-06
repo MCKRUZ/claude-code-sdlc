@@ -8,8 +8,12 @@
  * error; switching back shows the slate; and the Graph / Table toggle lives OUTSIDE
  * `[data-testid=sprint-board]`, so the board's own three buttons are exactly what they were.
  *
- * Until Wave 3 registers the scene (`registerScene('constellation-sprint', …)`) the slot renders
- * nothing; the suite then skips LOUDLY rather than pass vacuously. Wave 3: delete that guard.
+ * The scene is registered, so the figure is WAITED for, never skipped: the old Wave 3 guard
+ * (`test.skip` when the slot had not rendered yet) fired on timing and let three stale
+ * assertions pass vacuously for several waves. The window is widened to 1440 px first — the
+ * graph needs a host ≥ `MIN_GRAPH_WIDTH` (640 px), and the default 1280 px window leaves
+ * `<main>` ≈ 564 px beside the `w-72` sidebar and the 380 px chat, where the figure honestly
+ * says "Widen the window…" and offers no Graph at all.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -25,7 +29,7 @@ const PLUGIN_ROOT = PLUGIN.root
 const SCRIPTS_DIR = PLUGIN.scriptsDir
 const VENV_PYTHON = PLUGIN.python
 
-const LEGEND = "Bodies are specs sized by risk tier; edges are depends_on as declared; x follows the plugin's build order; y and z carry no meaning."
+const LEGEND = "Bodies are specs sized by risk tier; edges are depends_on as declared; x follows the plugin's build order and the thin accent path joins the slate in that order; y and z carry no meaning."
 const WEBGL_NOTICE = 'hardware graphics are unavailable here'
 
 let app: ElectronApplication
@@ -76,12 +80,14 @@ test.describe('[observatory S2] the dependency constellation on the Sprint scree
       env: { ...process.env, NODE_ENV: 'development' },
     })
     page = await app.firstWindow()
+    await page.setViewportSize({ width: 1440, height: 900 })
     page.on('pageerror', (err) => pageErrors.push(String(err)))
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('constellation project').click()
     await expect(page.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
     await openBuildView(page, 'Sprint')
     await expect(page.getByTestId('sprint-slate')).toBeVisible({ timeout: 60_000 })
+    await expect(page.getByTestId('constellation-sprint')).toBeVisible({ timeout: 60_000 })
   })
 
   test.afterAll(async () => {
@@ -97,19 +103,20 @@ test.describe('[observatory S2] the dependency constellation on the Sprint scree
 
   test('Sprint shows the figure on its table surface by default, with the honesty caption', async () => {
     const figure = page.getByTestId('constellation-sprint')
-    // Wave 3 guard — see the file comment. Remove once the scene is registered.
-    test.skip((await figure.count()) === 0, 'constellation-sprint is not registered yet (Wave 3 registers the scene)')
     await expect(figure).toBeVisible()
     await expect(figure).toHaveAttribute('data-surface', 'table')
     await expect(figure.locator('figcaption')).toHaveText(LEGEND)
-    // The slate IS the table: no second table, one NOT READY per slated spec.
-    await expect(page.getByText('NOT READY')).toHaveCount(3)
+    // The slate IS the table: no second table, one NOT READY per slated spec. Counted INSIDE the
+    // slate, exactly as sprint.spec does: the readiness card below carries the plugin's own gap
+    // lines ("status is draft, not ready"), which Playwright's case-insensitive substring match
+    // also counts — the same fact in the plugin's words, not a fourth row. (This assertion had
+    // never run before round 2: the Wave 3 guard skipped it, and it was already false page-wide.)
+    await expect(page.getByTestId('sprint-slate').getByText('NOT READY')).toHaveCount(3)
     await expect(figure.locator('canvas')).toHaveCount(0)
   })
 
   test('toggling to Graph gives a canvas or the WebGL notice, and never a page error', async () => {
     const figure = page.getByTestId('constellation-sprint')
-    test.skip((await figure.count()) === 0, 'constellation-sprint is not registered yet (Wave 3 registers the scene)')
     await figure.getByRole('button', { name: /^Graph/ }).click()
     await expect
       .poll(async () => (await figure.locator('canvas').count()) > 0 || (await figure.getByText(WEBGL_NOTICE).count()) > 0, { timeout: 30_000 })
@@ -125,7 +132,6 @@ test.describe('[observatory S2] the dependency constellation on the Sprint scree
 
   test('toggling back to Table shows the slate again', async () => {
     const figure = page.getByTestId('constellation-sprint')
-    test.skip((await figure.count()) === 0, 'constellation-sprint is not registered yet (Wave 3 registers the scene)')
     await figure.getByRole('button', { name: /^Table/ }).click()
     await expect(figure).toHaveAttribute('data-surface', 'table')
     await expect(page.getByTestId('sprint-slate')).toBeVisible()

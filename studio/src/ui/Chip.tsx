@@ -61,6 +61,7 @@ export const Chip = forwardRef<HTMLElement, ChipProps>(function Chip(
       <button
         type="button"
         disabled={disabled}
+        data-pressable=""
         onClick={onClick}
         {...disabledReasonProps(disabledReason, disabled)}
         ref={ref as never}

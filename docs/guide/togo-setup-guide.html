@@ -173,11 +173,11 @@ az account show</code></pre>
 <!-- 2 ------------------------------------------------------------------ -->
 <h2 id="install">2. Install the plugin</h2>
 <p>From inside Claude Code, one marketplace add and one install. This brings the orchestration commands and the delivery harness payload.</p>
-<pre><code>/plugin marketplace add MCKRUZ/claude-code-sdlc
-/plugin install claude-code-sdlc@mckruz</code></pre>
-<p>If your team runs its own fork (the Tōgō work lives on <code>splashthree/claude-code-sdlc</code>, branch <code>feat/studio-improvements</code>, until it is merged upstream), use that owner/repo in the <code>marketplace add</code> line and that marketplace name after the <code>@</code>.</p>
+<pre><code>/plugin marketplace add splashthree/claude-code-sdlc
+/plugin install claude-code-sdlc@togo</code></pre>
+<p>The marketplace is named <code>togo</code>; the plugin keeps its id <code>claude-code-sdlc</code>, so existing <code>/sdlc-*</code> commands and project state are unchanged.</p>
 <p>Developers working on the plugin itself clone it and symlink it as a skill instead:</p>
-<pre><code>git clone https://github.com/MCKRUZ/claude-code-sdlc.git
+<pre><code>git clone https://github.com/splashthree/claude-code-sdlc.git
 ln -s /path/to/claude-code-sdlc ~/.claude/skills/claude-code-sdlc   <span class="c"># macOS / Linux</span>
 mklink /D "%USERPROFILE%\.claude\skills\claude-code-sdlc" "path\to\claude-code-sdlc"   <span class="c"># Windows</span>
 cd claude-code-sdlc/scripts &amp;&amp; uv sync   <span class="c"># optional warm-up; uv run syncs on first use anyway</span></code></pre>
@@ -556,7 +556,7 @@ Next: /sdlc-refine --spec 0012 · /sdlc-sprint ready --by &lt;name&gt; when the 
   <tr><td><code>scripts/tests/fixtures/code_host/azure_devops/captured/CAPTURE-NOTES.md</code></td><td>What real Azure DevOps output looks like, including the sign-in facts in §1.</td></tr>
   <tr><td><code>studio/README.md</code></td><td>The desktop app: scripts, appearance, shortcuts, scenes, bundle, security.</td></tr>
   <tr><td><code>docs/proposals/studio-observatory.md</code></td><td>The Observatory design: tokens, kit, motion, scenes, interaction mechanics.</td></tr>
-  <tr><td><code>docs/brand/togo/brandbook.html</code></td><td>The Tōgō brand guide: name, mark, colour, type, voice.</td></tr>
+  <tr><td><code>docs/brand/togo/brandbook.html</code></td><td>The Tōgō brand guide: name, mark, colour, type, voice. The solid mark is the mark; its <i>Depth</i> gradient treatment lives in three places only — the Welcome hero, the opening card and the app icon (48 px and above) — never on a control, chip, status, data row or behind text. <code>docs/brand/togo/build-assets.mjs</code> regenerates every raster and the app icon from the SVG sources.</td></tr>
 </table>
 <table>
   <tr><th style="width:330px">Path (your project, after <code>/sdlc-setup</code>)</th><th>Covers</th></tr>

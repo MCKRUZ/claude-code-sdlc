@@ -14,6 +14,8 @@
 // ≈ BODY_HEIGHT_FRACTION of the viewport height at the fit distance, and LOW / HIGH keep their
 // fixed ratio to it, so radius still reads as the risk tier and nothing else.
 import { RISK_RADIUS } from './constellationModel'
+import { POLAR_MIN } from './orbit'
+import type { BodySource } from '../core/types'
 
 /** Room around the bodies: 12 % margin on the tighter axis. */
 export const FIT_MARGIN = 1.12
@@ -36,7 +38,32 @@ export interface PlatePadPx {
   side: number
 }
 export const PLATE_PAD_PX: PlatePadPx = { below: 30, above: 6, side: 32 }
+/** Round 2 (I9): the Board alternates plates above / below its bodies (`plates.ts`), so its room
+ * is symmetric and the padded box centres the BODIES — the asymmetric pad centred the plates and
+ * left ≈ 90 px of air above the bodies in a 280 px host. */
+export const PLATE_PAD_SYMMETRIC: PlatePadPx = { below: 30, above: 30, side: 32 }
 const NO_PAD: PlatePadPx = { below: 0, above: 0, side: 0 }
+
+/** Round 2 (I9): the Board's bodies must fill at least this much of the host's height. */
+export const MIN_HEIGHT_FRACTION = 0.6
+/** How many polar steps `fitView` tries between the orbit's polar and `polarMin`. */
+const POLAR_STEPS = 8
+
+/** Round 2 (I9): the host's aspect as a HARD input to the fit. */
+export interface FitAspect {
+  /** The projected (padded) height the bodies must reach, as a fraction of the host. */
+  minHeightFraction: number
+  /** How far the fit may lower the camera's polar angle to reach it (the orbit's `POLAR_MIN`). */
+  polarMin: number
+}
+
+/** The fit policy per body source: the Sprint keeps the design's asymmetric room (plates below)
+ * and no aspect demand; the Board's plates alternate, so its room is symmetric and its bodies
+ * must fill `MIN_HEIGHT_FRACTION` of the host. */
+export const FIT_POLICY: Readonly<Record<BodySource, { pad: PlatePadPx; aspect?: FitAspect }>> = {
+  sprint: { pad: PLATE_PAD_PX },
+  board: { pad: PLATE_PAD_SYMMETRIC, aspect: { minHeightFraction: MIN_HEIGHT_FRACTION, polarMin: POLAR_MIN } },
+}
 
 export type Vec3 = [number, number, number]
 
@@ -52,6 +79,11 @@ export interface Fit {
   distance: number
   /** Uniform factor every body radius is multiplied by (see the header comment). */
   bodyScale: number
+  /** The polar angle the fit settled on: the orbit's own unless a `FitAspect` lowered it. */
+  polar: number
+  /** The bodies' projected height (silhouettes, no pad) as a fraction of the host; NaN when no
+   * viewport was given. */
+  heightFraction: number
 }
 
 function centroid(positions: ArrayLike<number>): Vec3 {
@@ -123,6 +155,31 @@ export function fitView(
    * distance, so it is converted to tangent units here and padded onto the projected extents. */
   viewportPx?: { width: number; height: number },
   pad: PlatePadPx = viewportPx ? PLATE_PAD_PX : NO_PAD,
+  /** Round 2 (I9): after the width fit, if the bodies project to less than
+   * `minHeightFraction` of the host, the polar is lowered toward `polarMin` (in `POLAR_STEPS`
+   * steps) and the pose that first reaches it wins; if none does, the tallest one wins. A flat
+   * slab seen from a lower angle shows its depth as height — but only positions and radii
+   * decide, never a plugin word. */
+  aspectPolicy?: FitAspect,
+): Fit {
+  const first = fitViewAt(positions, radii, polar, azimuth, fovDeg, aspect, viewportPx, pad)
+  if (!aspectPolicy || !viewportPx || !(first.heightFraction < aspectPolicy.minHeightFraction)) return first
+  let best = first
+  const lo = Math.min(polar, aspectPolicy.polarMin)
+  for (let step = 1; step <= POLAR_STEPS; step++) {
+    const p = polar + (lo - polar) * (step / POLAR_STEPS)
+    const fit = fitViewAt(positions, radii, p, azimuth, fovDeg, aspect, viewportPx, pad)
+    if (fit.heightFraction > best.heightFraction) best = fit
+    if (fit.heightFraction >= aspectPolicy.minHeightFraction) return fit
+  }
+  return best
+}
+
+/** The fit for ONE polar angle. */
+export function fitViewAt(
+  positions: ArrayLike<number>, radii: ArrayLike<number>, polar: number, azimuth: number, fovDeg: number, aspect: number,
+  viewportPx?: { width: number; height: number },
+  pad: PlatePadPx = viewportPx ? PLATE_PAD_PX : NO_PAD,
 ): Fit {
   const n = Math.floor(positions.length / 3)
   const { right, up, toward } = viewAxes(polar, azimuth)
@@ -140,7 +197,7 @@ export function fitView(
   let center: Vec3 = centroid(positions)
   let distance = fitDistance(MIN_FIT_RADIUS, fovDeg, aspect)
   let scale = bodyScaleFor(distance, fovDeg)
-  if (n === 0) return { center, distance: minDistance, bodyScale: scale }
+  if (n === 0) return { center, distance: minDistance, bodyScale: scale, polar, heightFraction: NaN }
   const view = (i: number) => {
     const x = positions[i * 3] - center[0], y = positions[i * 3 + 1] - center[1], z = positions[i * 3 + 2] - center[2]
     return { r: dot(right, x, y, z), u: dot(up, x, y, z), f: dot(toward, x, y, z), rad: (radii[i] ?? 0) * scale }
@@ -168,7 +225,30 @@ export function fitView(
     }
     distance = Math.max(d, minDistance)
   }
-  return { center, distance, bodyScale: scale }
+  return { center, distance, bodyScale: scale, polar, heightFraction: projectedHeightFraction(positions, radii, center, distance, scale, polar, azimuth, fovDeg) }
+}
+
+/** The bodies' projected height — top of the highest silhouette to the bottom of the lowest —
+ * as a fraction of the host's height, for a camera at `distance` from `center`. Pure, so the
+ * Board pin (≥ `MIN_HEIGHT_FRACTION` at 720 × 280) is checked on numbers, not a screenshot. */
+export function projectedHeightFraction(
+  positions: ArrayLike<number>, radii: ArrayLike<number>, center: Vec3, distance: number, scale: number,
+  polar: number, azimuth: number, fovDeg: number,
+): number {
+  const n = Math.floor(positions.length / 3)
+  if (n === 0) return NaN
+  const { up, toward } = viewAxes(polar, azimuth)
+  const tanV = Math.tan((fovDeg * Math.PI) / 360)
+  let top = -Infinity, bottom = Infinity
+  for (let i = 0; i < n; i++) {
+    const x = positions[i * 3] - center[0], y = positions[i * 3 + 1] - center[1], z = positions[i * 3 + 2] - center[2]
+    const seen = Math.max(distance - dot(toward, x, y, z), 1e-3)
+    const u = dot(up, x, y, z), rad = (radii[i] ?? 0) * scale
+    top = Math.max(top, (u + rad) / (seen * tanV))
+    bottom = Math.min(bottom, (u - rad) / (seen * tanV))
+  }
+  // Tangent units: the half-view is 1, so the full view is 2.
+  return (top - bottom) / 2
 }
 
 /** Fog density that fades the far side of the fitted view into the page rather than the bodies

@@ -4,10 +4,22 @@
 // context already resolved it — so a row is a pure function of its inputs and testable with a
 // hand-built context.
 import { gsap } from 'gsap'
-import type { ChoreoContext } from '../contract'
+import type { Choreo, ChoreoContext } from '../contract'
 import { StubTimeline, type MotionTimeline } from '../stub'
 
 export type { ChoreoContext }
+
+/** A catalogue row that exists by name before its owner has written it: returns `timelineFor(ctx)`
+ * — an empty real timeline (already complete) when enabled, the stub otherwise — and moves
+ * nothing. The owner replaces the file's contents and keeps the exported name and ref type. */
+export function placeholderRow<Extra>(name: string): Choreo<Extra> {
+  return {
+    name,
+    play(ctx) {
+      return timelineFor(ctx)
+    },
+  }
+}
 
 export function timelineFor(ctx: ChoreoContext, vars: gsap.TimelineVars = {}): MotionTimeline {
   if (!ctx.enabled) return new StubTimeline(vars)

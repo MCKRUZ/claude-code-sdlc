@@ -6,10 +6,13 @@
 // preference itself, so a test build, an `off` preference and an OS reduced-motion setting all
 // switch every choreography off through the same gate. No GSAP import here: node-env tests load
 // this file to check the rule without pulling in an animation engine.
-import type { MotionApi, MotionPreference } from './contract'
-import { MOTION_DURATIONS, MOTION_EASES, MOTION_PREFERENCES } from './contract'
+import type { FamiliarityApi, FamiliarityTier, MotionApi, MotionPreference } from './contract'
+import { FAMILIARITY_FULL_MAX_OPENS, FAMILIARITY_QUIET_MAX_OPENS, MOTION_DURATIONS, MOTION_EASES, MOTION_PREFERENCES } from './contract'
 
 export const MOTION_STORAGE_KEY = 'studio.motion'
+/** M3: `studio.opens.<hash>` — one counter per project, keyed by a hash so a path never lands in
+ * storage as itself (a path can name a client). */
+export const OPENS_STORAGE_PREFIX = 'studio.opens.'
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)'
 
 /** The seams a test may replace. `isTestMode` reads `import.meta.env.MODE` at CALL time (not at
@@ -140,8 +143,73 @@ export function configureMotionForTests(overrides: Partial<MotionEnvironment> | 
   mediaBound = false
 }
 
-/** The `MotionApi` object the contract describes, for callers that prefer one handle. */
-export const motion: MotionApi = {
+// --- round 2: familiarity (M3) ----------------------------------------------------------------
+// How many times this person has opened this project, as a TIER, never a date: opens 1–3 play
+// the full opening, 4–10 a quieter one, past ten the flourishes are skipped. The count lives in
+// `localStorage['studio.opens.<hash>']`; storage that is blocked reads as "first opens", because
+// a counter that cannot be kept must not make the app quieter than the person has earned.
+
+/** FNV-1a over the UTF-16 code units, hex — stable, short, and never the key itself. */
+export function hashProjectKey(projectKey: string): string {
+  let hash = 0x811c9dc5
+  for (let i = 0; i < projectKey.length; i += 1) {
+    hash ^= projectKey.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
+export function opensStorageKey(projectKey: string): `${typeof OPENS_STORAGE_PREFIX}${string}` {
+  return `${OPENS_STORAGE_PREFIX}${hashProjectKey(projectKey)}`
+}
+
+function readOpens(projectKey: string): number {
+  try {
+    if (typeof localStorage === 'undefined') return 0
+    const raw = localStorage.getItem(opensStorageKey(projectKey))
+    const n = raw === null ? 0 : Number(raw)
+    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0
+  } catch {
+    return 0
+  }
+}
+
+function writeOpens(projectKey: string, count: number): void {
+  try {
+    if (typeof localStorage === 'undefined') return
+    if (count <= 0) localStorage.removeItem(opensStorageKey(projectKey))
+    else localStorage.setItem(opensStorageKey(projectKey), String(count))
+  } catch {
+    // Not remembered this time; the tier stays what it was for this session.
+  }
+}
+
+/** The tier for a count: the contract's two thresholds, nothing else. A count of 0 (never
+ * recorded, or storage blocked) is a first open. */
+export function tierForOpens(count: number): FamiliarityTier {
+  if (count <= FAMILIARITY_FULL_MAX_OPENS) return 'full'
+  if (count <= FAMILIARITY_QUIET_MAX_OPENS) return 'quiet'
+  return 'settled'
+}
+
+export function familiarity(projectKey: string): FamiliarityTier {
+  return tierForOpens(readOpens(projectKey))
+}
+
+/** One increment per open — the Frame calls it once per `projectPath` mount, Welcome once per
+ * mount; a `refreshStatus` re-render is not an open. */
+export function recordOpen(projectKey: string): void {
+  writeOpens(projectKey, readOpens(projectKey) + 1)
+}
+
+/** Appearance's "Play the opening again": the next open is a first open. */
+export function resetFamiliarity(projectKey: string): void {
+  writeOpens(projectKey, 0)
+}
+
+/** The `MotionApi` object the contract describes, for callers that prefer one handle. Round 2
+ * widens it with the familiarity verbs (`FamiliarityApi`); `MotionApi` itself is unchanged. */
+export const motion = {
   enabled,
   reduced,
   get preference() {
@@ -151,4 +219,7 @@ export const motion: MotionApi = {
   subscribe,
   durations: MOTION_DURATIONS,
   eases: MOTION_EASES,
-}
+  familiarity,
+  recordOpen,
+  resetFamiliarity,
+} satisfies MotionApi & FamiliarityApi

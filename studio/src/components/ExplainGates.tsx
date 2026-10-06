@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GateInventory } from '../../shared/types'
-import { Card, DataTable, Eyebrow, Notice, SkeletonRows } from '../ui'
+import { Card, DataTable, Eyebrow, Notice, PageHeader, SkeletonRows } from '../ui'
 import { useListReveal } from './screenMotion'
 
 type Gate = GateInventory['gates'][number]
@@ -24,7 +24,7 @@ export function GatesView({ projectPath }: { projectPath: string }) {
   if (loading && !inventory) {
     return (
       <div aria-busy="true">
-        <p role="status" className="text-sm text-ink-4">Reading the gates…</p>
+        <p role="status" className="text-sm text-ink-3">Reading the gates…</p>
         <SkeletonRows rows={3} className="mt-3" />
       </div>
     )
@@ -46,17 +46,23 @@ export function GatesView({ projectPath }: { projectPath: string }) {
   return (
     <div ref={root} className="space-y-4">
       <div>
-        <h2 data-page-heading tabIndex={-1} className="text-xl font-semibold text-ink-1">Checks and gates</h2>
-        <p className="mt-0.5 text-sm text-ink-3">
-          What every change has to pass. Described in{' '}
-          <span className="font-mono text-xs">{inventory.guide_source}</span> — Studio does not
-          describe the gates itself, so this screen and the pipelines cannot disagree.
-        </p>
+        {/* S1: the kit header; the heading text is byte-identical. */}
+        <PageHeader
+          eyebrow="Build · How it is going"
+          title="Checks and gates"
+          lede={(
+            <>
+              What every change has to pass. Described in{' '}
+              <span className="font-mono text-xs">{inventory.guide_source}</span> — Studio does not
+              describe the gates itself, so this screen and the pipelines cannot disagree.
+            </>
+          )}
+        />
         {/* Said out loud rather than implied. This project supplies BOTH its gate list and the
             files that list names, so on its own the screen can only report what the project
             claims. Whether it was checked against the standard is the thing that makes the
             difference, and "nothing was compared" must not read like "nothing disagreed". */}
-        <p className="mt-1 text-xs text-ink-4">
+        <p className="mt-1 text-xs text-ink-3">
           {inventory.compared_with_playbook
             ? 'Checked against the playbook\'s own copy, and any disagreement is shown below.'
             : 'This is what the project says about itself; it has not been checked against the playbook.'}
@@ -151,16 +157,16 @@ function GateList({ title, gates, tone, note }: { title: string; gates: Gate[]; 
             cell: (g) => (
               <>
                 <span className="font-medium text-ink-1">{g.gate}</span>
-                {g.optional && <span className="ml-2 text-xs text-ink-4">optional</span>}
+                {g.optional && <span className="ml-2 text-xs text-ink-3">optional</span>}
               </>
             ),
           },
-          { id: 'file', header: 'File', mono: true, cell: (g) => <span className="text-ink-4">{g.file}</span> },
+          { id: 'file', header: 'File', mono: true, cell: (g) => <span className="text-ink-3">{g.file}</span> },
           { id: 'runs', header: 'Runs on', cell: (g) => <span className="text-ink-2">Runs on {g.fires_on || 'unstated'} · {g.blocks || 'unstated'}</span> },
           {
             id: 'differs', header: 'Playbook',
             cell: (g) => (g.differs
-              ? <span className="block rounded bg-amber-100 px-2 py-1 text-xs text-amber-900">Differs from the playbook — {g.differs}</span>
+              ? <span className="block rounded bg-status-warn-bg px-2 py-1 text-xs text-status-warn-ink">Differs from the playbook — {g.differs}</span>
               : <span className="text-ink-4">—</span>),
           },
         ]}

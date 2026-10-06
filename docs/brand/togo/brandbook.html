@@ -116,7 +116,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
   <div>
     <div class="eyebrow">Brand guide</div>
     <h1>Tōgō — brand guide</h1>
-    <p class="meta">Provisional. Plugin 1.6.2 (Unreleased). Palette and files as of 2026-10-05. Source of record: <code>docs/brand/togo/palette.json</code>.</p>
+    <p class="meta">Provisional. Plugin 1.6.2 (Unreleased). Palette and files as of 2026-10-06. Source of record: <code>docs/brand/togo/palette.json</code>.</p>
   </div>
 </header>
 
@@ -156,6 +156,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 <!-- 2 ------------------------------------------------------------------ -->
 <h2 id="mark">2. The mark</h2>
 <p>Mark A, the macron, is the primary mark. It is in the product: the window icon, the tile, the lockup, the favicon. Marks B and C exist as files and PNG exports. They are not used anywhere.</p>
+<p>The <b>solid mark is the mark</b>. It has one sanctioned hero treatment, <b>Depth</b>: the same two shapes filled from a single gradient (§2 "Mark A — Depth"). Depth lives in exactly three places — the Welcome hero, the opening card and the app icon — and nowhere else.</p>
 
 <h3>Mark A — primary</h3>
 <div class="grid g4">
@@ -182,6 +183,35 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
       <svg width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="Tōgō mark, white on ink"><rect x="17" y="9" width="30" height="7" rx="3.5" fill="#FFFFFF"/><circle cx="32" cy="38.5" r="17.5" fill="#FFFFFF"/></svg>
     </div>
     <figcaption><b>White on ink</b> · <code>mark-a-macron-white.svg</code></figcaption>
+  </figure>
+</div>
+
+<h3>Mark A — Depth</h3>
+<p>The hero treatment. Bar and disc are filled from <b>one</b> linear gradient drawn in the mark's own units — from the bar's top-left corner (17, 9) to the disc's bottom-right tangent (47, 56) — so both shapes read as one object lit from one side, never as two tinted pieces. The stops are two steps of the one accent, and they follow the theme: on light grounds accent 300 → accent 900, on dark grounds <code>#6FD1D4 → #0E7C86</code> — the light ramp's 300 and the shared 600, named by hex because the dark ramp runs the other way (its own 300 is a deep teal) — so the dark mark stays luminous rather than sinking into the surface. Depth carries no meaning. It is allowed at <b>48 px and above</b>, in the three hero places only (§4): never on a control, a chip, a status, a data body or behind text — there the solid mark stays.</p>
+<div class="grid g4">
+  <figure>
+    <div class="art on-white">
+      <svg width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="Tōgō mark, Depth on light"><defs><linearGradient id="depthL" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#depthL)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#depthL)"/></svg>
+    </div>
+    <figcaption><b>Depth — light</b> · <code>mark-a-macron-depth.svg</code> · #6FD1D4 → #0A3F47</figcaption>
+  </figure>
+  <figure>
+    <div class="art on-ink">
+      <svg width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="Tōgō mark, Depth on dark"><defs><linearGradient id="depthD" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0E7C86"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#depthD)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#depthD)"/></svg>
+    </div>
+    <figcaption><b>Depth — dark</b> · the app's <code>--mark-depth-a/-b</code> tokens · #6FD1D4 → #0E7C86</figcaption>
+  </figure>
+  <figure>
+    <div class="art on-white" style="min-height:120px">
+      <svg width="120" height="120" viewBox="-6 -6 76 76" role="img" aria-label="Construction of the Depth gradient" font-family="JetBrains Mono Variable, JetBrains Mono, ui-monospace, Menlo, monospace" font-size="3.2"><defs><linearGradient id="depthC" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#depthC)" fill-opacity=".9"/><circle cx="32" cy="38.5" r="17.5" fill="url(#depthC)" fill-opacity=".9"/><line x1="17" y1="9" x2="47" y2="56" stroke="#0EA5E9" stroke-width=".4" stroke-dasharray="1.5 1.5"/><circle cx="17" cy="9" r="1" fill="#0EA5E9"/><circle cx="47" cy="56" r="1" fill="#0EA5E9"/><text x="2" y="8" fill="#334155">(17, 9)</text><text x="44" y="62" fill="#334155">(47, 56)</text></svg>
+    </div>
+    <figcaption><b>Construction</b> · one vector, bar top-left → disc bottom-right · <code>gradientUnits="userSpaceOnUse"</code></figcaption>
+  </figure>
+  <figure>
+    <div class="art">
+      <svg width="96" height="96" viewBox="0 0 64 64" role="img" aria-label="Tōgō tile, Depth"><defs><linearGradient id="depthT" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="64" y2="64"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#depthT)"/><rect x="19" y="13" width="26" height="6" rx="3" fill="#FFFFFF"/><circle cx="32" cy="38" r="15" fill="#FFFFFF"/></svg>
+    </div>
+    <figcaption><b>Tile — Depth</b> · <code>tile-depth.svg</code> · the app icon from 64 px; the flat tile at 16 and 32 px</figcaption>
   </figure>
 </div>
 
@@ -309,17 +339,22 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
     <span class="px">24 px</span><br>UI · mark A
   </div>
   <div>
-    <svg width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="Mark at 48 px"><rect x="17" y="9" width="30" height="7" rx="3.5" fill="#0E7C86"/><circle cx="32" cy="38.5" r="17.5" fill="#0E7C86"/></svg>
-    <span class="px">48 px</span><br>marketing · mark A or lockup
+    <svg width="48" height="48" viewBox="0 0 64 64" role="img" aria-label="Mark at 48 px, Depth allowed"><defs><linearGradient id="depth48" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#depth48)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#depth48)"/></svg>
+    <span class="px">48 px+</span><br>hero · Depth allowed
+  </div>
+  <div>
+    <svg width="56" height="56" viewBox="0 0 64 64" role="img" aria-label="Mark at 56 px, the Welcome hero"><defs><linearGradient id="depth56" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#depth56)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#depth56)"/></svg>
+    <span class="px">56 px</span><br>Welcome hero · Depth
   </div>
 </div>
 <table>
   <tr><th style="width:120px">Size</th><th>Use</th><th>Asset</th></tr>
-  <tr><td>16 px</td><td>Favicon, browser tab, taskbar.</td><td><code>tile.svg</code>, <code>togo.ico</code>, <code>exports/tile-16.png</code>. The bare mark is not used at 16 px.</td></tr>
-  <tr><td>24 px</td><td>In-app icon, sidebar, list rows.</td><td><code>mark-a-macron.svg</code> in accent, ink or white. Flat colour only.</td></tr>
-  <tr><td>48 px</td><td>Marketing, headers, print.</td><td><code>mark-a-macron.svg</code> or <code>lockup.svg</code>.</td></tr>
+  <tr><td>16 px, 32 px</td><td>Favicon, browser tab, taskbar, window lists.</td><td><code>tile.svg</code> flat, in <code>studio/build/icon.ico</code> / <code>.icns</code> and <code>exports/tile-16.png</code>. The bare mark is not used at 16 px; a gradient is noise at this size.</td></tr>
+  <tr><td>24 px</td><td>In-app icon, sidebar, list rows, the small lockup.</td><td><code>mark-a-macron.svg</code> in accent, ink or white. Flat colour only.</td></tr>
+  <tr><td>48 px+</td><td>Hero: the opening card (48 px), the Welcome hero (56 px); marketing, headers, print.</td><td><code>mark-a-macron.svg</code> or <code>lockup.svg</code> flat; <b>Depth allowed</b> — <code>mark-a-macron-depth.svg</code>, or in the app <code>TogoMark variant="depth"</code>.</td></tr>
+  <tr><td>64 px+</td><td>The app icon: dock, Finder, Explorer tiles.</td><td><code>tile-depth.svg</code> → <code>studio/build/icon.png</code> (256) and the larger members of <code>icon.ico</code> / <code>icon.icns</code>.</td></tr>
 </table>
-<p>Below 16 px the mark is not shown. Minimums for the wordmark and lockup on their own are not set yet.</p>
+<p>Below 16 px the mark is not shown. Depth below 48 px is not shown. Minimums for the wordmark and lockup on their own are not set yet.</p>
 
 <!-- 5 ------------------------------------------------------------------ -->
 <h2 id="colour">5. Colour</h2>
@@ -443,24 +478,36 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
   <tr><td>Tōgō</td><td>Togo · TOGO · the Tōgō tool · Tōgō™</td></tr>
 </table>
 
+<h3>Signature motion</h3>
+<p>The mark moves twice in the desktop app and nowhere else: once when the app first opens (the assemble), and once on the card that covers the window while a project opens (the draw-in). The draw-in is one gesture in three beats under 0.9 s — the bar <b>widens</b> from its own centre, the disc's outline is <b>traced</b>, the disc <b>fills</b> — then the mark rests; the ring beside the clock, not the mark, is what keeps saying "still working". The gesture is the brand's; the shape is not a canvas for it. Another element (a rail station, a plate) may widen-trace-fill once as it arrives. Nothing may draw the macron and disc that is not the mark, and the mark never loops, pulses or spins.</p>
+
 <!-- 8 ------------------------------------------------------------------ -->
 <h2 id="dodont">8. Do and don't</h2>
 <h3>Do</h3>
 <ul>
-  <li>Use mark A in flat accent 600, ink 1, or white.</li>
+  <li>Use mark A in flat accent 600, ink 1, or white. The solid mark is the mark.</li>
   <li>Keep the 64-unit proportions and the clear space.</li>
-  <li>Use the tile for the favicon and app icon; the bare mark from 24 px.</li>
+  <li>Use the tile for the favicon and app icon — flat at 16 and 32 px, Depth from 64 px; the bare mark from 24 px.</li>
+  <li>Use Depth only at 48 px and above, only as a hero: the Welcome hero, the opening card, the app icon. Always the one construction (§2), both shapes from the one gradient.</li>
   <li>Set the name with both macrons in every language and every system that can render them.</li>
   <li>Set the wordmark in Inter 650 at −0.02em, or use the SVG.</li>
   <li>Pair every status colour with the plugin's word for it.</li>
 </ul>
+<div class="dd">
+  <figure>
+    <div class="art on-white">
+      <svg width="72" height="72" viewBox="0 0 64 64" role="img" aria-label="Do: Depth at hero size"><defs><linearGradient id="good1" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#good1)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#good1)"/></svg>
+    </div>
+    <figcaption>Depth at 48 px+<span>hero and icon only; one gradient, one light direction</span></figcaption>
+  </figure>
+</div>
 <h3>Don't</h3>
 <div class="dd">
   <figure>
     <div class="art on-white">
-      <svg width="72" height="72" viewBox="0 0 64 64" role="img" aria-label="Don't: gradient"><defs><linearGradient id="bad1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#bad1)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#bad1)"/></svg>
+      <svg width="72" height="72" viewBox="0 0 64 64" role="img" aria-label="Don't: Depth below 48 px or on a control"><rect x="4" y="22" width="56" height="20" rx="6" fill="#0E7C86"/><defs><linearGradient id="bad1" gradientUnits="userSpaceOnUse" x1="10" y1="26" x2="22" y2="38"><stop offset="0" stop-color="#6FD1D4"/><stop offset="1" stop-color="#0A3F47"/></linearGradient></defs><g transform="translate(8 25) scale(0.22)"><rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#bad1)"/><circle cx="32" cy="38.5" r="17.5" fill="url(#bad1)"/></g><rect x="26" y="29" width="28" height="6" rx="2" fill="#FFFFFF" fill-opacity=".9"/></svg>
     </div>
-    <figcaption>No gradients<span>flat colour only</span></figcaption>
+    <figcaption>No gradients below 48 px, on controls, chips, data or behind text<span>Depth only — everywhere else the solid mark</span></figcaption>
   </figure>
   <figure>
     <div class="art on-white">
@@ -496,9 +543,10 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 <ul>
   <li>Do not outline the mark, add a stroke, or place it inside a second shape other than the tile.</li>
   <li>Do not stretch, skew, or change the bar-to-disc ratio.</li>
-  <li>Do not place the mark on a photograph, a gradient, or a patterned ground.</li>
+  <li>Do not place the mark on a photograph, a gradient, or a patterned ground. (Depth puts the gradient <i>in</i> the mark, never under it.)</li>
+  <li>Do not use a second gradient mechanism — no 3D mesh, no shadow, no bevel. Depth is the one treatment and has the one construction.</li>
   <li>Do not use marks B or C anywhere until the owner chooses.</li>
-  <li>Do not animate the mark except the first-open assemble in the desktop app.</li>
+  <li>Do not animate the mark except its two signature moments in the desktop app: the first-open assemble and the opening card's draw-in (the bar widens from its centre, the disc's outline is traced, then fills). The <i>gesture</i> — widen, trace, fill — may be reused by other elements; the shape may not (§7, Signature motion).</li>
 </ul>
 
 <!-- 9 ------------------------------------------------------------------ -->
@@ -510,33 +558,43 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
   <tr><td><code>mark-a-macron.svg</code></td><td>Primary mark, accent #0E7C86. 64 × 64.</td></tr>
   <tr><td><code>mark-a-macron-ink.svg</code></td><td>Primary mark, ink #0B1120.</td></tr>
   <tr><td><code>mark-a-macron-white.svg</code></td><td>Primary mark, white, for accent or ink grounds.</td></tr>
-  <tr><td><code>tile.svg</code></td><td>App icon and favicon tile. Own inset geometry.</td></tr>
+  <tr><td><code>mark-a-macron-depth.svg</code></td><td>Primary mark, Depth (§2): one user-space gradient #6FD1D4 → #0A3F47 on the (17, 9) → (47, 56) vector. The light pair; the app swaps the dark pair through its tokens. 48 px+, hero only.</td></tr>
+  <tr><td><code>tile.svg</code></td><td>App icon and favicon tile, flat accent 600. Own inset geometry. The icon at 16 and 32 px.</td></tr>
+  <tr><td><code>tile-depth.svg</code></td><td>The tile with the Depth ground, same light direction. The icon from 64 px.</td></tr>
   <tr><td><code>wordmark.svg</code>, <code>wordmark-white.svg</code></td><td>Wordmark in ink and in white. 260 × 64. Live text in Inter; renders in the system sans where Inter is absent.</td></tr>
   <tr><td><code>lockup.svg</code></td><td>Mark plus wordmark. 320 × 64.</td></tr>
   <tr><td><code>mark-b-lens.svg</code>, <code>mark-b-lens-ink.svg</code></td><td>Alternate B, not in use.</td></tr>
   <tr><td><code>mark-c-seam.svg</code>, <code>mark-c-seam-ink.svg</code></td><td>Alternate C, not in use.</td></tr>
-  <tr><td><code>exports/mark-a-macron-{16,32,64,128,256,512}.png</code></td><td>PNG exports of the primary mark.</td></tr>
-  <tr><td><code>exports/mark-b-lens-*.png</code>, <code>exports/mark-c-seam-*.png</code></td><td>PNG exports of the alternates, same six sizes.</td></tr>
-  <tr><td><code>exports/tile-{16,32,64,128,256,512}.png</code></td><td>PNG exports of the tile.</td></tr>
-  <tr><td><code>exports/togo.ico</code></td><td>Windows icon built from the tile.</td></tr>
+  <tr><td><code>build-assets.mjs</code></td><td>The pipeline. Rasterises every <code>mark-*.svg</code>, <code>tile.svg</code> and <code>tile-depth.svg</code> at 16–1024 px with librsvg, assembles the PNG-in-container <code>.ico</code> and <code>.icns</code>, and writes <code>exports/</code>, <code>studio/public/brand/</code> and <code>studio/build/icon.*</code>. Deterministic: a re-run changes nothing.</td></tr>
+  <tr><td><code>exports/&lt;name&gt;-{16,32,64,128,256,512,1024}.png</code></td><td>PNG exports of every mark (flat, ink, white, Depth), the alternates and both tiles — seven sizes each, written by the pipeline.</td></tr>
+  <tr><td><code>exports/togo.ico</code></td><td>The same Windows icon as <code>studio/build/icon.ico</code>.</td></tr>
   <tr><td><code>brandbook.html</code></td><td>This document.</td></tr>
 </table>
 
 <h3><code>studio/public/brand/</code> — what the desktop app ships</h3>
 <table>
   <tr><th style="width:290px">File</th><th>Used for</th></tr>
-  <tr><td><code>mark-a-macron.svg</code></td><td>In-app mark on light surfaces.</td></tr>
+  <tr><td><code>mark-a-macron.svg</code></td><td>In-app mark on light surfaces. Byte-identical to the source.</td></tr>
   <tr><td><code>mark-a-macron-white.svg</code></td><td>In-app mark on accent and dark surfaces.</td></tr>
-  <tr><td><code>tile.svg</code></td><td>Window and dock icon source.</td></tr>
-  <tr><td><code>togo-tile-512.png</code></td><td>Packaged app icon.</td></tr>
-  <tr><td><code>togo.ico</code></td><td>Windows build icon.</td></tr>
+  <tr><td><code>mark-a-macron-depth.svg</code></td><td>The Depth mark as a file, for documents; in the app the mark is drawn inline (<code>TogoMark variant="depth"</code>) so its stops follow the theme.</td></tr>
+  <tr><td><code>tile.svg</code>, <code>tile-depth.svg</code></td><td>Icon sources, flat and Depth.</td></tr>
+  <tr><td><code>togo-tile-512.png</code></td><td>The Depth tile at 512, for stores and documents.</td></tr>
+  <tr><td><code>togo.ico</code></td><td>The Windows icon, same bytes as <code>studio/build/icon.ico</code>.</td></tr>
   <tr><td><code>wordmark.svg</code></td><td>Wordmark on entry screens.</td></tr>
-  <tr><td><code>lockup.svg</code></td><td>Lockup on the Welcome screen and in About.</td></tr>
+  <tr><td><code>lockup.svg</code></td><td>Lockup on the pre-project screens.</td></tr>
 </table>
-<p>The Studio folder holds mark A, the tile, the wordmark and the lockup only. No alternate ships. Nothing in either folder is fetched over the network; the app bundles its fonts and the Content-Security-Policy in <code>studio/index.html</code> allows no remote script.</p>
+
+<h3><code>studio/build/</code> — the packaged app icon</h3>
+<table>
+  <tr><th style="width:290px">File</th><th>Used for</th></tr>
+  <tr><td><code>icon.png</code></td><td><code>tile-depth</code> at 256 — what <code>electron-builder.json</code> (<code>"icon": "build/icon"</code>, mac and win) packages; Linux and the window icon.</td></tr>
+  <tr><td><code>icon.ico</code></td><td>Windows: six PNG members, 16, 32 and 48 flat, 64–256 Depth.</td></tr>
+  <tr><td><code>icon.icns</code></td><td>macOS: the 1× and 2× ladder from 16 to 1024, flat at 16 and 32 (the 16@2x and 32 slots), Depth from 64.</td></tr>
+</table>
+<p>The Studio folder holds mark A (flat and Depth), the tiles, the wordmark and the lockup only. No alternate ships. Nothing in either folder is fetched over the network; the app bundles its fonts and the Content-Security-Policy in <code>studio/index.html</code> allows no remote script.</p>
 
 <footer>
-  <p>Provisional: mark A is in the product; alternates await the owner's choice.</p>
+  <p>Provisional: mark A is in the product, solid everywhere and Depth in its three hero places; alternates await the owner's choice.</p>
   <p>Tōgō — plugin 1.6.2 (Unreleased: sprint layer, Observatory, code-host providers). Values from <code>docs/brand/togo/palette.json</code>; geometry from the SVG files; type scale from <code>docs/proposals/studio-observatory.md</code> §2.5.</p>
 </footer>
 

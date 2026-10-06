@@ -60,7 +60,7 @@ export function ConfirmControl({ team, onConfirm }: { team: string; onConfirm: (
 
   return (
     <span className="flex flex-wrap items-end gap-2 text-sm">
-      <span className="w-24 shrink-0 self-center text-amber-900">{team}</span>
+      <span className="w-24 shrink-0 self-center text-status-warn-ink">{team}</span>
       <Field label={`${team} lead`} className="w-32">
         <Input size="sm" value={handle} onChange={(e) => setHandle(e.target.value)} placeholder="@lead" />
       </Field>

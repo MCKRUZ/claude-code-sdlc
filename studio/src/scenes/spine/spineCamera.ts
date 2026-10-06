@@ -24,6 +24,11 @@ export const RAIL_FRACTION = 0.58
 /** Elevation of the camera above the rail plane, from the original (0, 2.1, 8.6) pose. */
 export const ELEVATION = Math.atan2(2.1, 8.6)
 
+/** Round 2 (I4): on the Closing ledger the camera OPENS 8 % further back and settles to the fit
+ * over 900 ms on first data, then is still. A factor on the fitted distance; 1 is the fit. */
+export const LEDGER_BACK = 1.08
+export const LEDGER_SETTLE_S = 0.9
+
 export interface SpinePose {
   distance: number
   /** Look-at point; x is the rail's centre, y is BELOW the rail so the rail lands at
@@ -44,9 +49,9 @@ export function spineDistance(stationCount: number, aspect: number): number {
   return Math.min(DISTANCE_MAX, Math.max(DISTANCE_MIN, raw))
 }
 
-export function spinePose(stationCount: number, width: number, height: number): SpinePose {
+export function spinePose(stationCount: number, width: number, height: number, back = 1): SpinePose {
   const aspect = height > 0 ? width / Math.max(height, 1) : 1
-  const distance = spineDistance(stationCount, aspect)
+  const distance = spineDistance(stationCount, aspect) * back
   const viewHeight = 2 * distance * Math.tan((CAMERA_FOV * Math.PI) / 360)
   // The target is the band's centre; the rail wants to be RAIL_FRACTION from the top, so the
   // target sits (0.5 − RAIL_FRACTION) of the view height below the rail.

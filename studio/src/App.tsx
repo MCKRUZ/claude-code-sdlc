@@ -691,6 +691,12 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
               row={openSpec}
               onBack={() => setOpenSpec(null)}
               onHandOff={() => setHandingOff(true)}
+              // I7: a node in the spec's dependency neighbourhood opens that spec in this same
+              // view (the key remounts it); Back still returns to wherever the first one came from.
+              onOpenSpec={(next) => {
+                setHandingOff(false)
+                setOpenSpec(next)
+              }}
             />
           ) : area === 'sprint' ? (
             <SprintScreen

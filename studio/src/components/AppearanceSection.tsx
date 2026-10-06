@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { DensityToggle, Eyebrow, MotionToggle, Segmented, SURFACE_OPTIONS, ThemeToggle, type SceneSurfaceValue } from '../ui'
+import { Button, DensityToggle, Eyebrow, MotionToggle, Segmented, SURFACE_OPTIONS, ThemeToggle, toast, type SceneSurfaceValue } from '../ui'
 import { DEFAULT_SURFACE } from '../scenes/core/sceneDefaults'
+import { motion } from '../motion/motion'
+import { useProjectKey } from '../motion/projectKey'
 import { Section } from './SettingsSections'
 
 /** `localStorage['studio.sprint.surface']` (§2.1): which surface the Sprint constellation opens
@@ -37,6 +39,14 @@ export function writeSurfaceDefault(next: SceneSurfaceValue): void {
  * stage or save, and a person should not have to turn on editing to pick a theme. */
 export function AppearanceSection() {
   const [surface, setSurface] = useState<SceneSurfaceValue>(readSurfaceDefault)
+  // M3: the opening flourishes quieten with familiarity; this is the one place to ask for them
+  // back. The key is the open project's path (App's `ProjectKeyProvider`); outside a project
+  // there is nothing to reset, and the button says so rather than resetting nothing.
+  const projectKey = useProjectKey()
+  const replayOpening = () => {
+    motion.resetFamiliarity(projectKey)
+    toast({ tone: 'ok', title: 'The next open plays the full opening again' })
+  }
 
   return (
     <Section id="appearance" title="Appearance" file="" fileLabel="">
@@ -53,6 +63,17 @@ export function AppearanceSection() {
         </Pref>
         <Pref label="Animations">
           <MotionToggle note="Auto follows the operating system's reduced-motion setting. On is an opt-in that overrides it; Off turns every animation off." />
+          <p className="mt-2 text-xs text-ink-3">Opening flourishes quieten after the first ten opens.</p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1"
+            onClick={replayOpening}
+            disabled={projectKey === ''}
+            disabledReason={projectKey === '' ? 'Open a project first — the opening belongs to a project.' : undefined}
+          >
+            Play the opening again
+          </Button>
         </Pref>
         <Pref label="Visuals">
           <Segmented<SceneSurfaceValue>

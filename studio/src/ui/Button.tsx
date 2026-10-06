@@ -17,12 +17,13 @@ export const BUTTON_BASE =
   'disabled:opacity-50 disabled:cursor-not-allowed motion-safe:active:scale-[0.985] motion-safe:active:duration-[80ms]'
 
 export const BUTTON_VARIANT: Record<ButtonVariant, string> = {
-  // Secondary hover moves the border, not just the fill; link uses accent-700 (6.84:1, AA).
+  // Secondary hover moves the border, not just the fill; link uses the C1 `accent-text` pair (AA
+  // in both themes — dark `accent-700` as text measured ≈ 2.5:1, the biggest gap in the v7 shots).
   primary: 'bg-brand-600 text-white shadow-[inset_0_1px_0_rgb(255_255_255/0.12)] hover:bg-brand-700 active:bg-accent-800',
   secondary: 'border border-line-2 bg-surface-1 text-ink-1 hover:border-line-3 hover:bg-surface-2',
   ghost: 'text-ink-2 hover:bg-surface-2 hover:text-ink-1',
   danger: 'bg-status-error-fill text-white hover:brightness-95',
-  link: 'text-accent-700 underline-offset-2 hover:underline px-0 py-0',
+  link: 'text-accent-text underline-offset-2 hover:text-accent-text-hover hover:underline px-0 py-0',
 }
 
 // Fixed heights so buttons, inputs and selects in one row share a baseline.

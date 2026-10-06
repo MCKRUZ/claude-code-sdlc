@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { pluralWord } from '../../shared/format'
 import type { ButtonProps } from '../ui'
 import { Button, Notice, SkeletonBlock } from '../ui'
 
@@ -25,8 +26,10 @@ export function PanelSecondaryButton(props: PanelButtonProps) {
   return <Button variant="secondary" size="sm" {...props} />
 }
 
+/** The word alone for a count — the shared rule (`shared/format.ts`, C6), kept under the name the
+ * four panels already import. */
 export function plural(count: number, one: string, many: string) {
-  return count === 1 ? one : many
+  return pluralWord(count, one, many)
 }
 
 export function messageOf(err: unknown, fallback: string): string {

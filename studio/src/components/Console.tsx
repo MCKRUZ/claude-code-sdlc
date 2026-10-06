@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react'
+import { formatTime } from '../../shared/format'
 import type { ConsoleEntry } from '../../shared/types'
 import { Chip, EmptyState, Segmented, StatusDot, type DotStatus } from '../ui'
 import { consoleStore, useConsoleStore } from '../stores/consoleStore'
@@ -131,8 +132,9 @@ function ConsoleRow({ entry, view }: { entry: ConsoleEntry; view: 'plain' | 'tec
               {entry.command} {entry.args.join(' ')}
             </code>
           )}
-          <p className="mt-0.5 font-mono text-2xs text-ink-4">
-            {new Date(entry.startedAt).toLocaleTimeString()} · {entry.durationMs}ms · cwd: {entry.cwd}
+          {/* C3: plain `text-2xs` (the token no longer tracks or bolds); words, so ink-3 (C2). */}
+          <p className="mt-0.5 font-mono text-2xs text-ink-3">
+            {formatTime(entry.startedAt)} · {entry.durationMs}ms · cwd: {entry.cwd}
           </p>
         </div>
         <Chip size="xs" tone={entry.pending ? 'neutral' : entry.ok ? 'ok' : 'error'} className="font-mono tabular-nums">

@@ -24,7 +24,8 @@ import { TogoMark } from './brand/TogoMark'
  * `renderToStaticMarkup` (openingOverlay.test.ts) still sees it.
  *
  * G1-5: the first thing the app does is draw its own mark once — a signature, not a spinner —
- * then rests. The 14 px ring beside the ticking clock stays the honest "still working" cue. */
+ * then rests. The 14 px ring beside the ticking clock stays the honest "still working" cue.
+ * Round 2 (B2): the card mark is 48 px Depth — one of the gradient's three sanctioned homes. */
 export function OpeningOverlay({
   projectName,
   startedAt,
@@ -98,7 +99,9 @@ export function OpeningOverlay({
         tabIndex={-1}
         className="w-[320px] rounded-[20px] border border-line-1 bg-surface-1 p-6 text-center shadow-3 outline-none"
       >
-        <TogoMark draw className="mx-auto h-10 w-10 text-accent-600" />
+        {/* 48 px Depth (brand §4): the card is one of the mark's three hero homes. The draw-in
+            traces the outline with the same gradient before filling it. */}
+        <TogoMark draw variant="depth" className="mx-auto h-12 w-12" />
         <p className="mt-4 text-sm font-medium text-ink-1">{title ?? `Opening ${projectName}…`}</p>
         <p className="mt-1 text-xs text-ink-3">{subtitle ?? 'Reading the project through the plugin.'}</p>
         {/* The ring's `animate-spin` keeps the "still working" signal while the mark rests;

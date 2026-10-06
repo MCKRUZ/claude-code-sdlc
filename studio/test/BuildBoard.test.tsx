@@ -149,6 +149,51 @@ describe('BuildBoard: one read, many views', () => {
   })
 })
 
+describe('BuildBoard: the round-2 shape (studio-upgrade-2 S6)', () => {
+  it('the header carries the area eyebrow, the heading "Build" and Refresh among its actions', async () => {
+    await renderBoard()
+    const heading = screen.getByRole('heading', { name: 'Build' })
+    const header = heading.closest('header')!
+    expect(header.textContent).toContain('Build · Board')
+    expect(header.contains(screen.getByRole('button', { name: 'Refresh' }))).toBe(true)
+  })
+
+  it('every row wears its status as a chip, in the one tone map the slate uses', async () => {
+    await renderBoard()
+    fireEvent.click(screen.getByRole('button', { name: 'Everything' }))
+    const chips = screen.getAllByTestId('spec-status-chip')
+    expect(chips.map((c) => c.textContent)).toEqual(['ready', 'ready', 'in-flight'])
+    expect(chips[0].className).toContain('stage-current')
+    expect(chips[2].className).toContain('accent')
+    expect(document.querySelectorAll('main li button').length).toBe(3)
+  })
+
+  it('the filter bar is a deliberate two-row wrap, both rows marked', async () => {
+    await renderBoard()
+    const rows = document.querySelectorAll('[data-filter-row]')
+    expect(rows).toHaveLength(2)
+    expect(rows[0].contains(screen.getByRole('group', { name: 'Role view' }))).toBe(true)
+    expect(rows[0].contains(screen.getByRole('group', { name: 'Board surface' }))).toBe(true)
+    expect(rows[1].contains(screen.getByPlaceholderText('Search'))).toBe(true)
+    expect(rows[1].querySelectorAll('select')).toHaveLength(4)
+  })
+
+  it('the code-host notice is one line with the host\'s words behind a <details> and the team chips on its right', async () => {
+    install({ ...BOARD, codeHostAvailable: false, error: 'gh: not signed in' } as Board)
+    render(<main><BuildBoard projectPath="/p" account={null} onOpenSpec={vi.fn()} /></main>)
+    await screen.findByRole('heading', { name: 'Build' })
+    const notice = screen.getByRole('status')
+    expect(notice.textContent).toContain('Showing what the spec files say.')
+    const details = notice.querySelector('details') as HTMLDetailsElement
+    expect(details).toBeTruthy()
+    expect(details.open).toBe(false)
+    expect(details.textContent).toContain('gh: not signed in')
+    // The team-load pills ride in the notice's actions slot rather than a row of their own.
+    expect(notice.querySelectorAll('span.rounded-full').length).toBeGreaterThan(0)
+    expect(notice.textContent).toContain('claims')
+  })
+})
+
 describe('BuildBoard: amber stays amber (studio-observatory.md §5.4, §2.3)', () => {
   it('a team over its review alarm gets a WARN chip, never the error red the Graph ring and HandoffDialog do not use', async () => {
     await renderBoard()

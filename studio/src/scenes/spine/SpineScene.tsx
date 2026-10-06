@@ -7,9 +7,12 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import gsap from 'gsap'
-import { MeshBasicMaterial } from 'three'
+import { useFrame } from '@react-three/fiber'
+import { MeshBasicMaterial, TorusGeometry, Vector3 } from 'three'
 import { MOTION_EASES } from '../../motion/contract'
+import { motion } from '../../motion/motion'
 import { useStudioGSAP } from '../../motion/useStudioGSAP'
+import { backlogStore } from '../../stores/backlogStore'
 import { useSpineHover } from '../../stores/spineStore'
 import { SceneLights } from '../core/lights'
 import { RailMaterial } from '../core/materials/RailMaterial'
@@ -18,19 +21,41 @@ import type { SceneSlotProps } from '../core/types'
 import { useDemandLoop, useMotionEnabled } from '../core/useDemandLoop'
 import { useThemeAttr, useThemeColors } from '../core/useThemeColors'
 import { GroundMaterial } from './GroundMaterial'
-import { onSpineCeremony } from './spineCeremony'
+import { LEDGER_BACK, LEDGER_SETTLE_S } from './spineCamera'
+import { onSpineAssemble, onSpineCeremony } from './spineCeremony'
 import { buildArcGeometry, buildGroundGeometry, buildRail, buildTickGeometry, GROUND_Y, groupTicks, stationVectors, toArc } from './spineGeometry'
 import { layoutSpineBands } from './spineBands'
 import { docArcTheta, groupCaptions, LATER_RING_TOKEN, railProgress, stationU } from './spineModel'
-import { useCaptionItems, useParallaxPointer, usePlateItems, useSpineCamera } from './spineSceneHooks'
+import { RETICLE_RADIUS, RETICLE_SLIDE_S, RETICLE_TUBE, reticleIndex, reticleYaw } from './spineReticle'
+import { familiarityTierOf, PULSE_CYCLES_BY_TIER, useCaptionItems, useParallaxPointer, usePlateItems, useSpineCamera } from './spineSceneHooks'
+import type { ViewState } from './spineSceneHooks'
 import { HALO_HOVER, HALO_REST, makeStationAnim, SpineStations } from './SpineStations'
 
-const TOKENS = ['stage-signed-fill', 'stage-current-fill', 'stage-later-fill', 'line-2', 'ink-3', 'ink-4'] as const
+const TOKENS = ['stage-signed-fill', 'stage-current-fill', 'stage-later-fill', 'line-2', 'ink-3', 'ink-4', 'accent-500'] as const
 /** The ground grid: a hairline in light; in dark `line-2` on `surface-0` vanished, so it uses the
  * brighter `ink-4` and more alpha. Still a depth cue, never a scale. */
 const GROUND = { light: { token: 'line-2', opacity: 0.28 }, dark: { token: 'ink-4', opacity: 0.48 } } as const
 export const RAIL_DRAW_S = 0.7
-export const PULSE_CYCLES = 3
+/** The full-familiarity breath count; `PULSE_CYCLES_BY_TIER` quietens it with the opens. */
+export const PULSE_CYCLES = PULSE_CYCLES_BY_TIER.full
+
+/** The reticle ring (I3) around station `index`, slid along the rail. `t` is a fractional station
+ * index GSAP tweens; the mesh sits between the two stations it is passing. */
+function ReticleRing({ points, t, visible, material }: { points: Vector3[]; t: { v: number }; visible: boolean; material: MeshBasicMaterial }) {
+  const geometry = useMemo(() => new TorusGeometry(RETICLE_RADIUS, RETICLE_TUBE, 8, 64), [])
+  useEffect(() => () => geometry.dispose(), [geometry])
+  const mesh = useRef<{ position: Vector3; visible: boolean } | null>(null)
+  useFrame(() => {
+    const m = mesh.current
+    if (!m) return
+    m.visible = visible && points.length > 0
+    if (!m.visible) return
+    const lo = Math.max(0, Math.min(points.length - 1, Math.floor(t.v)))
+    const hi = Math.min(points.length - 1, lo + 1)
+    m.position.lerpVectors(points[lo], points[hi], Math.max(0, Math.min(1, t.v - lo)))
+  })
+  return <mesh ref={mesh as never} geometry={geometry} material={material} visible={false} />
+}
 
 export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
   const invalidate = useThree((s) => s.invalidate)
@@ -49,6 +74,7 @@ export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
   const groundMaterial = useMemo(() => new GroundMaterial(colors['line-2']), []) // eslint-disable-line react-hooks/exhaustive-deps
   const tickMaterial = useMemo(() => new MeshBasicMaterial({ color: colors['line-2'], transparent: true, opacity: 0.5 }), []) // eslint-disable-line react-hooks/exhaustive-deps
   const arcMaterial = useMemo(() => new MeshBasicMaterial({ color: colors['stage-current-fill'] }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const reticleMaterial = useMemo(() => new MeshBasicMaterial({ color: colors['accent-500'] }), []) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     railMaterial.setColors(colors['line-2'], colors['stage-signed-fill'])
     const ground = GROUND[theme]
@@ -56,16 +82,18 @@ export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
     groundMaterial.uniforms.uOpacity.value = ground.opacity
     tickMaterial.color.copy(colors[ground.token])
     arcMaterial.color.copy(colors['stage-current-fill'])
+    reticleMaterial.color.copy(colors['accent-500'])
     invalidate()
-  }, [colors, theme, railMaterial, groundMaterial, tickMaterial, arcMaterial, invalidate])
+  }, [colors, theme, railMaterial, groundMaterial, tickMaterial, arcMaterial, reticleMaterial, invalidate])
   useEffect(
     () => () => {
       railMaterial.dispose()
       groundMaterial.dispose()
       tickMaterial.dispose()
       arcMaterial.dispose()
+      reticleMaterial.dispose()
     },
-    [railMaterial, groundMaterial, tickMaterial, arcMaterial],
+    [railMaterial, groundMaterial, tickMaterial, arcMaterial, reticleMaterial],
   )
   const groundGeometry = useMemo(() => buildGroundGeometry(), [])
   const tickGeometry = useMemo(() => buildTickGeometry(), [])
@@ -87,9 +115,32 @@ export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
   const popped = useRef(false)
   const anim = useMemo(() => makeStationAnim(n, popped.current), [n])
   const parallax = useMemo(() => ({ yaw: 0, pitch: 0 }), [])
-  useSpineCamera(parallax, n)
+  // The reticle (I3) and the ledger pull-back (I4) ride the camera as one view state.
+  const viewed = reticleIndex(data)
+  const view = useMemo<ViewState>(() => ({ yaw: reticleYaw(viewed, n), back: data.ledger && enabled ? LEDGER_BACK : 1 }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  const reticleT = useMemo(() => ({ v: viewed ?? 0 }), []) // eslint-disable-line react-hooks/exhaustive-deps
+  useSpineCamera(parallax, n, view)
   const pointerInside = useParallaxPointer(parallax)
   useDemandLoop(live || pointerInside)
+
+  // Reticle slide: 320 ms along the rail to the viewed station, the camera glancing by ≤ 0.06 rad;
+  // with motion off it is simply there. Null (Closing) hides it; the yaw returns to centre.
+  useEffect(() => {
+    const target = { t: viewed ?? reticleT.v, yaw: reticleYaw(viewed, n) }
+    if (!enabled) { reticleT.v = target.t; view.yaw = target.yaw; invalidate(); return }
+    const tl = gsap.timeline({ onUpdate: invalidate })
+    tl.to(reticleT, { v: target.t, duration: RETICLE_SLIDE_S, ease: MOTION_EASES['dur-3'], overwrite: 'auto' }, 0)
+    tl.to(view, { yaw: target.yaw, duration: RETICLE_SLIDE_S, ease: MOTION_EASES['dur-3'], overwrite: 'auto' }, 0)
+    return () => { tl.kill() }
+  }, [viewed, n, enabled, reticleT, view, invalidate])
+
+  // Ledger (I4): the camera opens 8 % further back and settles over 900 ms on first data, then
+  // is still. Once per mount; motion off starts at the fit.
+  useEffect(() => {
+    if (view.back === 1) return
+    const tween = gsap.to(view, { back: 1, duration: LEDGER_SETTLE_S, ease: MOTION_EASES['dur-5'], onUpdate: invalidate })
+    return () => { tween.kill() }
+  }, [view, invalidate])
 
   // Rail uniforms from the ordered stage_state list. Between uLit and uCurrent the shader is a
   // flat line; a signed-count increase after mount is animated as the ceremony beat.
@@ -161,6 +212,19 @@ export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
     { dependencies: [n] },
   )
 
+  // M2 join: when the Frame assembles with this scene mounted, the draw replays INSIDE its
+  // timeline at the asked offset (the rail draws, then the stations pop) instead of alone.
+  useEffect(() => onSpineAssemble((parent, at) => {
+    if (!enabled) return
+    railMaterial.uniforms.uDraw.value = 0
+    for (const s of anim.scales) s.v = 0
+    const tl = gsap.timeline({ onUpdate: invalidate, onComplete: () => { popped.current = true; invalidate() } })
+    tl.to(railMaterial.uniforms.uDraw, { value: 1, duration: RAIL_DRAW_S, ease: 'power2.out' })
+    tl.to(anim.scales, { v: 1, duration: 0.32, ease: MOTION_EASES.pop, stagger: 0.05 }, '-=0.1')
+    parent.add(tl, at)
+    invalidate()
+  }), [enabled, anim, railMaterial, invalidate])
+
   // Hover (plate or sidebar row via spineStore) → halo lift, 160 ms.
   const storeHover = useSpineHover()
   const hovered = hoverId ?? storeHover
@@ -180,14 +244,16 @@ export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
     pulseRef.current?.kill()
     pulseRef.current = null
     anim.pulse.v = 1
-    if (!enabled || currentId === null) { invalidate(); return }
+    // M3 join: the breath count follows familiarity — three opens in, three breaths; past ten, none.
+    const cycles = PULSE_CYCLES_BY_TIER[familiarityTierOf(motion, backlogStore.getSnapshot().projectPath ?? '')]
+    if (!enabled || currentId === null || cycles === 0) { invalidate(); return }
     let halfCycles = 0
     pulseRef.current = gsap.to(anim.pulse, {
       v: 0.35, duration: 1.2, ease: MOTION_EASES.ambient, yoyo: true, repeat: -1,
       onUpdate: invalidate,
       onRepeat: () => {
         halfCycles += 1
-        if (halfCycles % 2 === 0 && halfCycles / 2 >= PULSE_CYCLES && !holdRef.current) {
+        if (halfCycles % 2 === 0 && halfCycles / 2 >= cycles && !holdRef.current) {
           pulseRef.current?.kill()
           pulseRef.current = null
           anim.pulse.v = 1
@@ -231,6 +297,7 @@ export function SpineScene({ data, hoverId, live }: SceneSlotProps<'spine'>) {
         <mesh key={t.label} geometry={tickGeometry} material={tickMaterial} position={[t.x, GROUND_Y + 0.002, 0]} rotation={[-Math.PI / 2, 0, 0]} />
       ))}
       <mesh geometry={groundGeometry} material={groundMaterial} position={[0, GROUND_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} />
+      <ReticleRing points={points} t={reticleT} visible={viewed !== null} material={reticleMaterial} />
       <Plates items={plates} captions={captions} layout={layoutSpineBands} />
     </>
   )

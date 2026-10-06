@@ -140,11 +140,32 @@ describe('SprintBoard: the sprint as the plugin reports it', () => {
     Object.defineProperty(scroller, 'scrollWidth', { value: 1200, configurable: true })
     Object.defineProperty(scroller, 'clientWidth', { value: 720, configurable: true })
     fireEvent.scroll(scroller)
-    expect(await within(slate).findByTestId('sprint-slate-fade')).toBeTruthy()
+    const fade = await within(slate).findByTestId('sprint-slate-fade')
+    // The fade reads as one (observatory v9, measured in the production window): 64 px wide, held
+    // opaque at the border before it dissolves, so a clipped word melts rather than being chopped.
+    // Inline `background-image` on purpose (the v6 probe: the Tailwind gradient utilities painted
+    // nothing in the production build); the colour is the surface token, so it holds in dark.
+    expect(fade.className).toContain('w-16')
+    expect(fade.className).toContain('pointer-events-none')
+    expect(fade.style.backgroundImage).toContain('var(--color-surface-1) 30%')
+    expect(fade.getAttribute('aria-hidden')).toBe('true')
     // Scrolled to the end: the fade goes.
     Object.defineProperty(scroller, 'scrollLeft', { value: 480, configurable: true })
     fireEvent.scroll(scroller)
     await waitFor(() => expect(within(slate).queryByTestId('sprint-slate-fade')).toBeNull())
+  })
+
+  it('the right-hand headers — the ones the box clips first — carry the full label as a title', async () => {
+    install()
+    render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)
+    const slate = await screen.findByTestId('sprint-slate')
+    // "NEXT OWNER" is the header cut at the right edge in the v9 shots; a title says what the cut
+    // word is without scrolling. Each header is still a real `<th scope="col">`.
+    for (const [name, title] of [['Next owner', 'Next owner'], ['Depends on', 'Depends on'], ['DoR', 'Definition of Ready']] as const) {
+      const th = within(slate).getByRole('columnheader', { name })
+      expect(th.getAttribute('scope')).toBe('col')
+      expect(th.getAttribute('title') === title || th.querySelector(`[title="${title}"]`) !== null).toBe(true)
+    }
   })
 
   it('a NOT READY row holds the checker\'s blocking lines behind a disclosure, in its words', async () => {
@@ -167,15 +188,41 @@ describe('SprintBoard: the sprint as the plugin reports it', () => {
     expect(onOpenSpec.mock.calls[0][0]).toMatchObject({ spec: '0008', path: 'specs/0008-claim-export.md', name: 'claim-export', status: 'draft', risk: 'MEDIUM' })
   })
 
+  it('beside the slate, the readiness card does not repeat the plugin\'s "DoR: …" line the slate\'s NOT READY cell already carries; the compact panel keeps it', async () => {
+    // The plugin's real line order (sprint_model.spec_gaps): the DoR verdict with its reasons
+    // first, then status / eng / data. constellation.spec counts NOT READY once per slated spec.
+    const real = { ...VIEW, readiness: { ready: 0, total: 1, gaps: [{ spec: '0008', gaps: ['DoR: NOT READY (Scope > In scope is empty)', 'status is draft, not ready', 'eng_review is not recorded, needs accepted'] }] } }
+    install({ getSprintStatus: vi.fn().mockResolvedValue(real) })
+    const { unmount } = render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)
+    const card = await screen.findByTestId('sprint-readiness')
+    expect(card.textContent).toContain('0008 — status is draft, not ready')
+    expect(card.textContent).not.toContain('NOT READY')
+    expect(card.querySelector('summary')?.textContent).toBe('1 more line')
+    unmount()
+    const second = render(<SprintBoard projectPath="/p" compact onOpenSpec={vi.fn()} />)
+    const compact = await screen.findByTestId('sprint-readiness')
+    expect(compact.textContent).toContain('0008 — DoR: NOT READY (Scope > In scope is empty)')
+    second.unmount()
+  })
+
   it('lists readiness gaps per spec, verdicts and handoffs with their age, the build order and next up', async () => {
     install()
     render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)
     await screen.findByTestId('sprint-readiness')
     expect(section('sprint-readiness').getByText('1 of 2 ready')).toBeTruthy()
-    expect(screen.getByTestId('sprint-readiness').textContent).toContain('0008: DoR NOT READY; status is draft')
+    // S7: "id — first gap" on the line; the checker's remaining lines behind a disclosure that
+    // is CLOSED by default (sprint.spec counts `details[open]` after opening one NOT READY).
+    const readiness = screen.getByTestId('sprint-readiness')
+    expect(readiness.textContent).toContain('0008 — DoR NOT READY')
+    expect(readiness.textContent).toContain('status is draft')
+    const more = readiness.querySelector('details') as HTMLDetailsElement
+    expect(more).toBeTruthy()
+    expect(more.open).toBe(false)
+    expect(more.querySelector('summary')?.textContent).toBe('1 more line')
+    // Verdicts pending grouped per spec: the id once, its lanes after it in the plugin's order.
     const verdicts = screen.getByTestId('sprint-verdicts').textContent ?? ''
-    expect(verdicts).toContain('0008 · eng · no data')
-    expect(verdicts).toContain('0008 · data · 2 business days')
+    expect(verdicts).toContain('0008 · eng · no data · data · 2 business days')
+    expect(verdicts.match(/0008/g)).toHaveLength(1)
     expect(screen.getByTestId('sprint-handoffs').textContent).toContain('0008 → @sam-k · no data')
     const next = screen.getByTestId('sprint-next-up').textContent ?? ''
     expect(next).toContain('0007 — READY, dependencies merged')
@@ -183,6 +230,15 @@ describe('SprintBoard: the sprint as the plugin reports it', () => {
     expect(screen.getByTestId('sprint-dependency-gaps').textContent).toContain('none')
     expect(screen.getByTestId('sprint-decisions').textContent).toContain('no data — no decision-log')
     expect(screen.getByTestId('sprint-carried-in').textContent).toContain('0007 from S06: blocked on the vendor API')
+  })
+
+  it('a 0 the plugin DID report reads "today", never "0 business days"', async () => {
+    install({ getSprintStatus: vi.fn().mockResolvedValue({ ...VIEW, verdictsPending: [{ spec: '0007', lane: 'data', sinceBusinessDays: 0 }], handoffsOpen: [{ spec: '0008', to: '@sam-k', sinceBusinessDays: 0 }] }) })
+    render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)
+    await screen.findByTestId('sprint-verdicts')
+    expect(screen.getByTestId('sprint-verdicts').textContent).toContain('0007 · data · today')
+    expect(screen.getByTestId('sprint-handoffs').textContent).toContain('0008 → @sam-k · today')
+    expect(board().textContent).not.toMatch(/0 business days/)
   })
 
   it('a verdict age the plugin could not compute never reads as 0', async () => {
@@ -249,12 +305,16 @@ describe('SprintBoard: the sprint as the plugin reports it', () => {
     expect(text).not.toMatch(/velocity|story points|estimate/i)
   })
 
-  it('Refresh reads the sprint again', async () => {
+  it('Refresh reads the sprint again, from inside the sprint header card (the three-button pin)', async () => {
     const studio = install()
     render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)
     await screen.findByTestId('sprint-header')
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    const refresh = screen.getByRole('button', { name: 'Refresh' })
+    expect(screen.getByTestId('sprint-header').contains(refresh)).toBe(true)
+    fireEvent.click(refresh)
     await waitFor(() => expect(studio.getSprintStatus).toHaveBeenCalledTimes(2))
+    // The board itself draws no heading: SprintScreen's PageHeader is the one "Sprint" h2.
+    expect(within(board()).queryByRole('heading', { name: 'Sprint' })).toBeNull()
   })
 })
 
@@ -373,5 +433,33 @@ describe('SprintBoard: the compact panel', () => {
     install({ getSprintStatus: vi.fn().mockResolvedValue(NO_SPRINT) })
     render(<SprintBoard projectPath="/p" compact />)
     expect((await screen.findByTestId('sprint-empty')).textContent).toBe('No sprint — open one with /sdlc-sprint new.')
+  })
+})
+
+// --- the screen -------------------------------------------------------------------------------
+
+vi.mock('../src/components/StageReadinessContext', () => ({
+  useStageReadiness: () => ({ readiness: { capabilities: ['sprint-status'] }, loading: false, failure: null, refresh: () => {} }),
+}))
+
+describe('SprintScreen (S7): title first, then the figure, then the board', () => {
+  it('renders the h2 "Sprint" exactly once with the area eyebrow and the lede, above the board', async () => {
+    const { SprintScreen } = await import('../src/components/SprintBoard')
+    install()
+    render(<main><SprintScreen projectPath="/p" onOpenSpec={vi.fn()} /></main>)
+    await screen.findByTestId('sprint-header')
+    const headings = screen.getAllByRole('heading', { name: 'Sprint' })
+    expect(headings).toHaveLength(1)
+    expect(headings[0].tagName).toBe('H2')
+    expect(headings[0].hasAttribute('data-page-heading')).toBe(true)
+    const header = headings[0].closest('header')!
+    // The sprint id reaches the eyebrow one render after the board's own card appears (the
+    // board reports its view through `onView` in an effect), so the eyebrow is awaited, not read.
+    await waitFor(() => expect(header.textContent).toContain('Build · Sprint S07'))
+    expect(header.textContent).toContain('What the team committed to, as the plugin reads it from the specs.')
+    // The header is the screen root's first child, the board after it.
+    const root = document.querySelector('main')!.firstElementChild!
+    expect(root.firstElementChild).toBe(header)
+    expect(Array.from(root.children).indexOf(screen.getByTestId('sprint-board'))).toBeGreaterThan(0)
   })
 })

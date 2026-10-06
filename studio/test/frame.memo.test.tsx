@@ -112,6 +112,23 @@ describe('Frame: a console entry re-renders the Console alone', () => {
     expect(panel!.textContent).not.toContain('Nothing has run yet.')
   })
 
+  it('the Frame root carries the round-2 shell contract: --chat-width, --console-height, data-chat-hidden', async () => {
+    const { container } = renderFrame()
+    await settle()
+    const root = container.firstElementChild as HTMLElement
+    expect(root.hasAttribute('data-frame-root')).toBe(true)
+    expect(root.style.getPropertyValue('--chat-width')).toBe('380px')
+    expect(root.style.getPropertyValue('--console-height')).toBe('0px')
+    expect(root.hasAttribute('data-chat-hidden')).toBe(false)
+    act(() => { consoleStore.setOpen(true) })
+    await settle()
+    expect(root.style.getPropertyValue('--console-height')).toMatch(/^\d+px$/)
+    expect(root.style.getPropertyValue('--console-height')).not.toBe('0px')
+    act(() => { consoleStore.setOpen(false) })
+    await settle()
+    expect(root.style.getPropertyValue('--console-height')).toBe('0px')
+  })
+
   it('keeps the shell shape: skip link first, main#main tabIndex -1, exactly two asides in order', async () => {
     const { container } = renderFrame()
     await settle()

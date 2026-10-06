@@ -9,10 +9,12 @@
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   /* §2.5 type scale. `2xs`, `md`, `display` and `code` are new; `sm` is retuned from 14 to 13. */
+  /* `2xs` is a plain small size — meta lines, the Welcome path, plate meta, Console meta. Weight
+     450 keeps Inter legible at 10.5 px; there is NO tracking and NO semibold here: the shouting
+     voice (caps, 600, 0.08 em) is `--text-eyebrow` below, and a label that wants it says so. */
   --text-2xs: 10.5px;
   --text-2xs--line-height: 14px;
-  --text-2xs--letter-spacing: 0.08em;
-  --text-2xs--font-weight: 600;
+  --text-2xs--font-weight: 450;
   --text-xs: 12px;
   --text-xs--line-height: 16px;
   --text-sm: 13px;

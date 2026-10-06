@@ -6,8 +6,8 @@ import { createElement } from 'react'
 import { act, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  THEME_STORAGE_KEY, THEME_SWITCH_MS, applyTheme, readThemePreference, resolveTheme,
-  setThemePreference, subscribeSystemTheme,
+  THEME_STORAGE_KEY, THEME_SWITCH_MS, applyTheme, configureThemeRevealForTests, noteThemeRevealKeyboard,
+  noteThemeRevealPointer, readThemePreference, resolveTheme, setThemePreference, subscribeSystemTheme, themeRevealOrigin,
 } from '../../src/theme/theme'
 import { DENSITY_STORAGE_KEY, applyDensity, readDensity, setDensity } from '../../src/theme/density'
 import { ThemeProvider } from '../../src/theme/ThemeProvider'
@@ -47,11 +47,76 @@ beforeEach(() => {
   localStorage.clear()
   html().removeAttribute('data-theme')
   html().removeAttribute('data-density')
+  html().removeAttribute('data-view-transition')
   html().classList.remove('theme-switching')
+  configureThemeRevealForTests(null)
 })
 afterEach(() => {
   window.matchMedia = originalMatchMedia
+  configureThemeRevealForTests(null)
   vi.useRealTimers()
+})
+
+describe('M10 dusk reveal', () => {
+  it('flips synchronously, with no view transition, when the document has no startViewTransition', () => {
+    const start = vi.fn().mockReturnValue(null)
+    configureThemeRevealForTests({ motionOn: () => true, startViewTransition: start })
+    applyTheme('light')
+    applyTheme('dark')
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(html().getAttribute('data-theme')).toBe('dark')
+    expect(html().hasAttribute('data-view-transition')).toBe(false)
+    expect(html().classList.contains('theme-switching')).toBe(true)
+  })
+
+  it('never starts a view transition when motion is off or reduced', () => {
+    const start = vi.fn()
+    configureThemeRevealForTests({ motionOn: () => false, startViewTransition: start })
+    applyTheme('light')
+    applyTheme('dark')
+    expect(start).not.toHaveBeenCalled()
+    expect(html().getAttribute('data-theme')).toBe('dark')
+    // The default `motionOn` reads motion.ts, which is off in MODE=test — the same answer.
+    configureThemeRevealForTests({ startViewTransition: start })
+    applyTheme('light')
+    expect(start).not.toHaveBeenCalled()
+  })
+
+  it('with motion on runs the flip INSIDE startViewTransition, marks data-view-transition for its duration and writes the origin', async () => {
+    let finish: () => void = () => {}
+    const finished = new Promise<void>((resolve) => { finish = resolve })
+    let callback: (() => void) | null = null
+    const start = vi.fn((update: () => void) => { callback = update; return { finished } })
+    configureThemeRevealForTests({ motionOn: () => true, startViewTransition: start })
+    applyTheme('light')
+    // The first application never animates: nothing to reveal from.
+    expect(start).not.toHaveBeenCalled()
+    noteThemeRevealPointer(120, 40)
+    expect(applyTheme('dark')).toBe('dark')
+    expect(start).toHaveBeenCalledTimes(1)
+    expect(html().hasAttribute('data-view-transition')).toBe(true)
+    expect(html().style.getPropertyValue('--theme-reveal-x')).toBe('120px')
+    expect(html().style.getPropertyValue('--theme-reveal-y')).toBe('40px')
+    // The attribute flips when the browser calls back, after it captured the old frame — not before.
+    expect(html().getAttribute('data-theme')).toBe('light')
+    callback!()
+    expect(html().getAttribute('data-theme')).toBe('dark')
+    finish()
+    await finished
+    await Promise.resolve()
+    expect(html().hasAttribute('data-view-transition')).toBe(false)
+    expect(html().style.getPropertyValue('--theme-reveal-x')).toBe('')
+  })
+
+  it('the origin is the last pointer, or the window centre after a key (⌘⇧D)', () => {
+    expect(themeRevealOrigin()).toEqual({ x: '50%', y: '50%' })
+    noteThemeRevealPointer(10.4, 20.6)
+    expect(themeRevealOrigin()).toEqual({ x: '10px', y: '21px' })
+    noteThemeRevealKeyboard()
+    expect(themeRevealOrigin()).toEqual({ x: '50%', y: '50%' })
+    noteThemeRevealPointer(3, 4)
+    expect(themeRevealOrigin()).toEqual({ x: '3px', y: '4px' })
+  })
 })
 
 describe('resolution', () => {

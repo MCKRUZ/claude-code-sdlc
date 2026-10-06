@@ -8,6 +8,7 @@
 import { act, cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetCanvasRegistry } from '../../src/scenes/core/canvasRegistry'
+import { prefetchCanvasHost, resetCanvasPrefetch } from '../../src/scenes/core/lazyCanvas'
 import { SceneShell } from '../../src/scenes/core/SceneShell'
 import type { SceneShellProps } from '../../src/scenes/core/types'
 import { canUseWebGL, markWebGLLost, markWebGLRestored } from '../../src/scenes/core/webgl'
@@ -17,7 +18,11 @@ const seam = vi.hoisted(() => {
   return { loadCanvasHost: vi.fn(() => Promise.resolve({ default: StubCanvas })) }
 })
 
-vi.mock('../../src/scenes/core/lazyCanvas', () => ({ loadCanvasHost: seam.loadCanvasHost }))
+// Partial: the real `prefetchCanvasHost` / `resetCanvasPrefetch` run over the spied seam.
+vi.mock('../../src/scenes/core/lazyCanvas', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/scenes/core/lazyCanvas')>()),
+  loadCanvasHost: seam.loadCanvasHost,
+}))
 
 const shell = (over: Partial<SceneShellProps> = {}) => (
   <SceneShell
@@ -46,6 +51,7 @@ function simulateWebGL() {
 beforeEach(() => {
   seam.loadCanvasHost.mockClear()
   resetCanvasRegistry()
+  resetCanvasPrefetch()
 })
 
 afterEach(() => {
@@ -143,5 +149,48 @@ describe('SceneShell with WebGL simulated', () => {
     expect(screen.getByTestId('the-table')).toBeTruthy()
     expect(screen.getByText('Showing this as a list; hardware graphics are unavailable here.')).toBeTruthy()
     expect(canUseWebGL()).toBe(false)
+  })
+})
+
+/** Round 2 (I8): the surface change is a crossfade inside the fixed body; under the stub
+ * (`MODE=test`) it lands in one commit and the DOM is never touched; `data-surface` is the intent
+ * and flips in the same tick either way; the prefetch is a no-op in test mode. */
+describe('SceneShell round 2 (I8)', () => {
+  it('prefetch is a no-op in test mode: the seam is never requested', () => {
+    expect(prefetchCanvasHost()).toBe(false)
+    expect(seam.loadCanvasHost).not.toHaveBeenCalled()
+    render(shell({ surface: 'table' }))
+    expect(seam.loadCanvasHost).not.toHaveBeenCalled()
+  })
+
+  it('toggling Table → Graph → Table flips data-surface in the same tick; the stub swaps the layers in one commit; no inline styles remain', async () => {
+    simulateWebGL()
+    const { rerender } = render(shell({ surface: 'table', height: 280 }))
+    const figure = screen.getByRole('figure')
+    expect(figure.getAttribute('data-surface')).toBe('table')
+    expect(figure.querySelector('[data-scene-surface="table"]')).not.toBeNull()
+    rerender(shell({ surface: 'graph', height: 280 }))
+    expect(figure.getAttribute('data-surface')).toBe('graph')
+    // Stub crossfade: the table layer is already gone, the canvas layer is here.
+    expect(figure.querySelector('[data-scene-surface="table"]')).toBeNull()
+    expect(figure.querySelector('[data-scene-surface="graph"]')).not.toBeNull()
+    expect(await within(figure).findByTestId('canvas-stub')).toBeTruthy()
+    rerender(shell({ surface: 'table', height: 280 }))
+    expect(figure.getAttribute('data-surface')).toBe('table')
+    expect(within(figure).queryByTestId('canvas-stub')).toBeNull()
+    expect(figure.querySelector('[data-scene-surface="graph"]')).toBeNull()
+    const table = figure.querySelector<HTMLElement>('[data-scene-surface="table"]')!
+    expect(table.style.opacity).toBe('')
+    expect(table.className).not.toMatch(/absolute/)
+    expect(Array.from(figure.querySelectorAll<HTMLElement>('div')).filter((d) => d.style.height !== '')).toHaveLength(0)
+  })
+
+  it('a lost context drops the canvas at once, not after a fade: never two live canvases', async () => {
+    simulateWebGL()
+    render(shell({ surface: 'graph' }))
+    expect(await screen.findByTestId('canvas-stub')).toBeTruthy()
+    act(() => markWebGLLost())
+    expect(screen.queryByTestId('canvas-stub')).toBeNull()
+    expect(screen.getAllByTestId('the-table')).toHaveLength(1)
   })
 })

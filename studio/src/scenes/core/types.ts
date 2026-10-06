@@ -77,6 +77,16 @@ export interface SceneDataSpine {
   currentDocs: DocArc | null
   /** Count of signed-off stations, in plugin order — the lit length of the rail. Never time. */
   signedCount: number
+  /** Round 2 (I3): the stage whose home is open — the one the reticle ring marks and the Table
+   * twin flags with `data-viewing` (never `aria-current`, never `kind="now"`). Distinct from
+   * `currentStageId`, which is the plugin's "now". Null on Closing. The host (StageHome) writes
+   * it; the scene only reads it. Required: `buildSpineData` fills null when a host passes none. */
+  viewedStageId: string | null
+  /** Round 2 (I4): true on Closing, where every plate carries its ledger line — "signed off ·
+   * <name> · <date>" / "completed · no name recorded" / "not started" — word for word from the
+   * plugin's row. Taller plates, camera 8 % further back. Never implied from `stage_state`.
+   * Required: `buildSpineData` fills false when a host passes none. */
+  ledger: boolean
 }
 
 // --- Constellation (§5.2) ----------------------------------------------------------------------

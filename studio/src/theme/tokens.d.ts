@@ -6,8 +6,15 @@
 /** `--color-surface-*`: what things sit on. `code` and `code-error` stay dark in both themes. */
 export type SurfaceToken = 'surface-0' | 'surface-1' | 'surface-2' | 'surface-3' | 'surface-raised' | 'surface-code' | 'surface-code-error' | 'scrim'
 
-/** `--color-ink-*`: text. `ink-4` is the colour of eyebrows, placeholders and the words "no data". */
+/** `--color-ink-*`: text. `ink-3` is the quietest colour a word may wear (AA on `surface-2`);
+ * `ink-4` is decoration only — placeholders, dividers, aria-hidden glyphs; never a word. */
 export type InkToken = 'ink-1' | 'ink-2' | 'ink-3' | 'ink-4' | 'ink-inverse'
+
+/** `--color-eyebrow`: the section / group / table-header label voice — `ink-3` in both themes.
+ * Named separately so a sweep greps for one thing. Tailwind resolves `text-eyebrow` as THIS colour
+ * (colour namespaces win over `--text-*`), so the 11 / 600 / 0.08 em type voice is spelled through
+ * `EYEBROW_TYPE_CLASS` (the `--text-eyebrow` variables by name), never the bare utility. */
+export type EyebrowToken = 'eyebrow'
 
 /** `--color-line-*`: hairlines, input borders, emphasised borders. */
 export type LineToken = 'line-1' | 'line-2' | 'line-3'
@@ -17,6 +24,20 @@ export type LineToken = 'line-1' | 'line-2' | 'line-3'
 export type AccentStep = 50 | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900
 export type AccentToken = `accent-${AccentStep}`
 export type BrandToken = `brand-${AccentStep}`
+
+/** `--color-accent-text` / `--color-accent-text-hover`: the accent AS TEXT (links, "Open ↵", spec
+ * ids). Its own pair because the dark ramp is inverted — `accent-700` is a fill step there — so
+ * `text-accent-700` is unreadable in dark. Utilities: `text-accent-text`, `hover:text-accent-text-hover`. */
+export type AccentTextToken = 'accent-text' | 'accent-text-hover'
+
+/** `--mark-depth-a` / `--mark-depth-b`: the two stops of Mark A — Depth, the one sanctioned
+ * gradient (hero and icon, ≥ 48 px). Deliberately NOT a `--color-*` token: no utility exists, so
+ * it cannot land on a control, chip, status, data body or text. Read via `var()` in the SVG. */
+export type MarkDepthVar = '--mark-depth-a' | '--mark-depth-b'
+
+/** `--theme-reveal-x` / `--theme-reveal-y`: the origin of the M10 "dusk" reveal, written on
+ * `<html>` by theme.ts for the duration of the view transition (lengths or percentages). */
+export type ThemeRevealVar = '--theme-reveal-x' | '--theme-reveal-y'
 
 /** §2.3 groups — the plugin's own vocabulary for a stage. `completed` reuses `signed`'s hue on
  * purpose: the cue is shape (hollow core), not colour. */
@@ -39,9 +60,11 @@ export type StatusToken = `${StatusGroup}-${ToneSlot}`
 export type ColorToken =
   | SurfaceToken
   | InkToken
+  | EyebrowToken
   | LineToken
   | 'focus'
   | AccentToken
+  | AccentTextToken
   | BrandToken
   | StageToken
   | StatusToken
@@ -92,8 +115,15 @@ export type DensityAttr = 'comfortable' | 'compact'
  * `src/motion/contract.ts`. */
 export type MotionAttr = 'on' | 'off'
 
+/** The two attribute hooks base.css styles (M8, M10). `data-pressable` is attribute-only — a
+ * control adds it and keeps its class string; `data-view-transition` sits on `<html>` while the
+ * theme reveal plays and suppresses the per-element `theme-switching` cross-fade. */
+export type PressableAttr = 'data-pressable'
+export type ViewTransitionAttr = 'data-view-transition'
+
 /** Every `localStorage` key §2.1 lists. The constellation key carries a per-project hash
- * suffix; the pinned prefix is what a reader greps for. */
+ * suffix; the pinned prefix is what a reader greps for. `studio.opens.<hash>` is the M3
+ * familiarity counter (one increment per project open). */
 export type PreferenceStorageKey =
   | 'studio.theme'
   | 'studio.density'
@@ -102,3 +132,4 @@ export type PreferenceStorageKey =
   | 'studio.sprint.surface'
   | 'studio.palette.recent'
   | `studio.constellation.${string}`
+  | `studio.opens.${string}`

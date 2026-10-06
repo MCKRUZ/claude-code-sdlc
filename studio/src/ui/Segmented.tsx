@@ -111,6 +111,7 @@ function SegmentedInner<V extends string>(
               buttons.current[index] = el
             }}
             tabIndex={index === activeIndex ? 0 : -1}
+            data-pressable=""
             onClick={() => {
               if (!active) onChange(option.value)
             }}
@@ -118,7 +119,10 @@ function SegmentedInner<V extends string>(
             {...disabledReasonProps(reason, optionDisabled)}
             className={cn(
               'relative z-10 inline-flex items-center gap-1 rounded-md font-medium whitespace-nowrap transition-colors',
-              'disabled:cursor-not-allowed disabled:opacity-50',
+              // C5: dim ONCE. The group already carries `opacity-50` when it is disabled as a whole;
+              // only an individually disabled option dims itself.
+              'disabled:cursor-not-allowed',
+              !disabled && 'disabled:opacity-50',
               SIZE[size],
               active ? SEGMENTED_ACTIVE[tone] : INACTIVE,
             )}

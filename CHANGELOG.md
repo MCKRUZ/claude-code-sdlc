@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+### Tōgō — upgrade round 2: the instrument, the ceremonies, the craft
+
+A second design round on the desktop app, planned in `docs/proposals/studio-upgrade-2.md` from
+five independent design lenses and two judges, built as eight packages with disjoint file
+ownership, reviewed adversarially and verified end to end. What a team sees:
+
+- **Brand in the product.** The solid Macron stays the mark everywhere in the UI; a sanctioned
+  gradient treatment — *Depth* (`#6FD1D4 → #0A3F47`, theme-aware) — lives only at hero size
+  (Welcome, the opening card, the dock icon). The dock icon is finally Tōgō's tile, not the
+  scaffold's; `docs/brand/togo/build-assets.mjs` regenerates every export deterministically;
+  the brandbook says exactly where Depth may live.
+- **Readable everywhere.** Dark-mode links and plate text use a dedicated accent-text pair;
+  every section label passes AA; the small type scale no longer letter-spaces body text.
+- **Every screen reads in order.** A `PageHeader` (area eyebrow · title · lede) on Stage, Board,
+  Sprint, Settings and Closing; a stage summary strip (documents · current step · sign-off);
+  a document outline with gap markers; Board rows as columns with status chips and a one-line
+  notice; Sprint title first with a fact strip and grouped verdicts; the spec page gains a facts
+  rail and an inline dependency neighbourhood; honest empty states with figures drawn in the
+  product's own vocabulary; "today" and "—" where a zero would have lied.
+- **The instrument.** Fresnel-rimmed bodies, a lighting rig with contact pools and a theme-aware
+  grid; a viewing reticle on the Spine that marks the stage you are reading; ledger plates on
+  the Closing rail naming who signed what; hover and focus affordances in 3D; an "In a graph"
+  shortcut group and palette actions; scene arrival with prefetch and crossfades; a Board graph
+  fitted to its bodies and plates.
+- **Ceremonies.** Sign-off, hand-off and the opening each play as one timeline from the
+  choreography catalogue; dialogs, toasts and hover cards animate; the theme change reveals as a
+  dusk sweep; flourishes quieten after the tenth open. Every end state equals a cold reload;
+  everything is off under reduced motion and in tests.
+- **Found, not hidden.** The 1 px ghost strip over the Sprint title was measured with a probe
+  (`SHOT_PROBE=ghost`) and bisected to its cause; sticky headers are now transparent at rest and
+  solid only once content has scrolled under them.
+- **Not adopted: MUI.** A second component system would fork the one token set the app just
+  gained and add ~300 KB to a main chunk with 188 KB of room; three.js and GSAP carry the round.
+
 ### Code-host providers — GitHub and Azure DevOps
 
 The code lives in Azure DevOps repositories as well as GitHub ones, and until now every
@@ -64,7 +98,7 @@ unmodified. The host is **chosen by the repository**, never by a global setting.
 
 ### Tōgō — the name, the brand, and the Observatory UI
 
-The plugin and its desktop app now ship under one name: **Tōgō** (TOH-goh, 統合 — integration). The plugin id `claude-code-sdlc`, the `studio/` folder and the `window.studio` bridge are unchanged; the window title, `productName`, favicon and Welcome lockup are Tōgō. The identity is deterministic SVG — a solid mark ("Macron", with "Lens" and "Seam" alternates), a wordmark with its macrons kept, a teal–cyan accent (`#0E7C86`, 4.95:1 on white) with a 50–900 scale for light and dark, Inter for UI and JetBrains Mono for code — recorded in `docs/brand/togo/` (`palette.json`, PNG exports, `togo.ico`, `brandbook.html`). Two standalone HTML guides for teams live in `docs/guide/`: how to stand the tool up, and how to use the app.
+The plugin and its desktop app now ship under one name: **Tōgō** (TOH-goh, 統合 — integration). The plugin id `claude-code-sdlc`, the `studio/` folder and the `window.studio` bridge are unchanged; the window title, `productName`, favicon and Welcome lockup are Tōgō. The identity is deterministic SVG — a solid mark ("Macron", with "Lens" and "Seam" alternates), a wordmark with its macrons kept, a teal–cyan accent (`#0E7C86`, 4.95:1 on white) with a 50–900 scale for light and dark, Inter for UI and JetBrains Mono for code — recorded in `docs/brand/togo/` (`palette.json`, PNG exports, `togo.ico`, `brandbook.html`). Two standalone HTML guides for teams live in `docs/guide/`: how to stand the tool up, and how to use the app. The plugin marketplace is now the team's own and carries the name: `/plugin marketplace add splashthree/claude-code-sdlc` then `/plugin install claude-code-sdlc@togo` (the plugin id, every `/sdlc-*` command and all project state are unchanged); the desktop app's bundle id is `com.splashthree.togo`.
 
 The app's screens had grown one spec at a time, each carrying its own Tailwind strings, so there
 was no dark theme, no shared control vocabulary, no keyboard route through the app and nothing

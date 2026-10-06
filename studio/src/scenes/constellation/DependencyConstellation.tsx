@@ -8,16 +8,20 @@
 // soon as the slot mounts, table or graph. Everything three-flavoured is behind `lazy()`.
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
+import { SCENE_SCOPE_ATTR, SCENE_SCOPE_VALUE, sceneCommandFor } from '../../shortcuts/shortcutMap'
+import type { SceneCommand } from '../../shortcuts/shortcutMap'
 import { backlogStore } from '../../stores/backlogStore'
 import type { PreferenceStorageKey } from '../../theme/tokens'
 import { Notice } from '../../ui/Notice'
 import { PlateInteractionProvider } from '../core/canvasActivity'
+import { registerSceneActions } from '../core/sceneActions'
 import { DEFAULT_SURFACE } from '../core/sceneDefaults'
 import { SceneShell } from '../core/SceneShell'
 import type { SceneDataConstellation, SceneSlotProps, SceneSurface } from '../core/types'
+import { canUseWebGL } from '../core/webgl'
 import { buildRenderModel } from './constellationModel'
 import type { RenderModel } from './constellationModel'
-import { ORBIT_KEYSHORTCUTS, OrbitState } from './orbit'
+import { KEY_STEP, KEY_ZOOM, ORBIT_KEYSHORTCUTS, OrbitState } from './orbit'
 
 const LazyScene = lazy(() => import('./ConstellationScene'))
 
@@ -87,14 +91,28 @@ export function summaryFor(data: SceneDataConstellation, model: RenderModel): st
   return parts.join('; ')
 }
 
-/** ↑ / ↓ on a plate walk the build order (the plates' DOM order). */
+/** The sr-only line inside the figure (I6): the keys a keyboard user needs, said once. */
+export const SCENE_KEYS_HINT = 'Shift+arrows orbit; Home fits the graph; n focuses the next spec up; + and − zoom.'
+
+/** ↑ / ↓ walk the build order (the plates' DOM order). From the figure itself (nothing focused
+ * inside), ↓ lands on the first plate and ↑ on the last. */
 function movePlateFocus(root: HTMLElement, from: HTMLElement, delta: 1 | -1): boolean {
   const plates = Array.from(root.querySelectorAll<HTMLButtonElement>('[data-plate-id] button'))
+  if (plates.length === 0) return false
   const i = plates.indexOf(from as HTMLButtonElement)
-  if (i === -1) return false
-  const next = plates[i + delta]
+  const next = i === -1 ? (delta === 1 ? plates[0] : plates[plates.length - 1]) : plates[i + delta]
   if (!next) return false
   next.focus()
+  return true
+}
+
+/** Focus the plate the plugin named next up; false when it named none or it is not drawn. */
+function focusPlate(root: HTMLElement, id: string | null): boolean {
+  if (id === null) return false
+  const plate = Array.from(root.querySelectorAll<HTMLElement>('[data-plate-id]')).find((el) => el.dataset.plateId === id)
+  const button = plate?.querySelector<HTMLButtonElement>('button')
+  if (!button) return false
+  button.focus()
   return true
 }
 
@@ -125,17 +143,46 @@ export function DependencyConstellation(props: DependencyConstellationProps) {
     return () => window.removeEventListener('storage', onStorage)
   }, [isSprint])
 
+  // The graph's commands (I6): one table (`SCENE_BINDINGS`) read by this keydown, the window
+  // listener and the help dialog. The figure runs them itself so they work with no host wiring.
+  const run = useCallback((command: SceneCommand, from: HTMLElement | null): boolean => {
+    const el = root.current
+    switch (command) {
+      case 'clear': onHover(null); return false
+      case 'fit': orbit.goHome(); return true
+      case 'nextUp': return el ? focusPlate(el, data.nextUp) : false
+      case 'stepNext': return el && from ? movePlateFocus(el, from, 1) : false
+      case 'stepPrev': return el && from ? movePlateFocus(el, from, -1) : false
+      case 'orbitLeft': orbit.rotate(KEY_STEP, 0); return true
+      case 'orbitRight': orbit.rotate(-KEY_STEP, 0); return true
+      case 'orbitUp': orbit.rotate(0, -KEY_STEP); return true
+      case 'orbitDown': orbit.rotate(0, KEY_STEP); return true
+      case 'zoomIn': orbit.zoom(1 / KEY_ZOOM); return true
+      case 'zoomOut': orbit.zoom(KEY_ZOOM); return true
+    }
+  }, [orbit, onHover, data.nextUp])
+
   const onKeyDown = useCallback((e: KeyboardEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
-    if (e.key === 'Escape') { onHover(null); return }
-    const onPlate = target.closest('[data-plate-id]') !== null
-    if (onPlate && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown') && root.current) {
-      if (movePlateFocus(root.current, target, e.key === 'ArrowDown' ? 1 : -1)) e.preventDefault()
-      return
-    }
     if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return
-    if (orbit.handleKey(e.key, e.shiftKey)) e.preventDefault()
-  }, [orbit, onHover])
+    const command = sceneCommandFor(e)
+    if (command === null) return
+    // Escape clears the hover and is left for the window's own Escape chain (close a dialog…).
+    if (run(command, target)) e.preventDefault()
+  }, [run])
+
+  // The palette's two graph rows (I6) read these while a graph is on screen — screen callbacks.
+  const effectiveSurface: SceneSurface = model.tableOnly ? 'table' : surface
+  const graphShown = data.hasData && effectiveSurface === 'graph'
+  useEffect(() => {
+    // Only while a graph can actually be on screen: no WebGL means the table, and "Fit the graph"
+    // would be a row that does nothing.
+    if (!graphShown || !canUseWebGL()) return
+    return registerSceneActions({
+      fitGraph: () => { run('fit', null) },
+      focusNextUp: () => run('nextUp', null),
+    })
+  }, [graphShown, run])
 
   if (!data.hasData) return null
 
@@ -148,7 +195,6 @@ export function DependencyConstellation(props: DependencyConstellationProps) {
       {model.tableOnly ? <Notice tone="info" role="none" className="mt-2">{model.tableOnly}</Notice> : null}
     </>
   )
-  const effectiveSurface: SceneSurface = model.tableOnly ? 'table' : surface
 
   return (
     <div
@@ -158,9 +204,12 @@ export function DependencyConstellation(props: DependencyConstellationProps) {
       aria-label="Dependency graph. Shift with the arrow keys orbits; plus and minus zoom."
       aria-keyshortcuts={ORBIT_KEYSHORTCUTS}
       onKeyDown={onKeyDown}
-      className="outline-none"
+      // A visible ring when the figure itself has focus (I6); the global ring is `--ring`.
+      className="rounded-[8px] outline-none focus-visible:[box-shadow:var(--ring)]"
       data-constellation={id}
+      {...{ [SCENE_SCOPE_ATTR]: SCENE_SCOPE_VALUE }}
     >
+      <span className="sr-only">{SCENE_KEYS_HINT}</span>
       <PlateInteractionProvider value={{ hoverId, onHover, onActivate }}>
         <SceneShell
           id={id}

@@ -9,7 +9,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { ChoreoContext } from '../../motion/contract'
 import { constellationSettle } from '../../motion/choreo/constellationSettle'
 import { computeLayout } from '../core/layout/forceLayout'
-import type { LayoutResult } from '../core/layout/forceLayout'
+import type { LayoutOptions, LayoutResult } from '../core/layout/forceLayout'
 import { loadLayoutCache, saveLayoutCache } from '../core/layout/layoutCache'
 import type { Position } from '../core/layout/layoutCache'
 import { startPositions } from './constellationModel'
@@ -58,7 +58,11 @@ export function useConstellationLayout(
   getContext: () => ChoreoContext,
   invalidate: () => void,
   wake: () => void,
+  /** Round 2 (I9): the host's aspect policy (`LAYOUT_POLICY[source]`). Stable per host. */
+  options?: LayoutOptions,
 ): LayoutHandles {
+  const optionsRef = useRef(options)
+  optionsRef.current = options
   const positions = useRef<number[]>([])
   const target = useRef<number[]>([])
   const dirty = useRef<DirtyFlags>({ transforms: true, colors: true, tethers: true })
@@ -86,7 +90,7 @@ export function useConstellationLayout(
       nodes: model.bodies.map((b) => ({ id: b.id, buildOrderIndex: b.buildOrderIndex })),
       links: model.edges.map((e) => ({ from: model.bodies[e.from].id, to: model.bodies[e.to].id })),
       initial: start,
-    })
+    }, optionsRef.current)
 
     // With motion off there is no demand loop to step an incremental layout, so finish it now:
     // the first paint is the final layout, as §4.2 row 18's reduced column promises.

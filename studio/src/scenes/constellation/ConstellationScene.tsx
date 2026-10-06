@@ -11,6 +11,7 @@ import { contextFrom } from '../../motion/choreo/_shared'
 import { constellationHoverDim } from '../../motion/choreo/constellationSettle'
 import type { ChoreoContext } from '../../motion/contract'
 import { motion } from '../../motion/motion'
+import { LAYOUT_POLICY } from '../core/layout/forceLayout'
 import { SceneLights } from '../core/lights'
 import { Plates } from '../core/Plates'
 import type { SceneDataConstellation } from '../core/types'
@@ -52,7 +53,8 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
   const size = useThree((s) => s.size)
   const invalidate = useThree((s) => s.invalidate)
   const palette = useThemeColors(CONSTELLATION_TOKENS)
-  const dark = useThemeAttr() === 'dark'
+  const theme = useThemeAttr()
+  const dark = theme === 'dark'
   const motionOn = useMotionEnabled()
 
   const group = useMemo(() => new Group(), [])
@@ -70,7 +72,8 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
     (): ChoreoContext => contextFrom(gl.domElement, { enabled: motion.enabled(), reduced: motion.reduced() }, motion),
     [gl],
   )
-  const layout = useConstellationLayout(model, projectKey, getContext, invalidate, wake)
+  // Round 2 (I9): the host's aspect policy — the Board's y band and gathered x — rides the source.
+  const layout = useConstellationLayout(model, projectKey, getContext, invalidate, wake, LAYOUT_POLICY[data.source])
 
   // Camera lens per §5.2; the fit below chooses the pose and the orbit owns it from there on.
   useEffect(() => {
@@ -84,25 +87,25 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
     orbit.applyTo(cam)
     invalidate()
   }, [camera, orbit, invalidate])
-  const fit = useConstellationFit(model, layout, orbit, CAMERA_FOV, wake)
+  const fit = useConstellationFit(model, layout, orbit, CAMERA_FOV, wake, data.source)
 
   // Buffers: allocate on first mount, reuse while the counts hold, recolour on theme change.
   useEffect(() => {
-    const nextBodies = syncBodyBuffers(bodyBuf.current, model, palette)
+    const nextBodies = syncBodyBuffers(bodyBuf.current, model, palette, theme)
     const nextTethers = syncTetherBuffers(tetherBuf.current, model, palette)
     if (nextBodies !== bodyBuf.current || nextTethers !== tetherBuf.current) {
       group.clear()
-      group.add(nextTethers.grid, nextTethers.order, nextTethers.live, nextTethers.hot, nextTethers.ghost, nextTethers.cones)
-      group.add(nextBodies.bodies, nextBodies.ghosts, nextBodies.rings, nextBodies.halos)
+      group.add(nextTethers.grid, nextBodies.pools, nextTethers.order, nextTethers.live, nextTethers.hotUp, nextTethers.hot, nextTethers.ghost, nextTethers.cones)
+      group.add(nextBodies.bodies, nextBodies.ghosts, nextBodies.rings, nextBodies.selection, nextBodies.halos)
     }
     bodyBuf.current = nextBodies
     tetherBuf.current = nextTethers
-    applyPalette(nextBodies, palette)
+    applyPalette(nextBodies, palette, theme)
     applyTetherPalette(nextTethers, palette, dark)
     if (weights.current.length !== model.bodies.length) weights.current = new Array<number>(model.bodies.length).fill(1)
     layout.dirty.current = { transforms: true, colors: true, tethers: true }
     invalidate()
-  }, [model, palette, dark, group, layout, invalidate])
+  }, [model, palette, theme, dark, group, layout, invalidate])
 
   useEffect(() => () => {
     if (bodyBuf.current) disposeBodyBuffers(bodyBuf.current)
@@ -118,7 +121,8 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
   }, [size.width, size.height, model, invalidate])
 
   // Hover: non-neighbours dim over 160 ms (instant when motion is off — the stub applies the end
-  // state); the hovered body's incident tethers move to the thick set.
+  // state); the hovered body's incident tethers move to the two hot sets (by direction) and the
+  // selection ring moves to it (a transform write).
   useEffect(() => {
     const index = hoverId === null ? null : model.bodies.findIndex((b) => b.id === hoverId)
     hovered.current = index === -1 ? null : index
@@ -128,6 +132,7 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
       neighbours: hovered.current === null ? null : neighboursOf(model, hovered.current),
       dim: DIM_WEIGHT,
     })
+    layout.dirty.current.transforms = true
     layout.dirty.current.colors = true
     layout.dirty.current.tethers = true
     wake()
@@ -142,10 +147,13 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
     invalidate()
   }), [orbit, camera, wake, invalidate])
 
+  // The dash flows while someone is looking: the pointer inside the canvas, OR a plate hovered or
+  // focused (keyboard users get the same direction cue — round 2, I5). Never while idle.
+  const looking = inside || hoverId !== null
   useEffect(() => {
-    if (tetherBuf.current) setTetherFlow(tetherBuf.current, inside && motionOn)
+    if (tetherBuf.current) setTetherFlow(tetherBuf.current, looking && motionOn)
     invalidate()
-  }, [inside, motionOn, invalidate])
+  }, [looking, motionOn, invalidate])
 
   const getMeshes = useCallback(() => (bodyBuf.current ? { bodies: bodyBuf.current.bodies, ghosts: bodyBuf.current.ghosts } : null), [])
   useConstellationPointer({ model, layout, orbit, getMeshes, onHover, setInside, wake })
@@ -156,14 +164,14 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
     if (layout.layoutTick()) busy = true
     const hover = hoverTl.current
     if (hover && hover.progress() < 1) { layout.dirty.current.colors = true; busy = true }
-    if (inside && motionOn && tetherBuf.current) { advanceTetherFlow(tetherBuf.current, dt); busy = true }
+    if (looking && motionOn && tetherBuf.current) { advanceTetherFlow(tetherBuf.current, dt); busy = true }
     if (!busy && !live) {
       setInternalLive(false)
       return false
     }
     return true
-  }, [orbit, camera, layout, inside, motionOn, live])
-  useDemandLoop(live || inside || internalLive, { onTick })
+  }, [orbit, camera, layout, looking, motionOn, live])
+  useDemandLoop(live || looking || internalLive, { onTick })
 
   const items = useMemo(() => platesFor(model, data), [model, data])
 
@@ -174,7 +182,7 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
     const p = layout.positions.current
     const dirty = layout.dirty.current
     const scale = fit.bodyScale.current
-    if (dirty.transforms) { writeBodyTransforms(bodies, model, p, scale); dirty.transforms = false }
+    if (dirty.transforms) { writeBodyTransforms(bodies, model, p, scale, hovered.current); dirty.transforms = false }
     if (dirty.colors) { writeBodyColors(bodies, model, palette, weights.current, hovered.current); writeHalos(bodies, model, hovered.current); dirty.colors = false }
     if (dirty.tethers) { writeTethers(tethers, model, p, hovered.current, scale); dirty.tethers = false }
     // Plates hang from the body's centre; the store places them under its silhouette.

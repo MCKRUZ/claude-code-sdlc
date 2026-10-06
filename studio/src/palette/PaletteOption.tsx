@@ -1,7 +1,8 @@
 // One palette row. `aria-selected` is the only selection signal the listbox carries — the input
 // owns real focus (`aria-activedescendant` points here), so the row must never take focus of
 // its own or the combobox pattern breaks. Matched characters are emphasised by weight, not by
-// colour alone.
+// colour alone. Round 2: the row carries `data-pressable` (M8, attribute only) and
+// `data-flip-id="palette:<id>"` so a re-rank glides rows to their new place (M5).
 import type { ReactNode } from 'react'
 import { cn } from '../ui/cn'
 import type { ScoredEntry } from './types'
@@ -14,6 +15,8 @@ interface PaletteOptionProps {
   onRun: () => void
   kbd: ReactNode
 }
+
+export const paletteFlipId = (entryId: string) => `palette:${entryId}`
 
 /** Split the title into runs so matched characters can be wrapped without re-rendering each
  * character as its own element. */
@@ -38,6 +41,8 @@ export function PaletteOption({ id, item, selected, onHover, onRun, kbd }: Palet
       role="option"
       aria-selected={selected}
       data-entry-id={entry.id}
+      data-flip-id={paletteFlipId(entry.id)}
+      data-pressable=""
       onMouseEnter={onHover}
       // mousedown, not click: a click would first blur the input and the Dialog's trap would
       // fight over focus before the row ran.

@@ -29,7 +29,8 @@ export function AlreadyDeclared({ stage }: { stage: ProjectStage }) {
           Read from the project's own record, so it says the same thing on everybody's machine.
         </p>
       </Card>
-      <p className="text-xs text-ink-4">
+      {/* C2: a sentence is never `ink-4` — that colour is for decoration, not words. */}
+      <p className="text-xs text-ink-3">
         Late work rides the loop one spec at a time, as usual. Build does not reopen.
       </p>
     </div>
@@ -50,14 +51,18 @@ export function AlreadyDeclared({ stage }: { stage: ProjectStage }) {
  */
 export function AdvancePanel({ result, busy, onAdvance }: { result: AdvanceResult | null; busy: boolean; onAdvance: () => void }) {
   if (result?.ok) {
+    // M1's signer line, in the detail voice. A declaration the plugin recorded with no name says
+    // "no name recorded" — an empty signature line reads as signed by somebody.
+    const signer = result.signedBy?.trim() ?? ''
     return (
       <Card tone="ok" data-ceremony-card="">
         <h3 className="text-sm font-medium text-ink-1">
           Moved on from {result.fromPhase} to {result.toPhase}
         </h3>
-        <p className="mt-1 text-sm text-ink-1">
-          Signed off by {result.signedBy}. {result.note}
+        <p className="mt-2 text-lg font-[650] tracking-[-0.02em] text-ink-1">
+          {signer ? <>Signed off by {signer}</> : <>Completed · no name recorded</>}
         </p>
+        {result.note && <p className="mt-1 text-sm text-ink-1">{result.note}</p>}
       </Card>
     )
   }
@@ -102,7 +107,7 @@ export function AdvancePanel({ result, busy, onAdvance }: { result: AdvanceResul
 export function HandoffPanel({
   result, busy, onReplace, onRetry,
 }: { result: HandoffReportResult | null; busy: boolean; onReplace: () => void; onRetry: () => void }) {
-  if (busy) return <p role="status" className="text-sm text-ink-4">Drafting the hand-over document…</p>
+  if (busy) return <p role="status" className="text-sm text-ink-3">Drafting the hand-over document…</p>
   if (!result) return null
 
   if (result.ok) {
@@ -143,7 +148,7 @@ export function DeferredList({ deferred }: { deferred: DeclarationStatus['deferr
       <ul className="space-y-2">
         {deferred.map((spec) => (
           <li key={spec.spec} className="text-sm" data-reveal="">
-            <span className="font-mono text-xs text-ink-4">{spec.spec}</span>{' '}
+            <span className="font-mono text-xs text-ink-3">{spec.spec}</span>{' '}
             <span className="text-ink-1">{spec.name}</span>
             <span className="mt-0.5 block text-xs text-ink-2">
               {/* A deferral with no reason is reported as such rather than left blank, because
@@ -153,7 +158,7 @@ export function DeferredList({ deferred }: { deferred: DeclarationStatus['deferr
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-ink-4">
+      <p className="mt-2 text-xs text-ink-3">
         These reasons go into the hand-over document, which is where somebody will look when
         they ask why an expected thing is not there.
       </p>

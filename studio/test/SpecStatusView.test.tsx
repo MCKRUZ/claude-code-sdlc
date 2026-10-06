@@ -79,6 +79,24 @@ describe('SpecStatusView: where a change got to, read from its pull request', ()
     expect(screen.getByText('Builds it').closest('div')?.textContent).toContain('nobody')
   })
 
+  it('opens with the area eyebrow "Build · Spec <id>" directly above the heading, the id in mono — and the heading itself is exactly as it was', async () => {
+    await renderView()
+    const eyebrow = screen.getByTestId('spec-eyebrow')
+    expect(eyebrow.textContent).toBe('Build · Spec 0008')
+    // The kit's eyebrow voice (caps by CSS, ink-3); the id is an identifier, so it is mono, verbatim.
+    expect(eyebrow.className).toContain('uppercase')
+    expect(eyebrow.className).toContain('text-ink-3')
+    expect(eyebrow.querySelector('.font-mono')?.textContent).toBe('0008')
+    // Directly above the h2, inside the title block that Flips; the h2's pins hold.
+    const heading = screen.getByRole('heading', { name: '0008 — Claim export' })
+    expect(eyebrow.nextElementSibling).toBe(heading)
+    expect(heading.tagName).toBe('H2')
+    expect(heading.hasAttribute('data-page-heading')).toBe(true)
+    expect(heading.getAttribute('tabindex')).toBe('-1')
+    expect(heading.closest('[data-flip-id="spec:0008"]')).toBe(eyebrow.closest('[data-flip-id="spec:0008"]'))
+    expect(document.querySelectorAll('input')).toHaveLength(0)
+  })
+
   it('draws checks, grader verdicts, security review and approvals in the plugin\'s words, with a dot beside each', async () => {
     await renderView()
     await screen.findByText('Open on the code host')
@@ -116,7 +134,7 @@ describe('SpecStatusView: where a change got to, read from its pull request', ()
     for (const label of ['Verdict', 'Pass next action', 'Acknowledge']) {
       const button = screen.getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement
       expect(button.disabled).toBe(true)
-      expect(button.textContent).toContain("Needs the plugin's sprint write verbs (Batch 3)")
+      expect(button.textContent).toContain('These arrive with a newer plugin')
     }
     // Two "Mark ready" controls: the live one in the readiness panel, and the reserved sprint verb.
     const marks = screen.getAllByRole('button', { name: /^Mark ready/ }) as HTMLButtonElement[]
@@ -137,6 +155,59 @@ describe('SpecStatusView: where a change got to, read from its pull request', ()
     await renderView({ ...ROW, status: 'in-flight' })
     expect(screen.queryByText('Risk tier')).toBeNull()
     expect(screen.queryByRole('button', { name: /^Hand off$/ })).toBeNull()
+  })
+})
+
+describe('SpecStatusView: the facts rail and the neighbourhood (studio-upgrade-2 S8 / I7 / M9)', () => {
+  it('the rail lists the spec\'s own facts, "—" for every empty one, the status as a chip, and no <input>', async () => {
+    await renderView()
+    const rail = screen.getByRole('region', { name: 'Spec facts' })
+    expect(rail.tagName).not.toBe('ASIDE') // a11y.spec pins exactly two asides: sidebar, then chat
+    const dl = within(rail)
+    expect(dl.getByText('Status').parentElement?.textContent).toContain('draft')
+    expect(within(rail).getByTestId('spec-status-chip').textContent).toBe('draft')
+    expect(dl.getByText('Team').parentElement?.textContent).toContain('platform')
+    expect(dl.getByText('Sprint').parentElement?.textContent).toContain('S07')
+    expect(dl.getByText('Path').parentElement?.textContent).toContain('specs/0008-claim-export.md')
+    // Empty facts are a dash, never a blank cell.
+    for (const term of ['Channel', 'Depends on', 'Next owner', 'Eng review', 'Data review', 'Branch']) {
+      expect(dl.getByText(term).parentElement?.textContent).toContain('—')
+    }
+    expect(rail.querySelectorAll('input')).toHaveLength(0)
+    // The four reserved slots live at the rail's foot, disabled, each with its reason.
+    for (const label of ['Verdict', 'Pass next action', 'Acknowledge']) {
+      const button = within(rail).getByRole('button', { name: new RegExp(`^${label}`) }) as HTMLButtonElement
+      expect(button.disabled).toBe(true)
+      expect(button.textContent).toContain('These arrive with a newer plugin')
+    }
+  })
+
+  it('a dependsOn id is a button only when the Board has fetched that row; otherwise it says why', async () => {
+    install()
+    const onOpenSpec = vi.fn()
+    render(<main><SpecStatusView projectPath="/p" row={{ ...ROW, dependsOn: ['0007', '0042'] }} onBack={vi.fn()} onHandOff={vi.fn()} onOpenSpec={onOpenSpec} /></main>)
+    await screen.findByText(/Owns it/)
+    const rail = screen.getByRole('region', { name: 'Spec facts' })
+    const unknown = within(rail).getByRole('button', { name: /^0042/ }) as HTMLButtonElement
+    expect(unknown.disabled).toBe(true)
+    expect(unknown.textContent).toContain('Open the Board once')
+    expect(screen.getByText(/Open the Board once to see this spec's neighbourhood/)).toBeTruthy()
+  })
+
+  it('M9: the hand-off ceremony plays once the refreshed row arrives in-flight with a developer — never on a deep link', async () => {
+    const choreo = await import('../src/motion/choreo')
+    const play = vi.spyOn(choreo.handoffCeremony, 'play')
+    install()
+    const { rerender } = render(<main><SpecStatusView projectPath="/p" row={ROW} onBack={vi.fn()} onHandOff={vi.fn()} /></main>)
+    await screen.findByText(/Owns it/)
+    expect(play).not.toHaveBeenCalled()
+    rerender(<main><SpecStatusView projectPath="/p" row={{ ...ROW, status: 'in-flight', developer: '@sam-k', branch: 'spec/0008-claim-export' }} onBack={vi.fn()} onHandOff={vi.fn()} /></main>)
+    await waitFor(() => expect(play).toHaveBeenCalledTimes(1))
+    const refs = play.mock.calls[0][1]
+    expect(refs.buildsCell?.textContent).toBe('@sam-k')
+    expect(refs.statusChip?.textContent).toBe('in-flight')
+    expect(Array.isArray(refs.prChips)).toBe(true)
+    play.mockRestore()
   })
 })
 

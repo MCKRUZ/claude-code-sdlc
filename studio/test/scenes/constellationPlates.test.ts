@@ -75,6 +75,37 @@ describe('PlateStore under hover', () => {
     expect(b.style.transform).toBe(restingB)
   })
 
+  it('the expanded plate is drawn solid — opacity 1 whatever its depth — and returns to the depth ramp when it collapses', () => {
+    // Observatory v9 sprint-graph-hover: the hovered (far) plate was drawn at the depth ramp's .55,
+    // so the edges and the neighbouring plate showed through its own text.
+    const store = new PlateStore()
+    store.setItems([item('0004', -0.4, 1.5), item('0005', 0.4, -0.5)])
+    const a = li(120, 22), b = li(120, 22)
+    store.register('0004', a)
+    store.register('0005', b)
+    const cam = camera()
+    const out = { x: 0, y: 0, visible: false, depth: 0 }
+    const scratch = new Vector3(), up = new Vector3()
+    up.setFromMatrixColumn(cam.matrixWorld, 1)
+    store.project(cam, W, H, out, scratch, up)
+    // 0005 is the farther body: at rest the depth ramp holds it below full strength.
+    const restingB = b.style.opacity
+    expect(Number(restingB)).toBeLessThan(1)
+    expect(Number(restingB)).toBeGreaterThan(0)
+
+    b.dataset.expanded = ''
+    resize(b, 240, 84)
+    store.project(cam, W, H, out, scratch, up)
+    expect(b.style.opacity).toBe('1')
+    // …and it sits above the other plate, whatever their depths.
+    expect(Number(b.style.zIndex)).toBeGreaterThan(Number(a.style.zIndex))
+
+    delete b.dataset.expanded
+    resize(b, 120, 22)
+    store.project(cam, W, H, out, scratch, up)
+    expect(b.style.opacity).toBe(restingB)
+  })
+
   it('an expanded plate shifts only as far as the host edge demands', () => {
     const store = new PlateStore()
     // One body far right: its collapsed plate is already clamped to the right edge.

@@ -55,6 +55,31 @@ describe('Segmented', () => {
   })
 })
 
+describe('Segmented round 2 (C5, M8)', () => {
+  it('a disabled group dims once: the group carries opacity-50 and its options do not repeat it', () => {
+    render(<Segmented label="Dim" options={OPTIONS} value="a" onChange={() => {}} disabled disabledReason="read-only project" />)
+    const group = screen.getByRole('group', { name: 'Dim' })
+    expect(group.className).toContain('opacity-50')
+    for (const button of Array.from(group.querySelectorAll('button'))) {
+      expect((button as HTMLButtonElement).disabled).toBe(true)
+      expect(button.className).not.toContain('opacity-50')
+    }
+  })
+
+  it('an individually disabled option in an enabled group still dims itself', () => {
+    render(<Segmented label="One" options={OPTIONS} value="a" onChange={() => {}} />)
+    expect(screen.getByRole('group', { name: 'One' }).className).not.toContain('opacity-50')
+    expect(screen.getByRole('button', { name: /Beta/ }).className).toContain('disabled:opacity-50')
+  })
+
+  it('every option carries data-pressable and tone=accent still emits the literal bg-brand-600 text-white', () => {
+    render(<Segmented label="P" tone="accent" options={OPTIONS} value="a" onChange={() => {}} />)
+    const buttons = Array.from(screen.getByRole('group', { name: 'P' }).querySelectorAll('button'))
+    expect(buttons.every((b) => b.hasAttribute('data-pressable'))).toBe(true)
+    expect(screen.getByRole('button', { name: 'Alpha' }).className).toMatch(/bg-brand-600 text-white/)
+  })
+})
+
 describe('Surface3DToggle', () => {
   it('is exactly two aria-pressed buttons, Graph and Table', () => {
     render(<Surface3DToggle value="table" onChange={() => {}} />)

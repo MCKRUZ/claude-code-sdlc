@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardRow, SprintSlateRow } from '../../shared/types'
-import { laneBadge, slateToBoardRow, type ChipTone } from '../../shared/sprintModel'
-import { Chip, DataTable, type ChipTone as KitChipTone, type DataTableColumn } from '../ui'
+import { laneBadge, slateToBoardRow, statusTone, type ChipTone } from '../../shared/sprintModel'
+import { ChevronRight } from 'lucide-react'
+import { Chip, DataTable, Icon, type ChipTone as KitChipTone, type DataTableColumn } from '../ui'
 
 /** The sprint model's four tones on the kit's chip. `muted` keeps the neutral chip and dims the
  * text itself, since the kit has no "quieter neutral" and inventing one would be a new colour. */
@@ -10,18 +11,6 @@ export const LANE_TONE: Record<ChipTone, KitChipTone> = {
   good: 'ok',
   attention: 'warn',
   muted: 'neutral',
-}
-
-/** A spec's status is a STATE, so it wears a chip (G4-4). `ready` is the same idea as "now" and
- * takes the stage-current tone; in-flight is the accent; merged is the one signed fact; draft and
- * deferred are quiet. Studio never computes the status — the word is the plugin's. */
-function statusTone(status: string): KitChipTone {
-  switch (status) {
-    case 'ready': return 'current'
-    case 'in-flight': return 'accent'
-    case 'merged': return 'ok'
-    default: return 'neutral'
-  }
 }
 
 export function SprintChip({ tone, children, testId }: { tone: ChipTone; children: React.ReactNode; testId?: string }) {
@@ -35,14 +24,22 @@ export function SprintChip({ tone, children, testId }: { tone: ChipTone; childre
 /** The DoR column keeps its `<details>` INSIDE the cell rather than in the table's details row:
  * the sprint spec counts `details[open]` after clicking the first NOT READY summary, and the
  * SprintBoard test reads the summary's tag name — both hold only if the disclosure is the
- * checker's lines and nothing else. NOT READY keeps its exact text and the literal `amber`: it is
- * a warn-class fact and three exact-text matches are pinned on it. */
+ * checker's lines and nothing else. NOT READY keeps its exact text and the `<summary>` tag: it is
+ * a warn-class fact (warn ink, never red) and three exact-text matches are pinned on it. The cell
+ * is wide enough for the two words on one line (`min-w-[7rem] whitespace-nowrap`) — the v7 table
+ * broke "NOT / READY" across two lines in every row. C8: the default `::marker` triangle is
+ * hidden and the kit's chevron (a sibling SVG, never a text node, so `summary.textContent` is
+ * still exactly "NOT READY") turns on `[open]` — the same recipe as `Disclosure`, applied here by
+ * hand because the cell's tags and text are pinned. */
 function DorCell({ row }: { row: SprintSlateRow }) {
   if (row.dor === 'READY') return <span className="font-medium text-status-ok-ink">READY</span>
   return (
-    <details>
-      <summary className="cursor-pointer font-medium text-amber-800">NOT READY</summary>
-      <ul className="mt-1 space-y-0.5 text-ink-2">
+    <details className="group min-w-[7rem]">
+      <summary className="flex cursor-pointer list-none items-center gap-1 whitespace-nowrap font-medium text-status-warn-ink [&::-webkit-details-marker]:hidden [&::marker]:hidden">
+        <Icon icon={ChevronRight} size={12} className="transition-transform duration-[160ms] ease-[var(--ease-out)] group-open:rotate-90" />
+        NOT READY
+      </summary>
+      <ul className="mt-1 space-y-0.5 whitespace-normal text-ink-2">
         {row.dorBlocking.length === 0 ? <li>the checker gave no line</li>
           : row.dorBlocking.map((line) => <li key={line}>{line}</li>)}
       </ul>
@@ -60,7 +57,7 @@ function columnsFor(onOpenSpec?: (row: BoardRow) => void): DataTableColumn<Sprin
           type="button"
           onClick={() => onOpenSpec(slateToBoardRow(row))}
           data-flip-id={`spec:${row.id}`}
-          className="font-mono text-xs font-medium tabular-nums text-accent-700 hover:text-accent-800"
+          className="font-mono text-xs font-medium tabular-nums text-accent-text hover:text-accent-text-hover"
         >
           {row.id}
         </button>
@@ -69,13 +66,13 @@ function columnsFor(onOpenSpec?: (row: BoardRow) => void): DataTableColumn<Sprin
     { id: 'name', header: 'Name', cell: (row) => row.name },
     { id: 'risk', header: 'Risk', cell: (row) => <span className="font-medium">{row.risk}</span> },
     { id: 'type', header: 'Type', cell: (row) => row.type || '—' },
-    { id: 'status', header: 'Status', cell: (row) => <Chip size="xs" tone={statusTone(row.status)}>{row.status}</Chip> },
-    { id: 'dor', header: 'DoR', cell: (row) => <DorCell row={row} /> },
+    { id: 'status', header: 'Status', cell: (row) => <Chip size="xs" casing="state" tone={statusTone(row.status)}>{row.status}</Chip> },
+    { id: 'dor', header: <span title="Definition of Ready">DoR</span>, cell: (row) => <DorCell row={row} /> },
     { id: 'eng', header: 'Eng', cell: (row) => { const b = laneBadge(row.engReview); return <SprintChip tone={b.tone}>{b.label}</SprintChip> } },
     { id: 'data', header: 'Data', cell: (row) => { const b = laneBadge(row.dataReview); return <SprintChip tone={b.tone}>{b.label}</SprintChip> } },
-    { id: 'owner', header: 'Next owner', cell: (row) => row.nextOwner || '—' },
+    { id: 'owner', header: <span title="Next owner">Next owner</span>, cell: (row) => row.nextOwner || '—' },
     {
-      id: 'deps', header: 'Depends on', mono: true,
+      id: 'deps', header: <span title="Depends on">Depends on</span>, mono: true,
       cell: (row) => <span className="font-mono tabular-nums">{row.dependsOn.length > 0 ? row.dependsOn.join(', ') : '—'}</span>,
     },
   ]
@@ -144,11 +141,21 @@ function SlateScroller({ children }: { children: React.ReactNode }) {
         // The gradient is an inline style on purpose: the Tailwind gradient utilities compiled to
         // custom properties only in the production build (observatory v6 probe: the fade element was
         // present, measured true, and painted nothing), and a plain `background-image` cannot miss.
+        //
+        // 64 px, opaque for its first 30 % (observatory v9 critique, measured): the v8/v9 shots were
+        // probed in the production window — the box was drawn (forced solid, 99.7 % of its pixels),
+        // `moreRight` was true at every step of the walk, the labelled region was the one that
+        // scrolled — and the darkest pixel per 4 px column across the old 40 px linear ramp read
+        // 62 67 100 108 135 146 185 193 218 246: under 50 % white for the left half. Round 2 widened
+        // the DoR cell and darkened the header voice (`ink-4` → `ink-3`), so "NEXT OWNER" now sat in
+        // that half and read as a hard cut, not a fade (v7's zone held mostly space: 171 at its
+        // left). Opaque at the border, then a 45 px dissolve, whatever word the box clips melts
+        // before the edge instead of being chopped at it.
         <div
           aria-hidden="true"
           data-testid="sprint-slate-fade"
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-10 rounded-r-xl"
-          style={{ backgroundImage: 'linear-gradient(to left, var(--color-surface-1), transparent)' }}
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-16 rounded-r-xl"
+          style={{ backgroundImage: 'linear-gradient(to left, var(--color-surface-1) 30%, transparent)' }}
         />
       ) : null}
     </div>

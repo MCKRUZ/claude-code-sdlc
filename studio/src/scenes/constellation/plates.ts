@@ -4,6 +4,7 @@
 // verbatim — this is the ONE place prose (`waitingOn`) is read, and it becomes text, never a
 // number or a colour; `dorBlocking` is counted here and quoted in full on the table surface.
 import { Vector3 } from 'three'
+import type { PlateSide } from '../core/plateLayout'
 import type { PlateItem } from '../core/projectLabels'
 import type { Body, SceneDataConstellation } from '../core/types'
 import type { RenderModel } from './constellationModel'
@@ -50,13 +51,22 @@ export function plateLines(body: Body): string[] {
   return lines.filter((l): l is string => l !== null && l.trim() !== '')
 }
 
+/** Which side of its body a plate hangs on (round 2, I9). The Sprint keeps every plate below.
+ * The Board ALTERNATES by keyboard order — as the Spine does — so the plate room above and
+ * below the bodies is symmetric and the fit centres the bodies, not the plates. */
+export function plateSideFor(source: SceneDataConstellation['source'], orderIndex: number): PlateSide {
+  if (source !== 'board') return 'below'
+  return orderIndex % 2 === 0 ? 'below' : 'above'
+}
+
 /** Built once per data change; the scene mutates each `anchor` (and `anchorRadius`) in place
  * every frame, so the plate hangs just under the body's silhouette wherever the camera is. */
 export function platesFor(model: RenderModel, data: SceneDataConstellation): PlateItem[] {
   const byId = new Map(data.bodies.map((b) => [b.id, b]))
   const ghostRefs = new Map(data.ghosts.map((g) => [g.id, g.referencedBy]))
   const items: PlateItem[] = []
-  for (const index of model.order) {
+  model.order.forEach((index, orderIndex) => {
+    const side = plateSideFor(data.source, orderIndex)
     const rb = model.bodies[index]
     if (rb.ghost) {
       const refs = ghostRefs.get(rb.id) ?? model.bodies.filter((b) => b.dependsOn.includes(index)).map((b) => b.id)
@@ -67,14 +77,14 @@ export function platesFor(model: RenderModel, data: SceneDataConstellation): Pla
         meta: rb.id,
         anchor: new Vector3(),
         anchorRadius: rb.radius,
-        side: 'below',
+        side,
         lines: refs.length ? [`Needed by ${refs.join(', ')}`] : undefined,
         muted: true,
       })
-      continue
+      return
     }
     const body = byId.get(rb.id)
-    if (!body) continue
+    if (!body) return
     const lines = plateLines(body)
     if (!rb.riskKnown) lines.unshift('Risk tier not recognised; drawn at MEDIUM size')
     items.push({
@@ -86,12 +96,12 @@ export function platesFor(model: RenderModel, data: SceneDataConstellation): Pla
       anchor: new Vector3(),
       // The scene rewrites `anchorRadius` each frame with the fitted body scale applied.
       anchorRadius: rb.radius,
-      side: 'below',
+      side,
       lines,
       badge: rb.buildOrderIndex === null ? undefined : String(rb.buildOrderIndex + 1),
       // "Next up" is the plugin's answer; it is words on the plate, not only a glow.
       ribbon: body.isNextUp ? 'Next up' : undefined,
     })
-  }
+  })
   return items
 }

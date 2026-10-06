@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import type { DocumentFocus, SignOffQuestion, StageActivity, StageReadiness } from '../../shared/types'
+import type { DocumentFocus, SignOffQuestion, StageActivity, StageDocument, StageReadiness } from '../../shared/types'
 import {
-  computeWorkflowSteps, type DocumentWorkflowStep, type WorkflowStep, type WorkflowStepStatus,
+  computeActivityRows, computeWorkflowSteps, slashCommand,
+  type ActivityRow, type DocumentWorkflowStep, type WorkflowStep, type WorkflowStepStatus,
 } from '../workflowSteps'
 import { startDocumentPolling } from '../documentPoller'
 import type { DocumentSnapshot } from '../documentSnapshot'
 import { stageHomeKey } from '../stageHomeKey'
-import { BackLink, Badge, Button, Card, EmptyState, Notice } from '../ui'
-import { ActivitiesPanel } from './ActivitiesPanel'
+import { BackLink, Badge, Button, Card, EmptyState, Eyebrow, Notice } from '../ui'
+import { ActivitiesPanel, ensureDocumentFromTemplate } from './ActivitiesPanel'
 import { SectionCard } from './DocumentSections'
 import { FocusedActivityContext, FocusedActivityHost, type FocusedActivity, type FocusedActivityBridge } from './FocusedActivityHost'
 import { SignOffQuestions } from './SignOffQuestions'
@@ -105,6 +106,7 @@ export function WorkflowTab({
           confirmError={confirmError}
           onToggleSignOff={onToggleSignOff}
           onOpenDocument={onOpenDocument}
+          onRefresh={onRefresh}
         />
         )}
       </div>
@@ -117,7 +119,7 @@ export function WorkflowTab({
  * stays a plain layout — this repo's "functions under 50 lines" convention (spec 0017's fix
  * pass, bug #10). */
 function CurrentStepPanel({
-  projectPath, current, steps, readiness, actor, busyId, confirmError, onToggleSignOff, onOpenDocument,
+  projectPath, current, steps, readiness, actor, busyId, confirmError, onToggleSignOff, onOpenDocument, onRefresh,
 }: {
   projectPath: string
   current: WorkflowStep | null
@@ -128,6 +130,7 @@ function CurrentStepPanel({
   confirmError: string | null
   onToggleSignOff: (question: SignOffQuestion, confirmed: boolean) => void
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
 }) {
   if (current?.kind === 'document') {
     return (
@@ -135,8 +138,10 @@ function CurrentStepPanel({
         projectPath={projectPath}
         current={current}
         steps={steps}
+        readiness={readiness}
         stageKey={stageHomeKey(projectPath, readiness.stageId)}
         onOpenDocument={onOpenDocument}
+        onRefresh={onRefresh}
       />
     )
   }
@@ -157,7 +162,7 @@ function CurrentStepPanel({
   }
 
   // The kit's one "nothing here" frame (G4-9); the sentence is the one tests find.
-  return <EmptyState title="Nothing is currently in progress on this stage." />
+  return <EmptyState figure="page" title="Nothing is currently in progress on this stage." />
 }
 
 /** The current step, once it IS a document (spec 0018): a header (Back to Workflow / Previous /
@@ -180,13 +185,15 @@ function CurrentStepPanel({
  * re-fires, and a document the person had browsed to in the OLD stage keeps showing even though
  * the workflow itself has moved on underneath. */
 function DocumentStepPanel({
-  projectPath, current, steps, stageKey, onOpenDocument,
+  projectPath, current, steps, readiness, stageKey, onOpenDocument, onRefresh,
 }: {
   projectPath: string
   current: DocumentWorkflowStep
   steps: WorkflowStep[]
+  readiness: StageReadiness
   stageKey: string
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
 }) {
   const documentSteps = steps.filter((s): s is DocumentWorkflowStep => s.kind === 'document')
   const [viewedKey, setViewedKey] = useState(current.key)
@@ -213,7 +220,21 @@ function DocumentStepPanel({
           {viewed.title} is a folder of documents — open it from the Documents tab.
         </p>
       ) : (
-        <LiveDocumentPanel key={viewed.document.path} projectPath={projectPath} relPath={viewed.document.path} />
+        <LiveDocumentPanel
+          key={viewed.document.path}
+          projectPath={projectPath}
+          relPath={viewed.document.path}
+          empty={(
+            <EmptyStepPanel
+              projectPath={projectPath}
+              readiness={readiness}
+              viewed={viewed}
+              steps={steps}
+              onOpenDocument={onOpenDocument}
+              onRefresh={onRefresh}
+            />
+          )}
+        />
       )}
     </div>
   )
@@ -291,7 +312,7 @@ function StepBadge({ status }: { status: WorkflowStepStatus }) {
  * step. Leaving the tab (or the current step moving on) unmounts this panel and stops the
  * polling with it — see `documentPoller.ts` for the pause-while-hidden and
  * discard-stale-response guarantees. Read-only: nothing here writes, edits, or offers to. */
-function LiveDocumentPanel({ projectPath, relPath }: { projectPath: string; relPath: string }) {
+function LiveDocumentPanel({ projectPath, relPath, empty }: { projectPath: string; relPath: string; empty: ReactNode }) {
   const [snapshot, setSnapshot] = useState<DocumentSnapshot | null>(null)
   const lastJson = useRef<string>('')
 
@@ -324,21 +345,19 @@ function LiveDocumentPanel({ projectPath, relPath }: { projectPath: string; relP
     })
   }, [projectPath, relPath])
 
-  return <LiveDocumentPanelContent snapshot={snapshot} />
+  return <LiveDocumentPanelContent snapshot={snapshot} empty={empty} />
 }
 
 /** Renders one `DocumentSnapshot` — split out of `LiveDocumentPanel` so that function stays
- * about SCHEDULING (spec 0017's fix pass, bug #10) and this one stays about DISPLAY. */
-function LiveDocumentPanelContent({ snapshot }: { snapshot: DocumentSnapshot | null }) {
+ * about SCHEDULING (spec 0017's fix pass, bug #10) and this one stays about DISPLAY. `empty` is
+ * what the waiting state shows (the `EmptyStepPanel`, which owns the pinned sentence). */
+function LiveDocumentPanelContent({ snapshot, empty }: { snapshot: DocumentSnapshot | null; empty: ReactNode }) {
   if (!snapshot) return <p className="text-sm text-ink-3">Opening…</p>
 
   if (snapshot.kind === 'error') {
     return <Notice tone="error">{snapshot.message}</Notice>
   }
-  if (snapshot.kind === 'waiting') {
-    // The kit's "nothing here, and why" frame (G4-9); the sentence is the one workflow.spec finds.
-    return <EmptyState title="Not started yet — this will appear here as soon as it is created." />
-  }
+  if (snapshot.kind === 'waiting') return empty
 
   const { sections } = snapshot.doc
   return (
@@ -352,5 +371,117 @@ function LiveDocumentPanelContent({ snapshot }: { snapshot: DocumentSnapshot | n
         <p className="text-sm text-ink-3">This document is still empty.</p>
       )}
     </Card>
+  )
+}
+
+// --- the honest empty step (round 2, S4) --------------------------------------------------------
+
+/** The `create` activities whose `creates` list names this document — exact path first; a bare
+ * file name (a fixture, an older plugin) matches on the name alone. The activities are the
+ * plugin's own rows for THIS stage, so the match never reaches another stage's document. */
+export function activitiesCreating(readiness: StageReadiness, doc: StageDocument): ActivityRow[] {
+  const bare = !doc.path.includes('/')
+  const names = (p: string) => p.split('/').pop() ?? p
+  return computeActivityRows(readiness).filter(({ activity }) =>
+    activity.kind === 'create'
+    && activity.creates.some((p) => p === doc.path || (bare && names(p) === doc.path)))
+}
+
+/** What a step that has no file yet says (S4): the pinned sentence, the template's own
+ * description, how the document gets created (the plugin's `create` activities for it, by label
+ * and slash command, and the chat), the ONE start control — only for an `available` activity
+ * Studio can honour; a blocked one shows its reason and no button — and a quiet "Up next". */
+function EmptyStepPanel({
+  projectPath, readiness, viewed, steps, onOpenDocument, onRefresh,
+}: {
+  projectPath: string
+  readiness: StageReadiness
+  viewed: DocumentWorkflowStep
+  steps: WorkflowStep[]
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
+}) {
+  const creators = activitiesCreating(readiness, viewed.document)
+  const startable = creators.find((r) => r.status === 'available' && r.disabledReason === null) ?? null
+  const at = steps.findIndex((s) => s.key === viewed.key)
+  const upNext = at >= 0 ? steps.slice(at + 1) : []
+  return (
+    <div className="space-y-4" data-testid="empty-step-panel">
+      {/* The kit's "nothing here, and why" frame (G4-9); the sentence is the one workflow.spec finds. */}
+      <EmptyState
+        figure="page"
+        title="Not started yet — this will appear here as soon as it is created."
+        body={viewed.document.description}
+        action={startable && (
+          <StartFromTemplate
+            projectPath={projectPath}
+            stageId={readiness.stageId}
+            activity={startable.activity}
+            onOpenDocument={onOpenDocument}
+            onRefresh={onRefresh}
+          />
+        )}
+      />
+      <section aria-labelledby={`how-created-${viewed.key}`}>
+        <Eyebrow as="h3" id={`how-created-${viewed.key}`}>How it gets created</Eyebrow>
+        <ul className="mt-1 space-y-1 text-xs text-ink-2">
+          {creators.map(({ activity, status, reason, disabledReason }) => (
+            <li key={activity.id} data-testid="empty-step-creator" data-activity-status={status}>
+              <span className="text-ink-1">{activity.label}</span>
+              {activity.command && <> · <code className="rounded bg-surface-2 px-1 py-0.5 text-code text-ink-2">{slashCommand(activity.command)}</code></>}
+              {status === 'done' && <span className="text-ink-3"> — already run</span>}
+              {/* The plugin's own sentence for a blocked row; the missing-capability reason for one
+                  Studio cannot honour. Either way the reason is said and no button is drawn. */}
+              {status === 'blocked' && reason && <span className="text-ink-3" data-testid="empty-step-reason"> — {reason}</span>}
+              {status === 'available' && disabledReason && <span className="text-ink-3" data-testid="empty-step-reason"> — {disabledReason}</span>}
+            </li>
+          ))}
+          <li>Ask in Chat — the assistant drafts it from this stage's documents, and you keep or discard the draft.</li>
+        </ul>
+      </section>
+      {upNext.length > 0 && (
+        <section aria-labelledby={`up-next-${viewed.key}`}>
+          <Eyebrow as="h3" id={`up-next-${viewed.key}`}>Up next</Eyebrow>
+          <ol className="mt-1 space-y-0.5 text-xs text-ink-3">
+            {upNext.map((s) => <li key={s.key}>{s.title}</li>)}
+          </ol>
+        </section>
+      )}
+    </div>
+  )
+}
+
+/** The one start control: the same `ensureDocumentFromTemplate` the "Also in this stage" list
+ * runs, so there is still exactly one write path for starting a document. */
+function StartFromTemplate({
+  projectPath, stageId, activity, onOpenDocument, onRefresh,
+}: {
+  projectPath: string
+  stageId: string
+  activity: StageActivity
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const start = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await ensureDocumentFromTemplate({ projectPath, stageId, activityId: activity.id, onOpenDocument, onRefresh })
+      if (!result.ok) setError(result.error ?? 'The document could not be started.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'The document could not be started.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <Button variant="primary" size="sm" onClick={start} loading={busy} loadingLabel="Starting…" disabled={busy}>
+        Start from template
+      </Button>
+      {error && <Notice tone="error" role="alert" className="mt-2">{error}</Notice>}
+    </>
   )
 }

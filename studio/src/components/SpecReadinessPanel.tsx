@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SpecReadiness } from '../../shared/types'
-import { Button, Card, Eyebrow, Field, Input, Notice, Segmented } from '../ui'
+import { Button, Card, Disclosure, EYEBROW_CLASS, EYEBROW_TYPE_CLASS, Eyebrow, Field, Input, Notice, Segmented } from '../ui'
 
 type Tier = 'LOW' | 'MEDIUM' | 'HIGH'
 const TIERS: Tier[] = ['LOW', 'MEDIUM', 'HIGH']
@@ -61,7 +61,7 @@ export function SpecReadinessPanel({
     await load()
   }
 
-  if (loading && !readiness) return <p className="text-sm text-ink-4" role="status" aria-busy="true">Checking this spec…</p>
+  if (loading && !readiness) return <p className="text-sm text-ink-3" role="status" aria-busy="true">Checking this spec…</p>
   if (!readiness) return null
 
   if (!readiness.ok) {
@@ -111,11 +111,12 @@ export function SpecReadinessPanel({
           title={`${readiness.blocking.length} thing${readiness.blocking.length === 1 ? '' : 's'} still needed before this can be handed off.`}
           actions={markReady || undefined}
         >
-          <p className="mt-1 text-eyebrow uppercase text-amber-700">Still needed</p>
+          {/* The eyebrow TYPE by name: bare `text-eyebrow` compiles to the colour utility only. */}
+          <p className={`mt-1 ${EYEBROW_TYPE_CLASS} text-status-warn-ink`}>Still needed</p>
           <ul className="mt-1 space-y-1.5">
             {readiness.blocking.map((f, i) => (
               <li key={`${f.check}-${i}`} className="text-sm">
-                <span className="text-amber-700">•</span>{' '}
+                <span className="text-status-warn-ink">•</span>{' '}
                 <span className="text-ink-1">{f.message}</span>
               </li>
             ))}
@@ -138,7 +139,7 @@ export function SpecReadinessPanel({
               projectPath, specPath, tier, authorisedBy?.trim() || undefined,
             ))}
           />
-          <span className="text-xs text-ink-4">
+          <span className="text-xs text-ink-3">
             Raising a tier is free. Lowering one is recorded against whoever decided it.
           </span>
         </div>
@@ -148,7 +149,7 @@ export function SpecReadinessPanel({
             <Input
               value={authorisedBy}
               onChange={(e) => setAuthorisedBy(e.target.value)}
-              className="border-amber-300"
+              className="border-status-warn-line"
             />
           </Field>
         )}
@@ -165,11 +166,11 @@ export function SpecReadinessPanel({
       {readiness.advisory.length > 0 && (
         // Plain card, not a notice: nothing here stops a hand-off.
         <Card as="div" role="region" aria-label="Worth a look" data-tone="advisory">
-          <Eyebrow as="h3" className="text-accent-800">Worth a look</Eyebrow>
+          <Eyebrow as="h3" className="text-accent-text">Worth a look</Eyebrow>
           <ul className="mt-2 space-y-1.5">
             {readiness.advisory.map((f, i) => (
               <li key={`${f.check}-${i}`} className="text-sm">
-                <span className="text-ink-4">–</span>{' '}
+                <span aria-hidden="true" className="text-ink-4">–</span>{' '}
                 <span className="text-ink-1">{f.message}</span>
               </li>
             ))}
@@ -183,10 +184,10 @@ export function SpecReadinessPanel({
 
       {readiness.passed.length > 0 && (
         <Card as="div" padding="md">
-          <details>
-            <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-ink-4">
-              {readiness.passed.length} check{readiness.passed.length === 1 ? '' : 's'} already passing
-            </summary>
+          <Disclosure
+            summaryProps={{ className: `cursor-pointer ${EYEBROW_CLASS}` }}
+            summary={`${readiness.passed.length} check${readiness.passed.length === 1 ? '' : 's'} already passing`}
+          >
             <ul className="mt-2 space-y-1">
               {readiness.passed.map((f, i) => (
                 <li key={`${f.check}-${i}`} className="text-sm text-ink-3">
@@ -194,7 +195,7 @@ export function SpecReadinessPanel({
                 </li>
               ))}
             </ul>
-          </details>
+          </Disclosure>
         </Card>
       )}
     </div>

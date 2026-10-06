@@ -60,6 +60,50 @@ export const POP: TweenPair = {
   to: { scale: 1, duration: MOTION_DURATIONS['dur-3'], ease: MOTION_EASES.pop, clearProps: 'transform' },
 }
 
+// --- round 2 shared shapes -------------------------------------------------------------------
+
+/** M1 the seam: a 2 px accent line drawing from the card's top-centre outward — the Macron's
+ * GESTURE, not its shape (brand §7). `scaleX` from the centre, 0.3 s; plays at 0.3–0.6 s. */
+export const SEAM: TweenPair = {
+  from: { scaleX: 0, transformOrigin: '50% 50%', opacity: 1 },
+  to: { scaleX: 1, duration: 0.3, ease: MOTION_EASES['dur-3'], clearProps: 'transform' },
+}
+
+/** M1 card rise (the success card, the stage summary): y 6→0, 240 ms `power3.out`. */
+export const CARD_RISE: TweenPair = ENTER_PRESETS.rise
+
+/** M6 toast enter: x 12→0, `dur-2` `expo.out`. Exit is opacity 160 ms then height 160 ms. */
+export const TOAST_ENTER: TweenPair = {
+  from: { x: 12, opacity: 0 },
+  to: { x: 0, opacity: 1, duration: MOTION_DURATIONS['dur-2'], ease: MOTION_EASES['dur-3'], clearProps: 'transform' },
+}
+export const TOAST_EXIT_S = 0.16
+
+/** I8 / M5 crossfades: outgoing `dur-1`, incoming `dur-2`. Opacity only, so reduced motion
+ * keeps them (capped by `fadeDuration`). */
+export const CROSSFADE_OUT: TweenPair = {
+  from: { opacity: 1 },
+  to: { opacity: 0, duration: MOTION_DURATIONS['dur-1'], ease: MOTION_EASES['dur-1'] },
+}
+export const CROSSFADE_IN: TweenPair = {
+  from: { opacity: 0 },
+  to: { opacity: 1, duration: MOTION_DURATIONS['dur-2'], ease: MOTION_EASES['dur-2'] },
+}
+
+/** I7 edge draw: `strokeDashoffset` length→0 over 220 ms. The caller sets `strokeDasharray`. */
+export const EDGE_DRAW_S = 0.22
+
+/** The Flip settings the two shared-element moves use. `scale: false` everywhere — a Flip that
+ * scales text reads as a zoom, not a move. */
+export const FLIP_SHARED = { duration: 0.36, ease: 'power3.inOut', scale: false, absolute: true } as const
+export const FLIP_PLATE = { duration: 0.18, ease: MOTION_EASES['dur-2'], scale: false } as const
+
+/** CSS mirrors (base.css) so a test can hold the two in step: the press scale, the focus
+ * ring-in length and the M10 theme reveal. */
+export const PRESS_SCALE = 0.985
+export const RING_IN_S = MOTION_DURATIONS['dur-1']
+export const THEME_REVEAL_S = 0.42
+
 /** Caps a target list for a stagger so one long list cannot blow the tween budget. */
 export function capTargets<T>(targets: readonly T[], cap: number): T[] {
   return targets.slice(0, cap)

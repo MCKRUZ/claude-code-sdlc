@@ -41,7 +41,8 @@ describe('sprint ids', () => {
 describe('no data is never a zero', () => {
   it('ages a verdict only when the plugin could', () => {
     expect(businessDays(null)).toBe('no data')
-    expect(businessDays(0)).toBe('0 business days')
+    // A 0 the plugin DID report is "today" — not an absence, and not a count that reads like one.
+    expect(businessDays(0)).toBe('today')
     expect(businessDays(1)).toBe('1 business day')
     expect(businessDays(3)).toBe('3 business days')
   })

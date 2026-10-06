@@ -23,20 +23,34 @@
     background: var(--color-surface-0);
   }
 
+  /* The ground is `html` (surface-0, painted to the canvas). `body` is transparent so the glow
+     layer below it shows through; an opaque body would paint over a negative z-index child. */
   body {
     min-width: 320px;
     min-height: 100vh;
     margin: 0;
-    background:
-      radial-gradient(circle at top, var(--canvas-glow-1), transparent 34%),
-      radial-gradient(circle at bottom right, var(--canvas-glow-2), transparent 28%),
-      var(--color-surface-0);
+    background: transparent;
     color: var(--color-ink-1);
   }
 
   #root {
     min-height: 100vh;
     background: transparent;
+  }
+
+  /* The two radial glows live on a fixed, inert layer UNDER the app rather than on `body`
+     (C4/A1): a sticky header that paints opaque `surface-0` when stuck then composites over the
+     same flat ground it covers, instead of cutting a band out of a gradient that scrolls with
+     the document. `z-index: -1` keeps it beneath every in-flow box of the root stacking context. */
+  #root::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at top, var(--canvas-glow-1), transparent 34%),
+      radial-gradient(circle at bottom right, var(--canvas-glow-2), transparent 28%);
   }
 
   a {
@@ -65,6 +79,45 @@
     outline: 2px solid transparent;
     outline-offset: 2px;
     box-shadow: var(--ring);
+  }
+
+  /* M8 focus-arrive: the ring grows from spread 0 over `dur-1`, ending on the static `--ring`
+     above (which stays the resting value: forced-colours and the a11y `box-shadow !== 'none'`
+     pin read the rule, not the keyframe). Fields are excluded — they wear the flush halo below,
+     and a ring animating in over it would flash. `[data-motion="off"]` and reduced motion zero
+     `animation-duration`, so the end state is simply the ring. */
+  @keyframes ring-in {
+    from {
+      box-shadow: 0 0 0 0 var(--color-surface-0), 0 0 0 0 var(--color-focus);
+    }
+    to {
+      box-shadow: var(--ring);
+    }
+  }
+
+  :focus-visible:where(:not(input, textarea, select, [role="combobox"])) {
+    animation: ring-in var(--dur-1) var(--ease-out);
+  }
+
+  /* M8 universal press: anything carrying `data-pressable` sinks 1.5 % while held. A transform
+     makes the element a containing block for fixed descendants, so this stays on controls, never
+     a layout region; disabled controls do not move. Selection text set to tokens so the brand
+     wash, not the OS blue, is what a person sees when they select a sentence. */
+  [data-pressable]:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: scale(0.985);
+    transition: transform 80ms var(--ease-out);
+  }
+
+  ::selection {
+    background: var(--color-accent-200);
+    color: var(--color-ink-1);
+  }
+
+  mark {
+    background: var(--color-status-warn-bg);
+    color: var(--color-status-warn-ink);
+    border-radius: 2px;
+    padding-inline: 0.125em;
   }
 
   /* Thin, inset, trackless: the scrollbar stops being a grey column beside every list. The
@@ -130,8 +183,8 @@ select:focus-visible,
   --canvas-glow-2: rgb(14 124 134 / 0.06);
 }
 [data-theme="dark"] {
-  --canvas-glow-1: rgb(26 153 163 / 0.05);
-  --canvas-glow-2: rgb(14 124 134 / 0.035);
+  --canvas-glow-1: rgb(26 153 163 / 0.09);
+  --canvas-glow-2: rgb(14 124 134 / 0.05);
 }
 
 /* §2.1 theme switch: theme.ts adds this class for 260 ms so colours cross-fade instead of
@@ -141,6 +194,58 @@ html.theme-switching * {
     background-color 200ms,
     border-color 200ms,
     color 200ms;
+}
+
+/* M10 "dusk" reveal. When theme.ts flips the attribute inside `document.startViewTransition`
+   it sets `data-view-transition` on `<html>` for the duration and writes the origin into
+   `--theme-reveal-x` / `--theme-reveal-y` (lengths or percentages; the last pointerdown, or the
+   window centre for the shortcut). The new theme is revealed as a growing circle over the old
+   one, 420 ms `--ease-expo-out`; the per-element cross-fade is suppressed meanwhile, or the new
+   snapshot would be captured mid-fade. Only P2's theme.ts starts a transition, and only when
+   motion is enabled and not reduced, so the two zeroing rules below are a belt for the braces. */
+html.theme-switching[data-view-transition] * {
+  transition: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-expo-out);
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  animation-name: none;
+}
+
+::view-transition-new(root) {
+  animation-name: theme-reveal;
+}
+
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%));
+  }
+  to {
+    clip-path: circle(150% at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%));
+  }
+}
+
+html[data-motion="off"]::view-transition-new(root) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion])::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* M4 shared-element Flip: the element flying back to its row is lifted above its siblings for
+   the duration. `sharedElement.ts` toggles the class (`toggleClass: 'is-flipping'`). */
+.is-flipping {
+  position: relative;
+  z-index: 1;
 }
 
 /* §2.1 density. Compact tightens the rhythm vars and the body size; nothing here moves the

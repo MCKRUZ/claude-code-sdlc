@@ -490,8 +490,13 @@ describe('ChatPanel — spec 0018: the header names which document it is helping
       ready: false,
     }
     installStudioMock({ getStageReadiness: vi.fn().mockResolvedValue(readiness) })
-    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
-    await waitFor(() => expect(screen.getByText('Helping with: epics.md')).toBeTruthy())
+    const { container } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    // S9: the filename is a Chip (an identifier, once), the label is the sentence around it.
+    await waitFor(() => expect(screen.getByTestId('chat-helping-with').textContent).toBe('epics.md'))
+    expect(screen.getByText(/^Helping with:/).textContent).toBe('Helping with: epics.md')
+    expect(screen.getByTestId('chat-helping-with').className).toContain('rounded-full')
+    const aside = container.querySelector('aside')!
+    expect(aside.textContent!.split('epics.md').length - 1).toBe(1)
   })
 
   it('falls back to the generic "Can see" subtitle when the current step is Sign-off, not a document', async () => {
@@ -528,7 +533,8 @@ describe('ChatPanel — finding #1: cross-panel agreement during a stage switch'
     })
 
     const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="old" />)
-    await waitFor(() => expect(screen.getByText('Helping with: old-doc.md')).toBeTruthy())
+    const helpingWith = () => screen.getByTestId('chat-helping-with').textContent
+    await waitFor(() => expect(helpingWith()).toBe('old-doc.md'))
 
     rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="new" />)
 
@@ -536,10 +542,70 @@ describe('ChatPanel — finding #1: cross-panel agreement during a stage switch'
     // (StageHome/WorkflowTab) keeps showing the OLD stage's content until the new fetch resolves.
     // The chat header must agree, not revert to the generic "Can see" line while the real document
     // panel beside it is still showing `old-doc.md`.
-    expect(screen.getByText('Helping with: old-doc.md')).toBeTruthy()
+    expect(helpingWith()).toBe('old-doc.md')
 
     await act(async () => { resolveNewReadiness(readinessWithDoc('new', 'new-doc.md')) })
-    await waitFor(() => expect(screen.getByText('Helping with: new-doc.md')).toBeTruthy())
+    await waitFor(() => expect(helpingWith()).toBe('new-doc.md'))
+  })
+})
+
+describe('ChatPanel — S9: the empty and the failed conversation read from the top of the list', () => {
+  it('an already-started stage renders the sentence, then the hint, then stage · read-only, as the FIRST thing in the list region, above the composer', async () => {
+    installStudioMock({ getStageReadiness: vi.fn().mockResolvedValue(readinessWithDoc('0', 'constitution.md')) })
+    const { container } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('Type a message…')).toBeTruthy())
+    const empty = screen.getByTestId('chat-empty-state')
+    // At the top: the first child of the scrolling list, not pinned to its floor.
+    expect(empty.parentElement!.firstElementChild).toBe(empty)
+    // Above the composer in DOM order.
+    const composer = screen.getByPlaceholderText('Type a message…')
+    expect(empty.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // The pinned sentence pair reads as one run (chatAuthoring's regex), the hint directly after.
+    expect(empty.textContent).toMatch(/already started\. Ask a question/)
+    expect(screen.getByTestId('chat-empty-facts').textContent).toBe('0 · read-only until you accept a proposal')
+    // The document's name appears once in the whole aside — in the header's Chip.
+    expect(container.querySelector('aside')!.textContent!.split('constitution.md').length - 1).toBe(1)
+    expect(container.querySelectorAll('aside li')).toHaveLength(0)
+  })
+
+  it('a failed start states the failure, the host\'s words in their own span, and the retry hint — once, inside the card', async () => {
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(emptyState()),
+      ensureChatStarted: vi.fn().mockResolvedValue({ ok: false, state: emptyState(), error: 'claude: not signed in' } satisfies ChatTurnResult),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByText('claude: not signed in')).toBeTruthy())
+    const empty = screen.getByTestId('chat-empty-state')
+    expect(empty.textContent).toContain('The assistant could not start.')
+    expect(empty.textContent).toContain('Type a message to try again')
+    expect(screen.getByText('claude: not signed in').closest('[data-testid="chat-empty-state"]')).toBe(empty)
+    // No second red strip under an empty thread.
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('the Stop reason is said in plain words and the quick replies use the accent-text tokens', async () => {
+    const pending: ChatState = {
+      sessionId: 's',
+      messages: [{ id: 'm1', role: 'assistant', text: 'Pick one:', questions: [{ id: 'q1', question: 'Which?', options: ['A'] }], proposals: [], at: new Date().toISOString() }],
+    }
+    let resolveSend: (r: ChatTurnResult) => void = () => {}
+    installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(pending),
+      sendChatMessage: vi.fn().mockImplementation(() => new Promise<ChatTurnResult>((r) => { resolveSend = r })),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByRole('button', { name: 'A' })).toBeTruthy())
+    const pill = screen.getByRole('button', { name: 'A' })
+    expect(pill.className).toContain('text-accent-text')
+    expect(pill.className).not.toContain('bg-white')
+    expect(pill.className).toContain('rounded-full')
+    const user = userEvent.setup()
+    await user.type(screen.getByPlaceholderText('Type a message…'), 'hello')
+    await act(async () => { await user.click(screen.getByRole('button', { name: 'Send' })) })
+    const stop = screen.getByRole('button', { name: /^Stop/ })
+    expect(stop.textContent).toContain('Stopping a reply is not available yet')
+    expect(stop.textContent).not.toMatch(/Batch|F15/)
+    await act(async () => { resolveSend({ ok: true, state: pending }) })
   })
 })
 

@@ -60,7 +60,7 @@ export function CodeHostOverride({
         onChange={(host) => { if (host !== value) onSet(host) }}
         options={HOSTS.map((h) => ({ value: h, label: HOST_LABEL[h] }))}
       />
-      <span className="text-xs text-ink-4">Written to {CODE_HOST_FILE}; overrides what the origin remote says.</span>
+      <span className="text-xs text-ink-3">Written to {CODE_HOST_FILE}; overrides what the origin remote says.</span>
     </div>
   )
 }
@@ -80,11 +80,11 @@ export function Section({
 }) {
   return (
     <Card as="section" id={id} aria-labelledby={`${id}-title`} className="scroll-mt-28">
-      {/* Section labels recede (ink-4) so the facts below lead; the file path keeps to the
-          right in mono so a reader can always go and edit the real thing. */}
+      {/* Section labels recede (the eyebrow voice) so the facts below lead; the file path keeps
+          to the right in mono — words, so ink-3 — so a reader can always go and edit the real thing. */}
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Eyebrow as="h3" id={`${id}-title`}>{title}</Eyebrow>
-        {file && <span className="shrink-0 text-right font-mono text-xs text-ink-4">{fileLabel} {file}</span>}
+        {file && <span className="shrink-0 text-right font-mono text-xs text-ink-3">{fileLabel} {file}</span>}
       </div>
 
       {/* Not configured and misconfigured are different answers, shown differently. */}

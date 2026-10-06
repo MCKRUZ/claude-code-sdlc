@@ -3,10 +3,11 @@
 // without a DOM — GSAP tweens any object.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  applyMotionAttribute, configureMotionForTests, enabled, getPreference, motion, reduced, setPreference, subscribe,
+  applyMotionAttribute, configureMotionForTests, enabled, getPreference, hashProjectKey, motion, opensStorageKey, reduced,
+  setPreference, subscribe, tierForOpens,
 } from '../../src/motion/motion'
 import { StubTimeline, stubGsap } from '../../src/motion/stub'
-import { MOTION_DURATIONS, MOTION_EASES } from '../../src/motion/contract'
+import { FAMILIARITY_FULL_MAX_OPENS, FAMILIARITY_QUIET_MAX_OPENS, MOTION_DURATIONS, MOTION_EASES } from '../../src/motion/contract'
 
 // Typed as a plain record: lib DOM declares `window` as REQUIRED on `globalThis`, so the shims
 // could not otherwise be assigned or deleted.
@@ -134,6 +135,49 @@ describe('preference persistence and the data-motion attribute', () => {
     expect(motion.durations).toBe(MOTION_DURATIONS)
     expect(motion.eases).toBe(MOTION_EASES)
     expect(motion.preference).toBe('auto')
+  })
+})
+
+describe('familiarity (M3) — a count, never a date', () => {
+  it('tiers: opens 1–3 full, 4–10 quiet, past ten settled; 0 (never recorded) is a first open', () => {
+    expect(tierForOpens(0)).toBe('full')
+    expect(tierForOpens(FAMILIARITY_FULL_MAX_OPENS)).toBe('full')
+    expect(tierForOpens(FAMILIARITY_FULL_MAX_OPENS + 1)).toBe('quiet')
+    expect(tierForOpens(FAMILIARITY_QUIET_MAX_OPENS)).toBe('quiet')
+    expect(tierForOpens(FAMILIARITY_QUIET_MAX_OPENS + 1)).toBe('settled')
+  })
+
+  it('counts one per recordOpen under a hashed studio.opens.<hash> key — the path itself never lands in storage', () => {
+    const store = fakeStorage()
+    const key = opensStorageKey('/Users/someone/clients/acme-claims')
+    expect(key.startsWith('studio.opens.')).toBe(true)
+    expect(key).not.toContain('acme')
+    expect(hashProjectKey('a')).not.toBe(hashProjectKey('b'))
+    expect(hashProjectKey('/p')).toBe(hashProjectKey('/p'))
+    expect(motion.familiarity('/Users/someone/clients/acme-claims')).toBe('full')
+    for (let i = 0; i < 3; i += 1) motion.recordOpen('/Users/someone/clients/acme-claims')
+    expect(store.get(key)).toBe('3')
+    expect(motion.familiarity('/Users/someone/clients/acme-claims')).toBe('full')
+    motion.recordOpen('/Users/someone/clients/acme-claims')
+    expect(motion.familiarity('/Users/someone/clients/acme-claims')).toBe('quiet')
+    for (let i = 0; i < 7; i += 1) motion.recordOpen('/Users/someone/clients/acme-claims')
+    expect(store.get(key)).toBe('11')
+    expect(motion.familiarity('/Users/someone/clients/acme-claims')).toBe('settled')
+    // Another project is another counter.
+    expect(motion.familiarity('/elsewhere')).toBe('full')
+  })
+
+  it('resetFamiliarity forgets the counter; garbage and blocked storage read as a first open', () => {
+    const store = fakeStorage({ [opensStorageKey('/p')]: 'twelve' })
+    expect(motion.familiarity('/p')).toBe('full')
+    for (let i = 0; i < 5; i += 1) motion.recordOpen('/p')
+    expect(motion.familiarity('/p')).toBe('quiet')
+    motion.resetFamiliarity('/p')
+    expect(store.has(opensStorageKey('/p'))).toBe(false)
+    expect(motion.familiarity('/p')).toBe('full')
+    delete g.localStorage
+    expect(motion.familiarity('/p')).toBe('full')
+    expect(() => motion.recordOpen('/p')).not.toThrow()
   })
 })
 

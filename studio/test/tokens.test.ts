@@ -10,8 +10,9 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type {
-  AccentStep, DensityVar, DurationToken, InkToken, LineToken, RadiusToken, ShadowToken,
-  SpecToneToken, StageGroup, StaggerToken, StatusGroup, SurfaceToken, ToneSlot, TypeToken,
+  AccentStep, AccentTextToken, DensityVar, DurationToken, EyebrowToken, InkToken, LineToken, MarkDepthVar,
+  RadiusToken, ShadowToken, SpecToneToken, StageGroup, StaggerToken, StatusGroup, SurfaceToken, ThemeRevealVar,
+  ToneSlot, TypeToken,
 } from '../src/theme/tokens'
 import { MOTION_DURATIONS, MOTION_STAGGERS } from '../src/motion/contract'
 
@@ -30,6 +31,10 @@ const SURFACES = Object.keys({
   'surface-code': 1, 'surface-code-error': 1, scrim: 1,
 } satisfies Record<SurfaceToken, 1>)
 const INKS = Object.keys({ 'ink-1': 1, 'ink-2': 1, 'ink-3': 1, 'ink-4': 1, 'ink-inverse': 1 } satisfies Record<InkToken, 1>)
+const EYEBROW = Object.keys({ eyebrow: 1 } satisfies Record<EyebrowToken, 1>)
+const ACCENT_TEXT = Object.keys({ 'accent-text': 1, 'accent-text-hover': 1 } satisfies Record<AccentTextToken, 1>)
+const MARK_DEPTH = Object.keys({ '--mark-depth-a': 1, '--mark-depth-b': 1 } satisfies Record<MarkDepthVar, 1>)
+const THEME_REVEAL = Object.keys({ '--theme-reveal-x': 1, '--theme-reveal-y': 1 } satisfies Record<ThemeRevealVar, 1>)
 const LINES = Object.keys({ 'line-1': 1, 'line-2': 1, 'line-3': 1 } satisfies Record<LineToken, 1>)
 const STEPS = Object.keys({ 50: 1, 100: 1, 200: 1, 300: 1, 400: 1, 500: 1, 600: 1, 700: 1, 800: 1, 900: 1 } satisfies Record<AccentStep, 1>)
 const STAGES = Object.keys({ 'stage-signed': 1, 'stage-current': 1, 'stage-later': 1 } satisfies Record<StageGroup, 1>)
@@ -47,7 +52,7 @@ const tones = (groups: string[]) => groups.flatMap((g) => SLOTS.map((s) => `${g}
 const accent = STEPS.map((s) => `accent-${s}`)
 const brand = STEPS.map((s) => `brand-${s}`)
 /** Every ColorToken except `focus`, which is checked by name. */
-const SEMANTIC = [...SURFACES, ...INKS, ...LINES, 'focus', ...accent, ...brand, ...tones(STAGES), ...tones(STATUSES), ...SPECS]
+const SEMANTIC = [...SURFACES, ...INKS, ...EYEBROW, ...LINES, 'focus', ...accent, ...ACCENT_TEXT, ...brand, ...tones(STAGES), ...tones(STATUSES), ...SPECS]
 /** The tokens dark must restate. `brand-*` aliases `accent-*` so it follows for free. */
 const DARK_OWNED = SEMANTIC.filter((n) => !n.startsWith('brand-'))
 
@@ -99,6 +104,20 @@ describe('tokens.css (light)', () => {
     expect(tokens).toContain('--color-command-running: var(--color-status-running-fill);')
   })
 
+  it('round 2: accent-as-text, the eyebrow voice and the Depth stops (C1, C2, B2)', () => {
+    expect(tokens).toContain('--color-accent-text: #0b6470;')
+    expect(tokens).toContain('--color-accent-text-hover: #0b505a;')
+    expect(tokens).toContain('--color-eyebrow: var(--color-ink-3);')
+    // ink-3 is retuned so a word in it passes AA on surface-2 (tokenContrast.test holds the ratio).
+    expect(tokens).toContain('--color-ink-3: #5d6c84;')
+    expect(tokens).toMatch(/ink-4.*decoration only — placeholders, dividers, aria-hidden glyphs; never a\s+word/s)
+    for (const v of MARK_DEPTH) expect(declares(tokens, v), v).toBe(true)
+    expect(tokens).toContain('--mark-depth-a: #6fd1d4;')
+    expect(tokens).toContain('--mark-depth-b: #0a3f47;')
+    // Depth is not a colour token: no `--color-mark-*`, so no utility can put it on a control.
+    expect(tokens).not.toMatch(/--color-mark-depth/)
+  })
+
   it('declares shadows, the ring, density vars, and motion vars that match the motion contract', () => {
     for (const s of SHADOWS) expect(declares(tokens, `--shadow-${s}`)).toBe(true)
     expect(tokens).toContain('--ring: 0 0 0 2px var(--color-surface-0), 0 0 0 4px var(--color-focus);')
@@ -132,6 +151,17 @@ describe('dark.css', () => {
     expect(dark).toMatch(/\[data-theme="dark"\]\s*\{\s*color-scheme: dark;/)
     for (const name of DARK_OWNED) expect(declares(dark, `--color-${name}`), name).toBe(true)
     for (const s of SHADOWS) expect(declares(dark, `--shadow-${s}`)).toBe(true)
+  })
+
+  it('round 2: dark accent-text is the pale ramp end, ink-4 is lifted, Depth never sinks into surface-0', () => {
+    expect(dark).toContain('--color-accent-text: #6fd1d4;')
+    expect(dark).toContain('--color-accent-text-hover: #a7e6e7;')
+    expect(dark).toContain('--color-eyebrow: var(--color-ink-3);')
+    expect(dark).toContain('--color-ink-4: #6b7a94;')
+    for (const v of MARK_DEPTH) expect(declares(dark, v), v).toBe(true)
+    expect(dark).toContain('--mark-depth-a: #6fd1d4;')
+    // The far stop is accent-600, not accent-900: #0a3f47 on #0b1120 would read as a hole.
+    expect(dark).toContain('--mark-depth-b: #0e7c86;')
   })
 
   it('restates the scrim as surface-0 dark at .6 and keeps the bg-scrim alias (P3)', () => {
@@ -184,5 +214,47 @@ describe('base.css', () => {
     expect(base).toMatch(/\[data-motion="off"\] \*,\s*\[data-motion="off"\] \*::before,\s*\[data-motion="off"\] \*::after \{[^}]*transition-duration: 0ms !important;[^}]*animation-duration: 0ms !important;[^}]*animation-iteration-count: 1 !important;/)
     expect(base).toContain('@media (prefers-reduced-motion: reduce)')
     expect(base).not.toMatch(/#[0-9a-f]{3,8}\b/i)
+  })
+
+  it('round 2 (C4/A1): the two glows live on a fixed, inert #root::before, not on body', () => {
+    const body = base.match(/\n {2}body \{([^}]*)\}/)?.[1] ?? ''
+    expect(body).toContain('background: transparent;')
+    expect(body).not.toMatch(/radial-gradient/)
+    const glow = base.match(/#root::before \{([^}]*)\}/)?.[1] ?? ''
+    expect(glow).toContain('position: fixed;')
+    expect(glow).toContain('inset: 0;')
+    expect(glow).toContain('pointer-events: none;')
+    expect(glow).toContain('z-index: -1;')
+    expect(glow.match(/radial-gradient/g)?.length).toBe(2)
+    // `html` keeps the ground colour so the canvas is never bare.
+    expect(base).toMatch(/\n {2}html \{[^}]*background: var\(--color-surface-0\);/)
+    const darkGlow = base.match(/\[data-theme="dark"\] \{([^}]*)\}/)?.[1] ?? ''
+    expect(darkGlow).toContain('--canvas-glow-1: rgb(26 153 163 / 0.09);')
+    expect(darkGlow).toContain('--canvas-glow-2: rgb(14 124 134 / 0.05);')
+  })
+
+  it('round 2 (M8): universal press and focus-arrive, both zeroed by the motion-off rules', () => {
+    expect(base).toMatch(/\[data-pressable\]:active:not\(:disabled\):not\(\[aria-disabled="true"\]\) \{[^}]*transform: scale\(0\.985\);[^}]*transition: transform 80ms var\(--ease-out\);/)
+    expect(base).toMatch(/@keyframes ring-in \{[\s\S]*?to \{\s*box-shadow: var\(--ring\);/)
+    // The static ring stays the resting value (forced colours; a11y `box-shadow !== 'none'`).
+    expect(base).toMatch(/:focus-visible \{[^}]*box-shadow: var\(--ring\);/)
+    // Fields keep their flush halo: the ring-in never runs on them.
+    expect(base).toMatch(/:focus-visible:where\(:not\(input, textarea, select, \[role="combobox"\]\)\) \{\s*animation: ring-in var\(--dur-1\) var\(--ease-out\);/)
+  })
+
+  it('round 2 (M4, M10): the flip lift, the view-transition reveal and the suppressed cross-fade', () => {
+    expect(base).toMatch(/\.is-flipping \{\s*position: relative;\s*z-index: 1;\s*\}/)
+    expect(base).toContain('html.theme-switching[data-view-transition] * {\n  transition: none;\n}')
+    expect(base).toMatch(/::view-transition-old\(root\),\s*::view-transition-new\(root\) \{[^}]*animation-duration: 420ms;[^}]*animation-timing-function: var\(--ease-expo-out\);/)
+    expect(base).toMatch(/::view-transition-new\(root\) \{\s*animation-name: theme-reveal;/)
+    for (const v of THEME_REVEAL) expect(base, v).toContain(`var(${v}, 50%)`)
+    expect(base).toMatch(/html\[data-motion="off"\]::view-transition-new\(root\) \{\s*animation: none;/)
+    // Widths still never animate anywhere in the theme switch.
+    expect(base.match(/html\.theme-switching \* \{([^}]*)\}/)?.[1]).not.toMatch(/width/)
+  })
+
+  it('round 2: selection and mark take tokens — the brand wash, not the OS blue', () => {
+    expect(base).toMatch(/::selection \{\s*background: var\(--color-accent-200\);\s*color: var\(--color-ink-1\);/)
+    expect(base).toMatch(/\n {2}mark \{[^}]*background: var\(--color-status-warn-bg\);[^}]*color: var\(--color-status-warn-ink\);/)
   })
 })

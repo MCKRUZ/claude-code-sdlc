@@ -23,18 +23,25 @@ export const LINE_WIDTH = 1.25
 export const LINE_WIDTH_HOT = 2.0
 export const LINE_WIDTH_ORDER = 1.0
 export const ORDER_OPACITY = 0.45
-export const GRID_OPACITY = { light: 0.12, dark: 0.24 } as const
+/** Round 2 (I2): the slab grid is theme-aware the way the Spine's ground is — `line-2` in light,
+ * `ink-4` in dark, each with enough alpha to be a depth cue and never a scale. */
+export const GRID_OPACITY = { light: 0.28, dark: 0.48 } as const
+export const GRID_TOKEN = { light: 'line-2', dark: 'ink-4' } as const
 export const CONE_RADIUS = 0.06
 export const CONE_LENGTH = 0.16
 
 export interface TetherBuffers {
   edgeCount: number
   live: LineSegments2
+  /** The hovered body's DEPENDENTS (edges into it): the accent set. */
   hot: LineSegments2
+  /** The hovered body's DEPENDENCIES (edges out of it): full `ink-2`. */
+  hotUp: LineSegments2
   ghost: LineSegments2
   order: LineSegments2
   liveMaterial: TetherMaterial
   hotMaterial: TetherMaterial
+  hotUpMaterial: TetherMaterial
   ghostMaterial: TetherMaterial
   orderMaterial: TetherMaterial
   cones: InstancedMesh<ConeGeometry, MeshBasicMaterial>
@@ -60,6 +67,7 @@ function segments(material: TetherMaterial): LineSegments2 {
 export function createTetherBuffers(model: RenderModel, palette: Palette): TetherBuffers {
   const liveMaterial = new TetherMaterial(palette['ink-4'], { linewidth: LINE_WIDTH, opacity: 0.8 })
   const hotMaterial = new TetherMaterial(palette['accent-500'], { linewidth: LINE_WIDTH_HOT, opacity: 1 })
+  const hotUpMaterial = new TetherMaterial(palette['ink-2'], { linewidth: LINE_WIDTH_HOT, opacity: 1 })
   const ghostMaterial = new TetherMaterial(palette['ink-4'], { linewidth: LINE_WIDTH, opacity: 0.45 })
   ghostMaterial.setGhost(true)
   // The order path: static 2:1 dash, no flow, under the tethers (renderOrder 1 < halos' 2).
@@ -75,15 +83,15 @@ export function createTetherBuffers(model: RenderModel, palette: Palette): Tethe
   cones.frustumCulled = false
   // The slab grid is a depth cue, not the subject: a hairline well below the bodies, faint in
   // light and a touch brighter in dark (`line-1` on `surface-0` is invisible there).
-  const grid = new GridHelper(16, 16, palette['line-1'], palette['line-1'])
+  const grid = new GridHelper(16, 16, palette[GRID_TOKEN.light], palette[GRID_TOKEN.light])
   grid.position.y = -2.0
   const gm = grid.material as LineBasicMaterial
   gm.transparent = true
   gm.opacity = GRID_OPACITY.light
   gm.depthWrite = false
   return {
-    edgeCount, live: segments(liveMaterial), hot: segments(hotMaterial), ghost: segments(ghostMaterial), order,
-    liveMaterial, hotMaterial, ghostMaterial, orderMaterial, cones, grid,
+    edgeCount, live: segments(liveMaterial), hot: segments(hotMaterial), hotUp: segments(hotUpMaterial), ghost: segments(ghostMaterial), order,
+    liveMaterial, hotMaterial, hotUpMaterial, ghostMaterial, orderMaterial, cones, grid,
   }
 }
 
@@ -96,10 +104,11 @@ export function syncTetherBuffers(prev: TetherBuffers | null, model: RenderModel
 export function applyTetherPalette(buffers: TetherBuffers, palette: Palette, dark = false): void {
   buffers.liveMaterial.color.copy(palette['ink-4'])
   buffers.hotMaterial.color.copy(palette['accent-500'])
+  buffers.hotUpMaterial.color.copy(palette['ink-2'])
   buffers.ghostMaterial.color.copy(palette['ink-4'])
   buffers.orderMaterial.color.copy(palette['accent-500'])
   buffers.cones.material.color.copy(palette['ink-4'])
-  const c: Color = dark ? palette['ink-4'] : palette['line-1']
+  const c: Color = palette[GRID_TOKEN[dark ? 'dark' : 'light']]
   const gm = buffers.grid.material as LineBasicMaterial
   gm.color.copy(c)
   gm.opacity = dark ? GRID_OPACITY.dark : GRID_OPACITY.light
@@ -109,6 +118,7 @@ export function applyTetherPalette(buffers: TetherBuffers, palette: Palette, dar
 export function setTetherResolution(buffers: TetherBuffers, width: number, height: number): void {
   buffers.liveMaterial.resolution.set(width, height)
   buffers.hotMaterial.resolution.set(width, height)
+  buffers.hotUpMaterial.resolution.set(width, height)
   buffers.ghostMaterial.resolution.set(width, height)
   buffers.orderMaterial.resolution.set(width, height)
 }
@@ -135,6 +145,7 @@ function writeSegments(line: LineSegments2, data: number[]): void {
 export function writeTethers(buffers: TetherBuffers, model: RenderModel, positions: ArrayLike<number>, hovered: number | null, scale = 1): void {
   const live: number[] = []
   const hot: number[] = []
+  const hotUp: number[] = []
   const ghost: number[] = []
   model.edges.forEach((e, i) => {
     scratchA.set(positions[e.from * 3], positions[e.from * 3 + 1], positions[e.from * 3 + 2])
@@ -151,7 +162,8 @@ export function writeTethers(buffers: TetherBuffers, model: RenderModel, positio
       scratchA.addScaledVector(scratchD, rFrom)
       scratchB.addScaledVector(scratchD, -rTo)
     }
-    const bucket = e.ghost ? ghost : hovered !== null && (e.from === hovered || e.to === hovered) ? hot : live
+    // Direction split (I5): out of the hovered body = what it depends on; into it = its dependents.
+    const bucket = e.ghost ? ghost : hovered === null ? live : e.from === hovered ? hotUp : e.to === hovered ? hot : live
     bucket.push(scratchA.x, scratchA.y, scratchA.z, scratchB.x, scratchB.y, scratchB.z)
 
     scratchQ.setFromUnitVectors(UP, scratchD)
@@ -163,6 +175,7 @@ export function writeTethers(buffers: TetherBuffers, model: RenderModel, positio
   })
   writeSegments(buffers.live, live)
   writeSegments(buffers.hot, hot)
+  writeSegments(buffers.hotUp, hotUp)
   writeSegments(buffers.ghost, ghost)
   writeSegments(buffers.order, orderPath(model, positions, scale))
   buffers.cones.instanceMatrix.needsUpdate = true
@@ -197,18 +210,21 @@ export function orderPath(model: RenderModel, positions: ArrayLike<number>, scal
 export function setTetherFlow(buffers: TetherBuffers, flowing: boolean): void {
   buffers.liveMaterial.setFlowing(flowing)
   buffers.hotMaterial.setFlowing(flowing)
+  buffers.hotUpMaterial.setFlowing(flowing)
 }
 
 export function advanceTetherFlow(buffers: TetherBuffers, deltaSeconds: number): void {
   // Slow: the flow is a direction hint, not a conveyor belt.
   buffers.liveMaterial.advanceFlow(deltaSeconds * 0.35)
   buffers.hotMaterial.advanceFlow(deltaSeconds * 0.35)
+  buffers.hotUpMaterial.advanceFlow(deltaSeconds * 0.35)
 }
 
 export function disposeTetherBuffers(buffers: TetherBuffers): void {
-  for (const line of [buffers.live, buffers.hot, buffers.ghost, buffers.order]) line.geometry.dispose()
+  for (const line of [buffers.live, buffers.hot, buffers.hotUp, buffers.ghost, buffers.order]) line.geometry.dispose()
   buffers.liveMaterial.dispose()
   buffers.hotMaterial.dispose()
+  buffers.hotUpMaterial.dispose()
   buffers.ghostMaterial.dispose()
   buffers.orderMaterial.dispose()
   buffers.cones.geometry.dispose()

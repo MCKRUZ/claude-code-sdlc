@@ -3,8 +3,8 @@
 // two screens can never both answer the same key. Handlers live in a ref: the listener is
 // attached once and reads the latest callbacks, so a parent re-render costs no re-subscribe.
 import { useEffect, useRef } from 'react'
-import { CHORD_WINDOW_MS, SHORTCUT_MAP, chordFromEvent, isMacPlatform, normalizeChord } from './shortcutMap'
-import type { ShortcutAction, ShortcutBinding, ShortcutScope } from './shortcutMap'
+import { CHORD_WINDOW_MS, SHORTCUT_MAP, chordFromEvent, inSceneScope, isMacPlatform, normalizeChord } from './shortcutMap'
+import type { SceneCommand, ShortcutAction, ShortcutBinding, ShortcutScope } from './shortcutMap'
 import type { BuildView } from '../../shared/nav'
 
 export interface ShortcutHandlers {
@@ -25,6 +25,10 @@ export interface ShortcutHandlers {
   stageTab?: (tab: 1 | 2 | 3) => void
   stepDocument?: (delta: 1 | -1) => void
   saveField?: () => void
+  /** Round 2 (I6): a graph key, dispatched only while the figure has focus (`inSceneScope`). The
+   * figure runs its own keydown first and consumes the event, so this fires only for a host that
+   * routes graph keys itself. */
+  sceneCommand?: (command: SceneCommand) => void
 }
 
 export interface UseShortcutsOptions {
@@ -76,6 +80,7 @@ export function dispatchShortcut(action: ShortcutAction, h: ShortcutHandlers): b
     case 'stageTab': return call(h.stageTab, action.tab)
     case 'documentStep': return call(h.stepDocument, action.delta)
     case 'saveField': return call(h.saveField)
+    case 'scene': return call(h.sceneCommand, action.command)
   }
 }
 
@@ -107,6 +112,9 @@ export function useShortcuts(options: UseShortcutsOptions): void {
       if (!chord) return
       const editable = isEditableTarget(e.target)
       const live = new Set<ShortcutScope>(['global', ...(o.scopes ?? [])])
+      // The graph's keys exist only while the graph has focus — never from the host's scopes.
+      if (inSceneScope(e.target)) live.add('scene')
+      else live.delete('scene')
       const candidates = (o.bindings ?? SHORTCUT_MAP).filter((b) => live.has(b.scope) && (b.inInputs || !editable))
       // Date.now(), not e.timeStamp: the latter is set at construction and a test cannot
       // control it, while fake timers control this.

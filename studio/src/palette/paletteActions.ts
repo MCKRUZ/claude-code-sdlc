@@ -92,6 +92,10 @@ export function buildActionEntries(hooks: PaletteActionHooks): PaletteEntry[] {
   if (hooks.toggleChat) out.push(action('chat', 'Toggle chat panel', ['chat', 'talk', 'panel'], hooks.toggleChat, ['Mod', '\\']))
   if (hooks.toggleSpine) out.push(action('spine', 'Collapse or expand the Spine', ['spine', 'sidebar', 'collapse', 'expand', 'lifecycle'], hooks.toggleSpine))
   if (hooks.toggleSurface) out.push(action('surface', 'Graph or Table for the visible scene', ['graph', 'table', 'scene', '3d', 'surface'], hooks.toggleSurface))
+  // Round 2 (I6): the graph's two commands, present only while a graph is on screen. Screen
+  // callbacks — they move the camera home and focus a plate; nothing is fetched or written.
+  if (hooks.fitGraph) out.push(action('fit-graph', 'Fit the graph', ['fit', 'graph', 'camera', 'home', 'reset', 'view'], hooks.fitGraph, ['Home']))
+  if (hooks.focusNextUp) out.push(action('focus-next-up', 'Focus next up', ['next', 'up', 'graph', 'focus', 'spec'], hooks.focusNextUp, ['n']))
   if (hooks.refreshScreen) {
     // P-class reads only: the screen's own refresh. Never openProject or pull (§6.1 [MF]).
     out.push(action('refresh', 'Refresh this screen', ['refresh', 'reload', 'reread'], hooks.refreshScreen, undefined,

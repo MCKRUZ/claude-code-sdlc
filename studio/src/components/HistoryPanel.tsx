@@ -90,7 +90,7 @@ export function HistoryPanel({
       cell: (v) => (
         <>
           <span className="font-medium text-ink-1">v{v.n}</span>
-          {v.restoredFrom !== undefined && <p className="mt-0.5 text-2xs text-ink-4">from v{v.restoredFrom}</p>}
+          {v.restoredFrom !== undefined && <p className="mt-0.5 text-2xs text-ink-3">from v{v.restoredFrom}</p>}
         </>
       ),
     },
@@ -101,7 +101,7 @@ export function HistoryPanel({
       header: 'Why',
       cell: (v) => (
         <>
-          {v.reason || <span className="text-ink-4">No reason recorded.</span>}
+          {v.reason || <span className="text-ink-3">No reason recorded.</span>}
           {!v.present && (
             // A real state, not an error: the content store is local, so a version saved on
             // someone else's machine has metadata here but no bytes.

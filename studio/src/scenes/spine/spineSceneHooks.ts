@@ -10,11 +10,12 @@ import { contextFrom } from '../../motion/choreo/_shared'
 import { spineParallax } from '../../motion/choreo/spineParallax'
 import { MOTION_DURATIONS, MOTION_EASES } from '../../motion/contract'
 import { motion } from '../../motion/motion'
+import type { FamiliarityApi, FamiliarityTier } from '../../motion/contract'
 import type { CaptionItem, PlateItem } from '../core/projectLabels'
 import type { SceneDataSpine } from '../core/types'
 import { CAMERA_FOV, ELEVATION, spinePose } from './spineCamera'
 import { captionAnchor } from './spineGeometry'
-import { discRadius, groupCaptions, plateLines } from './spineModel'
+import { discRadius, groupCaptions, ledgerLine, plateLines, shortLabel } from './spineModel'
 
 export { CAMERA_FOV }
 
@@ -23,10 +24,33 @@ export interface ParallaxState {
   pitch: number
 }
 
+/** Round 2: what the scene adds to the camera beyond the pointer parallax — the reticle's glance
+ * (`yaw`, ≤ `RETICLE_YAW_MAX`, I3) and the ledger's opening pull-back (`back`, `LEDGER_BACK` → 1,
+ * I4). Plain numbers GSAP tweens; `useFrame` reads them. */
+export interface ViewState {
+  yaw: number
+  back: number
+}
+
+/** Round 2 (M3 join): the current station's breath count by familiarity — full 3 cycles, quiet 1,
+ * settled none. A count of opens, never a date. */
+export const PULSE_CYCLES_BY_TIER: Readonly<Record<FamiliarityTier, number>> = { full: 3, quiet: 1, settled: 0 }
+
+/** `motion.familiarity(key)` when round 2's motion layer (P2) provides it; `full` until then —
+ * the existing three breaths. Duck-typed so this file compiles against either `MotionApi`. */
+export function familiarityTierOf(api: unknown, projectKey: string): FamiliarityTier {
+  const f = (api as Partial<FamiliarityApi> | null)?.familiarity
+  if (typeof f !== 'function') return 'full'
+  const tier = f.call(api, projectKey)
+  return tier in PULSE_CYCLES_BY_TIER ? tier : 'full'
+}
+
 /** fov 24 on an orbit whose distance and look-at come from the band's size and the station count
  * (`spinePose`), re-placed each demand frame with the current yaw / pitch offset, so the
  * parallax tween only has to write numbers and a resize simply reframes. */
-export function useSpineCamera(parallax: ParallaxState, stationCount: number): void {
+const STILL_VIEW: ViewState = { yaw: 0, back: 1 }
+
+export function useSpineCamera(parallax: ParallaxState, stationCount: number, view: ViewState = STILL_VIEW): void {
   const camera = useThree((s) => s.camera)
   const size = useThree((s) => s.size)
   const invalidate = useThree((s) => s.invalidate)
@@ -43,12 +67,12 @@ export function useSpineCamera(parallax: ParallaxState, stationCount: number): v
   }, [camera, invalidate, size.width, size.height])
 
   useFrame(() => {
-    const pose = spinePose(stationCount, size.width, size.height)
+    const pose = spinePose(stationCount, size.width, size.height, view.back)
     const { offset, spherical, target } = scratch
     target.set(pose.target[0], pose.target[1], pose.target[2])
     offset.set(0, Math.sin(ELEVATION) * pose.distance, Math.cos(ELEVATION) * pose.distance)
     spherical.setFromVector3(offset)
-    spherical.theta += parallax.yaw
+    spherical.theta += parallax.yaw + view.yaw
     spherical.phi = Math.min(Math.PI - 0.05, Math.max(0.05, spherical.phi + parallax.pitch))
     offset.setFromSpherical(spherical)
     camera.position.copy(target).add(offset)
@@ -108,7 +132,9 @@ export function useParallaxPointer(parallax: ParallaxState): boolean {
  * sides into two level bands, so same-band neighbours are two stations apart. `anchorRadius` is
  * the station's real disc edge (the knot's reach for Build), which is what a plate keeps clear
  * of. `kind: 'Stage'` so the accessible name is "Stage <id>: <display>", never a bare id; the
- * expanded lines are the sidebar's words and the plugin's facts verbatim. */
+ * expanded lines are the sidebar's words and the plugin's facts verbatim. Round 2: the plate
+ * wears its short label collapsed (S3; the current station keeps its full name), and on the
+ * Closing ledger (`data.ledger`, I4) every plate carries its ledger line. */
 export function usePlateItems(data: SceneDataSpine, points: Vector3[]): PlateItem[] {
   return useMemo(
     () =>
@@ -118,6 +144,8 @@ export function usePlateItems(data: SceneDataSpine, points: Vector3[]): PlateIte
           id: station.id,
           kind: 'Stage',
           title: station.display,
+          shortTitle: station.isCurrent ? undefined : shortLabel(station),
+          subtitle: data.ledger ? ledgerLine(station) : undefined,
           anchor: p.clone(),
           anchorRadius: discRadius(station.isBuild),
           side: i % 2 === 0 ? ('below' as const) : ('above' as const),

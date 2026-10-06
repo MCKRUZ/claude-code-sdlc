@@ -69,4 +69,42 @@ describe('Dialog', () => {
     render(<Harness />)
     expect(screen.queryByRole('dialog')).toBeNull()
   })
+
+  it('M5: a settled panel carries no residual transform and its end state equals a cold reload', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    const dialog = screen.getByRole('dialog') as HTMLElement
+    expect(dialog.style.transform).toBe('')
+    expect(dialog.style.translate).toBe('')
+    expect(dialog.style.scale).toBe('')
+    // Opacity is the one inline end state the row may leave; it reads as fully visible.
+    expect(['', '1']).toContain(dialog.style.opacity)
+    const scrim = dialog.parentElement as HTMLElement
+    expect(scrim.hasAttribute('data-dialog-scrim')).toBe(true)
+    expect(scrim.hasAttribute('data-closing')).toBe(false)
+  })
+
+  it('M5: closing with motion off unmounts synchronously (no 120 ms ghost under test / reduced motion)', () => {
+    render(<Harness />)
+    fireEvent.click(screen.getByRole('button', { name: 'Open' }))
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(document.querySelector('[data-dialog-scrim]')).toBeNull()
+  })
+
+  it('scrollBody makes the body its own scroll box and the footer takes rounded-b-[inherit]', () => {
+    render(
+      <Dialog open onClose={() => {}} title="Keyboard shortcuts" scrollBody footer={<button type="button">Done</button>}>
+        <ul><li>one</li></ul>
+      </Dialog>,
+    )
+    const dialog = screen.getByRole('dialog')
+    const body = dialog.querySelector('[data-dialog-body]')!
+    expect(body.className).toContain('max-h-[min(60vh,560px)]')
+    expect(body.className).toContain('overflow-y-auto')
+    const footer = screen.getByRole('button', { name: 'Done' }).parentElement!
+    expect(footer.className).toContain('rounded-b-[inherit]')
+    expect(footer.className).not.toContain('rounded-b-[20px]')
+  })
 })

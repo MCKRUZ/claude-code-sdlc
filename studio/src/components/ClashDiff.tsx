@@ -35,8 +35,8 @@ export function ClashDiff({ mine, theirs }: { mine: string; theirs: string }) {
 // the diff use, so a glance at a row's colour says whose it is.
 const TONE = {
   same: { row: '', label: '', mark: '' },
-  mine: { row: 'bg-accent-50', label: 'text-accent-700', mark: 'bg-accent-200' },
-  theirs: { row: 'bg-amber-50', label: 'text-amber-700', mark: 'bg-amber-200' },
+  mine: { row: 'bg-accent-50', label: 'text-accent-text', mark: 'bg-accent-200' },
+  theirs: { row: 'bg-amber-50', label: 'text-status-warn-ink', mark: 'bg-amber-200' },
 } as const
 
 function Row({ line }: { line: DiffLine }) {

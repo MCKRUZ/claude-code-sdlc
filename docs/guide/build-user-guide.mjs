@@ -23,7 +23,7 @@ const templatePath = join(here, 'togo-user-guide.template.html')
 const outputPath = join(here, 'togo-user-guide.html')
 const shotsDir = join(repoRoot, 'studio', 'test', 'screenshots')
 
-const prefix = process.env.SHOT_PREFIX || 'observatory-v4'
+const prefix = process.env.SHOT_PREFIX || 'observatory-v8'
 const width = Number(process.env.SHOT_WIDTH || 1200)
 const quality = Number(process.env.SHOT_QUALITY || 72)
 

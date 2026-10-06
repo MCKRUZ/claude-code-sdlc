@@ -4,7 +4,9 @@
 // open, and it never calls `window.studio.*` — the index is built from state already on screen.
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CommandPalette } from '../../src/palette/CommandPalette'
+import { CommandPalette, resetPaletteFirstOpen } from '../../src/palette/CommandPalette'
+import { groupResults } from '../../src/palette/paletteResults'
+import { rankEntries } from '../../src/palette/score'
 import { buildIndex, EMPTY_SPECS_ENTRY_ID, SETTINGS_ANCHOR_LABEL } from '../../src/palette/paletteIndex'
 import { buildActionEntries, SURFACE_STORAGE_KEYS, toggleSurfacePreference } from '../../src/palette/paletteActions'
 import { SETTINGS_ANCHORS } from '../../src/palette/usePaletteIndex'
@@ -57,6 +59,7 @@ describe('CommandPalette', () => {
   beforeEach(() => {
     studio = installStudioMock()
     window.localStorage.clear()
+    resetPaletteFirstOpen()
   })
   afterEach(() => {
     for (const fn of Object.values(studio)) expect(fn).not.toHaveBeenCalled()
@@ -189,20 +192,45 @@ describe('CommandPalette', () => {
       density: { value: 'compact', set: hook('density') as never },
       motion: { value: 'on', set: hook('motion') as never },
       toggleConsole: hook('console'), toggleChat: hook('chat'), toggleSpine: hook('spine'), toggleSurface: hook('surface'),
+      fitGraph: hook('fit-graph'), focusNextUp: hook('focus-next-up'),
       refreshScreen: hook('refresh'), copyProjectPath: hook('copy-path'), openShortcuts: hook('shortcuts'), back: hook('back'),
       newProject: hook('new-project'), openFolder: hook('open-folder'),
     }
     const entries = buildActionEntries(hooks)
     expect(entries.map((e) => e.id)).toEqual([
       'action:theme', 'action:density', 'action:motion', 'action:console', 'action:chat', 'action:spine', 'action:surface',
+      'action:fit-graph', 'action:focus-next-up',
       'action:refresh', 'action:copy-path', 'action:shortcuts', 'action:back', 'action:new-project', 'action:open-folder',
     ])
     for (const e of entries) e.run()
-    expect(calls).toEqual(['theme', 'density', 'motion', 'console', 'chat', 'spine', 'surface', 'refresh', 'copy-path', 'shortcuts', 'back', 'new-project', 'open-folder'])
+    expect(calls).toEqual(['theme', 'density', 'motion', 'console', 'chat', 'spine', 'surface', 'fit-graph', 'focus-next-up', 'refresh', 'copy-path', 'shortcuts', 'back', 'new-project', 'open-folder'])
     // Labels say what WILL happen: the cycles are system → light → dark and auto → on → off.
     expect(entries[0].title).toBe('Theme: Dark → System')
     expect(entries[2].title).toBe('Animations: On → Off')
     expect(buildActionEntries({ motion: { value: 'off', set: () => {} } })[0].title).toBe('Animations: Off → Auto')
+  })
+
+  /** Round 2 (I6): the graph's two rows are screen callbacks — present only when the host passed
+   * them (a graph on screen), running nothing but the callback. The `afterEach` above proves the
+   * palette made zero `window.studio` calls through them. */
+  it('"Fit the graph" and "Focus next up" appear only with their callbacks and run only those', () => {
+    const fitGraph = vi.fn()
+    const focusNextUp = vi.fn()
+    const navigate = vi.fn()
+    const withGraph = buildIndex(input({ navigate, actions: { fitGraph, focusNextUp } }))
+    const fit = withGraph.find((e) => e.id === 'action:fit-graph')!
+    const next = withGraph.find((e) => e.id === 'action:focus-next-up')!
+    expect(fit.title).toBe('Fit the graph')
+    expect(fit.kbd).toEqual(['Home'])
+    expect(next.title).toBe('Focus next up')
+    expect(next.kbd).toEqual(['n'])
+    fit.run()
+    next.run()
+    expect(fitGraph).toHaveBeenCalledTimes(1)
+    expect(focusNextUp).toHaveBeenCalledTimes(1)
+    expect(navigate).not.toHaveBeenCalled()
+    const withoutGraph = buildIndex(input({ actions: { toggleConsole: vi.fn() } }))
+    expect(withoutGraph.some((e) => e.id === 'action:fit-graph' || e.id === 'action:focus-next-up')).toBe(false)
   })
 
   it('Settings rows carry the literal section ids Settings renders (limits, approval), labelled', () => {
@@ -252,5 +280,42 @@ describe('CommandPalette', () => {
     expect(window.localStorage.getItem(SURFACE_STORAGE_KEYS.spine)).toBe('graph')
     window.removeEventListener('storage', onStorage)
     expect(seen).toEqual(['studio.sprint.surface=graph', 'studio.sprint.surface=table', 'studio.spine.surface=graph'])
+  })
+
+  // --- round 2 (M5, M8) ---------------------------------------------------------------------------
+
+  it('DOM order equals ranked order (grouped), on open and after a re-rank', () => {
+    const entries = buildIndex(input({ actions: { toggleConsole: vi.fn(), refreshScreen: vi.fn() } }))
+    const { combobox } = renderOpen(entries)
+    const expectedFor = (query: string) => groupResults(rankEntries(query, entries, { recentIds: [] })).flat.map((r) => r.entry.id)
+    const domIds = () => screen.getAllByRole('option').map((o) => o.getAttribute('data-entry-id'))
+    expect(domIds()).toEqual(expectedFor(''))
+    fireEvent.change(combobox, { target: { value: 'sp' } })
+    expect(domIds()).toEqual(expectedFor('sp'))
+    fireEvent.change(combobox, { target: { value: 'ref' } })
+    expect(domIds()).toEqual(expectedFor('ref'))
+  })
+
+  it('every row is pressable and carries a palette:<id> flip id; the first open leaves no residual row opacity', () => {
+    renderOpen(buildIndex(input()))
+    const options = screen.getAllByRole('option')
+    expect(options.every((o) => o.hasAttribute('data-pressable'))).toBe(true)
+    for (const o of options) expect(o.getAttribute('data-flip-id')).toBe(`palette:${o.getAttribute('data-entry-id')}`)
+    // Motion is off under test: the stagger is an instant end state and `clearProps` leaves no inline opacity.
+    expect(options.every((o) => (o as HTMLElement).style.opacity === '')).toBe(true)
+  })
+
+  it('the empty state spells its prefixes as Kbd keycaps and the group labels / footer are words in ink-3', () => {
+    const { combobox } = renderOpen(buildIndex(input()))
+    const group = document.querySelector('[role="group"]')!
+    const label = document.getElementById(group.getAttribute('aria-labelledby')!)!
+    expect(label.className).toContain('text-ink-3')
+    expect(label.className).not.toContain('ink-4')
+    fireEvent.change(combobox, { target: { value: 'zzzz-nothing' } })
+    const empty = document.querySelector('[data-palette-empty]')!
+    expect(Array.from(empty.querySelectorAll('kbd')).map((k) => k.textContent)).toEqual(['>', '#', '/', '@'])
+    expect(empty.querySelector('kbd')!.className).toContain('rounded-[5px]')
+    const footer = screen.getByText('move').closest('div')!
+    expect(footer.className).toContain('text-ink-3')
   })
 })

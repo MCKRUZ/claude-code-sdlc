@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
+import { Flip } from 'gsap/Flip'
 import type { DisciplineSignoff, StageReadiness } from '../../shared/types'
 import { Button, Card, Input, Notice, toast } from '../ui'
 import { announce } from '../a11y/LiveAnnouncer'
 import { MOTION_DURATIONS, MOTION_EASES } from '../motion/contract'
 import { enabled as motionEnabled, reduced as motionReduced } from '../motion/motion'
+import { ceremonyRegistry } from '../motion/ceremonyRegistry'
 import { contextFrom, signOffCeremony } from '../motion/choreo'
 import { playSpineCeremony } from '../scenes/spine/spineCeremony'
 import { useClaudeIssue } from './ClaudeIssueContext'
@@ -67,20 +69,39 @@ interface Success {
 }
 
 /** The card that replaces the form once the plugin advanced. The inline tick is the path the
- * ceremony (§4.2 #10 b) draws; it has no icon of its own to morph, so a plain stroke it is. */
-function SuccessCard({ success, cardRef, tickRef }: {
+ * ceremony (§4.2 #10 b) draws; it has no icon of its own to morph, so a plain stroke it is.
+ *
+ * Round 2 (M1): the SEAM — a 2 px accent line along the card's top edge that the ceremony draws
+ * from the centre outward (the Macron's gesture, not its shape) — and the signer line, set in
+ * the detail voice (`text-lg`, 650, −0.02 em) because the name is the record. A sign-off the
+ * plugin recorded with NO name shows the hollow ring and says "no name recorded": an empty
+ * signature line reads as signed, and this card exists to say who did. */
+function SuccessCard({ success, cardRef, tickRef, seamRef }: {
   success: Success
   cardRef: (el: HTMLDivElement | null) => void
   tickRef: (el: SVGPathElement | null) => void
+  seamRef: (el: HTMLSpanElement | null) => void
 }) {
+  const signer = success.signedBy.trim()
   return (
-    <Card ref={cardRef} tone="ok" data-testid="sign-off-success">
+    <Card ref={cardRef} tone="ok" data-testid="sign-off-success" className="relative overflow-hidden">
+      <span ref={seamRef} aria-hidden="true" data-seam="" className="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-accent-500" />
       <h3 className="flex items-center gap-2 text-sm font-medium text-ink-1">
         <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-status-ok-fill">
           <path ref={tickRef} d="M3 8.5 6.5 12 13 4.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
         Signed off — moved from Phase {success.fromPhase} to Phase {success.toPhase}
       </h3>
+      <p className="mt-2 flex items-center gap-2 text-lg font-[650] tracking-[-0.02em] text-ink-1" data-testid="sign-off-signer">
+        {signer ? (
+          <>Signed off by {signer}</>
+        ) : (
+          <>
+            <span aria-hidden="true" className="inline-block h-[14px] w-[14px] shrink-0 rounded-full border-[1.5px] border-stage-signed-fill" />
+            Completed · no name recorded
+          </>
+        )}
+      </p>
       {success.note && <p className="mt-1 text-sm text-ink-2">{success.note}</p>}
     </Card>
   )
@@ -121,13 +142,26 @@ export function SignOffPanel({
   const root = useRef<HTMLDivElement | null>(null)
   const successCard = useRef<HTMLDivElement | null>(null)
   const tickPath = useRef<SVGPathElement | null>(null)
+  const seam = useRef<HTMLSpanElement | null>(null)
+  // What the Sidebar showed BEFORE the refresh: the Now badge's position (for the Flip) and the
+  // bar's fraction. Captured in the handler, between the plugin's `ok` and `onSignedOff`, because
+  // after the refresh the Sidebar has already drawn the new state.
+  const before = useRef<{ nowState: Flip.FlipState | null; fraction: number | null }>({ nowState: null, fraction: null })
+  // The registry hold taken for the ceremony: released when the timeline ends (or is killed) —
+  // and on unmount, because the hold is taken BEFORE `await onSignedOff()`: a person who leaves
+  // this screen while the refresh is still pending would otherwise leave the Sidebar's progress
+  // row applying end states (never tweening) for the rest of the session.
+  const release = useRef<(() => void) | null>(null)
+  useEffect(() => () => { release.current?.(); release.current = null }, [])
   // Drafting the phase summary is a model call; an installed Claude Code that lacks a flag Studio
   // emits would fail it after the gates passed. Disabled with the reason instead (F1).
   const claudeIssue = useClaudeIssue()
 
-  // Plays once the success card is in the DOM and the refresh has landed. Scoped to this panel:
-  // the sidebar's node / connector / Now badge belong to the Sidebar's own row (#9) and join
-  // here only when an integrator passes their refs — see the package notes.
+  // Plays once the success card is in the DOM and the refresh has landed — one timeline (M1):
+  // this card's tick, rise and seam, then the Sidebar's nodes resolved through `ceremonyRegistry`
+  // at this moment (so they are the elements the refreshed render drew), then the Spine at the
+  // "spine" label. The Sidebar's own progress row saw the registry held and applied its end
+  // state, so the bar is this timeline's to tween from the fraction captured before the refresh.
   useEffect(() => {
     if (!ceremonyDue || !success || !root.current) return
     setCeremonyDue(false)
@@ -136,18 +170,39 @@ export function SignOffPanel({
     // surface or no WebGL means none) advances its lit rail to the stage just signed. A no-op when
     // nothing is listening; the refreshed status moves the rail on the next render regardless.
     const signedStageId = readiness.stageId
+    const nodes = ceremonyRegistry.resolve()
+    const bar = nodes.bar
+    const toFraction = bar instanceof HTMLElement && bar.parentElement
+      ? Number(bar.parentElement.getAttribute('aria-valuenow')) / Math.max(1, Number(bar.parentElement.getAttribute('aria-valuemax')))
+      : undefined
     const tl = signOffCeremony.play(ctx, {
       successCard: successCard.current,
       tickPath: tickPath.current,
+      seam: seam.current,
+      signedNode: nodes.signedNode,
+      connector: nodes.connector,
+      nextRing: nodes.nextRing,
+      nowBadge: nodes.nowBadge,
+      nowState: before.current.nowState,
+      bar,
+      fromFraction: before.current.fraction,
+      toFraction: Number.isFinite(toFraction) ? toFraction : undefined,
       onSpine: () => { playSpineCeremony(signedStageId) },
     })
-    return () => { tl.kill() }
+    const done = () => { release.current?.(); release.current = null }
+    void tl.then(done)
+    return () => { tl.kill(); done() }
   }, [ceremonyDue, success, readiness.stageId])
 
   if (success) {
     return (
       <div ref={root}>
-        <SuccessCard success={success} cardRef={(el) => { successCard.current = el }} tickRef={(el) => { tickPath.current = el }} />
+        <SuccessCard
+          success={success}
+          cardRef={(el) => { successCard.current = el }}
+          tickRef={(el) => { tickPath.current = el }}
+          seamRef={(el) => { seam.current = el }}
+        />
       </div>
     )
   }
@@ -155,6 +210,9 @@ export function SignOffPanel({
   const signOff = async () => {
     setBusy(true)
     setError(null)
+    // Whether the ceremony effect was scheduled: if not (a refusal, or a throw after the hold
+    // was taken), the hold is released here so the Sidebar is never left frozen.
+    let scheduled = false
     setOpening({
       projectName: readiness.display,
       startedAt: Date.now(),
@@ -168,13 +226,27 @@ export function SignOffPanel({
         return
       }
       setSuccess({ fromPhase: result.fromPhase, toPhase: result.toPhase, note: result.note, signedBy })
+      // The ceremony owns the Sidebar's bar, node and Now badge from here until it ends: the hold
+      // makes the Sidebar's own progress row apply its end state on the refresh instead of
+      // tweening, and the Sidebar's BEFORE picture is captured now, while it is still drawn.
+      release.current?.()
+      release.current = ceremonyRegistry.hold()
+      const nodes = ceremonyRegistry.resolve()
+      before.current = {
+        nowState: nodes.nowBadge && motionEnabled() && !motionReduced() ? Flip.getState(nodes.nowBadge) : null,
+        fraction: nodes.bar instanceof HTMLElement && nodes.bar.parentElement
+          ? Number(nodes.bar.parentElement.getAttribute('aria-valuenow')) / Math.max(1, Number(nodes.bar.parentElement.getAttribute('aria-valuemax')))
+          : null,
+      }
       // Both facts, in order: the plugin advanced, then the refreshed status is on screen.
       await onSignedOff()
       const line = `Phase ${result.fromPhase ?? readiness.stageId} signed off · by ${signedBy.trim()}`
       toast({ tone: 'ok', title: line })
       announce(line)
       setCeremonyDue(true)
+      scheduled = true
     } finally {
+      if (!scheduled) { release.current?.(); release.current = null }
       setOpening(null)
       setBusy(false)
     }

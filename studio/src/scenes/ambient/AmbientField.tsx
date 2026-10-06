@@ -16,6 +16,10 @@
 // not import three or fiber: it is the entry Wave 3 registers with `React.lazy`, and the GPU
 // half is a second lazy step (`./AmbientPoints`) taken only once the gate is open.
 //
+// Round 2 (B3): the field is two gathered layers (far dust + near motes, `fieldModel.ts`) and
+// honours the person's familiarity with the Welcome screen (M3) — first opens arrive over 900 ms
+// with the sizes settling, later opens plainly fade in 320 ms. The gate itself is unchanged.
+//
 // Entry for Wave 3: `registerScene('ambient', () => import('../ambient/AmbientField'))`. Mount it
 // as a child of a `position: relative` host on the no-data screens only; unmounting it (a project
 // opening) disposes the canvas, the geometry and the material.
@@ -29,6 +33,7 @@ import { SceneErrorBoundary } from '../core/SceneErrorBoundary'
 import { useOnScreen, usePageVisible } from '../core/shellHooks'
 import type { SceneSlotProps } from '../core/types'
 import { canUseWebGL, onWebGLChange } from '../core/webgl'
+import { readFamiliarity } from './familiarity'
 
 const LazyCanvas = lazy(loadCanvasHost)
 const LazyPoints = lazy(() => import('./AmbientPoints'))
@@ -91,14 +96,17 @@ function AmbientHost() {
   }, [evicted])
 
   const draw = !evicted && !crashed
+  // Held for the session (see `familiarity.ts`), so this reads the same tier the Welcome hero
+  // read a beat earlier, before this open was counted.
+  const familiarity = useRef(readFamiliarity()).current
   return (
-    <div ref={ref} aria-hidden="true" data-ambient-field="" style={HOST_STYLE}>
+    <div ref={ref} aria-hidden="true" data-ambient-field="" data-familiarity={familiarity} style={HOST_STYLE}>
       {draw ? (
         <CanvasActivityContext.Provider value={active}>
           <Suspense fallback={null}>
             <SceneErrorBoundary fallback={null} onError={() => setCrashed(true)}>
               <LazyCanvas>
-                <LazyPoints live={active} />
+                <LazyPoints live={active} familiarity={familiarity} />
               </LazyCanvas>
             </SceneErrorBoundary>
           </Suspense>

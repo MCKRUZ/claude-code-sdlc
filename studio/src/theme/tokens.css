@@ -24,12 +24,18 @@
   --scrim-filter: blur(2px) saturate(1);
   --color-scrim: var(--scrim);
 
-  /* Ink — `ink-4` is eyebrows, placeholders and the words "no data". */
+  /* Ink. `ink-3` is the quietest colour a WORD may wear: measured 4.86:1 on `surface-2` and
+     4.53:1 on `surface-3` (tokenContrast.test), so a secondary line inside an inset card still
+     passes AA. `ink-4` is decoration only — placeholders, dividers, aria-hidden glyphs; never a
+     word (2.45:1 on `surface-0`). */
   --color-ink-1: #0b1120;
   --color-ink-2: #334155;
-  --color-ink-3: #64748b;
+  --color-ink-3: #5d6c84;
   --color-ink-4: #94a3b8;
   --color-ink-inverse: #f8fafc;
+  /* The eyebrow voice (section, group and table-header labels) is `ink-3` in both themes — a
+     label is a word, so it never wears `ink-4`. One name so a sweep can grep for it. */
+  --color-eyebrow: var(--color-ink-3);
 
   /* Lines */
   --color-line-1: #e4e9f0;
@@ -50,6 +56,17 @@
   --color-accent-700: #0b6470;
   --color-accent-800: #0b505a;
   --color-accent-900: #0a3f47;
+  /* Accent as TEXT (links, "Open ↵", spec ids, quick replies). A separate pair because the dark
+     ramp is inverted: `accent-700` is a fill step there (#0b6470 on #0b1120 ≈ 2.5:1), so a link
+     coloured by ramp step is unreadable in dark. Light 6.5:1 on `surface-0`; dark 10.5:1. */
+  --color-accent-text: #0b6470;
+  --color-accent-text-hover: #0b505a;
+
+  /* Mark A — Depth: the ONE sanctioned gradient (brand §8), two steps of the one accent, bar
+     top-left → disc bottom-right. Hero and icon only, ≥ 48 px, never a control, chip, status,
+     data body or text. Not a `--color-*` token on purpose: there is no utility for it. */
+  --mark-depth-a: #6fd1d4;
+  --mark-depth-b: #0a3f47;
 
   /* `brand-*` is the accent under its legacy name. Steps 200/300/800/900 were used 14 times
      with no CSS emitted before this file; the full scale closes that gap. */
@@ -157,6 +174,9 @@
   --color-ink-3: var(--color-ink-3);
   --color-ink-4: var(--color-ink-4);
   --color-ink-inverse: var(--color-ink-inverse);
+  --color-eyebrow: var(--color-eyebrow);
+  --color-accent-text: var(--color-accent-text);
+  --color-accent-text-hover: var(--color-accent-text-hover);
   --color-line-1: var(--color-line-1);
   --color-line-2: var(--color-line-2);
   --color-line-3: var(--color-line-3);

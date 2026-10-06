@@ -38,6 +38,7 @@ export function SectionCard({
   actor = '',
   highlighted = false,
   highlightField = null,
+  highlightNote,
   onSaveField,
 }: {
   section: DocumentSection
@@ -50,6 +51,10 @@ export function SectionCard({
   highlighted?: boolean
   /** The field within it, when the item named one. */
   highlightField?: string | null
+  /** The line under the heading while highlighted. Undefined keeps the readiness wording built
+   * from `highlightField`; null draws no line (the outline rail marked this card, nobody "sent"
+   * the reader); a string is said as given. */
+  highlightNote?: string | null
   /** Required only when `editing` can be true — DocumentView always passes it; a read-only
    * caller (LiveDocumentPanel) never reaches the branch that would call it, so it has none. */
   onSaveField?: (section: DocumentSection, label: string, value: string) => Promise<void>
@@ -78,11 +83,11 @@ export function SectionCard({
           Added to this document — the template does not have this section.
         </p>
       )}
-      {highlighted && (
-        <p className="mt-1 text-xs text-brand-700">
-          {highlightField
+      {highlighted && highlightNote !== null && (
+        <p className="mt-1 text-xs text-accent-text">
+          {highlightNote ?? (highlightField
             ? `You were sent here to fill in ${highlightField}.`
-            : 'You were sent here from what is missing on the stage.'}
+            : 'You were sent here from what is missing on the stage.')}
         </p>
       )}
       <DefinitionList
@@ -138,7 +143,7 @@ function fieldRow({
     term: (
       <span className="flex items-baseline gap-2">
         <Eyebrow as="span">{label}</Eyebrow>
-        {field.required && <span className="text-xs text-ink-4">required</span>}
+        {field.required && <span className="text-xs text-ink-3">required</span>}
       </span>
     ),
     detail: editing && onSave ? (

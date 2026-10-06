@@ -12,10 +12,48 @@ import type { ColorToken, ThemeAttr } from '../../theme/tokens'
 import type { DocArc, SceneDataSpine, Station } from '../core/types'
 
 export const SPINE_TITLE = 'Lifecycle'
+/** The long sentence: the Table twin's caption (round 2, S3 moved it there from the figcaption). */
 export const SPINE_LEGEND =
   "Nine stages in the plugin's order; the lit rail counts finished stages — signed off, or completed with no name recorded. Height and depth carry no meaning."
+/** The figcaption (S3): condensed, and still carrying the honesty words. */
+export const SPINE_CAPTION = 'Lit rail = finished stages. Height and depth carry no meaning.'
 export const NO_NAME_RECORDED = 'no name recorded'
 export const NO_DATE = '—'
+
+/** Round 2 (S3): the short label a station plate wears, by stage id — every stage the registry
+ * (`phases/phase-registry.yaml`) lists. The full `display` is shown on hover and on the current
+ * station, and is always the accessible name. A stage the map does not know falls back to the
+ * part of its display after "Phase N:", else the display itself — never a blank. */
+export const STAGE_SHORT_LABEL: Readonly<Record<string, string>> = {
+  '0': 'Discovery',
+  '1': 'Requirements',
+  '2': 'Design',
+  '3': 'Foundation',
+  [BUILD_STAGE_ID]: 'Build',
+  '7': 'Documentation',
+  '8': 'Deployment',
+  '9': 'Monitoring',
+  close: 'Close',
+}
+
+export function shortLabel(station: Pick<Station, 'id' | 'display'>): string {
+  const known = STAGE_SHORT_LABEL[station.id]
+  if (known) return known
+  const after = station.display.split(':')[1]?.trim()
+  return after && after.length > 0 ? after : station.display
+}
+
+/** Round 2 (I4): the ledger line a Closing plate carries under its title, word for word from
+ * `signerText` / `formatStageDate` — "signed off · <name> · <date>", "completed · no name
+ * recorded", "not started"; the current stage reads "in progress" (the sidebar's own word). */
+export function ledgerLine(station: Pick<Station, 'stage_state' | 'signed_off_by' | 'completed_at' | 'kind'>): string {
+  switch (station.kind) {
+    case 'signed': return `signed off · ${signerText(station)} · ${formatStageDate(station.completed_at)}`
+    case 'completed': return `completed · ${NO_NAME_RECORDED}`
+    case 'current': return 'in progress'
+    default: return 'not started'
+  }
+}
 
 /** Station spacing along x. Equal on purpose: time is not a length. */
 export const STATION_PITCH = 1.15
@@ -51,6 +89,10 @@ export interface SpineInput {
   currentPhaseId: string | null
   /** `StageReadinessContext.currentDocs` for the current stage; anything non-numeric → null. */
   currentDocs?: { complete?: unknown; total?: unknown } | null
+  /** I3: the stage whose home is open (the reticle); absent → null (no reticle). */
+  viewedStageId?: string | null
+  /** I4: Closing asks every plate for its ledger line; absent → false. */
+  ledger?: boolean
 }
 
 function docArcFrom(docs: SpineInput['currentDocs']): DocArc | null {
@@ -91,6 +133,8 @@ export function buildSpineData(input: SpineInput): SceneDataSpine {
     // plugin's `signed_off` state encodes only `status == completed`. Whether a name was recorded
     // is the plate's and the summary's business — see `spineSummary`.
     signedCount: stations.filter((s) => s.kind === 'signed' || s.kind === 'completed').length,
+    viewedStageId: input.viewedStageId ?? null,
+    ledger: input.ledger ?? false,
   }
 }
 

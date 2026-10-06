@@ -34,12 +34,17 @@ export function PipelineEvidencePanel({
   projectPath,
   onOpenDocument,
   host: hostProp,
+  onResult,
 }: {
   projectPath: string
   onOpenDocument: (relPath: string) => void
   /** The project's code host, when the caller knows it. Otherwise the connection store's last
    * value; otherwise GitHub — today's wording, unchanged for every screen that predates this. */
   host?: HostName
+  /** Round 2 (S2): the gathered result, for the stage summary strip above this panel. Called with
+   * the script's own `ok` result when a gather lands and with null when the project changes; a
+   * failed gather reports nothing, since "could not read" is not a count. */
+  onResult?: (result: PipelineEvidenceResult | null) => void
 }) {
   const connection = useConnection()
   const host = hostProp ?? connection?.host ?? 'github'
@@ -50,7 +55,10 @@ export function PipelineEvidencePanel({
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' })
   // A result for a project the person already left must not land on the one they are looking at.
   const current = useRef(projectPath)
-  useEffect(() => { current.current = projectPath; setPhase({ kind: 'idle' }) }, [projectPath])
+  // Held in a ref so an inline callback never re-runs the reset below on every render.
+  const report = useRef(onResult)
+  useEffect(() => { report.current = onResult }, [onResult])
+  useEffect(() => { current.current = projectPath; setPhase({ kind: 'idle' }); report.current?.(null) }, [projectPath])
 
   const gather = async () => {
     const forProject = projectPath
@@ -59,6 +67,7 @@ export function PipelineEvidencePanel({
       const result = await window.studio.gatherPipelineEvidence(projectPath)
       if (current.current !== forProject) return
       setPhase(result.ok ? { kind: 'done', result } : { kind: 'error', message: result.error ?? 'The evidence could not be gathered.' })
+      if (result.ok) report.current?.(result)
     } catch (err) {
       if (current.current !== forProject) return
       setPhase({ kind: 'error', message: err instanceof Error ? err.message : 'The evidence could not be gathered.' })
@@ -150,7 +159,7 @@ function Result({ result }: { result: PipelineEvidenceResult }) {
             {unproven.map((p) => (
               <li key={p.rail} className="text-xs text-ink-2">
                 <span className="font-medium">{p.rail}</span> — {p.proof}
-                <span className="text-ink-4"> Touches {p.touches}.</span>
+                <span className="text-ink-3"> Touches {p.touches}.</span>
               </li>
             ))}
           </ul>
@@ -172,10 +181,10 @@ function RailRow({ rail }: { rail: PipelineRail }) {
       </div>
       <p className="mt-0.5 text-xs text-ink-3">{rail.reason}</p>
       {rail.runs !== null && (
-        <p className="mt-0.5 text-2xs text-ink-4">{rail.runs} run(s), {rail.red} red</p>
+        <p className="mt-0.5 text-2xs text-ink-3">{rail.runs} run(s), {rail.red} red</p>
       )}
       {rail.evidence.length > 0 && (
-        <p className="mt-0.5 text-2xs text-ink-4">
+        <p className="mt-0.5 text-2xs text-ink-3">
           Evidence: {rail.evidence.slice(0, 3).map((e) => e.label).join(', ')}
           {rail.evidence.length > 3 ? ` +${rail.evidence.length - 3} more` : ''} — links are in pipeline-proof.md
         </p>

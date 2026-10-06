@@ -1,10 +1,11 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { FolderOpen, Plus } from 'lucide-react'
 import type { RecentProject } from '../../shared/types'
 import { Button, Card, EYEBROW_CLASS, EmptyState, HoverCard, Kbd } from '../ui'
 import { useSplitTitle } from '../motion/splitTitle'
 import { useStudioGSAP, engineFor } from '../motion/useStudioGSAP'
 import { welcomeOpen } from '../motion/choreo'
+import { readFamiliarity, recordFamiliarityOpen } from '../scenes/ambient/familiarity'
 import { CornerThemeToggle, EntryShell, choreoContext } from './entryScreenBits'
 import { TogoMark } from './brand/TogoMark'
 import { PRODUCT_KANJI, PRODUCT_NAME } from './brand/TogoWordmark'
@@ -44,6 +45,12 @@ export function WelcomeScreen({
   const rootRef = useRef<HTMLDivElement | null>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const titleRef = useRef<HTMLHeadingElement | null>(null)
+  // The tier describes the opens BEFORE this one (the read is held for the session, so the
+  // field — a lazy chunk mounted a beat later — sees the same answer); then this open counts.
+  const familiarity = useRef(readFamiliarity()).current
+  useEffect(() => {
+    recordFamiliarityOpen()
+  }, [])
 
   // Catalogue row #1 in two parts. Everything but the title plays at mount; the title's chars
   // play when SplitText has them (it waits for the web font). The h1 is hidden only once a split
@@ -59,6 +66,7 @@ export function WelcomeScreen({
         subtitle: scope.querySelector('[data-welcome-subtitle]'),
         buttons: Array.from(scope.querySelectorAll('[data-welcome-action]')),
         recentRows: Array.from(scope.querySelectorAll('[data-welcome-row]')),
+        familiarity,
       })
       if (ctx.enabled && titleRef.current) {
         g.set(titleRef.current, { opacity: 0 })
@@ -76,7 +84,7 @@ export function WelcomeScreen({
     const title = titleRef.current
     if (!scope || !title) return
     engineFor().set(title, { opacity: 1 })
-    welcomeOpen.play(choreoContext(scope), { titleChars: chars })
+    welcomeOpen.play(choreoContext(scope), { titleChars: chars, familiarity })
   })
 
   return (
@@ -84,12 +92,13 @@ export function WelcomeScreen({
       <div className="mx-auto grid w-full max-w-4xl gap-12 sm:grid-cols-[1.1fr_1fr] sm:items-start">
         <div className="space-y-8">
           <div>
-            {/* Gap 20 px = the lockup's 33 units at 40 px: the T's left edge sits ≈ 20 px right
-                of the disc. `text-2xl` is the brand's Welcome h1 (28/34, 650, −0.02em) — no
-                extra weight or tracking classes, so the kit's type scale owns it. */}
-            <div className="flex items-start gap-5">
-              <TogoMark className="mt-[1px] h-10 w-10 shrink-0 text-accent-600" />
-              <h1 ref={titleRef} className="text-2xl text-ink-1">{PRODUCT_NAME}</h1>
+            {/* The hero is the mark's first Depth home (brand §4 "48 px+ · Depth allowed"): 56 px
+                (`h-14`), a 28 px gap — the lockup's 33 units at this size — and the h1 in
+                `text-display` (40/44, 650, −0.025em) with no extra weight or tracking classes,
+                so the kit's type scale owns it. */}
+            <div className="flex items-start gap-7">
+              <TogoMark variant="depth" className="mt-[2px] h-14 w-14 shrink-0" />
+              <h1 ref={titleRef} className="text-display text-ink-1">{PRODUCT_NAME}</h1>
             </div>
             {/* `lang="ja"` lets the OS pick a CJK face and switches the screen reader's voice;
                 no font is bundled (CSP: nothing remote). 統合 is an explanation, not a logotype. */}
@@ -106,7 +115,8 @@ export function WelcomeScreen({
               Open folder…
             </Button>
           </div>
-          <p className="flex items-center gap-1.5 text-xs text-ink-4">
+          {/* `ink-3`, not `ink-4`: a sentence is a word, and `ink-4` is decoration only (C2). */}
+          <p className="flex items-center gap-1.5 text-xs text-ink-3">
             <Kbd keys={['Mod', 'K']} /> searches and jumps once a project is open.
           </p>
         </div>
@@ -126,9 +136,12 @@ function RecentList({ projects, onOpen }: { projects: RecentProject[]; onOpen: (
           heading takes the kit's class string — the same voice, one element. */}
       <h2 className={`${EYEBROW_CLASS} mb-2`}>Recent</h2>
       {projects.length === 0 ? (
-        <EmptyState title="No recent projects" body="Projects you create or open will be listed here." />
+        // B6: the `rail` figure — a lifecycle rail with hollow stations — is what a project
+        // becomes once it is opened; the kit draws it, this screen only names it.
+        <EmptyState figure="rail" title="No recent projects" body="Projects you create or open will be listed here." />
       ) : (
-        <Card padding="none">
+        // `shadow-2` on hover only (B3): at rest the card is a hairline on the field.
+        <Card padding="none" className="transition-shadow duration-[120ms] motion-safe:hover:shadow-2">
           <ul className="divide-y divide-line-1">
             {projects.slice(0, RECENT_ROWS).map((p) => (
               <li key={p.path} data-welcome-row="" className="first:[&_button]:rounded-t-xl last:[&_button]:rounded-b-xl">
@@ -150,12 +163,14 @@ function RecentList({ projects, onOpen }: { projects: RecentProject[]; onOpen: (
                         <span className="block text-sm font-medium text-ink-1">{p.name}</span>
                         {/* Truncates from the LEFT: `dir="rtl"` puts the ellipsis at the inline-end,
                             which is the left edge, and `<bdi>` isolates the path so its slashes
-                            keep their LTR order. The folder name — what says WHICH project — stays. */}
-                        <span dir="rtl" className="block max-w-full truncate text-left font-mono text-2xs text-ink-4" title={p.path}>
+                            keep their LTR order. The folder name — what says WHICH project — stays.
+                            Plain `text-2xs` (C3: no tracking, no semibold) in `ink-3` (C2: a path
+                            is a word). */}
+                        <span dir="rtl" className="block max-w-full truncate text-left font-mono text-2xs text-ink-3" title={p.path}>
                           <bdi>{shortPath(p.path)}</bdi>
                         </span>
                       </span>
-                      <span className="shrink-0 text-xs tabular-nums text-ink-4">{formatOpened(p.lastOpenedAt).split(',')[0]}</span>
+                      <span className="shrink-0 text-xs tabular-nums text-ink-3">{formatOpened(p.lastOpenedAt).split(',')[0]}</span>
                     </button>
                   }
                 />

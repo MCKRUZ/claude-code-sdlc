@@ -2,9 +2,10 @@ import type { HintStatus, SignOffQuestion } from '../../shared/types'
 import { Eyebrow, Notice } from '../ui'
 import { useCountUp } from '../motion/useCountUp'
 
+// C1: "Not yet" is the status-warn ink token (legible on both themes), not a raw amber.
 const HINT: Record<HintStatus, { label: string; tone: string }> = {
   looks_met: { label: 'Looks done', tone: 'text-[var(--color-command-ok)]' },
-  not_yet: { label: 'Not yet', tone: 'text-amber-700' },
+  not_yet: { label: 'Not yet', tone: 'text-status-warn-ink' },
   judgement: { label: 'Needs your judgement', tone: 'text-slate-500' },
 }
 
@@ -86,7 +87,7 @@ export function SignOffQuestions({
           )
         })}
       </ul>
-      <p className="mt-2 text-xs text-slate-400">
+      <p className="mt-2 text-xs text-ink-3">
         The notes on the right are pre-checks: they show what Studio could see, and you still confirm.
       </p>
       {!actor.trim() && (

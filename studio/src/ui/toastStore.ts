@@ -2,9 +2,13 @@
 // call `toast()` without a provider — the main process result handlers and the stage chat both
 // need it. Timers live here, not in the component, so pausing on hover is one call that freezes
 // every toast's remaining time rather than N component effects guessing at each other.
+// Round 2 (M6): a toast whose string title matches one shown within the last two seconds UPDATES
+// that toast in place (same id, fresh detail/action, ttl restarted) instead of stacking a twin —
+// a poll that fails three times says so once, loudly, not three times quietly.
 import type { ToastInput, ToastItem } from './contract'
 
 export const TOAST_TTL_MS = 6000
+export const TOAST_DEDUPE_MS = 2000
 
 interface Timer {
   handle: ReturnType<typeof setTimeout> | null
@@ -28,9 +32,35 @@ function arm(id: string, remaining: number) {
   timers.set(id, timer)
 }
 
+function disarm(id: string) {
+  const timer = timers.get(id)
+  if (timer?.handle) clearTimeout(timer.handle)
+  timers.delete(id)
+}
+
+/** The toast a new input would update rather than duplicate: same string title, shown within
+ * the dedupe window. Non-string titles never dedupe (two nodes are not comparable). */
+function duplicateOf(input: ToastInput, now: number): ToastItem | undefined {
+  if (typeof input.title !== 'string') return undefined
+  return items.find((t) => typeof t.title === 'string' && t.title === input.title && now - t.createdAt <= TOAST_DEDUPE_MS)
+}
+
 export function toast(input: ToastInput): string {
+  const now = Date.now()
+  const existing = duplicateOf(input, now)
+  if (existing) {
+    // A fresh object (so the component sees the update) with the SAME id and birth time: the
+    // dedupe window is measured from the first arrival, so a toast cannot be kept alive forever
+    // by a stream of twins.
+    items = items.map((t) => (t.id === existing.id ? { ...t, ...input, id: existing.id, createdAt: existing.createdAt } : t))
+    // The clock restarts for the new words; a sticky update keeps no clock.
+    disarm(existing.id)
+    emit()
+    shown(existing.id)
+    return existing.id
+  }
   const id = `toast-${++counter}`
-  items = [...items, { ...input, id, createdAt: Date.now() }]
+  items = [...items, { ...input, id, createdAt: now }]
   emit()
   return id
 }
@@ -46,9 +76,7 @@ export function shown(id: string) {
 }
 
 export function dismiss(id: string) {
-  const timer = timers.get(id)
-  if (timer?.handle) clearTimeout(timer.handle)
-  timers.delete(id)
+  disarm(id)
   if (!items.some((t) => t.id === id)) return
   items = items.filter((t) => t.id !== id)
   emit()

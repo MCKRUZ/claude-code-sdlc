@@ -12,7 +12,8 @@ import { PlateInteractionProvider } from '../core/canvasActivity'
 import { DEFAULT_SURFACE } from '../core/sceneDefaults'
 import { SceneShell } from '../core/SceneShell'
 import type { SceneSlotProps, SceneSurface } from '../core/types'
-import { SPINE_LEGEND, SPINE_TITLE, spineSummary } from './spineModel'
+import { SPINE_CAPTION, SPINE_TITLE, spineSummary } from './spineModel'
+import { reticleIndex, SPINE_RETICLE_LEGEND } from './spineReticle'
 import { SpineTable } from './SpineTable'
 
 // The R3F tree (and three under it) is a second lazy seam: SceneShell renders its children only
@@ -67,6 +68,9 @@ export function LifecycleSpine(props: LifecycleSpineProps) {
   }, [])
 
   const table = <SpineTable data={data} onActivate={onActivate} hoverId={hoverId} onHover={onHover} />
+  // Round 2 (S3 / I3): the figcaption is the condensed line; the reticle sentence joins it only
+  // while a stage is being viewed (never on Closing, where the host passes null).
+  const legend = reticleIndex(data) === null ? SPINE_CAPTION : `${SPINE_CAPTION} ${SPINE_RETICLE_LEGEND}`
 
   return (
     <PlateInteractionProvider value={{ hoverId, onHover, onActivate }}>
@@ -74,7 +78,7 @@ export function LifecycleSpine(props: LifecycleSpineProps) {
         id="spine"
         title={SPINE_TITLE}
         summary={spineSummary(data)}
-        legend={SPINE_LEGEND}
+        legend={legend}
         surface={surface}
         onSurfaceChange={onSurfaceChange}
         table={table}

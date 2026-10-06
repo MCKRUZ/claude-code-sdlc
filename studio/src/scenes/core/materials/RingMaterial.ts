@@ -4,6 +4,10 @@
 // "signed"), `current` breathes through `uPulse`, and `later` is dashed around its circumference
 // (`discard` on the angle) in the later colour. Rendered on the ring geometry and, for the filled
 // states, on the core disc; `uCore` tells the shader which it is drawing.
+//
+// Round 2 (I1): a fixed-key lambert `uShade` (0.18, a GLSL constant — the uniform set is pinned)
+// that ONLY DARKENS the face turned from the key, so the token colour is still the brightest
+// pixel on the ring: the sidebar's green and the rail's green stay the same green.
 import { Color, DoubleSide, ShaderMaterial } from 'three'
 import type { IUniform } from 'three'
 
@@ -21,9 +25,21 @@ export interface RingUniforms {
 
 const VERT = /* glsl */ `
   varying vec2 vLocal;
+  varying vec3 vNormal;
   void main() {
     vLocal = position.xy;
+    vNormal = normalize(normalMatrix * normal);
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`
+
+/** The fixed key, view space; `abs` so the double-sided back face is shaded like the front. */
+export const SHADE_GLSL = /* glsl */ `
+  const float uShade = 0.18;
+  const vec3 uKeyDir = normalize(vec3(0.4, 0.8, 0.6));
+  float shadeFactor(vec3 n) {
+    float lambert = abs(dot(normalize(n), uKeyDir));
+    return 1.0 - uShade * (1.0 - lambert);
   }
 `
 
@@ -33,6 +49,8 @@ const FRAG = /* glsl */ `
   uniform float uCore;
   uniform vec3 uColor;
   varying vec2 vLocal;
+  varying vec3 vNormal;
+  ${SHADE_GLSL}
   void main() {
     float alpha = 1.0;
     if (uKind > 2.5) {
@@ -48,7 +66,8 @@ const FRAG = /* glsl */ `
       // completed: ring only, core hollow
       if (uCore > 0.5) discard;
     }
-    gl_FragColor = vec4(uColor, alpha);
+    // Only ever ≤ 1: the token is the brightest pixel.
+    gl_FragColor = vec4(uColor * shadeFactor(vNormal), alpha);
   }
 `
 

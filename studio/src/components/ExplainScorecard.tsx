@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Download } from 'lucide-react'
 import type { Scorecard } from '../../shared/types'
 import { buildScorecardExport, hasNothingRecorded } from '../../shared/scorecardExport'
-import { Button, Card, DefinitionList, EmptyState, Eyebrow, NoData, Notice, Segmented, SkeletonTile, StatTile, toast } from '../ui'
+import { Button, Card, DefinitionList, EmptyState, Eyebrow, NoData, Notice, PageHeader, Segmented, SkeletonTile, StatTile, toast } from '../ui'
 import { useCountUp } from '../motion/useCountUp'
 import { useListReveal } from './screenMotion'
 
@@ -58,7 +58,7 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
   if (loading && !card) {
     return (
       <div aria-busy="true">
-        <p role="status" className="text-sm text-ink-4">Reading the scorecard…</p>
+        <p role="status" className="text-sm text-ink-3">Reading the scorecard…</p>
         <div className="mt-3 grid grid-cols-2 gap-3"><SkeletonTile /><SkeletonTile /></div>
       </div>
     )
@@ -79,19 +79,18 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
 
   return (
     <div ref={root} className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">How Build is going</h2>
-          <p className="mt-1 max-w-[64ch] text-sm text-ink-3">
-            Every number here is computed by the plugin from recorded events. Tōgō does no
-            arithmetic of its own.
-          </p>
-        </div>
-        <span className="flex shrink-0 items-center gap-2 pt-0.5">
-          <Button size="sm" icon={Download} onClick={exportScorecard}>Export for a meeting</Button>
-          <Segmented<WindowDays> label="Window" tone="inverse" size="sm" options={WINDOWS} value={windowDays} onChange={setWindowDays} />
-        </span>
-      </div>
+      {/* S1: the kit header; the heading text is byte-identical (board.spec finds it by name). */}
+      <PageHeader
+        eyebrow="Build · How it is going"
+        title="How Build is going"
+        lede="Every number here is computed by the plugin from recorded events. Tōgō does no arithmetic of its own."
+        actions={(
+          <>
+            <Button size="sm" icon={Download} onClick={exportScorecard}>Export for a meeting</Button>
+            <Segmented<WindowDays> label="Window" tone="inverse" size="sm" options={WINDOWS} value={windowDays} onChange={setWindowDays} />
+          </>
+        )}
+      />
 
       {/* The export's outcome is the toast (`exportScorecard` fires one with the path); a second
           green sentence here would repeat it (G4-15). */}
@@ -155,7 +154,7 @@ export function ScorecardView({ projectPath }: { projectPath: string }) {
       <Card>
         <Eyebrow as="h3" className="mb-2">Bugs that got through</Eyebrow>
         {card.escaped_bugs.length === 0 ? (
-          <p className="text-sm text-ink-4">None recorded in this window.</p>
+          <p className="text-sm text-ink-3">None recorded in this window.</p>
         ) : (
           <ul className="space-y-2">
             {card.escaped_bugs.map((bug, i) => (

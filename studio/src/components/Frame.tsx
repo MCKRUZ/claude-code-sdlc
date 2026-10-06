@@ -1,13 +1,16 @@
-import { memo, type MutableRefObject, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, type CSSProperties, type MutableRefObject, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ConsoleEntry, ProjectStatus, SyncState } from '../../shared/types'
 import type { Area, DocProgress, NavTarget } from '../../shared/nav'
 import { Sidebar } from './Sidebar'
 import { ChatPanel } from './ChatPanel'
 import { Console, readStoredConsoleHeight } from './Console'
 import { ShortcutsHelp } from './ShortcutsHelp'
-import { consoleToggle } from '../motion/choreo'
+import { readSurfaceDefault } from './AppearanceSection'
+import { consoleToggle, frameAssemble } from '../motion/choreo'
+import { motion } from '../motion/motion'
 import { useStudioGSAP } from '../motion/useStudioGSAP'
 import { choreoContext } from './entryScreenBits'
+import { CHAT_DEFAULT_WIDTH, readStoredChatWidth } from '../chatWidth'
 import { StageReadinessProvider, useStageReadiness } from './StageReadinessContext'
 import { consoleStore, useConsoleEntries, useConsoleOpen } from '../stores/consoleStore'
 import { useBacklogStore } from '../stores/backlogStore'
@@ -21,6 +24,8 @@ import { toggleSurfacePreference } from '../palette/paletteActions'
 import { usePaletteIndex, usePreferenceActionHooks } from '../palette/usePaletteIndex'
 import type { PaletteActionHooks, SettingsAnchor } from '../palette/types'
 import { useShortcuts } from '../shortcuts/useShortcuts'
+import { useSceneActions } from '../scenes/core/sceneActions'
+import { joinSpineAssemble } from '../scenes/spine/spineCeremony'
 
 /** What App knows and Frame does not: where a spec, a document or a Settings section opens, what
  * "back" means on the current screen, and which screen is showing. Every field is optional so a
@@ -180,8 +185,32 @@ function FrameBody({
   const otherCurrentDocs = useOtherCurrentStageDocs(projectPath, currentStageId, stageId)
   const currentDocs = viewedStageDocs ?? otherCurrentDocs
 
+  // The Frame root carries `--chat-width` / `--console-height` and `data-chat-hidden` (the
+  // round-2 shell contract, read by screens that lay out beside the chat or above the console).
+  // Both numbers live in the panels that own them; they REPORT here through stable callbacks and
+  // the root's inline style is written imperatively, so a drag never re-renders FrameBody and
+  // the memoised siblings keep their props. The refs make React's view of `style` match the DOM.
+  const rootRef = useRef<HTMLDivElement>(null)
+  const chatWidthRef = useRef<number>(readStoredChatWidth() ?? CHAT_DEFAULT_WIDTH)
+  const consoleHeightRef = useRef<number>(consoleOpen ? readStoredConsoleHeight() : 0)
+  const onChatWidth = useCallback((px: number) => {
+    chatWidthRef.current = px
+    rootRef.current?.style.setProperty('--chat-width', `${px}px`)
+  }, [])
+  const onConsoleHeight = useCallback((px: number) => {
+    consoleHeightRef.current = px
+    rootRef.current?.style.setProperty('--console-height', `${px}px`)
+  }, [])
+  const rootStyle = {
+    '--chat-width': `${chatWidthRef.current}px`,
+    '--console-height': `${consoleHeightRef.current}px`,
+  } as CSSProperties
+
+  useFrameAssemble(rootRef, projectPath)
+  usePrefetchCanvasHost(projectPath)
+
   return (
-    <div className="flex h-screen flex-col bg-slate-50">
+    <div ref={rootRef} data-frame-root="" data-chat-hidden={chatHidden ? '' : undefined} style={rootStyle} className="flex h-screen flex-col bg-slate-50">
       <SkipLink />
       <LiveAnnouncer />
       {/* Column below sm, row at sm+ — spec 0018's document panel and chat need to stack at
@@ -202,9 +231,9 @@ function FrameBody({
         {/* `id="main"` is the skip link's target; `tabIndex={-1}` takes programmatic focus without
             joining the tab order. Children render directly — no wrapper (§7 Frame row [MF]). */}
         <main id="main" tabIndex={-1} className="min-w-0 flex-1 overflow-auto p-6">{children}</main>
-        <MemoChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} hidden={chatHidden} />
+        <MemoChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} hidden={chatHidden} onWidthChange={onChatWidth} />
       </div>
-      <ConsoleDock entries={consoleEntries} />
+      <ConsoleDock entries={consoleEntries} onHeightReport={onConsoleHeight} />
       <ToastRegion />
       <ShellPalette
         status={status}
@@ -227,7 +256,7 @@ function FrameBody({
  * inside Console reports a new height through a prop. Open plays the grow half on mount; close
  * keeps the dock mounted for the shrink half and unmounts when the timeline ends — synchronously
  * under the stub, so with motion off (every test) the dock is gone on the same tick. */
-function ConsoleDock({ entries }: { entries?: ConsoleEntry[] }) {
+function ConsoleDock({ entries, onHeightReport }: { entries?: ConsoleEntry[]; onHeightReport?: (px: number) => void }) {
   const open = useConsoleOpen()
   const [rendered, setRendered] = useState(open)
   const [height, setHeight] = useState(readStoredConsoleHeight)
@@ -236,6 +265,10 @@ function ConsoleDock({ entries }: { entries?: ConsoleEntry[] }) {
   const wrapper = useRef<HTMLDivElement>(null)
 
   useEffect(() => { if (open) setRendered(true) }, [open])
+  // The Frame root's `--console-height`: the dock's height while it is on screen, 0 once gone.
+  useEffect(() => {
+    onHeightReport?.(rendered ? height : 0)
+  }, [onHeightReport, rendered, height])
 
   useStudioGSAP(() => {
     const el = wrapper.current
@@ -302,6 +335,9 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
   // screen. The snapshot changes identity on every `setRows`/`setSlate`, so the index follows.
   const backlog = useBacklogStore()
   const prefs = usePreferenceActionHooks()
+  // I6: the mounted graph's own two commands (fit, focus next up), or null while no graph is on
+  // screen — plain callbacks from `sceneActions`, zero IPC; the rows appear and vanish with it.
+  const scene = useSceneActions()
   const openPalette = useCallback(() => { setHelpOpen(false); setOpen(true) }, [])
   const closePalette = useCallback(() => setOpen(false), [])
   // The help closes the palette first: two dialogs stacked would both claim Esc and the focus trap.
@@ -325,10 +361,12 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
     // StageHome's refresh is the shared readiness read Frame already owns; other screens pass
     // their own through App, or the row is absent.
     refreshScreen: stageHomeShowing ? () => { void refresh() } : refreshScreen,
+    fitGraph: scene?.fitGraph,
+    focusNextUp: scene ? () => { scene.focusNextUp() } : undefined,
     copyProjectPath: () => copyProjectPath(projectPath),
     openShortcuts,
     back,
-  }), [prefs.hooks, toggleChat, stageHomeShowing, sprintShowing, refresh, refreshScreen, projectPath, openShortcuts, back])
+  }), [prefs.hooks, toggleChat, stageHomeShowing, sprintShowing, refresh, refreshScreen, scene, projectPath, openShortcuts, back])
 
   const host = useMemo(() => ({
     stages: status.stages,
@@ -374,6 +412,71 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
       <ShortcutsHelp open={helpOpen} onClose={closeShortcuts} />
     </>
   )
+}
+
+/** M2 / M3: the shell opens as one thing. Played ONCE per `projectPath` from the Frame root the
+ * moment it mounts (the overlay unmounted in the same commit — App sets the screen and clears
+ * the opening together), never again on a `refreshStatus` re-render: `frameAssemble.playOnce`
+ * keys on the path and this effect only re-runs when the path changes. Each mount is one OPEN of
+ * the project: the familiarity counter is bumped first and the tier read second, so opens 1–3
+ * play in full, 4–10 at `dur-4`, and past ten nothing plays. Only inner content is handed over —
+ * the sidebar's header, its stage rows, `<main>`'s first child and the chat's inner wrapper —
+ * never an `<aside>` or `<main>` itself (§4 invariants). P4's Spine joins through
+ * `frameAssemble.join`. Under the stub (test mode, off) nothing moves and nothing is written. */
+function useFrameAssemble(rootRef: MutableRefObject<HTMLDivElement | null>, projectPath: string) {
+  useEffect(() => {
+    const root = rootRef.current
+    if (!root) return
+    motion.recordOpen(projectPath)
+    const tier = motion.familiarity(projectPath)
+    // M2: a mounted Spine adds its rail draw and station pops INSIDE this assemble at the join
+    // point; with no scene mounted yet (the canvas is lazy) `joinSpineAssemble` is a no-op and
+    // the Spine plays its own draw when it arrives. Joiners run only under a real timeline.
+    const unjoin = frameAssemble.join((_ctx, tl) => { joinSpineAssemble(tl as unknown as gsap.core.Timeline) })
+    const tl = frameAssemble.playOnce(projectPath, choreoContext(root), {
+      sidebarHeader: root.querySelector('[data-sidebar-header]'),
+      stageRows: Array.from(root.querySelectorAll('nav[aria-label="Project"] ol > li')),
+      screenRoot: root.querySelector('main#main > :first-child'),
+      chatInner: root.querySelector('[data-chat-inner]'),
+      tier,
+    })
+    return () => {
+      unjoin()
+      tl?.kill()
+      frameAssemble.forget(projectPath)
+    }
+  }, [rootRef, projectPath])
+}
+
+/** I8 (host half): warm the scene chunk while the window is idle, so the first Graph surface
+ * does not pay the import on click. Only when it is likely to be wanted — not in a test build,
+ * not when the Spine band is collapsed, and only when the stored default surface is `graph`. The
+ * import is of P4's `lazyCanvas` module and tolerates a build where `prefetchCanvasHost` has not
+ * landed yet (it is read as optional). */
+function usePrefetchCanvasHost(projectPath: string) {
+  useEffect(() => {
+    if (import.meta.env.MODE === 'test') return
+    if (stageTabStore.spineCollapsed || readSurfaceDefault() !== 'graph') return
+    const w = window as Window & {
+      requestIdleCallback?: (cb: () => void) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    let cancelled = false
+    const run = () => {
+      if (cancelled) return
+      void import('../scenes/core/lazyCanvas').then((m) => {
+        if (cancelled) return
+        ;(m as { prefetchCanvasHost?: () => unknown }).prefetchCanvasHost?.()
+      }).catch(() => { /* the chunk arrives on first use instead */ })
+    }
+    const idle = typeof w.requestIdleCallback === 'function' ? w.requestIdleCallback(run) : null
+    const timer = idle === null ? setTimeout(run, 400) : null
+    return () => {
+      cancelled = true
+      if (idle !== null && typeof w.cancelIdleCallback === 'function') w.cancelIdleCallback(idle)
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [projectPath])
 }
 
 /** The sidebar's current-stage doc-count line for the one case the shared fetch cannot cover: the

@@ -26,8 +26,11 @@
   --color-ink-1: #e6edf7;
   --color-ink-2: #b7c3d6;
   --color-ink-3: #8392aa;
-  --color-ink-4: #5b6a84;
+  /* Decoration only — placeholders, dividers, aria-hidden glyphs; never a word. Lifted from
+     #5b6a84 so a hairline glyph is visible on `surface-2` without becoming a text colour. */
+  --color-ink-4: #6b7a94;
   --color-ink-inverse: #0b1120;
+  --color-eyebrow: var(--color-ink-3);
 
   --color-line-1: #1e2a40;
   --color-line-2: #2b3a56;
@@ -46,6 +49,15 @@
   --color-accent-700: #0b6470;
   --color-accent-800: #6fd1d4;
   --color-accent-900: #a7e6e7;
+  /* Accent as text: the pale end of the inverted ramp (10.5:1 / 13.6:1 on `surface-0`). */
+  --color-accent-text: #6fd1d4;
+  --color-accent-text-hover: #a7e6e7;
+
+  /* Mark A — Depth in dark: the far stop is `accent-600`, not `accent-900`, so the disc never
+     sinks into `surface-0` (#0a3f47 on #0b1120 would read as a hole). The light pair is a
+     token-ramp pair; the dark ramp is inverted, so a ramp gradient is wrong by construction. */
+  --mark-depth-a: #6fd1d4;
+  --mark-depth-b: #0e7c86;
 
   --color-stage-signed-fill: #34d399;
   --color-stage-signed-bg: #0b2a1e;

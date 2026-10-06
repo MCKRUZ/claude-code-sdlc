@@ -53,7 +53,18 @@ export interface PlateItem {
   /** A short label drawn first in the title row ("Next up"): the plugin's own answer, shown as
    * words on the body rather than only as a glow. */
   ribbon?: string
+  /** Round 2 (S3): a short title worn while COLLAPSED (the Spine's "Requirements" for "Phase 1:
+   * Requirements"), in `text-2xs`; the full `title` returns on hover. The accessible name is
+   * always `title`. Absent → `title` is shown collapsed too (the current station, the specs). */
+  shortTitle?: string
+  /** Round 2 (I4): a second line always shown under the title (the Closing ledger's "signed off
+   * · <name> · <date>"). Verbatim plugin facts through the model's words, never a judgement. */
+  subtitle?: string
 }
+
+/** Round 2 (I5): while one plate is expanded its siblings fade to this opacity, over this long. */
+export const SIBLING_DIM_OPACITY = 0.55
+export const SIBLING_DIM_S = 0.16
 
 /** A decorative DOM caption pinned to a world point's x (the Spine's group names). Its y is a
  * constant row at the band's top so captions never collide with plates. Not a control. */
@@ -105,6 +116,10 @@ export class PlateStore {
   /** Each plate's last COLLAPSED box. The stack is laid out on these, so a plate that expands on
    * hover changes nothing but its own rectangle (observatory v4 critique, sprint-graph-hover). */
   private readonly collapsed = new Map<string, { w: number; h: number }>()
+  /** 0 … 1: how far the siblings of the expanded plate have faded toward `SIBLING_DIM_OPACITY`.
+   * The in-canvas half tweens it (160 ms) and the next projection applies it; 0 when nothing is
+   * expanded, so the resting opacity is the depth ramp alone. */
+  siblingDim = 0
 
   getSnapshot = (): PlateItem[] => this.items
   getCaptions = (): CaptionItem[] => this.captions
@@ -206,7 +221,14 @@ export class PlateStore {
         const input = this.inputs.find((i) => i.id === placed.id)
         if (!el || !s || !input) continue
         el.style.visibility = ''
-        el.style.opacity = s.opacity.toFixed(3)
+        // Siblings of the expanded plate step back (I5); the expanded plate itself never dims.
+        const sibling = expanded !== undefined && expanded.id !== placed.id
+        const dim = sibling ? 1 - (1 - SIBLING_DIM_OPACITY) * Math.max(0, Math.min(1, this.siblingDim)) : 1
+        // The expanded plate is a card being READ, so it is drawn solid. The depth ramp (.55 at the
+        // far end) is for a label resting on its body; a hover card at .55 let the edges and the
+        // neighbouring plate show through its own text (observatory v9 sprint-graph-hover).
+        const isExpandedPlate = expanded !== undefined && expanded.id === placed.id
+        el.style.opacity = isExpandedPlate ? '1' : (s.opacity * dim).toFixed(3)
         el.style.transformOrigin = 'top left'
         el.style.transform = `translate3d(${placed.left.toFixed(1)}px, ${placed.top.toFixed(1)}px, 0) scale(${s.scale.toFixed(3)})`
         // Nearer plates stack above farther ones when they overlap; an expanded plate wins.

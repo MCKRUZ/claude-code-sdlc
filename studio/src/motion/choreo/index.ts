@@ -1,7 +1,7 @@
 // The §4.2 catalogue, one export per row, in row order. A screen imports the row it needs from
 // here; `CATALOGUE` lets a test assert every row exists and returns a completed timeline when
 // handed a disabled context.
-export { timelineFor, contextFrom, fadeDuration, transformsAllowed } from './_shared'
+export { timelineFor, contextFrom, fadeDuration, transformsAllowed, placeholderRow } from './_shared'
 export { welcomeOpen, type WelcomeOpenRefs } from './welcomeOpen' // #1
 export { frameAssemble, type FrameAssembleRefs } from './frameAssemble' // #2
 export { screenEnter, type ScreenEnterRefs } from './screenEnter' // #3
@@ -27,6 +27,12 @@ export { clashResolve, type ClashResolveRefs } from './clashResolve' // #22
 export { syncChip, type SyncChipRefs } from './syncChip' // #23
 export { resizeHandle } from './resizeHandle' // #24
 export { themeChange, THEME_SWITCHING_CLASS, type ThemeChangeRefs } from './themeChange' // #25
+// Round 2 rows. The ref types are frozen in `../contract`; the files are P0 placeholders until
+// their owners (P2 / P3 / P4 / P4) replace the contents, keeping these names.
+export { handoffCeremony, type HandoffCeremonyRefs } from './handoffCeremony' // #26
+export { edgeDraw, type EdgeDrawRefs } from './edgeDraw' // #27
+export { spineCollapse, type SpineCollapseRefs } from './spineCollapse' // #28
+export { sceneCrossfade, type SceneCrossfadeRefs } from './sceneCrossfade' // #29
 
 import type { Choreo } from '../contract'
 import { welcomeOpen } from './welcomeOpen'
@@ -54,11 +60,20 @@ import { clashResolve } from './clashResolve'
 import { syncChip } from './syncChip'
 import { resizeHandle } from './resizeHandle'
 import { themeChange } from './themeChange'
+import { handoffCeremony } from './handoffCeremony'
+import { edgeDraw } from './edgeDraw'
+import { spineCollapse } from './spineCollapse'
+import { sceneCrossfade } from './sceneCrossfade'
 
-/** Row number → the row's primary choreography. 25 entries, matching §4.2. */
+/** The number of rows, asserted once in `test/motion/catalogue.test.ts`: §4.2's 25 plus the
+ * four round-2 rows (#26 hand-off, #27 edge draw, #28 spine collapse, #29 scene crossfade). */
+export const CATALOGUE_ROWS = 29
+
+/** Row number → the row's primary choreography, in row order. */
 export const CATALOGUE: ReadonlyArray<Choreo<never>> = [
   welcomeOpen, frameAssemble, screenEnter, listStagger, skeletonSwap, boardRegroup, segmentedThumb,
   sharedElement, sidebarProgress, signOffCeremony, counters, toasts, chatMessage, questionPills, dialog,
   openingOverlay, hoverPlate, constellationSettle, spineParallax, consoleToggle, findingFocus,
   clashResolve, syncChip, resizeHandle, themeChange,
+  handoffCeremony, edgeDraw, spineCollapse, sceneCrossfade,
 ] as ReadonlyArray<Choreo<never>>

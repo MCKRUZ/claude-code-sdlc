@@ -6,7 +6,7 @@ import { computeWorkflowSteps } from '../workflowSteps'
 import { chatMessage, contextFrom, questionPills } from '../motion/choreo'
 import { enabled as motionEnabled, motion, reduced as motionReduced } from '../motion/motion'
 import { useStudioGSAP } from '../motion/useStudioGSAP'
-import { Button, Card, Chip, EmptyState, IconButton, Notice, Textarea, cn } from '../ui'
+import { Button, Card, Chip, EYEBROW_CLASS, EmptyState, IconButton, Notice, Textarea, cn } from '../ui'
 import { useRegisterDirty } from '../stores/dirtyStore'
 import { AiProposalCard } from './AiProposalCard'
 import { ChatActivityLine } from './ChatActivityLine'
@@ -24,9 +24,9 @@ import { useClaudeIssue } from './ClaudeIssueContext'
  * (`[data-chat-inner]`), never this element. */
 const ASIDE_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-[var(--chat-width)]'
 
-/** Why Stop is greyed: there is no cancel verb for a chat turn until Batch 4 lands F15, and a
- * button that looked live would promise one. */
-const STOP_REASON = 'Needs Batch 4 F15 cancel'
+/** Why Stop is greyed: there is no cancel verb for a chat turn yet, and a button that looked
+ * live would promise one. Said in the person's words, not the backlog's (C5). */
+const STOP_REASON = 'Stopping a reply is not available yet'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
  * conversation up, and spec 0018 scopes it to the stage's current document and makes the wait
@@ -36,7 +36,7 @@ const STOP_REASON = 'Needs Batch 4 F15 cancel'
  * (never gating the box below), and every proposed write is a card the person accepts, edits, or
  * discards — never a silent write. */
 export function ChatPanel({
-  status, projectPath, actor, stageId, hidden = false,
+  status, projectPath, actor, stageId, hidden = false, onWidthChange,
 }: {
   status: ProjectStatus | null
   projectPath: string | null
@@ -48,6 +48,9 @@ export function ChatPanel({
    * conversation, its draft and its width survive being tucked away; the shell still has
    * exactly two asides in the DOM either way. */
   hidden?: boolean
+  /** Reports the applied width (px) whenever it changes, so the Frame root can carry
+   * `--chat-width` for the screens beside this panel. The aside still sets its own variable. */
+  onWidthChange?: (px: number) => void
 }) {
   const [state, setState] = useState<ChatState | null>(null)
   // The one shared getStageReadiness read for this stage (spec 0019's StageReadinessProvider,
@@ -70,6 +73,7 @@ export function ChatPanel({
   // the panel is full width regardless.
   const chatWidth = useChatWidth()
   const widthStyle = { '--chat-width': `${chatWidth.width}px` } as CSSProperties
+  useEffect(() => { onWidthChange?.(chatWidth.width) }, [onWidthChange, chatWidth.width])
   const [busy, setBusy] = useState(false)
   // True once the chat flow (including the model's own first turn, when one was needed) has
   // actually finished for THIS stage — reset to false at the top of the mount effect below on
@@ -204,6 +208,9 @@ export function ChatPanel({
   const currentDocumentTitle = readiness?.ok
     ? computeWorkflowSteps(readiness).find((s) => s.status === 'current' && s.kind === 'document')?.title ?? null
     : null
+  // What the empty state says about where it is (S9): the stage's display name, from the shared
+  // readiness read, or the project's current phase while that has not answered.
+  const stageDisplay = readiness?.ok ? readiness.display : status?.current_phase.display ?? null
 
   const sendText = async (text: string): Promise<ChatSendResult> => {
     if (busy) return { sent: false, reason: 'The chat is busy with another message. Try again in a moment.' }
@@ -285,7 +292,7 @@ export function ChatPanel({
           <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
         ) : (
           <>
-            <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} onAnswer={answer} onResolveProposal={resolveProposal} />
+            <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} stageDisplay={stageDisplay} onAnswer={answer} onResolveProposal={resolveProposal} />
             {/* A chat-turn failure takes priority when both are set — it's the more recent, more
                 actionable one; the shared readiness error is what proves this panel isn't silently
                 stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
@@ -329,17 +336,19 @@ function ChatHeader({
   projectOpen: boolean
   currentDocumentTitle?: string | null
 }) {
+  // S9: the document's name is a Chip (identifier casing), so the header reads "Helping with:"
+  // once and the filename sits as the one identifier it is, not as part of a sentence.
   const subtitle = !status
     ? (projectOpen ? 'Can see: loading…' : 'Can see: nothing yet — open a project first.')
     : currentDocumentTitle
-      ? `Helping with: ${currentDocumentTitle}`
+      ? <>Helping with: <Chip casing="identifier" size="xs" className="ml-0.5 max-w-full" data-testid="chat-helping-with">{currentDocumentTitle}</Chip></>
       : `Can see: ${status.project_name}, ${status.current_phase.display}.`
   return (
     // 11 px vertical padding lands the header on the same 44 px line as the sidebar's project
     // row, so the two asides share one top edge.
     <div className="border-b border-line-1 px-4 py-[11px]">
       <h2 className="text-sm font-semibold text-ink-1">Chat</h2>
-      <p className="mt-0.5 truncate text-xs text-ink-3">{subtitle}</p>
+      <p className="mt-0.5 flex min-w-0 items-center truncate text-xs text-ink-3">{subtitle}</p>
     </div>
   )
 }
@@ -387,8 +396,40 @@ function useMessageArrival(listRef: React.RefObject<HTMLDivElement | null>, coun
   }, { scope: listRef, dependencies: [count] })
 }
 
+/** S9: the empty and the failed conversation, as one `EmptyState` at the TOP of the list region
+ * (an empty room reads from its door, not its far wall). The sentence is unchanged; beneath it
+ * the retry hint, then where this chat is — the stage · "read-only until you accept a proposal"
+ * — as a quieter line. The document's name is NOT repeated here: the header's Chip is the one
+ * place the filename appears. The hint comes BEFORE the facts line on purpose: chatAuthoring
+ * matches `/already started\. Ask a question/` as one text run, and Playwright joins an element's
+ * text without separators, so the title ends in a trailing space and the hint must follow it
+ * directly. No `<li>` anywhere (chatLook counts exactly four in the aside). The failure message
+ * sits in its own span so a test (and a reader) can find the host's words on their own. */
+function ChatEmptyState({ startError, stageDisplay }: {
+  startError: string | null
+  stageDisplay: string | null
+}) {
+  const facts = [stageDisplay, 'read-only until you accept a proposal'].filter((f): f is string => Boolean(f))
+  return (
+    <EmptyState
+      figure="conversation"
+      data-testid="chat-empty-state"
+      className="border-0 px-1 py-2"
+      title={<>{startError ? 'The assistant could not start.' : "This stage's documents are already started."}{' '}</>}
+      body={(
+        <>
+          {startError
+            ? <><span>{startError}</span> Type a message to try again, or open a document to edit it directly.</>
+            : 'Ask a question, or open a document to edit it directly.'}
+          <span className="mt-1.5 block text-ink-3" data-testid="chat-empty-facts">{facts.join(' · ')}</span>
+        </>
+      )}
+    />
+  )
+}
+
 function ChatMessageList({
-  listRef, state, busy, projectPath, stageId, startError, onAnswer, onResolveProposal,
+  listRef, state, busy, projectPath, stageId, startError, stageDisplay, onAnswer, onResolveProposal,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>
   state: ChatState | null
@@ -399,6 +440,8 @@ function ChatMessageList({
    * the empty-session message below for one that admits the failure, rather than the "already
    * started" copy that branch normally shows for an ordinary, no-error empty session. */
   startError: string | null
+  /** The stage's display name for the empty state's facts line (S9). */
+  stageDisplay: string | null
   onAnswer: (questionId: string, option: string) => void
   onResolveProposal: (proposalId: string, outcome: 'accepted' | 'edited' | 'discarded', finalValue: string) => void
 }) {
@@ -406,26 +449,9 @@ function ChatMessageList({
   return (
     <div ref={listRef} className="flex-1 space-y-3 overflow-auto px-3 py-3">
       {state === null || (state.messages.length === 0 && busy) ? (
-        <p className="text-xs text-ink-4">Starting the conversation…</p>
+        <p className="text-xs text-ink-3">Starting the conversation…</p>
       ) : state.messages.length === 0 ? (
-        // One centred block, no `<li>` (chatLook counts exactly four in the aside). A failed
-        // auto-start is stated HERE, once — the red strip under the thread stays suppressed while
-        // the thread is empty (see the strip's own comment in ChatPanel). The `{' '}` between the
-        // two paragraphs is load-bearing: chatAuthoring matches the whole sentence pair as one
-        // text run (/already started\. Ask a question/), and block elements alone would concatenate
-        // without the space. The failure message sits in its own span so a test (and a reader)
-        // can find the host's words on their own.
-        <div className="flex h-full flex-col items-start justify-end gap-1 px-1 pb-2">
-          <p className="text-sm font-medium text-ink-2">
-            {startError ? 'The assistant could not start.' : "This stage's documents are already started."}
-          </p>
-          {' '}
-          <p className="text-xs text-ink-3">
-            {startError
-              ? <><span>{startError}</span> Type a message to try again, or open a document to edit it directly.</>
-              : 'Ask a question, or open a document to edit it directly.'}
-          </p>
-        </div>
+        <ChatEmptyState startError={startError} stageDisplay={stageDisplay} />
       ) : (
         state.messages.map((message) => (
           <MessageBubble key={message.id} message={message} busy={busy} onAnswer={onAnswer} onResolveProposal={onResolveProposal} />
@@ -495,7 +521,7 @@ function ChatComposer({
         )}
       </div>
       {hasPendingProposal && (
-        <p className="mt-1 text-xs text-ink-4">A proposal above is waiting on you.</p>
+        <p className="mt-1 text-xs text-ink-3">A proposal above is waiting on you.</p>
       )}
     </div>
   )
@@ -578,9 +604,11 @@ function QuestionPrompt({
     <div className="mt-2 space-y-1">
       <p className="text-xs font-medium text-slate-500">{question.question}</p>
       {question.answeredWith ? (
-        <p className="text-xs text-slate-500">You picked: <span className="font-semibold">{question.answeredWith}</span></p>
+        <p className="text-xs text-slate-500">You picked: <span className="font-semibold text-accent-text">{question.answeredWith}</span></p>
       ) : (
         <div ref={pillsRef} className="flex flex-wrap gap-1.5">
+          {/* C1: the quick replies read in `accent-text` (legible on both themes) over the
+              surface, not a hard `bg-white` that sat as a white patch on the dark theme. */}
           {question.options.map((option) => (
             <Chip
               key={option}
@@ -589,7 +617,7 @@ function QuestionPrompt({
               size="sm"
               disabled={busy}
               onClick={() => onAnswer(option)}
-              className="border border-brand-300 bg-white text-brand-700 hover:bg-brand-50"
+              className="border border-brand-300 bg-surface-1 text-accent-text hover:bg-brand-50 hover:text-accent-text-hover"
             >
               {option}
             </Chip>
@@ -614,7 +642,7 @@ function ProposalCard({
     const label = proposal.outcome === 'discarded' ? 'Discarded' : proposal.outcome === 'edited' ? 'Accepted (edited)' : 'Accepted'
     return (
       <Card padding="sm" className={`mt-2 rounded-lg ${proposal.outcome === 'discarded' ? 'opacity-60' : ''}`}>
-        <p className="text-2xs font-semibold uppercase tracking-wide text-ink-4">
+        <p className={EYEBROW_CLASS}>
           {proposal.document} — {proposal.section} — {proposal.field}
         </p>
         <p className="mt-1 text-xs font-medium text-ink-2">{label}</p>

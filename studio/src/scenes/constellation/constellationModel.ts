@@ -180,6 +180,19 @@ export function neighboursOf(model: RenderModel, hovered: number): Set<number> {
   return lit
 }
 
+/** Round 2 (I5): the hovered body's incident edges split by DIRECTION, from the declared edges
+ * only. `upstream` are the edges the hovered body DEPENDS ON (`from === hovered`, its
+ * dependencies); `downstream` are its DEPENDENTS (`to === hovered`). Indices into `model.edges`. */
+export function partitionIncident(model: RenderModel, hovered: number): { upstream: number[]; downstream: number[] } {
+  const upstream: number[] = []
+  const downstream: number[] = []
+  model.edges.forEach((e, i) => {
+    if (e.from === hovered) upstream.push(i)
+    else if (e.to === hovered) downstream.push(i)
+  })
+  return { upstream, downstream }
+}
+
 /** Where each body STARTS: the cached position when there is one; otherwise its nearest
  * dependency's (or dependent's) cached position, so a new body is born beside what it relates to
  * and never at the origin; otherwise the seeded hash of its id (deterministic). */

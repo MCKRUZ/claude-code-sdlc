@@ -36,9 +36,11 @@ const FRAG = /* glsl */ `
     float alpha = line * fade * horizon * uOpacity;
     // A 3.5 % wash under the lines so the grid reads as a surface, not as floating hairlines.
     float wash = 0.035 * fade * horizon * uOpacity;
-    float out = max(alpha, wash);
-    if (out < 0.004) discard;
-    gl_FragColor = vec4(uColor, out);
+    // 'out' is a GLSL reserved word (the shader failed to compile in production and the ground
+    // never drew); hence a plain name.
+    float coverage = max(alpha, wash);
+    if (coverage < 0.004) discard;
+    gl_FragColor = vec4(uColor, coverage);
   }
 `
 

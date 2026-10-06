@@ -7,7 +7,7 @@
 // slate row names its next owner because the plugin does; no helper sums rows by that name.
 
 import type {
-  BoardRow, SprintDecisions, SprintMixTier, SprintRecord, SprintSlateRow, SprintView,
+  BoardRow, SprintDecisions, SprintMixTier, SprintRecord, SprintSlateRow, SprintVerdictPending, SprintView,
 } from './types'
 
 /** The `capabilities` entry (generate_status.py --json) the view needs from the installed plugin. */
@@ -22,9 +22,12 @@ export function isSprintId(value: unknown): value is string {
 
 export const NO_DATA = 'no data'
 
-/** "3 business days", "1 business day", or "no data" when the plugin could not age it. */
+/** "3 business days", "1 business day", "today" for a 0 the plugin DID report (a verdict asked for
+ * this morning is not an absence, and "0 business days" reads like one), or "no data" when the
+ * plugin could not age it at all. */
 export function businessDays(n: number | null): string {
   if (n === null) return NO_DATA
+  if (n === 0) return 'today'
   return `${n} business day${n === 1 ? '' : 's'}`
 }
 
@@ -33,7 +36,38 @@ export function businessDays(n: number | null): string {
 export function remainingLabel(sprint: SprintRecord): string | null {
   if (sprint.state === 'closed') return sprint.closedBy ? `closed by ${sprint.closedBy}` : 'closed'
   if (sprint.days.remaining === null) return null
+  if (sprint.days.remaining === 0) return 'ends today'
   return `${businessDays(sprint.days.remaining)} remaining`
+}
+
+/** A spec's status is a STATE, so it wears a chip (G4-4), on the Board and the slate alike —
+ * one map, here, so the two screens cannot disagree. `ready` is the same idea as the stage's
+ * "now" and takes the current tone; in-flight is the accent; merged is the one signed fact;
+ * draft and deferred are quiet. Studio never computes the status — the word is the plugin's.
+ * The union is a subset of the kit's `ChipTone`, spelled here because `shared/` is also the
+ * main process's and must not import the renderer's kit. */
+export type SpecStatusTone = 'current' | 'accent' | 'ok' | 'neutral'
+
+export function statusTone(status: string): SpecStatusTone {
+  switch (status.trim().toLowerCase()) {
+    case 'ready': return 'current'
+    case 'in-flight': return 'accent'
+    case 'merged': return 'ok'
+    default: return 'neutral'
+  }
+}
+
+/** Verdicts pending, grouped per spec in the plugin's order — a GROUPING only: the lanes and
+ * their ages are the plugin's rows, nothing is counted or summed, and a spec appears once with
+ * the lanes it is waiting on beneath it. */
+export function groupVerdicts(pending: readonly SprintVerdictPending[]): Array<{ spec: string; lanes: SprintVerdictPending[] }> {
+  const groups = new Map<string, SprintVerdictPending[]>()
+  for (const v of pending) {
+    const existing = groups.get(v.spec)
+    if (existing) existing.push(v)
+    else groups.set(v.spec, [v])
+  }
+  return [...groups.entries()].map(([spec, lanes]) => ({ spec, lanes }))
 }
 
 export type ChipTone = 'neutral' | 'good' | 'attention' | 'muted'
