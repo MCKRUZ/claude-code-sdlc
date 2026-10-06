@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SyncState } from '../../shared/types'
+import { Chip, HoverCard, StatusDot, cn, type ChipTone, type DotStatus } from '../ui'
+import { useStudioGSAP } from '../motion/useStudioGSAP'
+import { motion } from '../motion/motion'
+import { MOTION_DURATIONS, MOTION_EASES } from '../motion/contract'
+import { contextFrom, syncChip } from '../motion/choreo'
 
 function relativeTime(iso: string): string {
   const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
@@ -10,12 +15,46 @@ function relativeTime(iso: string): string {
   return `${hours}h ago`
 }
 
+/** The words, tone and dot for each state, in one place so the chip and its hover card agree.
+ * The texts are the ones sidebar.test pins ("4 sections need your input", "Sync error"). */
+function describe(s: SyncState): { label: string; tone: ChipTone; dot: DotStatus; pulse: boolean; detail: string } {
+  switch (s.kind) {
+    case 'pulling':
+      return { label: 'Pulling…', tone: 'neutral', dot: 'running', pulse: true, detail: 'Reading the repository for changes made elsewhere.' }
+    case 'saving':
+      return { label: 'Saving…', tone: 'neutral', dot: 'running', pulse: true, detail: 'Writing your changes to the repository.' }
+    case 'clashes':
+      return {
+        label: `${s.count} section${s.count === 1 ? '' : 's'} need your input`,
+        tone: 'warn', dot: 'warn', pulse: false,
+        detail: 'The same section changed here and in the repository; the clash screen opens by itself.',
+      }
+    case 'waitingForApproval':
+      return { label: `Waiting for ${s.approver}`, tone: 'warn', dot: 'warn', pulse: false, detail: `Approver: ${s.approver}. The stage's documents merge once they approve.` }
+    case 'waitingForChecks':
+      return { label: 'Waiting for checks', tone: 'neutral', dot: 'running', pulse: false, detail: 'The code host is still running its checks on the saved change.' }
+    case 'error':
+      return { label: 'Sync error', tone: 'error', dot: 'error', pulse: false, detail: s.message }
+    case 'idle':
+    default:
+      return {
+        // A healthy state is quiet (G4-8): grey text with a green dot. Green fills are for
+        // signed-off facts, and "synced" is not one.
+        label: s.lastPulledAt ? `Synced ${relativeTime(s.lastPulledAt)}` : 'Not synced yet',
+        tone: 'neutral', dot: 'ok', pulse: false,
+        detail: s.lastPulledAt ? `Last pulled ${new Date(s.lastPulledAt).toLocaleString()}.` : 'Nothing has been pulled from the repository in this session.',
+      }
+  }
+}
+
 /** The sync indicator spec 0009 requires "on every screen". It lives in the sidebar's footer,
  * which is on every project screen. Re-renders on a tick so "2m ago" keeps advancing without
  * needing a new syncState push just to update the clock.
  *
  * It is a status, not a control: nothing here can be clicked, so it does not look as if it could
- * be. (The clash screen opens by itself when there is something to resolve.) */
+ * be. (The clash screen opens by itself when there is something to resolve.) The hover card
+ * (§6.5) carries the detail the one-line label cannot — when it was last pulled, who it waits
+ * on — and, like every hover card, holds nothing that writes. */
 export function SyncChip({ syncState }: { syncState: SyncState }) {
   const [, forceTick] = useState(0)
   useEffect(() => {
@@ -23,38 +62,44 @@ export function SyncChip({ syncState }: { syncState: SyncState }) {
     return () => clearInterval(id)
   }, [])
 
-  const base = 'flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium'
-  const dot = <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" />
+  const { label, tone, dot, pulse, detail } = describe(syncState)
+  const rootRef = useRef<HTMLSpanElement>(null)
+  const dotRef = useRef<HTMLSpanElement>(null)
+  const labelRef = useRef<HTMLSpanElement>(null)
 
-  switch (syncState.kind) {
-    case 'pulling':
-      return <div className={`${base} bg-slate-100 text-slate-500`}>{dot}Pulling…</div>
-    case 'saving':
-      return <div className={`${base} bg-slate-100 text-slate-500`}>{dot}Saving…</div>
-    case 'clashes':
-      return (
-        <div className={`${base} bg-amber-50 text-amber-800`}>
-          {dot}
-          {`${syncState.count} section${syncState.count === 1 ? '' : 's'} need your input`}
-        </div>
-      )
-    case 'waitingForApproval':
-      return <div className={`${base} bg-amber-50 text-amber-800`}>{dot}{`Waiting for ${syncState.approver}`}</div>
-    case 'waitingForChecks':
-      return <div className={`${base} bg-slate-100 text-slate-500`}>{dot}Waiting for checks</div>
-    case 'error':
-      return (
-        <div className={`${base} bg-red-50 text-[var(--color-command-error)]`} title={syncState.message}>
-          {dot}Sync error
-        </div>
-      )
-    case 'idle':
-    default:
-      return (
-        <div className={`${base} bg-[var(--color-stage-signed-off-bg)] text-[var(--color-stage-signed-off)]`}>
-          {dot}
-          {syncState.lastPulledAt ? `Synced ${relativeTime(syncState.lastPulledAt)}` : 'Not synced yet'}
-        </div>
-      )
-  }
+  // Choreography #23: a crossfade when the KIND changes (not on every 30 s tick), so the chip
+  // does not blink while the clock advances.
+  useStudioGSAP(() => {
+    const root = rootRef.current
+    if (!root) return
+    const ctx = contextFrom(root, { enabled: motion.enabled(), reduced: motion.reduced() }, { durations: MOTION_DURATIONS, eases: MOTION_EASES })
+    syncChip.play(ctx, { dot: dotRef.current, label: labelRef.current })
+  }, { scope: rootRef, dependencies: [syncState.kind] })
+
+  return (
+    <HoverCard
+      className="flex w-full"
+      placement="top"
+      trigger={
+        <Chip
+          ref={rootRef}
+          tone={tone}
+          size="sm"
+          role="status"
+          title={syncState.kind === 'error' ? syncState.message : undefined}
+          // Grey text only on the quiet neutral state; warn and error keep the tone's own ink.
+          className={cn('w-full justify-start rounded-[8px] px-2.5 py-1.5 text-xs', tone === 'neutral' && 'text-ink-3')}
+        >
+          <StatusDot ref={dotRef} status={dot} pulse={pulse} className="h-1.5 w-1.5" />
+          <span ref={labelRef}>{label}</span>
+        </Chip>
+      }
+      content={
+        <span className="block max-w-[16rem] text-left">
+          <span className="block font-medium">{label}</span>
+          <span className="mt-0.5 block text-ink-3">{detail}</span>
+        </span>
+      }
+    />
+  )
 }

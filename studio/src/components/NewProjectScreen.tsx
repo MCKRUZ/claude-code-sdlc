@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { Button, Card, Field, Input, Notice } from '../ui'
+import { useEnter } from '../motion/useEnter'
+import { EntryShell } from './entryScreenBits'
 
 const REMEMBERED_PARENT = 'studio.newProjectParent'
 
@@ -16,7 +19,7 @@ function joinForDisplay(parent: string, name: string): string {
   return parent.endsWith(separator) ? `${parent}${name}` : `${parent}${separator}${name}`
 }
 
-/** Start a project from nothing: a name, and where it should live. Studio makes the folder and
+/** Start a project from nothing: a name, and where it should live. Tōgō makes the folder and
  * starts version tracking in it, then the person continues into the same setup wizard an
  * existing folder goes through — they never leave the app to make a folder first. */
 export function NewProjectScreen({
@@ -30,6 +33,10 @@ export function NewProjectScreen({
   const [parent, setParent] = useState<string | null>(readRememberedParent)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  // The card settles like a dialog panel (§4 #15) — this screen is the one place a dialog's job
+  // is done by a whole screen.
+  useEnter(cardRef, 'rise')
 
   const trimmed = name.trim()
   const ready = trimmed !== '' && parent !== null && !busy
@@ -60,80 +67,67 @@ export function NewProjectScreen({
   }
 
   return (
-    <div className="flex h-screen items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-md space-y-5">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-slate-900">New project</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Studio will make the folder and set it up for you. You'll choose the lifecycle profile on the next step.
+    <EntryShell>
+      <div className="mx-auto w-full max-w-md space-y-5">
+        {/* Left-aligned like the other pre-project headings; `text-lg` carries 18/24/600/−0.01em
+            from the type scale, so no weight class here. */}
+        <div>
+          <h1 className="text-lg text-ink-1">New project</h1>
+          <p className="mt-1 text-sm text-ink-3">
+            Tōgō will make the folder and set it up for you. You'll choose the lifecycle profile on the next step.
           </p>
         </div>
 
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-4">
-          <div>
-            <label htmlFor="new-project-name" className="text-xs font-medium text-slate-600">Project name</label>
-            <input
-              id="new-project-name"
+        <Card ref={cardRef} className="space-y-4 rounded-4 p-6 shadow-2">
+          {/* The error is one Notice below, not also Field's own `error` slot: two `role="alert"`s
+              for one failure would be announced twice. */}
+          <Field label="Project name" id="new-project-name">
+            <Input
               type="text"
               autoFocus
               value={name}
               disabled={busy}
+              invalid={error !== null}
               onChange={(e) => { setName(e.target.value); setError(null) }}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create() } }}
               placeholder="e.g. Claims Portal"
-              className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50"
             />
-          </div>
+          </Field>
 
-          <div>
-            <span className="text-xs font-medium text-slate-600">Location</span>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="min-w-0 flex-1 truncate rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600" title={parent ?? undefined}>
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-medium text-ink-2">Location</span>
+            <div className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate rounded-lg bg-surface-2 px-3 py-1.5 font-mono text-sm text-ink-2" title={parent ?? undefined}>
                 {parent ?? 'No location chosen yet'}
               </span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={chooseLocation}
-                className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 hover:border-slate-300 disabled:opacity-50"
-              >
+              <Button variant="secondary" disabled={busy} onClick={chooseLocation} className="shrink-0">
                 Choose location…
-              </button>
+              </Button>
             </div>
           </div>
 
           {parent !== null && trimmed !== '' && (
-            <p className="text-xs text-slate-500">
-              Will create: <span data-testid="new-project-target" className="break-all font-medium text-slate-700">{joinForDisplay(parent, trimmed)}</span>
+            <p className="text-xs text-ink-3">
+              Will create: <span data-testid="new-project-target" className="break-all font-mono font-medium text-ink-1">{joinForDisplay(parent, trimmed)}</span>
             </p>
           )}
-        </div>
+        </Card>
 
         {error && (
-          <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-[var(--color-command-error)]">
+          <Notice tone="error" role="alert">
             {error}
-          </div>
+          </Notice>
         )}
 
         <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onCancel}
-            className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700 hover:border-slate-300 disabled:opacity-50"
-          >
+          <Button variant="secondary" disabled={busy} onClick={onCancel} className="px-4 text-sm">
             Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!ready}
-            onClick={create}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
-          >
-            {busy ? 'Creating…' : 'Create project'}
-          </button>
+          </Button>
+          <Button variant="primary" disabled={!ready} loading={busy} loadingLabel="Creating…" onClick={create} className="px-4 text-sm">
+            Create project
+          </Button>
         </div>
       </div>
-    </div>
+    </EntryShell>
   )
 }

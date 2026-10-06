@@ -1,0 +1,29 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "account",
+  "show"
+ ],
+ "_secs": 0.2,
+ "value": {
+  "environmentName": "AzureCloud",
+  "homeTenantId": "00000000-0000-0000-0000-000000000009",
+  "id": "00000000-0000-0000-0000-000000000010",
+  "isDefault": true,
+  "managedByTenants": [
+   {
+    "tenantId": "00000000-0000-0000-0000-000000000011"
+   }
+  ],
+  "name": "Subscription",
+  "state": "Enabled",
+  "tenantDefaultDomain": "contoso.onmicrosoft.com",
+  "tenantDisplayName": "Contoso",
+  "tenantId": "00000000-0000-0000-0000-000000000009",
+  "user": {
+   "name": "person5@example.com",
+   "type": "user"
+  }
+ }
+}

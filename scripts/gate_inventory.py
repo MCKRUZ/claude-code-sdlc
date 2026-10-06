@@ -22,6 +22,11 @@ Three answers, and the middle one is the point:
 
 Read-only, always exits 0.
 
+The pipeline directory follows the CI PLATFORM the harness manifest records (code-host
+providers): `.github/workflows` for GitHub Actions — exactly as before — and
+`.azuredevops/pipelines` for an Azure Pipelines install, so a gate is never called missing
+because this looked in the other platform's folder. `installed_pipelines_dir()` is that rule.
+
 Standalone or Workflow:
   - Standalone: --repo <path>
   - Workflow:   --state <path>/.sdlc/state.yaml
@@ -34,11 +39,16 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import code_host  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 PLAYBOOK_GUIDE = PLUGIN_ROOT / "harness" / "workflows" / "RAILS.md"
 INSTALLED_GUIDE = ".github/RAILS.md"
 INSTALLED_WORKFLOWS = ".github/workflows"
+# The CI axis (code_host.installed_ci_platform): where each platform's install puts the gate
+# pipelines, and where the azure-devops pack redirects the neutral ledgers (install_harness.py's
+# `_CORE_LAYOUT_BY_PLATFORM`).
+INSTALLED_PIPELINES = {"github": INSTALLED_WORKFLOWS, "azure-devops": ".azuredevops/pipelines"}
 
 # Ledgers that record a sanctioned way past a gate. Their EXISTENCE is what matters here —
 # a gate with a recorded escape route is a different thing from one without, and a person
@@ -47,6 +57,21 @@ BYPASS_LEDGERS = {
     ".github/eval-bypasses.md": "eval gate",
     ".github/dependency-exceptions.md": "dependency scan",
 }
+BYPASS_LEDGERS_BY_PLATFORM = {
+    "github": BYPASS_LEDGERS,
+    "azure-devops": {".azuredevops/rails/eval-bypasses.md": "eval gate",
+                     ".azuredevops/rails/dependency-exceptions.md": "dependency scan"},
+}
+
+
+def installed_pipelines_dir(repo_root: Path) -> str:
+    """Repo-relative pipeline directory for this install's CI platform (GitHub when no manifest
+    names the azure-devops pack — the behaviour every existing project already has)."""
+    return INSTALLED_PIPELINES[code_host.installed_ci_platform(repo_root)]
+
+
+def bypass_ledgers_for(repo_root: Path) -> dict[str, str]:
+    return BYPASS_LEDGERS_BY_PLATFORM[code_host.installed_ci_platform(repo_root)]
 
 
 def _split_row(line: str) -> list[str]:
@@ -99,7 +124,7 @@ def parse_gate_table(text: str) -> list[dict]:
 
 
 def _installed_workflow_files(repo_root: Path) -> list[str]:
-    d = repo_root / INSTALLED_WORKFLOWS
+    d = repo_root / installed_pipelines_dir(repo_root)
     if not d.is_dir():
         return []
     # Both spellings. The code host runs `.yaml` exactly as it runs `.yml`, so globbing only
@@ -168,6 +193,7 @@ def inventory(repo_root: Path) -> dict:
                          f"described. This is not the same as having no gates."}
 
     installed_files = _installed_workflow_files(repo_root)
+    pipelines_dir = installed_pipelines_dir(repo_root)
     described_files = {g["file"] for g in described if g["file"].endswith((".yml", ".yaml"))}
 
     gates = []
@@ -182,7 +208,7 @@ def inventory(repo_root: Path) -> dict:
         present = g["file"] in installed_files
         gates.append({**g, "state": "installed" if present else "missing",
                       "detail": g["file"] if present
-                                else f"{g['file']} is not in {INSTALLED_WORKFLOWS}",
+                                else f"{g['file']} is not in {pipelines_dir}",
                       **_disagreement(g, playbook_described)})
 
     unexpected = [
@@ -193,7 +219,7 @@ def inventory(repo_root: Path) -> dict:
 
     ledgers = [
         {"file": rel, "gate": gate, "present": (repo_root / rel).exists()}
-        for rel, gate in BYPASS_LEDGERS.items()
+        for rel, gate in bypass_ledgers_for(repo_root).items()
     ]
 
     # The case that matters most, and the one reading only the project's copy could never
@@ -213,7 +239,7 @@ def inventory(repo_root: Path) -> dict:
     return {"ok": True, "guide_source": guide_source, "gates": gates,
             "unexpected": unexpected, "not_in_project_guide": dropped,
             "compared_with_playbook": bool(playbook_described),
-            "bypass_ledgers": ledgers, "error": None}
+            "bypass_ledgers": ledgers, "pipelines_dir": pipelines_dir, "error": None}
 
 
 def format_report(result: dict) -> str:

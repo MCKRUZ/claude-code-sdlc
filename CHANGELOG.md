@@ -2,6 +2,139 @@
 
 ## Unreleased
 
+### Code-host providers — GitHub and Azure DevOps
+
+The code lives in Azure DevOps repositories as well as GitHub ones, and until now every
+pull-request-facing read and write went through `gh` alone — an Azure DevOps project got
+pipelines and a board built from spec files, with no live "who is this waiting on" and a hand-off
+whose draft PR could never open. `docs/proposals/code-host-providers.md` adds Azure DevOps through
+the Azure CLI as a second provider **without changing a byte of GitHub behaviour**: the same
+argv (pinned by `scripts/tests/test_gh_argv_golden.py`), the same text, and every existing test
+unmodified. The host is **chosen by the repository**, never by a global setting.
+
+- **Detection and override** (`scripts/code_host.py`). `origin` → `github` / `azure-devops` /
+  `none`, with `--host` on every host-touching script, `SDLC_CODE_HOST`, and a per-clone
+  `.sdlc/code-host.yaml` (written by `set_setting.py code-host`) ahead of it; the harness
+  manifest breaks the tie only when there is no usable remote. `none` falls through to `gh`
+  exactly as before. Two axes stay apart: the code host comes from the remote, the CI platform
+  from the installed pack — GitHub + Azure Pipelines is legitimate, and a mismatch is reported,
+  never resolved silently. Every `--json` carries a top-level `host` block
+  (`{name, source, cli, cli_state, detail}`) so a reader sees *why* a host was chosen.
+- **One `az` module, gh-shaped returns** (`ado_import.py` with `ado_map.py`, `ado_transport.py`,
+  `ado_pipelines.py`). Each function mirrors the GitHub function it stands in for by name and
+  signature (`code_host.PROVIDER_FUNCTIONS`, pinned by `test_provider_parity.py`) and returns
+  the dict shape `gh` returns today, so the pure models and the honesty paths are reused, not
+  re-implemented. `AdoImportError` subclasses `GitHubImportError`, so every existing `except`
+  already catches an `az` failure.
+- **Read-back, not just a write target.** `spec_status.py` (per spec and `--all`),
+  `connection_report.py`, `pipeline_proof.py`'s PR reads, `gate_auth.py status` (variable
+  groups) read Azure DevOps as they read GitHub, and `gate_inventory.py` finds the gate
+  pipelines under `.azuredevops/pipelines/` on an Azure Pipelines install. `handoff.py` opens a
+  draft PR with the checker as `--required-reviewers <email>` and names the developer in the
+  description (ADO has no assignee); a checker with no roster `email` is an `assignment_error`
+  with the local half still complete. `gate_auth.py set` / `clear` print the manual `az`
+  command rather than writing a variable group from here.
+- **Scorecard import on either host** (`import_outcomes.py`, `ado_outcomes.py`). GitHub
+  delegates literally to the frozen `scorecard.import_events`; Azure DevOps maps PR completions,
+  vote threads, environment deployment records and `incident`-tagged Bugs into the same ledger
+  with `ado-*` ids that never collide with `gh-*`. What Azure DevOps does not record is said,
+  never zeroed: a `review_wait` with no request timestamp has no `wait_hours` key and is counted
+  on its own line; an unreadable category reads "not imported".
+- **Identity.** The roster key stays `@handle`; `people[].email` (optional, unique,
+  case-insensitive) is the only way an Azure DevOps sign-in resolves to a handle. Nothing
+  guesses from a display name or a UPN prefix.
+- **Honesty rules** (`host_report.py`). `cli_state` is read from the outcome of the call the
+  script just made, never from a second probe; it reads `unknown` when nothing could be
+  determined; `updatedAt`, vote time and request time are `null` on Azure DevOps because the
+  host has no such field; "unavailable" rides the `host` block and is never a false `no`.
+- **Fixtures with provenance.** `scripts/tests/fixtures/code_host/azure_devops/captured/` is
+  real `az` output captured 2026-10-05 from a live organisation and anonymised; its
+  `CAPTURE-NOTES.md` records every fact that changed the design (reviewers' `isRequired` is
+  `null` not `false`, `lastMergeCommit` sits on every active PR, system-comment prose is never
+  parsed — the typed `properties` bag is, environments need `--api-version 7.1-preview` exactly,
+  the CLI's default account decides the token). Hand-written documents stay marked
+  `hand-written (unverified)` and `test_fixture_provenance.py` lists what is still unverified.
+- **Protected and unchanged:** `scorecard.py`, `github_import.py`, `doctor.py`, `check_gates.py`,
+  `check_spec.py`, `advance_phase.py`, `phase_model.py`, `new_spec.py`, `harness/**`,
+  `pipeline_proof_model.py`; `sprint.py` text and exit codes; the doctor's text goldens.
+- **Docs:** `references/code-host-providers.md` is the on-demand contract; README gains a
+  **Code hosts** subsection (which features need which CLI, `az login
+  --allow-no-subscriptions` for guest identities, `email:` in `team.yaml`,
+  `.sdlc/code-host.yaml`); the commands that named `gh` now name both CLIs.
+
+### Tōgō — the name, the brand, and the Observatory UI
+
+The plugin and its desktop app now ship under one name: **Tōgō** (TOH-goh, 統合 — integration). The plugin id `claude-code-sdlc`, the `studio/` folder and the `window.studio` bridge are unchanged; the window title, `productName`, favicon and Welcome lockup are Tōgō. The identity is deterministic SVG — a solid mark ("Macron", with "Lens" and "Seam" alternates), a wordmark with its macrons kept, a teal–cyan accent (`#0E7C86`, 4.95:1 on white) with a 50–900 scale for light and dark, Inter for UI and JetBrains Mono for code — recorded in `docs/brand/togo/` (`palette.json`, PNG exports, `togo.ico`, `brandbook.html`). Two standalone HTML guides for teams live in `docs/guide/`: how to stand the tool up, and how to use the app.
+
+The app's screens had grown one spec at a time, each carrying its own Tailwind strings, so there
+was no dark theme, no shared control vocabulary, no keyboard route through the app and nothing
+that told a screen reader which tab was selected. The Observatory (`docs/proposals/studio-observatory.md`,
+spec 0033) gives every screen one visual system and adds two 3D scenes that draw strictly what the
+plugin reports. Renderer only: `studio/shared/**`, `studio/electron/**` and the Content-Security-Policy
+line are byte-identical, and `test/noNewIpcInRenderer.test.ts` fails if any of the new layers
+reaches for `window.studio`.
+
+- **Tokens and a dark theme.** `src/theme/` holds the design tokens; dark is a remap of the colour
+  ramps, so every screen flips at once. Theme (System / Light / Dark) and Density (Comfortable /
+  Compact) are per-person `localStorage` preferences under Settings › Appearance and the sidebar's
+  Appearance button; Inter Variable and JetBrains Mono Variable ship as bundled woff2.
+- **A UI kit with typed contracts** (`src/ui/contract.ts`): Button, Card, Chip, Notice, Eyebrow,
+  Segmented, Tabs, DataTable, DefinitionList, Dialog, Toast, HoverCard, StatTile, NoData, and the
+  rest — with the strings existing tests pin spelled out literally (Button's `type` attribute
+  first, `bg-brand-600` on primary). `DocumentsTab`, the last byte-pinned screen, moved onto the
+  kit; its byte-equality test became a named behaviour suite written before the component changed.
+- **One motion rule.** Animations are Auto / On / Off: Auto honours the OS reduced-motion
+  setting, On is an explicit per-person opt-in over it, Off disables everything, and under test
+  no tween is ever created. GSAP choreographies are scoped per component and the global timeline
+  pauses when the window is hidden.
+- **Command palette and shortcuts.** ⌘K (Ctrl+K) or `/` opens the palette from anywhere;
+  `src/shortcuts/shortcutMap.ts` is the single keyboard map (`g` `b` for the Board, `[` / `]`
+  between stages, `1`–`3` for a stage's tabs, ⌘J console, ⌘, Settings) and the Shortcuts help
+  (⌘/ or `?`) renders the same data. ⌘W/Q/R/1–9 and the F-keys stay with Electron and the OS.
+- **Focus model.** A skip link to `main#main`, page headings that take focus on navigation,
+  roving tabs with `aria-controls`, `aria-pressed` on every segmented control, a `#overlays`
+  portal root with focus trap and restore, and an Escape that closes the innermost layer and
+  never discards an unsaved edit (the field editor, hand-off form and an open AI proposal
+  register as dirty). The Board and Sprint e2e now assert selected state with `aria-pressed`
+  rather than class names.
+- **Lifecycle Spine, Dependency Constellation, Ambient field** (`src/scenes/`). Each scene is a
+  lazily loaded canvas with a Graph / Table toggle where the Table twin is the real content —
+  what shows when WebGL is unavailable, the window is under 400 px, the canvas crashed, or Studio
+  is under test. Honesty notes: the Spine draws the stage order and the sign-off state
+  `stage_readiness.py` reports and computes nothing; the Constellation's node size comes from the
+  risk tier alone, a `depends_on` id with no spec is a ghost drawn from the id, and prose length
+  influences nothing; a null from the plugin reads "no data", never a 0; no per-person totals
+  anywhere. The Ambient field renders only behind the entry screens, gated by
+  `AMBIENT_ENABLED && motion.enabled() && canUseWebGL()`.
+- **Absorbed from `studio-improvements.md` Batch 4:** F11 (a picked activity renders in the main
+  slot via `FocusedActivityHost`, the left column keeps only the list) and the accessibility
+  basics (landmarks, progressbar, tabs, `aria-pressed`, axe pass in `test/e2e/a11y.spec.ts`).
+- **Bundle** (`vite build --mode=test`, 2026-10-05): main chunk 574.8 KB against the 800 KB
+  budget `test/bundleSize.test.ts` enforces; `scene-core` 941.8 KB loaded on the first canvas
+  mount only; per-scene chunks 2–18 KB; CSS 60 KB.
+- **Integration fixes found by the real-window run (Wave 3).** `SceneShell` short-circuited
+  `useOnScreen(ref) && usePageVisible()`, so a figure scrolling off screen changed the hook count
+  and React #311 unmounted the whole window — jsdom's inert IntersectionObserver never showed it;
+  `test/scenes/sceneShellHooks.test.tsx` now flips a firing observer. Spine table rows gained a
+  visually-hidden "Go to " prefix so their names no longer collide with the sidebar's stage
+  buttons (`/^Build Loop/`). "Not delivered" on the Foundation explainer is a real `<h3>` again,
+  not the Notice's `<p>` title. HistoryPanel's Compare / Restore dropped a `disabledReason` that
+  repeated the row's sentence and leaked into the buttons' accessible names. The constellation's
+  sr-only summary says "not yet ready" so it adds nothing to the sprint spec's "NOT READY" count.
+- **Tests:** vitest 180 files, 2167 passed, 5 skipped (pre-existing); `npm run typecheck` clean;
+  Playwright real-window suite with `STUDIO_SKIP_LIVE_MODEL=1`: 101 passed, 6 skipped (need
+  `gh` sign-in or a live model), 2 failed — both pre-existing at `acab7cf` and both in
+  `sprint.spec.ts`, where the plugin's own wording conflicts with the pin: the readiness card's
+  gap lines also say "NOT READY" (count 6, pin 3) and the no-sprint note from `sprint.py` wins
+  over Studio's sentence in `shared/sprintModel.ts` (frozen); the 6 serial tests after the
+  first of those did not run. Pinned tests (studio-observatory.md §8.3) changed
+  only where listed: `documentsTab.test.ts` (byte-equal → behaviour suite), `board.spec.ts`
+  (`bg-brand-600` / `bg-slate-900` class pins → `aria-pressed="true"`), `a11y.spec.ts` (waits for
+  the stage heading before its one-shot DOM check), and the four activity-panel specs
+  (`runActivities`, `batchJobs`, `modelRunner`, `briefForm`) which now press the row's "Open" and
+  read the panel inside `[data-testid="focused-activity-host"]` — the F11 placement the design
+  itself introduced; every panel testid and sentence is unchanged.
+
 - **Studio can sign off a phase and advance it, without leaving the window.** Until now the only
   thing in Studio that finished a phase was Build's declare-complete flow; every other phase
   (Discovery → Requirements, and on) still needed `/sdlc-next` in Claude Code. The new "Sign off"
@@ -15,7 +148,7 @@
   is now synced — previously absent from the allowlist, so a frozen layer would have stayed
   local forever.
 
-### SDLC Studio — the sprint layer surfaced, CLI compatibility, hardening
+### Studio (now Tōgō) — the sprint layer surfaced, CLI compatibility, hardening
 
 Studio shipped with no sprint surface at all: `phases/activities.yaml` declared nothing for the
 Build phase, nothing in `studio/` called `sprint.py`, and a team running `/sdlc-sprint` saw their

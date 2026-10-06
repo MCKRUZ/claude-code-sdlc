@@ -98,6 +98,30 @@ describe('Sidebar', () => {
     expect(render()).not.toContain('role="tab"')
   })
 
+  // --- Observatory (§7 Sidebar row) additions -------------------------------------------------
+
+  it('announces stage progress as a progressbar that says the same thing the text does', () => {
+    const html = render()
+    expect(html).toContain('role="progressbar"')
+    expect(html).toContain('aria-valuetext="3 of 9 stages done"')
+    // The bar is still the thin rail it was.
+    expect(html).toMatch(/role="progressbar"[^>]*class="[^"]*\bh-1\.5\b/)
+  })
+
+  it('offers Search and Appearance in the footer as buttons, never as an input or a tab', () => {
+    const html = render()
+    expect(html).toContain('>Search<')
+    expect(html).toContain('>Appearance<')
+    expect(html).not.toContain('<input')
+    expect(html).not.toContain('role="tab"')
+    // Neither is a page, so the count-of-one on aria-current still holds with them present.
+    expect(html.match(/aria-current="page"/g)).toHaveLength(1)
+  })
+
+  it('marks the Now chip as the element that Flips between rows', () => {
+    expect(render()).toContain('data-flip-id="now"')
+  })
+
   it('bounds its own height below `sm` so `nav`\'s overflow-y-auto has something to scroll against, and lifts that bound again at `sm:`+ (PR #76 review finding #1)', () => {
     // Below `sm`, Frame.tsx stacks Sidebar/main/ChatPanel in a COLUMN (spec 0018) — this
     // aside's cross axis there is width, not height, so without a cap of its own `nav`'s

@@ -3,13 +3,17 @@ import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
-import { detectAllTooling } from './tooling'
-import { getConsoleLog, onConsoleEntry } from './commandRunner'
+import { detectAllTooling, type DetectAllToolingResult } from './tooling'
+import { getConsoleLog, onConsoleEntry, rawStdout } from './commandRunner'
 import { setGhBinary, setGitBinary } from './git'
+import { setAzBinary } from './az'
+import { invalidateCodeHost, resolveCodeHost } from './codeHost'
+import { HOSTS } from '../../shared/codeHostModel'
+import { forgetTypedActor } from './typedActor'
 import { initSettingsPath, loadSettings, recordRecentProject, saveSettings, type Settings } from './settings'
-import { hasSdlcProject, listAvailableProfiles, openProject, previewSetup, runSetup } from './project'
+import { hasSdlcProject, listAvailableProfiles, openProject, previewSetup, runPluginScript, runSetup } from './project'
 import { combineWithClaude } from './claudeAssist'
-import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save } from './sync'
+import { getConnectionInfo, getPendingClashes, noteCliDetection, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save, setTypedActor } from './sync'
 import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } from './documents'
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
@@ -101,8 +105,11 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
  * .cmd-shim handling), so every later git/gh call in this session uses it too. */
 let resolvedPluginScriptsDir: string | null = null
 
-async function resolvePluginScriptsDir(): Promise<string | null> {
-  if (resolvedPluginScriptsDir) return resolvedPluginScriptsDir
+/** Runs detection with the person's overrides and primes every spawner with what it found —
+ * git.ts and az.ts with how to invoke their binaries (a Windows .cmd shim changes every later
+ * spawn), sync.ts with whether gh/az exist at all so resolving a project's code host does not
+ * re-probe `--version`. One place, because three call sites each used to repeat half of it. */
+async function detectTooling(): Promise<DetectAllToolingResult> {
   const settings = loadSettings()
   const report = await detectAllTooling({
     claudePath: settings.claudePathOverride,
@@ -110,12 +117,21 @@ async function resolvePluginScriptsDir(): Promise<string | null> {
     pluginScriptsPath: settings.pluginScriptsPathOverride,
     gitPath: settings.gitPathOverride,
     ghPath: settings.ghPathOverride,
+    azPath: settings.azPathOverride,
   })
+  if (report.gitResolved) setGitBinary(report.gitResolved)
+  if (report.ghResolved) setGhBinary(report.ghResolved)
+  if (report.azResolved) setAzBinary(report.azResolved)
+  noteCliDetection({ gh: report.gh.found, az: report.az.found })
+  return report
+}
+
+async function resolvePluginScriptsDir(): Promise<string | null> {
+  if (resolvedPluginScriptsDir) return resolvedPluginScriptsDir
+  const report = await detectTooling()
   if (report.pluginScripts.found && report.pluginScripts.path) {
     resolvedPluginScriptsDir = report.pluginScripts.path
   }
-  if (report.gitResolved) setGitBinary(report.gitResolved)
-  if (report.ghResolved) setGhBinary(report.ghResolved)
   return resolvedPluginScriptsDir
 }
 
@@ -137,31 +153,21 @@ function startPullTimer() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('studio:detectTooling', async () => {
-    const settings = loadSettings()
-    const report = await detectAllTooling({
-      claudePath: settings.claudePathOverride,
-      uvPath: settings.uvPathOverride,
-      pluginScriptsPath: settings.pluginScriptsPathOverride,
-      gitPath: settings.gitPathOverride,
-      ghPath: settings.ghPathOverride,
-    })
-    if (report.gitResolved) setGitBinary(report.gitResolved)
-    if (report.ghResolved) setGhBinary(report.ghResolved)
-    return report
-  })
+  ipcMain.handle('studio:detectTooling', () => detectTooling())
 
   ipcMain.handle('studio:getSettings', () => loadSettings())
 
-  ipcMain.handle('studio:setToolOverride', (_event, kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', overridePath: string) => {
+  ipcMain.handle('studio:setToolOverride', (_event, kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh' | 'az', overridePath: string) => {
     const settings = loadSettings()
     const key = {
       claude: 'claudePathOverride', uv: 'uvPathOverride', pluginScripts: 'pluginScriptsPathOverride',
-      git: 'gitPathOverride', gh: 'ghPathOverride',
+      git: 'gitPathOverride', gh: 'ghPathOverride', az: 'azPathOverride',
     }[kind] as keyof Settings
     const updated: Settings = { ...settings, [key]: overridePath }
     saveSettings(updated)
     resolvedPluginScriptsDir = null // force re-resolve if any tool path changed
+    // What was probed about a code-host CLI (extension, sign-in) was probed on the OLD path.
+    invalidateCodeHost()
     return updated
   })
 
@@ -187,6 +193,12 @@ function registerIpcHandlers() {
     const result = await openProject(scriptsDir, projectPath)
     if (result.hasProject && result.status) {
       recordRecentProject(projectPath, result.status.project_name)
+      if (openProjectPath && openProjectPath !== projectPath) {
+        // Leaving a project: what was probed about its code host, and any name typed for it,
+        // belong to that project and must not be read as this one's.
+        invalidateCodeHost(openProjectPath)
+        forgetTypedActor(openProjectPath)
+      }
       openProjectPath = projectPath
       startPullTimer()
     }
@@ -214,7 +226,39 @@ function registerIpcHandlers() {
     return result
   })
 
-  ipcMain.handle('studio:getConnectionInfo', (_event, projectPath: string) => getConnectionInfo(projectPath))
+  // The plugin is needed only for the roster half (handle for the signed-in identity); without
+  // it the connection still reports, with the identity as the host gave it.
+  ipcMain.handle('studio:getConnectionInfo', async (_event, projectPath: string) =>
+    getConnectionInfo(projectPath, await resolvePluginScriptsDir()))
+
+  // D-OWNER-5. Validation and the "only while the host cannot identify you" rule live in
+  // sync.ts/typedActor.ts — main refuses, the renderer only asks. A refusal is a rejection.
+  ipcMain.handle('studio:setTypedActor', async (_event, projectPath: string, name: string) =>
+    setTypedActor(projectPath, await resolvePluginScriptsDir(), name))
+
+  // The repository file IS the code-host override (code-host-providers.md §7): the plugin's own
+  // `set_setting.py code-host` validates and writes `.sdlc/code-host.yaml`, so a person who
+  // edits it by hand is held to exactly the same rules. The host is checked against the three
+  // values HERE as well — the renderer is untrusted, and the argv is otherwise fixed. A refusal
+  // rejects with the plugin's sentence; nothing was written in that case.
+  ipcMain.handle('studio:setCodeHost', async (_event, projectPath: string, host: unknown) => {
+    if (typeof host !== 'string' || !(HOSTS as readonly string[]).includes(host)) {
+      throw new Error(`The code host must be one of ${HOSTS.join(', ')}.`)
+    }
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    const entry = await runPluginScript(scriptsDir, 'set_setting.py', ['--repo', projectPath, '--json', 'code-host', '--host', host])
+    let parsed: { ok?: unknown; refusal?: { message?: unknown } } = {}
+    try { parsed = JSON.parse(rawStdout(entry)) } catch { parsed = {} }
+    if (parsed.ok !== true) {
+      const message = parsed.refusal?.message
+      throw new Error(typeof message === 'string' && message ? message : entry.stderr.trim() || 'The code host was not changed.')
+    }
+    // What was probed about the OLD host (extension, sign-in, identity) is no longer this
+    // project's; the refreshed info re-resolves from the file that was just written.
+    invalidateCodeHost(projectPath)
+    return getConnectionInfo(projectPath, scriptsDir)
+  })
 
   ipcMain.handle('studio:pull', async (_event, projectPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
@@ -272,7 +316,10 @@ function registerIpcHandlers() {
     if (!scriptsDir) {
       return { ok: false, error: 'claude-code-sdlc plugin scripts not found', rails: [], proofsNeeded: [] }
     }
-    return gatherPipelineEvidence(projectPath, scriptsDir)
+    // The host decides which CLI's history is read and whose protection sentence is said
+    // (code-host-providers §6.2); resolveCodeHost is memoised, so this is a cache read.
+    const { host } = await resolveCodeHost(projectPath)
+    return gatherPipelineEvidence(projectPath, scriptsDir, host)
   })
   registerActivityHandlers(ipcMain, resolvePluginScriptsDir)
   registerActivityRunHandlers(ipcMain, resolvePluginScriptsDir)
@@ -698,6 +745,7 @@ function registerIpcHandlers() {
       stageDisplay,
       claudePath: settings.claudePathOverride ?? 'claude',
       execPath: process.execPath,
+      host: (await resolveCodeHost(projectPath)).host,
       onActivity: (label) => sendToWindow('studio:chatActivity', { projectPath, stageId, label } satisfies ChatActivity),
     }
   }
@@ -763,7 +811,7 @@ function registerIpcHandlers() {
 
 async function createWindow() {
   win = new BrowserWindow({
-    title: 'SDLC Studio',
+    title: 'Tōgō',
     width: 1280,
     height: 800,
     icon: path.join(process.env.VITE_PUBLIC!, 'favicon.ico'), // set unconditionally above, before createWindow() can run

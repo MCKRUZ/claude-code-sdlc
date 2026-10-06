@@ -1,11 +1,12 @@
 import { MAX_CLAIMS } from '../../shared/briefLimits'
 import type { BriefClaim, BriefDocument } from '../../shared/types'
 import { MAX_TEXT } from '../briefFormRules'
-import { PANEL_SECONDARY_BUTTON } from './activityPanelBits'
-import { Section, TEXT_INPUT } from './briefBits'
+import { Select } from '../ui'
+import { PanelSecondaryButton } from './activityPanelBits'
+import { BriefInput, Section } from './briefBits'
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return <button type="button" aria-label={label} onClick={onClick} className={PANEL_SECONDARY_BUTTON}>Remove</button>
+  return <PanelSecondaryButton aria-label={label} onClick={onClick}>Remove</PanelSecondaryButton>
 }
 
 interface ClaimsProps {
@@ -25,32 +26,34 @@ export function ClaimsSection({ documents, claims, draft, onDraft, onAdd, onRemo
     <Section title="What the documents say">
       <ul className="space-y-1">
         {claims.map((claim, i) => (
-          <li key={`${i}:${claim.docRef}:${claim.text}`} data-testid="brief-claim" className="flex items-center gap-2 text-xs text-slate-700">
-            <span className="min-w-0 flex-1">{claim.text} <span className="text-slate-500">({claim.docRef})</span></span>
+          <li key={`${i}:${claim.docRef}:${claim.text}`} data-testid="brief-claim" className="flex items-center gap-2 text-xs text-ink-2">
+            <span className="min-w-0 flex-1">{claim.text} <span className="text-ink-3">({claim.docRef})</span></span>
             <RemoveButton label={`Remove claim ${i + 1}`} onClick={() => onRemove(i)} />
           </li>
         ))}
       </ul>
       <div className="flex flex-wrap items-center gap-2">
-        <input
+        <BriefInput
           aria-label="Claim text"
           maxLength={MAX_TEXT}
           value={draft.text}
           onChange={(e) => onDraft({ ...draft, text: e.target.value })}
-          className={`${TEXT_INPUT} min-w-0 flex-1`}
+          className="min-w-0 flex-1"
         />
-        <select
+        <Select
+          size="sm"
           aria-label="Claim document"
           value={draft.docRef}
-          onChange={(e) => onDraft({ ...draft, docRef: e.target.value })}
-          className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-800"
-        >
-          <option value="">Choose a document</option>
-          {documents.map((d) => <option key={d.id} value={d.id}>{`${d.id} ${d.filename}`}</option>)}
-        </select>
-        <button type="button" disabled={!canAdd} onClick={onAdd} className={PANEL_SECONDARY_BUTTON}>Add claim</button>
+          onChange={(docRef) => onDraft({ ...draft, docRef })}
+          className="w-auto"
+          options={[
+            { value: '', label: 'Choose a document' },
+            ...documents.map((d) => ({ value: d.id, label: `${d.id} ${d.filename}` })),
+          ]}
+        />
+        <PanelSecondaryButton disabled={!canAdd} onClick={onAdd}>Add claim</PanelSecondaryButton>
       </div>
-      {atCap && <p className="text-xs text-slate-500">A brief takes up to {MAX_CLAIMS} claims.</p>}
+      {atCap && <p className="text-xs text-ink-3">A brief takes up to {MAX_CLAIMS} claims.</p>}
     </Section>
   )
 }
@@ -71,15 +74,15 @@ export function DecisionsSection({ decisions, draft, standing, range, onDraft, o
     <Section title="Decisions the room must leave with" counter={counter} counterId="brief-decisions-counter">
       <ul className="space-y-1">
         {decisions.map((text, i) => (
-          <li key={`${i}:${text}`} data-testid="brief-decision" className="flex items-center gap-2 text-xs text-slate-700">
+          <li key={`${i}:${text}`} data-testid="brief-decision" className="flex items-center gap-2 text-xs text-ink-2">
             <span className="min-w-0 flex-1">{text}</span>
             <RemoveButton label={`Remove decision ${i + 1}`} onClick={() => onRemove(i)} />
           </li>
         ))}
       </ul>
       <div className="flex items-center gap-2">
-        <input aria-label="Decision text" maxLength={MAX_TEXT} value={draft} onChange={(e) => onDraft(e.target.value)} className={`${TEXT_INPUT} min-w-0 flex-1`} />
-        <button type="button" disabled={draft.trim() === ''} onClick={onAdd} className={PANEL_SECONDARY_BUTTON}>Add decision</button>
+        <BriefInput aria-label="Decision text" maxLength={MAX_TEXT} value={draft} onChange={(e) => onDraft(e.target.value)} className="min-w-0 flex-1" />
+        <PanelSecondaryButton disabled={draft.trim() === ''} onClick={onAdd}>Add decision</PanelSecondaryButton>
       </div>
     </Section>
   )

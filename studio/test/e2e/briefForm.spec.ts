@@ -70,6 +70,9 @@ test.describe('[spec 0032] the workshop brief form, in the real window', () => {
     page = await app.firstWindow()
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('brief form e2e project').click()
+    await expect(page.getByTestId('activities-panel')).toBeVisible({ timeout: 60_000 })
+    // F11 (Observatory): the brief form renders in the main slot once its row is opened.
+    await page.locator('[data-testid="activity-row"][data-activity-id="brief"]').getByRole('button', { name: 'Open' }).click()
     await expect(page.getByTestId('brief-panel')).toBeVisible({ timeout: 60_000 })
   })
 
@@ -132,6 +135,9 @@ test.describe('[spec 0032] the workshop brief form, in the real window', () => {
 
   test('a brief that now exists is not replaced without an explicit confirmation', async () => {
     await page.getByRole('button', { name: '← Back to the stage' }).click()
+    await expect(page.getByTestId('activities-panel')).toBeVisible({ timeout: 30_000 })
+    // F11 (Observatory): the brief form renders in the main slot once its row is opened.
+    await page.locator('[data-testid="activity-row"][data-activity-id="brief"]').getByRole('button', { name: 'Open' }).click()
     await expect(page.getByTestId('brief-panel')).toBeVisible({ timeout: 30_000 })
     const before = readFileSync(briefPath(), 'utf-8')
     await expect(page.getByTestId('brief-panel')).toContainText('A brief already exists.', { timeout: 60_000 })

@@ -1,5 +1,5 @@
 import type { NarrativeArtifact, NarrativeCoverage, StageDocument } from '../../shared/types'
-import { PanelError, PANEL_BUTTON, plural, useLoaded } from './activityPanelBits'
+import { PanelButton, PanelError, PanelLoading, plural, useLoaded } from './activityPanelBits'
 import { BusyReason, PanelCandidateView } from './CandidateView'
 import type { DraftJobApi } from './useDraftJob'
 
@@ -28,8 +28,8 @@ export function NarrativeCoveragePanel({
     'The summaries could not be checked.',
   )
   return (
-    <div data-testid="narrative-panel" className="mt-2 space-y-1 text-xs text-slate-600">
-      {loaded.kind === 'loading' && <p>Checking…</p>}
+    <div data-testid="narrative-panel" className="mt-2 space-y-1 text-xs text-ink-2">
+      {loaded.kind === 'loading' && <PanelLoading lines={1}>Checking…</PanelLoading>}
       {loaded.kind === 'failed' && <PanelError message={loaded.message} />}
       {loaded.kind === 'ready' && <Coverage coverage={loaded.value} />}
       {loaded.kind === 'ready' && loaded.value.hasData && draft && documents && (
@@ -40,6 +40,8 @@ export function NarrativeCoveragePanel({
   )
 }
 
+/** "N of M" is the script's own count of what is on disk right now; it is swapped as text, not
+ * counted up, because a reload after Keep is a new reading, not a value moving. */
 function Coverage({ coverage }: { coverage: NarrativeCoverage }) {
   if (!coverage.hasData) {
     return (
@@ -85,21 +87,19 @@ function DraftControls({
       <ul className="space-y-1">
         {rows.map((row) => (
           <li key={row.name} data-testid={`draft-row-${row.name}`} className="flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-slate-800">{row.name}</span>
-            <button
-              type="button"
+            <span className="min-w-0 truncate text-ink-1">{row.name}</span>
+            <PanelButton
               disabled={draft.busyLabel !== null}
               onClick={() => void draft.start({ kind: 'enhance', stageId, document: row.path })}
-              className={PANEL_BUTTON}
             >
               Draft with Claude
-            </button>
+            </PanelButton>
           </li>
         ))}
       </ul>
       <BusyReason label={draft.busyLabel} />
       <p>Uses Claude.</p>
-      <p className="text-slate-500">
+      <p className="text-ink-3">
         Summaries never mention velocity, story points, pull-request counts, lines of code or hours spent.
       </p>
     </div>

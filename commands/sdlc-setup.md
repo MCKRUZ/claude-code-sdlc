@@ -147,18 +147,37 @@ prove the system can be operated and handed over. Quality thresholds and convent
 ```
 
 ### Step 7: Apply branch protection / branch policies (optional — needs the platform CLI)
+Which host the repository is on is read from its `origin` remote — not from the profile, which
+describes the CI pack. Check it first; the output names the host, why it was chosen, and whether
+that host's CLI is installed, has its extension and is signed in:
+```bash
+uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/code_host.py --repo .
+```
 On GitHub, the harness ships a branch-protection ruleset (`.github/rulesets/branch-protection.json`)
 and an applier. If the repo is on GitHub and `gh` is authenticated, offer to apply it:
 ```bash
 bash scripts/rails/apply-branch-protection.sh
 ```
 On Azure DevOps, the analogue is branch policies as code (`.azuredevops/rails/branch-policies.json`)
-and its applier — needs `az` with the `azure-devops` extension, logged in (`az login`). Offer the
-dry run first, then apply:
+and its applier — needs `az` with the `azure-devops` extension, signed in (`az login`; a guest or
+contractor identity in the organisation's tenant signs in with `az login --allow-no-subscriptions`,
+and must have opened the organisation in a browser once). Offer the dry run first, then apply:
 ```bash
 bash scripts/rails/configure-branch-policies.sh --dry-run   # show the plan, no writes
 bash scripts/rails/configure-branch-policies.sh
 ```
+Two Azure DevOps follow-ups, both optional:
+- Azure DevOps names people by sign-in identity (UPN), not by handle, so when the roster
+  (`.sdlc/team.yaml`) is written, ask each person for the email they sign in to Azure DevOps
+  with and record it as `email:` — it is the only way `/sdlc-handoff` can make the checker a
+  required reviewer and `/sdlc-spec-status` can show a reviewer as an `@handle`. Nothing guesses
+  it from a name. Add it later with
+  `uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/set_setting.py --repo . person @handle --email <upn>`.
+- Only when `code_host.py` reports `host: none` for a remote that really is Azure DevOps (an
+  unusual proxy or mirror) pin it for this clone:
+  `uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/set_setting.py --repo . code-host --host azure-devops`
+  (add `--organization`, `--project`, `--repository` when the remote cannot be parsed at all).
+  A recognised remote needs no file; do not write one to "make sure".
 Either way, this makes the five blocking checks (build-and-test, spec-gate, grader, correctness-review, security-review)
 + a non-author approval mandatory at merge; deploy-dev runs post-merge and is not a merge check.
 Skip if the repo isn't on its platform yet; the ruleset / policy file stays in the repo to apply later.

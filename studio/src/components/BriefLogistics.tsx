@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { MAX_ATTENDEES, MAX_LOGISTICS_TEXT } from '../../shared/briefLimits'
 import type { BriefAttendee, RosterPerson } from '../../shared/types'
 import type { BriefFormState } from '../briefFormStore'
-import { PANEL_SECONDARY_BUTTON } from './activityPanelBits'
-import { Section, TEXT_INPUT } from './briefBits'
+import { Select } from '../ui'
+import { PanelSecondaryButton } from './activityPanelBits'
+import { BriefInput, Section } from './briefBits'
 
 interface LogisticsProps {
   form: BriefFormState
@@ -31,11 +32,13 @@ export function LogisticsSection({ form, roster, onChange }: LogisticsProps) {
   )
 }
 
+// The `aria-label` is the accessible name the brief tests address each box by, so the visible
+// label stays a plain span rather than the kit's Field (which would tie a second name to it).
 function Field({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
   return (
-    <div className="space-y-1 text-xs text-slate-600">
+    <div className="space-y-1 text-xs text-ink-2">
       <span>{label}</span>
-      <input aria-label={label} maxLength={MAX_LOGISTICS_TEXT} value={value} onChange={(e) => onChange(e.target.value)} className={TEXT_INPUT} />
+      <BriefInput aria-label={label} maxLength={MAX_LOGISTICS_TEXT} value={value} onChange={(e) => onChange(e.target.value)} />
     </div>
   )
 }
@@ -53,21 +56,23 @@ function Attendees({ attendees, roster, onChange }: AttendeesProps) {
     onChange(attendees.map((a, i) => (i === index ? { ...a, ...patch } : a)))
   return (
     <div className="space-y-1">
-      <p className="text-xs font-medium text-slate-600">Attendees</p>
+      <p className="text-xs font-medium text-ink-2">Attendees</p>
       {attendees.map((a, i) => (
         <div key={i} data-testid="brief-attendee" className="flex items-center gap-2">
-          <input aria-label={`Attendee ${i + 1} name`} maxLength={MAX_LOGISTICS_TEXT} value={a.name} onChange={(e) => edit(i, { name: e.target.value })} className={TEXT_INPUT} />
-          <input aria-label={`Attendee ${i + 1} role`} maxLength={MAX_LOGISTICS_TEXT} value={a.role} onChange={(e) => edit(i, { role: e.target.value })} className={TEXT_INPUT} />
-          <button type="button" aria-label={`Remove attendee ${i + 1}`} onClick={() => onChange(attendees.filter((_, j) => j !== i))} className={PANEL_SECONDARY_BUTTON}>
+          <BriefInput aria-label={`Attendee ${i + 1} name`} maxLength={MAX_LOGISTICS_TEXT} value={a.name} onChange={(e) => edit(i, { name: e.target.value })} />
+          <BriefInput aria-label={`Attendee ${i + 1} role`} maxLength={MAX_LOGISTICS_TEXT} value={a.role} onChange={(e) => edit(i, { role: e.target.value })} />
+          <PanelSecondaryButton aria-label={`Remove attendee ${i + 1}`} onClick={() => onChange(attendees.filter((_, j) => j !== i))}>
             Remove
-          </button>
+          </PanelSecondaryButton>
         </div>
       ))}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={attendees.length >= MAX_ATTENDEES} onClick={() => onChange([...attendees, { name: '', role: '' }])} className={PANEL_SECONDARY_BUTTON}>Add attendee</button>
+        <PanelSecondaryButton disabled={attendees.length >= MAX_ATTENDEES} onClick={() => onChange([...attendees, { name: '', role: '' }])}>
+          Add attendee
+        </PanelSecondaryButton>
         {roster.length > 0 && <RosterShortcut roster={roster} onAdd={(name) => onChange(withAttendee(attendees, name).slice(0, MAX_ATTENDEES))} />}
       </div>
-      {attendees.length >= MAX_ATTENDEES && <p className="text-xs text-slate-500">A brief takes up to {MAX_ATTENDEES} attendees.</p>}
+      {attendees.length >= MAX_ATTENDEES && <p className="text-xs text-ink-3">A brief takes up to {MAX_ATTENDEES} attendees.</p>}
     </div>
   )
 }
@@ -79,28 +84,30 @@ function withAttendee(attendees: BriefAttendee[], name: string): BriefAttendee[]
   return blank === -1 ? [...attendees, added] : attendees.map((a, i) => (i === blank ? added : a))
 }
 
+// Attendees are mostly the client's people, so the roster is a shortcut beside free text — not the
+// kit's `roster` option shape, which would print "(@handle)" after every name.
 function RosterShortcut({ roster, onAdd }: { roster: RosterPerson[]; onAdd: (name: string) => void }) {
   const [handle, setHandle] = useState('')
   const person = roster.find((p) => p.handle === handle)
   return (
     <>
-      <select
+      <Select
+        size="sm"
         aria-label="Team member to add"
         value={handle}
-        onChange={(e) => setHandle(e.target.value)}
-        className="rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-800"
-      >
-        <option value="">Choose a team member</option>
-        {roster.map((p) => <option key={p.handle} value={p.handle}>{p.name || p.handle}</option>)}
-      </select>
-      <button
-        type="button"
+        onChange={setHandle}
+        className="w-auto"
+        options={[
+          { value: '', label: 'Choose a team member' },
+          ...roster.map((p) => ({ value: p.handle, label: p.name || p.handle })),
+        ]}
+      />
+      <PanelSecondaryButton
         disabled={!person}
         onClick={() => { if (person) { onAdd(person.name || person.handle); setHandle('') } }}
-        className={PANEL_SECONDARY_BUTTON}
       >
         Add a team member
-      </button>
+      </PanelSecondaryButton>
     </>
   )
 }

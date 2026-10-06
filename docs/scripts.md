@@ -28,6 +28,9 @@ Detailed documentation for all Python automation scripts in the `scripts/` direc
   - [generate_sprint_report.py](#generate_sprint_reportpy)
   - [retro_report.py](#retro_reportpy)
   - [doctor.py](#doctorpy)
+  - [code_host.py](#code_hostpy)
+  - [ado_import.py](#ado_importpy)
+  - [import_outcomes.py](#import_outcomespy)
 - [4. Dependencies](#4-dependencies)
 - [5. Error Handling](#5-error-handling)
 - [6. Cross-References](#6-cross-references)
@@ -1232,6 +1235,77 @@ uv run scripts/doctor.py --offline       # skip the checks that need gh/az
 **Platform-aware, not platform-agnostic:** nothing here asks a GitHub repo to authenticate `az`, or an Azure DevOps repo to install `gh`. A repo that `installed_platform()` cannot recognize as Azure DevOps gets the GitHub checks — the same behavior every install had before the CI/CD packs existed.
 
 **Exit codes:** `0` (no failures; warnings may be present), `1` (at least one failure — the harness is not fully working)
+
+---
+
+### code_host.py
+
+**Purpose:** Answer one question every pull-request-facing script asks first: which code host is this repository on, and which CLI talks to it? GitHub (`gh`) and Azure DevOps (`az` with the `azure-devops` extension) are both first-class, and **the repository chooses** — detection keys off the `origin` remote, never a global setting or a profile field (the profile describes the CI pack; the host is a property of the clone). The module is also the documented provider contract: `PROVIDER_FUNCTIONS` names every GitHub function `ado_import.py` mirrors, with its signature and return shape, pinned by `scripts/tests/test_provider_parity.py`.
+
+**Usage:**
+```bash
+uv run scripts/code_host.py --repo <path> [--json] [--no-probe]
+uv run scripts/code_host.py --state .sdlc/state.yaml --json
+uv run scripts/code_host.py --repo <path> --host azure-devops --json   # override for this run
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` / `--repo` | No | Workflow mode / standalone mode (default: cwd); works with no `.sdlc/` present |
+| `--host` | No | `github`, `azure-devops` or `none` — override detection for this invocation |
+| `--json` | No | Exactly one JSON document |
+| `--no-probe` | No | Skip the local CLI probes (`gh auth status` / `az account show`); `cli_state` reads `unknown` |
+
+**Override precedence** (`detect_host()` reports which one won as `source`): `--host` flag → `SDLC_CODE_HOST` env → `.sdlc/code-host.yaml` (written by `set_setting.py code-host --host …`; travels with the clone) → the parsed `origin` remote (`code_host_remote.parse_remote`, shared fixture `scripts/tests/fixtures/code_host/remote-urls.json`) → the harness manifest's CI pack as a tie-breaker only when there is no usable remote → `none`. `none` falls through to `gh` (`cli_for("none") == "gh"`), so every repository that existed before this layer behaves exactly as it did.
+
+**Two axes, never merged:** `detect_host()` owns the code host (PRs, identity, policies); `installed_ci_platform()` owns the CI platform (pipeline dirs, runs, secrets) — a ten-line twin of `doctor.installed_platform()` pinned to agree with it, so `doctor.py` is never imported. A GitHub repository on Azure Pipelines is legitimate; nothing resolves the mismatch silently.
+
+**Output:** the `host` block `{name, source, cli, cli_state, detail}` that every host-touching `--json` carries (`host_report.py` renders it from the outcome of the call a script just made, never from a second probe). `cli_state` ∈ `available` / `not_installed` / `extension_missing` / `signed_out` / `unknown`; `detail` names the fix (`run az extension add --name azure-devops`, `run az login`, …) and, on Azure DevOps, the rule that the CLI's **default account decides the token** (a guest identity signs in with `az login --allow-no-subscriptions`; an identity that never opened the organisation in a browser gets HTTP 403 "has not been materialized"). `unknown` is never read as "no".
+
+**Identity:** `resolve_person(roster, identity)` — GitHub: `@` + login when that handle is in the roster; Azure DevOps: the handle whose `people[].email` equals the UPN case-insensitively; otherwise `None`. A provider never guesses a handle from a display name or a UPN prefix.
+
+**Exit codes:** `0` always; `2` on a usage error.
+
+**Consumers:** `spec_status.py`, `handoff.py`, `connection_report.py`, `gate_auth.py`, `pipeline_proof.py` (PR reads), `gate_inventory.py` (CI axis), `import_outcomes.py`, and Tōgō (the desktop app), which reads the block before enabling a PR feature and shows the `detail` as the reason a control is off.
+
+---
+
+### ado_import.py
+
+**Purpose:** The Azure DevOps provider — the `az` twin of every `gh` read and write the plugin makes, returning **the same dict shapes `gh` returns today** so the pure models (`spec_status`'s verdict parser, `pipeline_proof_model`, `github_import.map_*`) are reused verbatim rather than re-implemented. A library module with no CLI; the consuming scripts dispatch to it at their own call sites when `code_host.detect_host()` says `azure-devops`, which is why the existing GitHub monkeypatch seams and every existing test are untouched.
+
+**Shape:** `ado_import.py` holds the PR-side fetchers (`whoami`, `repo_view`, `find_pr_for_branch`, `fetch_pr_comment_bodies`, `fetch_pr_events`, `fetch_all_pull_requests`, `fetch_pr_checks`, `fetch_branch_policies`, `create_draft_pr`, `complete_pr`); `ado_pipelines.py` the pipeline side (`fetch_runs`, `run_jobs`, `secret_names` from variable groups); `ado_map.py` the **pure** translators (`map_pr`, `map_checks`, `map_reviews`, `map_runs`, `map_jobs`, `map_policies`, `map_threads` — az document in, gh-shaped dict out, no subprocess); `ado_transport.py` the one impure seam (`run_az` / `az_json`: UTF-8 forced, 60 s timeout, `AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no` and `AZURE_CORE_COLLECT_TELEMETRY=no` on every spawn, always `--only-show-errors --detect false --org --project [--repository]` from the parsed remote). `AZ_CONTRACT` lists every argv prefix; `test_az_contract.py` checks each against local `az … --help` and skips cleanly when the extension is absent.
+
+**Errors:** `AdoImportError` **is a subclass of** `github_import.GitHubImportError`, so every existing `except GitHubImportError` — including the frozen `scorecard.py` — already catches an `az` failure. A normaliser that meets an az document missing a key it needs raises rather than defaulting, because a default is how "nothing here" gets fabricated from a field rename.
+
+**Honesty inside the shapes:** `updatedAt = None` and `reviews[].submittedAt = None` (Azure DevOps has no such fields); `author.login` is the UPN and `handle` is set only when the roster resolves it; an unknown enum maps to the conservative reading and leaves a `_notes[]` entry; bulk rows past the checks cap carry `_checks_unavailable: True`; `files = None` when iterations were not fetched. On hand-off the checker is `--required-reviewers <roster email>` and the developer is named in the description (no assignee on Azure DevOps); a missing email is the caller's `assignment_error`, never a failed local half.
+
+**Fixtures:** `scripts/tests/fixtures/code_host/azure_devops/captured/*.json` is real `az` output captured 2026-10-05 and anonymised (wrapped `{_provenance, _command, _secs, value}`; `CAPTURE-NOTES.md` records every fact it settled — `isRequired` is `null` not `false`, `lastMergeCommit` sits on every active PR, system-comment prose is never parsed, environments need `--api-version 7.1-preview` exactly). The hand-written documents one directory up stay marked `hand-written (unverified)`; `tests/ado_fixtures.load(name)` prefers the captured file and `test_fixture_provenance.py` lists what is still unverified.
+
+---
+
+### import_outcomes.py
+
+**Purpose:** The host-neutral `scorecard.py import`. `scorecard.py` is protected and knows only GitHub, so this verb sits beside it: on GitHub (and `none`) it calls the frozen `scorecard.import_events` literally — no second GitHub import exists; on Azure DevOps it runs `ado_outcomes.collect_report` (PR completions, vote threads, environment deployment records, `incident`-tagged Bugs → the same event shapes through `github_import.map_*`), deduplicates on `gh_id` against the existing ledger and appends with `scorecard.append_events`. `ado-*` ids (`ado-pr-merge:<id>`, `ado-pr-review:<id>`, `ado-deploy:<env>:<rec>`, `ado-wi:<id>`) never collide with `gh-*`, so one ledger carries both hosts' history.
+
+**Usage:**
+```bash
+uv run scripts/import_outcomes.py --repo <path> --since 2026-09-01 [--json]
+uv run scripts/import_outcomes.py --state .sdlc/state.yaml --since 2026-09-01 --host azure-devops
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` / `--repo` | No | Workflow / standalone (default: cwd; the ledger is created if absent) |
+| `--since` | Yes | Only activity on/after this date (`YYYY-MM-DD`) |
+| `--host` | No | Override code-host detection for this run (flag > env > `.sdlc/code-host.yaml` > origin) |
+| `--json` | No | One JSON document carrying the top-level `host` block |
+
+**Honest by design:** output phrasing matches `scorecard.py import` ("Imported: no data" / "Imported N event(s): …" / "Error: …" exit 1). What Azure DevOps cannot record is **said, never zeroed**: a vote with no thread leaves `accepted_as_is` unknown rather than `true`; a `review_wait` with no request timestamp has no `wait_hours` key (omitted, never `None`) and is counted on its own line; a category that could not be read reports "not imported (…)" and contributes nothing. Nothing is written until every category has been read, so a failure leaves the ledger exactly as it was. `scorecard.py`, `github_import.py` and hand-recording with `record` are unchanged.
 
 ---
 

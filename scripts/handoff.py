@@ -10,7 +10,14 @@ its WIP limit, already in flight) runs BEFORE any git operation, so a refusal al
 the repository untouched — a half-done hand-off is worse than none. Git and GitHub are
 deliberately separate: the branch/frontmatter/push happen over plain git, so a hand-off
 still does its local half even with no code-host access; only the assignment step needs
-`gh`, and its failure is reported, not fatal.
+the code host's CLI, and its failure is reported, not fatal.
+
+Code host (code-host providers): the assignment step goes to `gh` on GitHub and to `az` on
+Azure DevOps, chosen by the origin remote (`--host` / `SDLC_CODE_HOST` / `.sdlc/code-host.yaml`
+ahead of it — `code_host.detect_host`). The GitHub path is byte-identical to what it was. On
+Azure DevOps there is no assignee on a pull request, so the developer is named in the
+description; the checker is added as a required reviewer by roster EMAIL, and a checker with no
+email is an `assignment_error` (the PR still opens — the local half is never failed over it).
 
 Standalone or Workflow:
   - Standalone: --repo <path>
@@ -28,6 +35,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cadence_plan as cp
 import check_spec as cs
+import code_host
 import track_specs as ts
 import validate_team as vt
 from github_import import GitHubImportError, run_gh
@@ -169,6 +177,53 @@ def assign_on_host(repo_root, branch_name: str, base_branch: str, spec_id: str, 
     return run_gh(args, cwd=str(repo_root)).strip()
 
 
+# ── code host dispatch (code-host providers) ────────────────────────────────────────────────
+
+def _host_fn(name: str, host: str):
+    """The provider function for `name` on this host. Azure DevOps → `ado_import.<name>` (same
+    name, same signature — `test_provider_parity.py` pins it); anything else → this module's own
+    function, looked up by name AT CALL TIME so the existing `monkeypatch.setattr(h, …)` seams
+    keep intercepting the GitHub path. `ado_import` is imported lazily: a GitHub checkout should
+    not pay for, or be able to break on, the Azure modules."""
+    if host == "azure-devops":
+        import ado_import
+        return getattr(ado_import, name)
+    return globals()[name]
+
+
+def host_json(detection) -> dict:
+    """The top-level `host` block every host-touching --json carries. Azure DevOps is probed (local
+    reads: the extension is present, an account is cached). GitHub is deliberately NOT probed —
+    `gh auth status` would be a call the GitHub path never made before, and that path is pinned
+    byte-identical — so there `cli_state: unknown` means exactly "not probed"."""
+    return code_host.host_block(detection, probe=(detection.host == "azure-devops"))
+
+
+def _is_email(value: str) -> bool:
+    return "@" in value[1:]  # `@handle` has its only `@` first; `a@b` is a sign-in identity
+
+
+def reviewer_gap(repo_root, checker: str) -> str | None:
+    """Why the checker could NOT be added as a reviewer on Azure DevOps, or None when they can be.
+
+    az names a reviewer by sign-in identity (UPN/mail); an `@handle` is a CLIError. The roster's
+    optional `email` is the only honest bridge (never a guess from a display name), so a checker
+    without one is reported as an assignment_error — the PR still opens, with the gap written
+    into its description by the provider. Same lookup the provider does (`validate_team.email_for`),
+    so the two cannot disagree."""
+    if not checker or _is_email(checker):
+        return None
+    roster_path = Path(repo_root) / ".sdlc" / "team.yaml"
+    try:
+        roster = vt.load_yaml(roster_path) if roster_path.is_file() else None
+    except Exception:  # a broken roster is validate_team's finding, not a reason to hide the gap
+        roster = None
+    if roster and vt.email_for(roster, checker):
+        return None
+    return (f"checker {checker} has no email in .sdlc/team.yaml; Azure DevOps needs one to add a "
+            f"reviewer")
+
+
 def open_command(repo_root, branch_name: str, spec_rel_path: str) -> list[str]:
     prompt = (
         f"Read {spec_rel_path} end to end, then build it to the Definition of Ready. "
@@ -187,9 +242,16 @@ def resolve_repo_root(args) -> Path:
     return Path(args.repo).resolve()
 
 
-def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason: str | None) -> dict:
+def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason: str | None,
+            host: str | None = None) -> dict:
     """Run every refusal check, then (if none fire) the git mutation. Returns a summary
-    dict. Raises HandoffError for any refusal — the caller decides how to report it."""
+    dict. Raises HandoffError for any refusal — the caller decides how to report it.
+
+    `host` is the resolved code host (`github` / `azure-devops` / `none`); None detects it from
+    the checkout. It decides only the assignment step — the refusals and the git half are the
+    same on every host."""
+    if host is None:
+        host = code_host.detect_host(repo_root).host
     if not spec_path.exists():
         raise HandoffError(f"Spec not found: {spec_path}")
     text = spec_path.read_text(encoding="utf-8")
@@ -253,11 +315,15 @@ def handoff(repo_root: Path, spec_path: Path, developer: str, over_limit_reason:
     push_handoff_commit(repo_root, branch_name, base_branch, spec_rel_path, new_text, commit_message)
 
     # --- Code-host assignment (best-effort — local half already succeeded above) ---
-    assignment_error = None
+    # On Azure DevOps the checker is added by roster EMAIL; a checker with none is a gap the
+    # provider cannot fill (D-OWNER-3). The PR still opens — "no reviewer" is a reportable
+    # failure of the assignment step, not a reason to lose the local half that already landed.
+    assignment_error = reviewer_gap(repo_root, checker) if host == "azure-devops" else None
     pr_url = None
     try:
-        pr_url = assign_on_host(repo_root, branch_name, base_branch, spec_id, spec_name, developer, checker)
-    except GitHubImportError as e:
+        pr_url = _host_fn("assign_on_host", host)(
+            repo_root, branch_name, base_branch, spec_id, spec_name, developer, checker)
+    except GitHubImportError as e:  # AdoImportError is a subclass — one clause covers both CLIs
         assignment_error = str(e)
 
     return {
@@ -283,24 +349,29 @@ def main():
     parser.add_argument("--open", action="store_true", help="Also start Claude Code on the branch")
     parser.add_argument("--json", action="store_true",
                         help="Emit the outcome (including a refusal and its kind) as JSON")
+    parser.add_argument("--host", choices=code_host.HOSTS, default=None,
+                        help="Code host for the assignment step (default: detected from origin; "
+                             "`none` tries gh as before)")
     args = parser.parse_args()
 
     repo_root = resolve_repo_root(args)
     spec_path = Path(args.spec)
+    detection = code_host.detect_host(repo_root, args.host)
 
     try:
-        result = handoff(repo_root, spec_path, args.developer, args.over_limit)
+        result = handoff(repo_root, spec_path, args.developer, args.over_limit, host=detection.host)
     except HandoffError as e:
         if args.json:
             import json
-            print(json.dumps({"ok": False, "refusal": {"kind": e.kind, "message": str(e)}}, indent=2))
+            print(json.dumps({"ok": False, "refusal": {"kind": e.kind, "message": str(e)},
+                              "host": host_json(detection)}, indent=2))
         else:
             print(f"Refused: {e}")
         sys.exit(1)
 
     if args.json:
         import json
-        print(json.dumps({"ok": True, **result}, indent=2))
+        print(json.dumps({"ok": True, **result, "host": host_json(detection)}, indent=2))
         return
 
     if result["already_in_flight"]:
@@ -309,10 +380,15 @@ def main():
 
     print(f"Handed off: {result['branch']} -> {result['developer']}")
     if result["pr_url"]:
-        print(f"  PR: {result['pr_url']}" + (f" (review requested: {result['checker']})" if result["checker"] else ""))
+        # "review requested" only when it was: on Azure DevOps the PR can open with the reviewer
+        # missing (no roster email), and that gap is reported on the next line, not papered over.
+        requested = result["checker"] and not result["assignment_error"]
+        print(f"  PR: {result['pr_url']}" + (f" (review requested: {result['checker']})" if requested else ""))
     if result["assignment_error"]:
         print(f"  Local hand-off complete. Could not assign on the code host: {result['assignment_error']}")
         print("  Assign manually once code-host access is available.")
+    if detection.host == "azure-devops":  # gh-path text (github AND the legacy `none`) stays byte-identical
+        print(f"  Code host: {detection.host} (from {detection.source})")
 
     cmd = open_command(repo_root, result["branch"], result["spec_rel_path"])
     if args.open:

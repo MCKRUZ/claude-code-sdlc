@@ -31,6 +31,8 @@ yarn.lock
 /playwright-report/
 /playwright/.cache/
 
-test/screenshots
+# Screenshots are build outputs (the guides embed what they need); the capture scripts beside
+# them are source.
+test/screenshots/*.png
 
 *.tsbuildinfo

@@ -1,0 +1,17 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "count": 1,
+  "value": [
+    {
+      "id": 77,
+      "environmentId": 3,
+      "result": "succeeded",
+      "startTime": "2026-09-22T16:00:00Z",
+      "finishTime": "2026-09-22T16:05:00Z",
+      "owner": {
+        "id": 902,
+        "name": "20260926.2"
+      }
+    }
+  ]
+}

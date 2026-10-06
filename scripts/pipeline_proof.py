@@ -23,6 +23,15 @@ Standalone or Workflow:
   - Workflow:   --state <path>/.sdlc/state.yaml
 
 Exit 0 on every path (advisory): a failure to read GitHub is reported as ok:false, not as a crash.
+
+Code host and CI platform (code-host providers): the pull-request reads (P1, P2, P7) follow the
+CODE HOST — `gh` for a GitHub remote, byte-identical to before; `az` through `ado_import` for an
+Azure DevOps one (`--host` overrides) — and the pipeline reads (P3, P4, P5/P6, the installed
+ruleset and pipelines directory) follow the CI PLATFORM the harness manifest records. Each read
+dispatches at its own call site (`_host_fn`), so `pipeline_proof_model` is fed the same
+normalised dicts and never learns which host they came from. On Azure Pipelines a rail whose
+pipeline definition cannot be found is NO_DATA ("pipeline definition for `<file>` not found in
+Azure Pipelines"), never NEVER_FIRED.
 """
 
 import argparse
@@ -35,7 +44,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import code_host
 import gate_inventory as gi
+import host_report
 import pipeline_proof_model as m
 from github_import import GitHubImportError, gh_json
 from spec_status import fetch_pr_comment_bodies, parse_verdict_block
@@ -44,6 +55,39 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 DOC_PATH = ".sdlc/artifacts/03-foundation/pipeline-proof.md"
 TEMPLATE = PLUGIN_ROOT / "templates" / "phases" / "03-foundation" / "pipeline-proof.md"
 INSTALLED_RULESET = ".github/rulesets/branch-protection.json"
+ADO = "azure-devops"
+# The CI axis: the checked-in branch-protection export each platform's install carries.
+INSTALLED_RULESETS = {"github": INSTALLED_RULESET, ADO: ".azuredevops/rails/branch-policies.json"}
+HOST_LABEL = {ADO: "Azure DevOps"}
+# pipeline_proof name → ado_import name, for the call-site dispatch.
+ADO_NAMES = {"_fetch_runs": "fetch_runs", "_read_ruleset": "fetch_branch_policies", "_run_jobs": "run_jobs",
+             "fetch_pr_comment_bodies": "fetch_pr_comment_bodies"}
+
+
+def _host_label(host: str | None) -> str:
+    return HOST_LABEL.get(host or "", "GitHub")
+
+
+def _host_fn(name: str, host: str | None):
+    """The function for a code-host read: `ado_import.<name>` on Azure DevOps, else this module's
+    own (looked up at call time, so the `github_import.run_gh` seam keeps intercepting it)."""
+    if host == ADO:
+        import ado_import
+        return getattr(ado_import, ADO_NAMES[name])
+    return globals()[name]
+
+
+def installed_policies_as_ruleset(doc: dict) -> dict:
+    """The azure-devops pack's `branch-policies.json` (desired-state build-validation policies) in
+    the one shape `pipeline_proof_model.compare_ruleset` reads, so "expected by the checked-in
+    file but not enforced live" is answered on both platforms. A GitHub ruleset export passes
+    through untouched."""
+    if "build_validation" not in doc:
+        return doc
+    contexts = [{"context": e["displayName"]} for e in doc.get("build_validation") or []
+                if isinstance(e, dict) and e.get("displayName")]
+    return {"name": doc.get("name") or "branch policies", "target": "branch",
+            "rules": [{"type": "required_status_checks", "parameters": {"required_status_checks": contexts}}]}
 
 GENERATED_SECTIONS = ("Rail status", "Branch protection", "Merge history", "Proofs still needed")
 PERSONS_SECTION = "Forced-failure proofs"
@@ -87,7 +131,7 @@ def _rail_plan(repo_root: Path) -> tuple[list[dict], list[dict], list[str]]:
             })
     else:
         notes.append(inv["error"])
-        wf_dir = repo_root / ".github" / "workflows"
+        wf_dir = repo_root / gi.installed_pipelines_dir(repo_root)
         for path in sorted(wf_dir.glob("*.y*ml")) if wf_dir.is_dir() else []:
             by_file[path.name] = {
                 "rail": path.stem, "file": path.name, "kind": m.rail_kind(path.name),
@@ -100,14 +144,15 @@ def _fetch_runs(cwd: str, workflow_file: str, limit: int) -> list[dict]:
     return gh_json(["run", "list", "--workflow", workflow_file, "--limit", str(limit), "--json", RUN_FIELDS], cwd)
 
 
-def _grader_verdicts(cwd: str, runs: list[dict], prs: list[dict]) -> dict | None:
+def _grader_verdicts(cwd: str, runs: list[dict], prs: list[dict], host: str | None = None) -> dict | None:
     """pull request number -> the verdict rows the grader posted there. None when the comments
     could not be read at all (which is "unchecked", never "nothing found")."""
     branches = {r.get("headBranch") for r in runs if r.get("event") in m.PR_EVENTS}
     candidates = sorted((p for p in prs if p.get("headRefName") in branches), key=lambda p: p["number"], reverse=True)[:GRADER_PR_LIMIT]
+    comment_bodies = _host_fn("fetch_pr_comment_bodies", host)
 
     def latest_verdict(number: int):
-        for body in reversed(fetch_pr_comment_bodies(cwd, number)):
+        for body in reversed(comment_bodies(cwd, number)):
             rows = parse_verdict_block(body)
             if rows is not None:
                 return rows
@@ -127,13 +172,18 @@ def _grader_verdicts(cwd: str, runs: list[dict], prs: list[dict]) -> dict | None
     return None if candidates and errors == len(candidates) else results
 
 
-def _deploy_rollbacks(cwd: str, runs: list[dict]) -> dict:
+def _run_jobs(cwd: str, run_id: int) -> dict:
+    return gh_json(["run", "view", str(run_id), "--json", "jobs"], cwd)
+
+
+def _deploy_rollbacks(cwd: str, runs: list[dict], host: str | None = None) -> dict:
     """failed deploy run id -> whether its rollback job succeeded."""
     failed = [r for r in runs if r.get("conclusion") == "failure"][:DEPLOY_JOB_LOOKUPS]
+    run_jobs = _host_fn("_run_jobs", host)  # `host` here is the CI platform: runs and jobs live with the pipelines
 
     def rolled_back(run: dict) -> bool:
         try:
-            jobs = gh_json(["run", "view", str(run["databaseId"]), "--json", "jobs"], cwd).get("jobs", [])
+            jobs = run_jobs(cwd, run["databaseId"]).get("jobs", [])
         except GitHubImportError:
             return False
         return any("rollback" in j.get("name", "").lower() and j.get("conclusion") == "success" for j in jobs)
@@ -150,49 +200,74 @@ def _read_ruleset(cwd: str, nwo: str, installed_name: str | None) -> dict | None
     return gh_json(["api", f"repos/{nwo}/rulesets/{pick['id']}"], cwd) if pick else None
 
 
-def _classify(spec: dict, runs: list[dict], prs: list[dict], cwd: str) -> dict:
+def _classify(spec: dict, runs: list[dict], prs: list[dict], cwd: str, host: str | None = None,
+              ci_platform: str | None = None) -> dict:
+    """`host` (the code host) governs the PR comments the grader posted; `ci_platform` governs the
+    run's jobs — the two axes, never merged."""
     if spec["kind"] == "advisory":
-        verdicts = _grader_verdicts(cwd, runs, prs) if runs else {}
+        verdicts = _grader_verdicts(cwd, runs, prs, host) if runs else {}
         return m.classify_rail("advisory", runs, prs, grader_verdicts=verdicts)
     if spec["kind"] == "deploy":
-        return m.classify_rail("deploy", runs, prs, rollbacks=_deploy_rollbacks(cwd, runs))
+        return m.classify_rail("deploy", runs, prs, rollbacks=_deploy_rollbacks(cwd, runs, ci_platform))
     return m.classify_rail("blocking", runs, prs)
 
 
-def gather(repo_root, runs_limit: int = 100, prs_limit: int = 100) -> dict:
+def _repo_and_prs(cwd: str, prs_limit: int, host: str | None) -> tuple[str, list[dict]]:
+    """P1 + P2. On Azure DevOps the list comes from `ado_import.list_pull_requests` — every PR,
+    newest first, no per-branch fold — because `merge_history` must count every merged pull
+    request, including two that shared a branch. The model reads number, headRefName, state,
+    mergedAt and reviewDecision, all on the PR view."""
+    if host == ADO:
+        import ado_import
+        nwo = ado_import.repo_view(cwd)["nameWithOwner"]
+        return nwo, ado_import.list_pull_requests(cwd, prs_limit)
+    nwo = gh_json(["repo", "view", "--json", "nameWithOwner"], cwd)["nameWithOwner"]
+    return nwo, gh_json(["pr", "list", "--state", "all", "--limit", str(prs_limit), "--json", PR_FIELDS], cwd)
+
+
+def gather(repo_root, runs_limit: int = 100, prs_limit: int = 100, host: str | None = None) -> dict:
     repo_root = Path(repo_root)
     cwd = str(repo_root)
+    detection = host_report.detect(repo_root, host)
+    ci_platform = code_host.installed_ci_platform(repo_root)
+    label = _host_label(detection.host)
     try:
-        nwo = gh_json(["repo", "view", "--json", "nameWithOwner"], cwd)["nameWithOwner"]
-        prs = gh_json(["pr", "list", "--state", "all", "--limit", str(prs_limit), "--json", PR_FIELDS], cwd)
+        nwo, prs = _repo_and_prs(cwd, prs_limit, detection.host)
     except GitHubImportError as e:
-        return {"ok": False, "error": str(e)}
+        return {"ok": False, "error": str(e), "host": host_report.host_block(detection, str(e)), "ci_platform": ci_platform}
 
     workflow_rails, local_rails, notes = _rail_plan(repo_root)
+    pipelines_dir = gi.installed_pipelines_dir(repo_root)
+    fetch_runs = _host_fn("_fetch_runs", ci_platform)
 
     def read_rail(spec: dict) -> dict:
         if not spec.get("installed", True):
-            return {**spec, **m._result(m.NEVER_FIRED, f"{spec['file']} is not installed in this project's .github/workflows, so it cannot have run.", [], 0)}
+            return {**spec, **m._result(m.NEVER_FIRED, f"{spec['file']} is not installed in this project's {pipelines_dir}, so it cannot have run.", [], 0)}
         try:
-            runs = _fetch_runs(cwd, spec["file"], runs_limit)
+            runs = fetch_runs(cwd, spec["file"], runs_limit)
         except GitHubImportError as e:
-            return {**spec, **m.no_data(spec["rail"], f"The run history could not be read: {e}")}
-        return {**spec, **_classify(spec, runs, prs, cwd)}
+            # A definition the pipelines list does not carry is NOT "never fired" — the lookup
+            # failed, and ado_import's message already names the file. Anything else is the
+            # history being unreadable.
+            reason = str(e) if "not found in Azure Pipelines" in str(e) else f"The run history could not be read: {e}"
+            return {**spec, **m.no_data(spec["rail"], reason)}
+        return {**spec, **_classify(spec, runs, prs, cwd, detection.host, ci_platform)}
 
     with ThreadPoolExecutor(WORKERS) as pool:
         rails = list(pool.map(read_rail, workflow_rails))
     for spec in local_rails:
-        rails.append({**spec, **m.no_data(spec["rail"], "A local hook: GitHub keeps no record of it, so its history cannot be read from here.")})
+        rails.append({**spec, **m.no_data(spec["rail"], f"A local hook: {label} keeps no record of it, so its history cannot be read from here.")})
 
     installed_ruleset = None
-    installed_path = repo_root / INSTALLED_RULESET
+    installed_rel = INSTALLED_RULESETS.get(ci_platform, INSTALLED_RULESET)
+    installed_path = repo_root / installed_rel
     if installed_path.is_file():
         try:
-            installed_ruleset = json.loads(installed_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            notes.append(f"{INSTALLED_RULESET} could not be parsed, so the live ruleset was not compared with it.")
+            installed_ruleset = installed_policies_as_ruleset(json.loads(installed_path.read_text(encoding="utf-8")))
+        except (OSError, json.JSONDecodeError, AttributeError, TypeError):
+            notes.append(f"{installed_rel} could not be parsed, so the live ruleset was not compared with it.")
     try:
-        live = _read_ruleset(cwd, nwo, (installed_ruleset or {}).get("name"))
+        live = _host_fn("_read_ruleset", ci_platform)(cwd, nwo, (installed_ruleset or {}).get("name"))
         ruleset = m.compare_ruleset(live, installed_ruleset)
     except GitHubImportError as e:
         ruleset = {"live": None, "enforcing": None, "error": str(e), "created_at": None,
@@ -207,6 +282,8 @@ def gather(repo_root, runs_limit: int = 100, prs_limit: int = 100) -> dict:
         "merge_history": m.merge_history(prs, ruleset.get("created_at")),
         "proofs_needed": m.proofs_needed(rails),
         "notes": notes,
+        "host": host_report.host_block(detection),
+        "ci_platform": ci_platform,
     }
 
 
@@ -237,10 +314,13 @@ def render_sections(result: dict) -> dict[str, str]:
         rows.append(f"| {_cell(name)} | {STATUS_LABEL[r['status']]} | {_cell(r['reason'] + counts)} | {_cell(_links(r['evidence']))} |")
 
     rs = result["ruleset"]
+    ado = result.get("ci_platform") == ADO
+    what = "branch policies" if ado else "rulesets"
     if rs.get("error"):
-        protection = f"Could not read GitHub's rulesets: {rs['error']}. Nothing below can be confirmed, and this is not the same as there being no ruleset."
+        protection = f"Could not read {_host_label(result.get('ci_platform'))}'s {what}: {rs['error']}. Nothing below can be confirmed, and this is not the same as there being no ruleset."
     elif not rs["live"]:
-        protection = "GitHub reports no branch ruleset on this repository, so nothing is enforcing the required checks."
+        protection = ("Azure DevOps reports no enabled, blocking policy on the default branch, so nothing is enforcing the required checks." if ado
+                      else "GitHub reports no branch ruleset on this repository, so nothing is enforcing the required checks.")
     else:
         protection = "\n".join([
             f"- **Enforcement:** {rs['enforcement']}" + ("" if rs["enforcing"] else " — **not enforcing**; the required checks are advisory only"),
@@ -267,7 +347,7 @@ def render_sections(result: dict) -> dict[str, str]:
 
     needed = _bullets(
         [f"**{n['rail']}** — {n['proof']} Touches {n['touches']}." for n in result["proofs_needed"]],
-        "Every rail that GitHub can see is proven.",
+        f"Every rail that {_host_label(result.get('ci_platform'))} can see is proven.",
     )
     notes = "\n".join(f"> {n}" for n in result.get("notes", []))
     return {
@@ -357,13 +437,17 @@ def main(argv=None) -> int:
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
     parser.add_argument("--runs-limit", type=int, default=100, help="Most recent runs to read per rail (default 100)")
     parser.add_argument("--prs-limit", type=int, default=100, help="Most recent pull requests to read (default 100)")
+    parser.add_argument("--host", choices=code_host.HOSTS, default=None,
+                        help="Code host for the pull-request reads (default: detected from the origin remote; "
+                             "`none` falls through to gh as before). Pipeline reads follow the harness manifest's CI pack.")
     args = parser.parse_args(argv)
 
     repo_root = Path(args.repo).resolve() if args.repo else Path(args.state).resolve().parent.parent
     try:
-        result = gather(repo_root, args.runs_limit, args.prs_limit)
+        result = gather(repo_root, args.runs_limit, args.prs_limit, args.host)
     except Exception as e:  # noqa: BLE001 — advisory contract: a button in an app must get ok:false, never a traceback
-        result = {"ok": False, "error": f"Unexpected failure while reading GitHub: {type(e).__name__}: {e}"}
+        label = _host_label(args.host)
+        result = {"ok": False, "error": f"Unexpected failure while reading {label}: {type(e).__name__}: {e}"}
     if args.write:
         written = write_document(repo_root, result)
         if written:

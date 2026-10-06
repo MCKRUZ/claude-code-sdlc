@@ -34,7 +34,7 @@ CAPABILITIES: dict[str, dict] = {
                      "flags": ["--repo", "--docs", "--json", "--skip", "--priority", "--lock"]},
     "new-spec-json": {"script": "new_spec.py", "flags": ["--json"]},
     "new-spike-json": {"script": "new_spike.py", "flags": ["--json"]},
-    "pipeline-proof": {"script": "pipeline_proof.py", "flags": ["--write", "--json"]},
+    "pipeline-proof": {"script": "pipeline_proof.py", "flags": ["--write", "--json", "--host"]},
     "workshop-brief": {"script": "workshop_brief.py", "argv": ["build"],
                        "flags": ["--contradictions", "--questions", "--logistics-json", "--json"]},
     "rules-check": {"script": "rules_check.py", "flags": ["--repo", "--json"]},
@@ -48,6 +48,10 @@ CAPABILITIES: dict[str, dict] = {
     "sprint-plan": {"script": "sprint.py", "argv": ["plan"], "flags": ["--repo", "--state", "--sprint", "--json"]},
     "sprint-report": {"script": "generate_sprint_report.py",
                       "flags": ["--repo", "--state", "--sprint", "--kind", "--json"]},
+    # Code-host providers (GitHub or Azure DevOps, chosen by the repository): which host, why,
+    # and whether its CLI is usable — the `host` block Studio reads before enabling PR features.
+    "code-host": {"script": "code_host.py", "flags": ["--repo", "--state", "--host", "--json"]},
+    "import-outcomes": {"script": "import_outcomes.py", "flags": ["--since", "--repo", "--state", "--host", "--json"]},
 }
 
 

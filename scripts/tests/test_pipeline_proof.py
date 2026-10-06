@@ -286,3 +286,150 @@ class TestRenderMergeHistory:
 
     def test_no_unapproved_merge_says_so(self):
         assert "Every merge since was approved." in pp.render_sections(self._result([]))["Merge history"]
+
+
+class TestOnAzureDevOps:
+    """Additive (code-host providers, Wave 3): the gatherer on an Azure DevOps remote with the
+    azure-devops CI pack installed, driven by FakeAz over the CAPTURED fixtures. `gh` is never
+    called. The FakeAz router raising on an unknown call is the read-only pin for this path, the
+    same device TestReadOnly uses for `gh`; the classes above are untouched.
+
+    Second capture: `pipelines list --repository` answers [] although the project has pipelines,
+    so the definitions come from the project-wide fallback (ado_fixtures.repo_pipelines: the
+    derived definitions bound to this repository). Three of them are given the gate YAMLs here —
+    security.yml has no definition on purpose — the one captured build is served as ci.yml's
+    history (derived) and the other rails keep the captured empty run list."""
+
+    READ_PREFIXES = {("repos", "show"), ("repos", "pr", "list"), ("repos", "pr", "policy", "list"),
+                     ("repos", "policy", "list"), ("pipelines", "list"), ("pipelines", "show"),
+                     ("pipelines", "runs", "list"), ("devops", "invoke")}
+
+    @pytest.fixture
+    def ado_repo(self, tmp_path, monkeypatch):
+        import ado_import
+        import ado_transport
+        import code_host
+        from tests.ado_fixtures import ADO_REMOTE, FakeAz, arg_after, load, repo_pipelines
+        ado_import.clear_caches()
+        monkeypatch.delenv(code_host.ENV_VAR, raising=False)
+        monkeypatch.setattr(code_host, "origin_url", lambda root: ADO_REMOTE)
+        monkeypatch.setattr(github_import, "run_gh", lambda *a, **k: pytest.fail("gh was called on an Azure DevOps repository"))
+        (tmp_path / ".claude").mkdir()
+        (tmp_path / ".claude" / "harness-manifest.json").write_text(json.dumps({"packs": ["cicd/azure-devops"]}), encoding="utf-8")
+        pipelines = tmp_path / ".azuredevops" / "pipelines"
+        pipelines.mkdir(parents=True)
+        for name in ("ci.yml", "grader.yml", "security.yml", "deploy-dev.yml"):
+            (pipelines / name).write_text("trigger: none\n", encoding="utf-8")
+        rails = tmp_path / ".azuredevops" / "rails"
+        rails.mkdir()
+        (rails / "branch-policies.json").write_text(json.dumps({
+            "branch": "master", "build_validation": [{"displayName": "pipeline-3", "isBlocking": True},
+                                                      {"displayName": "build-and-test", "isBlocking": True}]}), encoding="utf-8")
+        (tmp_path / ".sdlc" / "artifacts" / "03-foundation").mkdir(parents=True)
+        bound = repo_pipelines()
+        assert len(bound) >= 3, "the derived project-wide list must bind at least three definitions to the repository"
+        self.yaml_by_id = {bound[0]["id"]: "ci.yml", bound[1]["id"]: "grader.yml", bound[2]["id"]: "deploy-dev.yml"}
+        self.ci_id, self.build = bound[0]["id"], load("runs_show")
+        defaults = FakeAz().answers
+
+        def show(args):
+            rec = defaults["pipelines show"](args)
+            wanted = int(arg_after(args, "--id"))
+            if wanted in self.yaml_by_id:
+                rec = {**rec, "process": {"type": 2, "yamlFilename": f".azuredevops/pipelines/{self.yaml_by_id[wanted]}"}}
+            return rec
+
+        def runs(args):  # the captured build as ci.yml's history (derived); every other definition: the captured []
+            return [self.build] if arg_after(args, "--pipeline-ids") == str(self.ci_id) else load("runs_list")
+
+        self.az = FakeAz({"pipelines show": show, "pipelines runs list": runs})
+        monkeypatch.setattr(ado_transport, "az_json", self.az)
+        yield tmp_path
+        ado_import.clear_caches()
+
+    def test_rails_are_read_from_azure_pipelines_and_a_missing_definition_is_no_data(self, ado_repo):
+        from tests.ado_fixtures import load
+        result = pp.gather(ado_repo)
+        assert result["ok"] and result["repo"] == "contoso/Claims/claims-api"
+        assert result["host"]["name"] == "azure-devops" and result["ci_platform"] == "azure-devops"
+        ci = rail(result, "ci.yml")
+        assert ci["status"] in (m.RAN_UNPROVEN, m.PROVEN) and ci["runs"] == 1  # the one captured build, served as this rail's history
+        assert all("_build/results?buildId=" in e["url"] for e in ci["evidence"])
+        grader = rail(result, "grader.yml")
+        assert load("runs_list") == [] and grader["status"] == m.NEVER_FIRED and grader["runs"] == 0  # a definition exists; its run list is [] (captured): a real zero
+        security = rail(result, "security.yml")
+        assert security["status"] == m.NO_DATA
+        assert security["reason"] == "pipeline definition for `security.yml` not found in Azure Pipelines"
+        assert security["runs"] is None  # never a fabricated zero
+        lists = [c for c in self.az.calls if c[:2] == ["pipelines", "list"]]
+        assert [("--repository" in c) for c in lists] == [True, False]  # the filtered read answered [] (captured); the project-wide fallback ran once
+
+    def test_a_repository_with_no_pipeline_anywhere_is_no_data_naming_the_repository(self, ado_repo):
+        self.az.answers["pipelines list"] = lambda args: []  # the filter AND the project-wide list: nothing bound to this repository
+        result = pp.gather(ado_repo)
+        for name in ("ci.yml", "grader.yml", "security.yml"):
+            r = rail(result, name)
+            assert r["status"] == m.NO_DATA and r["runs"] is None
+            assert f"pipeline definition for `{name}` not found in Azure Pipelines" in r["reason"]
+            assert "no pipeline definition found for claims-api in project Claims" in r["reason"]
+
+    def test_a_rail_the_guide_expects_but_the_project_lacks_names_the_azure_dir(self, ado_repo):
+        correctness = rail(pp.gather(ado_repo), "correctness.yml")
+        assert correctness["status"] == m.NEVER_FIRED
+        assert "is not installed in this project's .azuredevops/pipelines" in correctness["reason"]
+        assert ".github/workflows" not in correctness["reason"]
+
+    def test_branch_policies_are_the_ruleset_and_merges_are_not_split(self, ado_repo):
+        import ado_map
+        from tests.ado_fixtures import load
+        configs = load("policy_list")  # captured: [] on this repository's default branch — no policy at all is common, and honest
+        live_enforcing = any(c.get("isEnabled") and c.get("isBlocking") for c in configs)
+        live_required = [c["settings"]["displayName"] for c in configs
+                         if c.get("isEnabled") and c["type"]["id"] in ado_map.CHECK_POLICY_TYPES]
+        result = pp.gather(ado_repo)
+        rs = result["ruleset"]
+        assert rs["live"] is True and rs["enforcing"] is live_enforcing and rs["created_at"] is None
+        assert sorted(rs["required"]) == sorted(live_required)
+        assert rs["missing_in_live"] == [n for n in ("pipeline-3", "build-and-test") if n not in live_required]  # expected by the checked-in policies, not enforced live
+        assert result["merge_history"]["enforced_since"] is None  # ADO has no enforcement-start date
+        assert result["merge_history"]["total_merged"] == sum(1 for p in load("pr_list") if p["status"] == "completed")
+        protection = pp.render_sections(result)["Branch protection"]
+        if live_enforcing:
+            assert "**Enforcement:** active" in protection
+        else:  # an empty policy list is a ruleset that enforces nothing — said as such, not as "could not read"
+            assert "**Enforcement:** disabled" in protection and "not enforcing" in protection
+            assert "Could not read" not in protection
+        assert "Proofs still needed" in pp.render_sections(result)
+
+    def test_every_az_call_is_a_read(self, ado_repo):
+        pp.gather(ado_repo)
+        assert self.az.calls, "expected the gatherer to call az at all"
+        for call in self.az.calls:
+            assert any(tuple(call[:len(p)]) == p for p in self.READ_PREFIXES), f"not a read: {call}"
+            if call[:2] == ["devops", "invoke"]:
+                assert "--http-method" not in call, f"invoke with a method: {call}"  # the default is GET
+
+    def test_an_unreadable_policy_list_is_could_not_read_in_the_hosts_words(self, ado_repo):
+        self.az.fail["repos policy list"] = "HTTP 403"
+        result = pp.gather(ado_repo)
+        assert result["ruleset"]["enforcing"] is None and result["ruleset"]["error"] == "HTTP 403"
+        protection = pp.render_sections(result)["Branch protection"]
+        assert protection.startswith("Could not read Azure DevOps's branch policies: HTTP 403")
+        assert "not the same as there being no ruleset" in protection
+
+    def test_an_az_failure_is_ok_false_with_the_host_block(self, ado_repo):
+        self.az.fail["repos show"] = "ERROR: Please run 'az login' to setup account."
+        result = pp.gather(ado_repo)
+        assert result["ok"] is False and "az login" in result["error"]
+        assert result["host"]["cli_state"] == "signed_out" and result["host"]["cli"] == "az"
+        assert pp.write_document(ado_repo, result) is None
+
+    def test_installed_policies_become_a_ruleset_and_a_github_export_passes_through(self):
+        assert m.required_contexts(pp.installed_policies_as_ruleset(
+            {"build_validation": [{"displayName": "grader"}, {"note": "no name"}]})) == ["grader"]
+        assert pp.installed_policies_as_ruleset(INSTALLED_RULESET) is INSTALLED_RULESET
+
+    def test_json_output_carries_the_host_block(self, ado_repo, capsys):
+        assert pp.main(["--repo", str(ado_repo), "--json"]) == 0
+        out = json.loads(capsys.readouterr().out)
+        assert out["ok"] and out["host"]["name"] == "azure-devops" and out["ci_platform"] == "azure-devops"

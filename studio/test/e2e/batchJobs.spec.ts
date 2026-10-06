@@ -69,6 +69,8 @@ test.describe('[spec 0029] the batch model jobs, in the real window', () => {
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('batch jobs e2e project').click()
     await expect(page.getByTestId('activities-panel')).toBeVisible({ timeout: 30_000 })
+    // F11 (Observatory): the intake panel renders in the main slot once its row is opened.
+    await page.locator('[data-testid="activity-row"][data-activity-id="intake"]').getByRole('button', { name: 'Open' }).click()
   })
 
   test.afterAll(async () => {
@@ -80,7 +82,7 @@ test.describe('[spec 0029] the batch model jobs, in the real window', () => {
     } catch { /* a leftover temp directory is not a failed test */ }
   })
 
-  const panel = () => page.locator('[data-testid="activity-row"][data-activity-id="intake"]').getByTestId('intake-panel')
+  const panel = () => page.locator('[data-testid="focused-activity-host"][data-activity-id="intake"]').getByTestId('intake-panel')
   const summaries = () => readdirSync(intakeDir()).filter((f) => /^DOC-\d+-.+\.md$/.test(f))
 
   test('before the ids are locked the screen says to lock them, and offers no model button', async () => {

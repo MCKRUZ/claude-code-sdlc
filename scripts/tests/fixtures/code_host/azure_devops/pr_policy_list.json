@@ -1,0 +1,146 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000114",
+      "status": "approved",
+      "configuration": {
+        "id": 7,
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": {
+          "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+          "displayName": "Build"
+        },
+        "settings": {
+          "displayName": "build-and-test",
+          "buildDefinitionId": 12
+        }
+      },
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002/42",
+      "startedDate": "2026-09-21T10:00:00Z",
+      "completedDate": null
+    },
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000106",
+      "status": "approved",
+      "configuration": {
+        "id": 7,
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": {
+          "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+          "displayName": "Build"
+        },
+        "settings": {
+          "displayName": "grader",
+          "buildDefinitionId": 12
+        }
+      },
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002/42",
+      "startedDate": "2026-09-21T10:00:00Z",
+      "completedDate": null
+    },
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000115",
+      "status": "running",
+      "configuration": {
+        "id": 7,
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": {
+          "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+          "displayName": "Build"
+        },
+        "settings": {
+          "displayName": "security-review",
+          "buildDefinitionId": 12
+        }
+      },
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002/42",
+      "startedDate": "2026-09-21T10:00:00Z",
+      "completedDate": null
+    },
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000118",
+      "status": "rejected",
+      "configuration": {
+        "id": 7,
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": {
+          "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+          "displayName": "Build"
+        },
+        "settings": {
+          "displayName": "correctness-review",
+          "buildDefinitionId": 12
+        }
+      },
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002/42",
+      "startedDate": "2026-09-21T10:00:00Z",
+      "completedDate": null,
+      "context": {
+        "buildId": 900,
+        "buildDefinitionName": "correctness-review"
+      }
+    },
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000115",
+      "status": "notApplicable",
+      "configuration": {
+        "id": 7,
+        "isBlocking": false,
+        "isEnabled": true,
+        "type": {
+          "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+          "displayName": "Build"
+        },
+        "settings": {
+          "displayName": "eval-regression",
+          "buildDefinitionId": 12
+        }
+      },
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002/42",
+      "startedDate": "2026-09-21T10:00:00Z",
+      "completedDate": null
+    },
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000199",
+      "status": "queued",
+      "configuration": {
+        "id": 9,
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": {
+          "id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd",
+          "displayName": "Minimum number of reviewers"
+        },
+        "settings": {
+          "minimumApproverCount": 1
+        }
+      }
+    },
+    {
+      "evaluationId": "00000000-0000-0000-0000-000000000113",
+      "status": "mystery",
+      "configuration": {
+        "id": 7,
+        "isBlocking": true,
+        "isEnabled": true,
+        "type": {
+          "id": "cbdc66da-9728-4af8-aada-9a5a32e4a226",
+          "displayName": "Status"
+        },
+        "settings": {
+          "displayName": "external-scan",
+          "buildDefinitionId": 12
+        }
+      },
+      "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002/42",
+      "startedDate": "2026-09-21T10:00:00Z",
+      "completedDate": null
+    }
+  ]
+}

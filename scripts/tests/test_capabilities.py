@@ -90,3 +90,10 @@ def test_the_sprint_capabilities_studio_reads_are_declared_with_the_agreed_shape
     assert caps.CAPABILITIES["sprint-report"] == {
         "script": "generate_sprint_report.py", "flags": ["--repo", "--state", "--sprint", "--kind", "--json"]}
     assert {"sprint-status", "sprint-plan", "sprint-report"} <= set(caps.list_capabilities())
+
+
+def test_the_import_outcomes_capability_is_declared_with_the_agreed_shape():
+    """code-host providers (Wave 5): Studio keys the host-neutral scorecard import on this name."""
+    assert caps.CAPABILITIES["import-outcomes"] == {
+        "script": "import_outcomes.py", "flags": ["--since", "--repo", "--state", "--host", "--json"]}
+    assert "import-outcomes" in caps.list_capabilities()

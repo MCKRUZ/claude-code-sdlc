@@ -166,3 +166,33 @@ class TestFixedRules:
         risk = next(r for r in ps.read_settings(tmp_path)["fixed_rules"] if "risk tier" in r["rule"])
         assert "recorded" in risk["rule"].lower()
         assert "team lead" not in risk["rule"].lower()
+
+
+# --- Roster identity: `email` passes through (code-host providers, Wave 2) --------------------
+# No change to project_settings.py was needed: read_roster() hands `people` through verbatim.
+# This pins that, so a future "tidy up the people list" cannot quietly drop the one key a
+# code-host provider needs to map a reviewer back to a handle.
+
+ROSTER_WITH_EMAIL = ROSTER.replace(
+    '    name: "Priya Nair"\n',
+    '    name: "Priya Nair"\n    email: "priya.nair@example.com"\n')
+
+
+class TestRosterEmailPassesThrough:
+    def test_email_reaches_the_reader_untouched(self, tmp_path):
+        result = ps.read_settings(_project(tmp_path, roster=ROSTER_WITH_EMAIL))
+        assert result["roster"]["errors"] == []
+        priya = next(p for p in result["roster"]["people"] if p["handle"] == "@priya-n")
+        assert priya["email"] == "priya.nair@example.com"
+
+    def test_a_person_without_one_has_no_email_key(self, tmp_path):
+        # Absent means unknown; the reader must not see a fabricated empty string.
+        result = ps.read_settings(_project(tmp_path, roster=ROSTER_WITH_EMAIL))
+        sam = next(p for p in result["roster"]["people"] if p["handle"] == "@sam-oduya")
+        assert "email" not in sam
+
+    def test_a_bad_email_is_PRESENT_with_errors(self, tmp_path):
+        bad = ROSTER_WITH_EMAIL.replace("priya.nair@example.com", "not-an-email")
+        result = ps.read_settings(_project(tmp_path, roster=bad))
+        assert result["roster"]["present"] is True
+        assert any("email" in e for e in result["roster"]["errors"])

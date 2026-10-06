@@ -1,11 +1,24 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Check, History, Pencil } from 'lucide-react'
 import type {
   DocumentChange, DocumentFocus, DocumentSection, OpenDocumentResult,
 } from '../../shared/types'
 import { matchesSection } from '../../shared/sections'
+import { BackLink, Button, Notice, SkeletonBlock, toast } from '../ui'
+import { useEnter } from '../motion/useEnter'
+import { motion } from '../motion/motion'
+import { contextFrom, findingFocus } from '../motion/choreo'
+import { SHORTCUT_MAP } from '../shortcuts/shortcutMap'
+import { useShortcuts } from '../shortcuts/useShortcuts'
 import { SectionCard } from './DocumentSections'
+import { saveOpenFieldEditor } from './FieldEditor'
 import { TemplateGapsNotice } from './TemplateGapsNotice'
 import { useStageReadiness } from './StageReadinessContext'
+import { STICKY_HEADER_CLASS, useStuck } from './useStuck'
+
+/** Only this screen's rows of the §6.2 map. Frame's listener owns the shell scopes; handing
+ * this hook the full map would make two listeners answer `/` or ⌘K. */
+const DOCUMENT_BINDINGS = SHORTCUT_MAP.filter((b) => b.scope === 'documentView')
 
 /** Reading and editing one document.
  *
@@ -20,6 +33,7 @@ export function DocumentView({
   focus,
   onBack,
   onShowHistory,
+  onOpenDocument,
 }: {
   projectPath: string
   relPath: string
@@ -29,6 +43,9 @@ export function DocumentView({
   focus?: DocumentFocus
   onBack: () => void
   onShowHistory: () => void
+  /** Alt+↑ / Alt+↓ step through the stage's openable documents in declared order. Optional
+   * because only the host can change which document is open; without it the keys do nothing. */
+  onOpenDocument?: (relPath: string) => void
 }) {
   // StageHome (and the sidebar's doc-count line, and the Workflow tab) all read the ONE shared
   // fetch Frame.tsx's StageReadinessProvider owns (spec 0019) — keyed on [projectPath, stageId],
@@ -38,7 +55,7 @@ export function DocumentView({
   // leaves the shared readiness holding whatever it read before this document was ever opened:
   // the pre-existing gap `StageHome.tsx`'s own pre-0019 `useCurrentStageDocs` had too, now
   // closed here since it lives in the shared context this spec introduced.
-  const { refresh: refreshReadiness } = useStageReadiness()
+  const { refresh: refreshReadiness, readiness } = useStageReadiness()
 
   /** The section the reader was sent to, resolved once the document is open. Held as the
    * section KEY rather than the plugin's reported name, because that is what the rendered
@@ -53,6 +70,17 @@ export function DocumentView({
   // answers, the control must not claim to know — see the comment on the button itself.
   const [numbering, setNumbering] = useState(false)
   const [busy, setBusy] = useState(false)
+
+  // The screen root is rendered from the first paint (loading state included) so the enter
+  // choreography has an element to move and `main.firstElementChild` is this screen throughout.
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEnter(rootRef, 'rise')
+  // The title block is this screen's sticky header (G4-2): flush at rest, a hairline once the
+  // sections have scrolled under it.
+  const headerRef = useRef<HTMLDivElement>(null)
+  useStuck(headerRef)
+
+  const fileName = relPath.split('/').pop()
 
   const load = useCallback(async () => {
     const opened = await window.studio.openDocument(projectPath, relPath)
@@ -73,11 +101,20 @@ export function DocumentView({
   }, [focus, doc])
 
   // Scrolled after the card exists, not when the focus arrives — the element is not in the
-  // document until the section it belongs to has rendered.
+  // document until the section it belongs to has rendered. Then the ring pulses (§4 #21) so the
+  // eye lands where the scroll did; the classes themselves never change.
   useEffect(() => {
-    if (!focusedKey) return
-    document.querySelector(`[data-section-key="${CSS.escape(focusedKey)}"]`)
-      ?.scrollIntoView({ block: 'center' })
+    const root = rootRef.current
+    if (!focusedKey || !root) return
+    const card = root.querySelector(`[data-section-key="${CSS.escape(focusedKey)}"]`)
+    if (!card) return
+    // jsdom has no scrollIntoView; a component test that opens from a finding must still render.
+    if (typeof card.scrollIntoView === 'function') card.scrollIntoView({ block: 'center' })
+    const timeline = findingFocus.play(
+      contextFrom(root, { enabled: motion.enabled(), reduced: motion.reduced() }, motion),
+      { card },
+    )
+    return () => { timeline.kill() }
   }, [focusedKey])
 
   // Listing what changed never marks it seen — that is a separate, explicit act, so merely
@@ -85,6 +122,23 @@ export function DocumentView({
   useEffect(() => {
     window.studio.getDocumentChanges(projectPath, relPath).then(setChanges)
   }, [projectPath, relPath])
+
+  // Alt+↑/↓ walk the stage's documents as the Workflow tab lists them — only the ones that can
+  // be opened as one document (a folder step or a not-yet-created file has nothing to show).
+  const stepDocument = useCallback((delta: 1 | -1) => {
+    if (!onOpenDocument) return
+    const openable = (readiness?.documents ?? []).filter((d) => d.exists && !d.folder)
+    const at = openable.findIndex((d) => d.path === relPath)
+    if (at < 0) return
+    const next = openable[at + delta]
+    if (next) onOpenDocument(next.path)
+  }, [onOpenDocument, readiness, relPath])
+
+  useShortcuts({
+    handlers: { stepDocument, saveField: () => { saveOpenFieldEditor() } },
+    scopes: ['documentView'],
+    bindings: DOCUMENT_BINDINGS,
+  })
 
   const enterEditMode = useCallback(async () => {
     setEditing(true)
@@ -115,9 +169,13 @@ export function DocumentView({
     setError(null)
     const result = await window.studio.setField(projectPath, relPath, section.key, label, value)
     if (!result.ok) setError(result.error ?? 'Could not save that change.')
-    else setDoc(result)
+    else {
+      setDoc(result)
+      // The toast names the field, not the value — the card already shows what was written.
+      toast({ tone: 'ok', title: 'Field saved', detail: `${label} · ${fileName}` })
+    }
     setBusy(false)
-  }, [projectPath, relPath])
+  }, [projectPath, relPath, fileName])
 
   const addRequirement = useCallback(async () => {
     setBusy(true)
@@ -135,120 +193,116 @@ export function DocumentView({
     setBusy(false)
   }, [projectPath, relPath])
 
-  if (!doc) return <p className="text-sm text-slate-400">Opening…</p>
+  if (!doc) {
+    return (
+      <div ref={rootRef} className="space-y-4" aria-busy="true">
+        <p role="status" className="text-sm text-ink-3">Opening…</p>
+        <SkeletonBlock lines={3} />
+      </div>
+    )
+  }
 
   const hasRepeating = doc.sections.some((s) => s.kind === 'repeating_instance')
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <button
-            type="button"
-            onClick={() => {
-              // Fire-and-forget, not awaited: the person already asked to leave, so navigation
-              // happens immediately. The refresh updates the shared context in the background —
-              // StageHome only blanks its screen on `loading` while it has no `readiness` yet
-              // (see StageHome.tsx), which is never true here since reaching this screen at all
-              // required a readiness fetch to have already completed. It just silently swaps in
-              // the current data once the fetch resolves, with no flash the person would notice.
-              void refreshReadiness()
-              onBack()
-            }}
-            className="mb-1 text-xs text-slate-500 hover:text-slate-800"
-          >
-            ← Back to the stage
-          </button>
-          <h2 className="text-base font-semibold text-slate-900">{relPath.split('/').pop()}</h2>
-          {doc.description && <p className="mt-0.5 text-sm text-slate-500">{doc.description}</p>}
-          {/* Spec 0010: every field shows where the document lives, without leaving the page. */}
-          <p className="mt-1 font-mono text-xs text-slate-400">{relPath}</p>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <button
-            type="button"
-            onClick={onShowHistory}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300"
-          >
-            History
-          </button>
-          {editing ? (
-            <button
-              type="button"
-              onClick={() => setEditing(false)}
-              className="rounded-lg border border-brand-600 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700"
-            >
-              Done editing
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={enterEditMode}
-              disabled={!doc.shaped}
-              title={doc.shaped ? undefined : 'This document has no shape, so its fields cannot be edited here.'}
-              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
-            >
-              Edit
-            </button>
-          )}
+    <div ref={rootRef} className="space-y-6">
+      {/* Inside the screen root, not around it: `<main>` is the scroll container and the e2e
+          measures `main.firstElementChild`. */}
+      <div ref={headerRef} className={STICKY_HEADER_CLASS}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <BackLink
+              label="← Back to the stage"
+              className="mb-1"
+              onClick={() => {
+                // Fire-and-forget, not awaited: the person already asked to leave, so navigation
+                // happens immediately. The refresh updates the shared context in the background —
+                // StageHome only blanks its screen on `loading` while it has no `readiness` yet
+                // (see StageHome.tsx), which is never true here since reaching this screen at all
+                // required a readiness fetch to have already completed. It just silently swaps in
+                // the current data once the fetch resolves, with no flash the person would notice.
+                void refreshReadiness()
+                onBack()
+              }}
+            />
+            <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">{fileName}</h2>
+            {doc.description && <p className="mt-1 max-w-[64ch] text-sm text-ink-3">{doc.description}</p>}
+            {/* Spec 0010: every field shows where the document lives, without leaving the page. */}
+            <p className="mt-1 font-mono text-xs text-ink-4">{relPath}</p>
+          </div>
+          <div className="flex shrink-0 gap-2 pt-0.5">
+            <Button size="sm" icon={History} onClick={onShowHistory}>History</Button>
+            {editing ? (
+              // A toggle in its pressed state, not a brand-painted control: the kit's secondary
+              // look plus `aria-pressed` says "editing is on" without borrowing the primary colour.
+              <Button size="sm" variant="secondary" aria-pressed icon={Check} onClick={() => setEditing(false)}>
+                Done editing
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                icon={Pencil}
+                onClick={enterEditMode}
+                disabled={!doc.shaped}
+                disabledReason="This document has no shape, so its fields cannot be edited here."
+              >
+                Edit
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {changes.length > 0 && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
-              Changed since you last looked
-            </h3>
-            <button
-              type="button"
+        <Notice
+          tone="info"
+          title="Changed since you last looked"
+          actions={(
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={async () => {
                 await window.studio.markDocumentSeen(projectPath, relPath)
                 setChanges([])
               }}
-              className="text-xs text-slate-500 hover:text-slate-800"
             >
               Mark as seen
-            </button>
-          </div>
-          <ul className="mt-2 space-y-1">
+            </Button>
+          )}
+        >
+          <ul className="mt-1 space-y-1">
             {changes.slice(0, 8).map((c, i) => (
-              <li key={`${c.when}-${i}`} className="text-sm text-slate-700">
+              <li key={`${c.when}-${i}`}>
                 <span className="font-medium">{c.author}</span>
-                <span className="text-slate-400"> · {c.when} · </span>
+                <span className="text-ink-4"> · {c.when} · </span>
                 {c.reason}
               </li>
             ))}
           </ul>
-        </div>
+        </Notice>
       )}
 
       {doc.pluginBehind && (
         // Not an error and not blocking: an older plugin still reads and saves every document
         // correctly. It just cannot offer everything this Studio can, and a person seeing a
         // section as plain text has no way to know that an update would change it.
-        <div data-testid="plugin-behind" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-medium">Your installed SDLC plugin is older than this version of Studio.</p>
-          <p className="mt-1 text-xs">
-            Everything still opens and saves correctly, but some parts of this document may show as
-            plain text instead of editable fields. To update, run <code className="font-mono">claude plugin update</code>{' '}
-            in a terminal, then reopen the document.
-          </p>
-        </div>
+        <Notice tone="warn" data-testid="plugin-behind" title="Your installed SDLC plugin is older than this version of Studio.">
+          Everything still opens and saves correctly, but some parts of this document may show as
+          plain text instead of editable fields. To update, run <code className="font-mono">claude plugin update</code>{' '}
+          in a terminal, then reopen the document.
+        </Notice>
       )}
 
       {doc.shaped && <TemplateGapsNotice warnings={doc.warnings} />}
 
       {!doc.shaped && doc.warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-medium">This document is shown as plain text.</p>
-          <ul className="mt-1 space-y-0.5 text-xs">
+        <Notice tone="warn" title="This document is shown as plain text.">
+          <ul className="space-y-0.5">
             {doc.warnings.map((w) => <li key={w}>{w}</li>)}
           </ul>
-          <p className="mt-2 text-xs">
-            Nothing is hidden — everything in the file is below, exactly as written.
-          </p>
-        </div>
+          <p className="mt-2">Nothing is hidden — everything in the file is below, exactly as written.</p>
+        </Notice>
       )}
 
       {error && (
@@ -256,15 +310,10 @@ export function DocumentView({
         // proves nothing: a test that looks for the wrong sentence passes whether or not the
         // banner is there. That happened — a regression test for the false-alarm defect below
         // passed with the defect still in place, because the real message was different.
-        <div
-          data-testid="document-error"
-          className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]"
-        >
-          {error}
-        </div>
+        <Notice tone="error" data-testid="document-error">{error}</Notice>
       )}
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         {doc.sections.map((section) => (
           <SectionCard
             key={section.key}
@@ -288,14 +337,14 @@ export function DocumentView({
           is a call into another process. A slow answer then looked exactly like no answer —
           which is how a passing feature came to be reported as an unbuilt one. */}
       {editing && hasRepeating && (
-        <button
-          type="button"
+        <Button
+          block
           onClick={addRequirement}
           disabled={busy || numbering}
-          className="w-full rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-medium text-slate-600 hover:border-brand-500 hover:text-brand-700 disabled:opacity-40"
+          className="rounded-xl border-dashed py-3 text-sm font-medium text-ink-2 hover:border-accent-500 hover:text-accent-700"
         >
           {numbering ? 'Working out the next number…' : nextId ? `Add ${nextId}` : 'Add another'}
-        </button>
+        </Button>
       )}
     </div>
   )

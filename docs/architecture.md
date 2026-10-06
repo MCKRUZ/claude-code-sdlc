@@ -403,9 +403,16 @@ claude-code-sdlc/                          Plugin root (installed or symlinked)
 |   |-- audit_gates.py                     Analyze gate effectiveness across phases
 |   |-- synthesize_spec.py                 Synthesize spec from Phase 0-1 artifacts
 |   |-- map_deep_plan_artifacts.py         Map /deep-plan output to SDLC artifacts
+|   |-- code_host.py                       Which code host a repo is on (github / azure-devops / none) and its CLI state
+|   |-- ado_import.py                      The az twin of the gh reads/writes, same dict shapes (+ ado_map, ado_transport, ado_pipelines)
+|   |-- ado_outcomes.py                    Scorecard outcome events from Azure DevOps history
+|   |-- import_outcomes.py                 Host-neutral scorecard import (GitHub delegates to scorecard.py)
+|   |-- host_report.py                     The top-level `host` block every host-touching --json carries
 |   +-- tests/                             Script test suite
 |       |-- conftest.py                    Shared fixtures
-|       +-- test_check_gates.py            Gate validation tests
+|       |-- test_check_gates.py            Gate validation tests
+|       +-- fixtures/code_host/            remote-urls.json (shared with Studio's vitest); azure_devops/ hand-written
+|                                          documents and azure_devops/captured/ real az output with provenance
 |
 +-- hooks/                                 PowerShell context injection
     |-- sdlc-session-start.ps1             Session start -- phase context banner
@@ -692,20 +699,68 @@ the same work, updated by different people at different times, one of them quiet
 The cost is accepted openly: this does not meet a client where they already are. The judgement
 is that being one coherent thing beats being everything to everyone.
 
-### The one honest gap this leaves
+### Two code hosts, one model
 
-Azure DevOps is supported for **pipelines** — `doctor.py` checks the organization, variable
-groups and builds, and the `azure-devops` CI/CD pack ships real pipeline rails. It is **not**
-supported for reading or writing work status: `handoff.py` and `spec_status.py` speak to
-GitHub through `gh` and nothing else.
+The spec-is-the-work-item model needs a code host to read the pull request from, and the code
+lives on two: GitHub and Azure DevOps. Both are first-class. Until the code-host provider layer
+(`docs/proposals/code-host-providers.md`), `handoff.py` and `spec_status.py` spoke to GitHub
+through `gh` and nothing else, so an Azure DevOps project got pipelines and a board built from
+spec files with no live "who is this waiting on". That gap is closed, and closed the sanctioned
+way — a second **code host**, not a tracker connector.
 
-So on an Azure DevOps project the `ado-enterprise` profiles give you pipelines and a board
-built from the spec files, with no live "who is this waiting on". That degrades honestly —
-every row still appears, with the reason stated, because an empty board would read as "there
-is no work" — but the limitation is real and belongs in any conversation about those profiles.
+**The repository chooses the host.** `scripts/code_host.py` reads the `origin` remote
+(`github.com` → `github`; `dev.azure.com`, `*.visualstudio.com`, `ssh.dev.azure.com` →
+`azure-devops`; anything else → `none`, which falls through to `gh` exactly as every repository
+behaved before). `--host` on any host-touching script, the `SDLC_CODE_HOST` variable, or a
+per-clone `.sdlc/code-host.yaml` (written by `set_setting.py code-host`) sit ahead of the remote;
+the harness manifest breaks the tie only when there is no usable remote. There is no global
+setting and no profile field: the profile describes the CI pack, and the host is a property of
+the clone.
 
-Adding Azure DevOps as a second code host is the sanctioned way to close it, if a real
-engagement ever needs it. Adding a tracker connector is not.
+**Two axes, never merged.** The *code host* (pull requests, reviewers, identity, branch
+policies) comes from the remote; the *CI platform* (pipeline directories, runs, secrets) comes
+from `.claude/harness-manifest.json`, as `doctor.py` has always read it. GitHub + Azure Pipelines
+is a legitimate combination; `connection_report.py --json` reports `host` and `ci_platform` side
+by side and notes a disagreement without failing on it.
+
+**One `az` module, gh-shaped returns.** `scripts/ado_import.py` (with `ado_map.py` for the pure
+translation, `ado_transport.py` for the one impure seam, `ado_pipelines.py` for runs, jobs and
+variable groups) exposes the same names and signatures as the GitHub functions it stands in for
+(`code_host.PROVIDER_FUNCTIONS`, pinned by `test_provider_parity.py`) and returns the dict shapes
+`gh` returns today, so every pure model and every honesty path is reused rather than duplicated.
+Each consuming script dispatches at its own call site, which is why the existing monkeypatch
+seams — and every existing test — are untouched, and why `test_gh_argv_golden.py` can prove the
+GitHub argv byte-identical. `AdoImportError` subclasses `GitHubImportError`, so the frozen
+`scorecard.py` already catches an `az` failure; the scorecard import for either host is the new
+`import_outcomes.py` (GitHub delegating to `scorecard.import_events`, Azure DevOps through
+`ado_outcomes.py` with `ado-*` ids that never collide with `gh-*`).
+
+**Identity.** The roster key stays `@handle` on both hosts. Azure DevOps names people by sign-in
+identity (UPN), so `people[].email` in `.sdlc/team.yaml` — optional, unique — is the only way a
+UPN resolves to a handle; nothing guesses from a display name. On hand-off the checker becomes a
+required reviewer through that email, the developer is named in the description (Azure DevOps
+has no assignee), and a missing email is an `assignment_error` with the local half complete.
+
+**Honesty.** Every host-touching `--json` carries a top-level `host` block
+(`{name, source, cli, cli_state, detail}`, `scripts/host_report.py`) read from the outcome of
+the call the script just made; `cli_state` is `unknown` when nothing could be determined, never
+a false no. A field Azure DevOps does not record (`updatedAt`, vote time, request time) is
+`null`, a `review_wait` with no request timestamp has no `wait_hours` key, and an unreadable
+category reads "not imported" — never a zero.
+
+**Fixture provenance convention.** `scripts/tests/fixtures/code_host/azure_devops/captured/`
+holds real `az` output captured 2026-10-05 from a live organisation and anonymised, each file
+wrapped `{_provenance, _command, _secs, value}`; `CAPTURE-NOTES.md` beside it lists every fact
+that changed the design. The folder above it keeps the older hand-written documents, marked
+`_provenance: "hand-written (unverified)"`, as the only evidence for shapes no real organisation
+exercised (a draft PR, a `rejected` evaluation, a non-empty `boards query`).
+`test_fixture_provenance.py` fails on a missing key and lists what is still hand-written, so an
+unverified shape stays visible until a capture lands. `remote-urls.json` is shared with Studio's
+vitest port so the Python and TypeScript detection rules cannot drift. The contract is
+`references/code-host-providers.md`.
+
+The tracker decision above is unchanged: a second code host is a second place to read the pull
+request from, not a second record of the work.
 
 ---
 

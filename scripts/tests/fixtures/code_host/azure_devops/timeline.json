@@ -1,0 +1,30 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "id": "00000000-0000-0000-0000-000000000300",
+  "records": [
+    {
+      "id": "r1",
+      "type": "Stage",
+      "name": "Deploy",
+      "result": "failed"
+    },
+    {
+      "id": "r2",
+      "type": "Job",
+      "name": "deploy",
+      "result": "failed"
+    },
+    {
+      "id": "r3",
+      "type": "Job",
+      "name": "rollback",
+      "result": "succeeded"
+    },
+    {
+      "id": "r4",
+      "type": "Task",
+      "name": "Rollback step",
+      "result": "succeeded"
+    }
+  ]
+}

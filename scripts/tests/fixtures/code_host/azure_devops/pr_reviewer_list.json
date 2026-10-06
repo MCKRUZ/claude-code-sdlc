@@ -1,0 +1,36 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "displayName": "Person 2",
+      "uniqueName": "person2@example.com",
+      "vote": 0,
+      "isRequired": true,
+      "isContainer": false,
+      "hasDeclined": false,
+      "isFlagged": false
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000003",
+      "displayName": "Person 3",
+      "uniqueName": "person3@example.com",
+      "vote": 5,
+      "isRequired": false,
+      "isContainer": false,
+      "hasDeclined": false,
+      "isFlagged": false
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000005",
+      "displayName": "Person 5",
+      "uniqueName": "person5@example.com",
+      "vote": -10,
+      "isRequired": false,
+      "isContainer": false,
+      "hasDeclined": false,
+      "isFlagged": false
+    }
+  ]
+}

@@ -75,16 +75,27 @@ test.describe('[spec 0027] the model-run controls, in the real window', () => {
   })
 
   const row = (id: string) => page.locator(`[data-testid="activity-row"][data-activity-id="${id}"]`)
+  // F11 (Observatory): a panel activity's row offers "Open" and its panel renders in the main
+  // slot's FocusedActivityHost, so a test opens the activity first and reads the panel there.
+  // The panel's own testids are unchanged; only where it lives moved.
+  const panelOf = (id: string) => page.locator(`[data-testid="focused-activity-host"][data-activity-id="${id}"]`)
+  const open = async (id: string) => {
+    const button = row(id).getByRole('button', { name: 'Open' })
+    if (await button.count()) await button.click()
+    await expect(panelOf(id)).toBeVisible({ timeout: 30_000 })
+  }
 
   test('a document with no summary gets a Draft with Claude button, and the screen says it uses Claude', async () => {
-    const panel = row('enhance').getByTestId('narrative-panel')
+    await open('enhance')
+    const panel = panelOf('enhance').getByTestId('narrative-panel')
     await expect(panel).toContainText('Uses Claude.', { timeout: 30_000 })
     await expect(panel.getByTestId('draft-row-constitution').getByRole('button', { name: 'Draft with Claude' })).toBeVisible()
     await expect(panel).toContainText('never mention velocity, story points')
   })
 
   test('the review offers its four modes, Council first, and a Run the review button', async () => {
-    const panel = row('review').getByTestId('review-standing-panel')
+    await open('review')
+    const panel = panelOf('review').getByTestId('review-standing-panel')
     const group = panel.getByRole('radiogroup', { name: 'Review mode' })
     await expect(group.getByRole('radio')).toHaveCount(4)
     await expect(group.getByRole('radio').first()).toBeChecked()

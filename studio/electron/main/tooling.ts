@@ -1,4 +1,4 @@
-// Locates claude, uv, git, gh, and the claude-code-sdlc plugin's scripts/ directory on the
+// Locates claude, uv, git, gh, az, and the claude-code-sdlc plugin's scripts/ directory on the
 // local machine. Spec 0008's Decision List: "detect them, and if either is missing, say so
 // with a link rather than installing anything" — auto-detect, VERIFY with a real invocation
 // (never trust a found path without running it), and only ask the person to point at the
@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
+import { AZ_ENV } from './az'
 import { rawStdout, runCommand } from './commandRunner'
 import { missingClaudeFlags } from '../../shared/claudeContract'
 import type { ToolStatus, ToolingReport } from '../../shared/types'
@@ -23,6 +24,11 @@ export type { ToolStatus, ToolingReport }
 // none) guards against a broken PATH entry hanging the app before a project is even open.
 const PROBE_TIMEOUT_MS = 5000
 
+/** az alone gets a longer ceiling: `az version` is a Python interpreter start plus the CLI's own
+ * module load, measured at 3–8 s cold on a laptop (code-host-providers.md §7) — the 5 s probe
+ * ceiling would report a working install as missing. Nothing else gets this allowance. */
+export const AZ_PROBE_TIMEOUT_MS = 15_000
+
 /** How to actually invoke a resolved binary — usually just the binary itself, but on
  * Windows a .cmd/.bat wrapper (common for the GitHub CLI, and some package-manager
  * installs of git) can't be launched directly by a shell-less spawn, so it's invoked
@@ -33,9 +39,19 @@ export interface ResolvedBinary {
   prefixArgs: string[]
 }
 
-async function verifyDirect(command: string, versionFlag = '--version'): Promise<string | null> {
-  const entry = await runCommand(command, [versionFlag], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS })
-  return entry.ok ? entry.stdout.trim().split('\n')[0] : null
+interface ProbeOptions {
+  /** The argv that prints a version — `--version` for everything but az. */
+  versionArgs?: string[]
+  timeoutMs?: number
+  /** Merged onto process.env for the probe (az's two AZURE_* vars). */
+  env?: Record<string, string>
+}
+
+/** The probe's EXACT output (rawStdout), because detectAz parses it as data; a version string
+ * carries no credential, but the display copy is the wrong thing to read for anything parsed. */
+async function verifyDirect(command: string, probe: Required<ProbeOptions>): Promise<string | null> {
+  const entry = await runCommand(command, probe.versionArgs, process.cwd(), { timeoutMs: probe.timeoutMs, env: probe.env })
+  return entry.ok ? rawStdout(entry) : null
 }
 
 /** Resolves the real, fully-qualified path of `command` via `where` (Windows) or `which`
@@ -56,11 +72,15 @@ async function resolveOnPath(command: string): Promise<string | null> {
  * are invoked differently, and a caller needs to know which. */
 async function verifyBinary(
   command: string,
-  versionFlag = '--version',
-): Promise<{ version: string; resolved: ResolvedBinary } | { error: string }> {
-  const direct = await verifyDirect(command, versionFlag)
+  options: ProbeOptions = {},
+): Promise<{ version: string; output: string; resolved: ResolvedBinary } | { error: string }> {
+  const probe: Required<ProbeOptions> = {
+    versionArgs: options.versionArgs ?? ['--version'], timeoutMs: options.timeoutMs ?? PROBE_TIMEOUT_MS, env: options.env ?? {},
+  }
+  const firstLine = (stdout: string) => stdout.trim().split('\n')[0]
+  const direct = await verifyDirect(command, probe)
   if (direct !== null) {
-    return { version: direct, resolved: { command, prefixArgs: [] } }
+    return { version: firstLine(direct), output: direct, resolved: { command, prefixArgs: [] } }
   }
 
   const resolvedPath = await resolveOnPath(command)
@@ -74,14 +94,15 @@ async function verifyBinary(
     : { command: resolvedPath, prefixArgs: [] }
 
   const entry = await runCommand(
-    resolved.command, [...resolved.prefixArgs, versionFlag], process.cwd(), { timeoutMs: PROBE_TIMEOUT_MS },
+    resolved.command, [...resolved.prefixArgs, ...probe.versionArgs], process.cwd(), { timeoutMs: probe.timeoutMs, env: probe.env },
   )
   if (!entry.ok) {
     // Some tools print their real error to stdout, not stderr — fall back to it before
     // resorting to the bare exit code, which explains nothing about what actually went wrong.
     return { error: entry.stderr || entry.stdout || `exited with code ${entry.exitCode}` }
   }
-  return { version: entry.stdout.trim().split('\n')[0], resolved }
+  const output = rawStdout(entry)
+  return { version: firstLine(output), output, resolved }
 }
 
 async function detect(overridePath: string | undefined, command: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
@@ -136,6 +157,39 @@ export async function detectGit(overridePath?: string): Promise<ToolStatus & { r
 
 export async function detectGh(overridePath?: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
   return detect(overridePath, 'gh')
+}
+
+/** Every az spawn in Studio carries these (az.ts has the why): no unprompted extension install,
+ * no telemetry fork, warnings off stderr, JSON out. Appended here too because detection runs
+ * BEFORE az.ts has been told how to invoke az, so it cannot go through runAz. */
+const AZ_PROBE_FLAGS = ['-o', 'json', '--only-show-errors']
+
+/** The Azure CLI, needed only when a project's repository is on Azure DevOps (code-host
+ * providers, D4: never required to open a project). Verified by `az version -o json` — a real
+ * invocation, with az's own longer ceiling — then the azure-devops extension is looked up
+ * LOCALLY (`az extension show`, no network). `extension` is tri-state on purpose: false only
+ * when az itself said the extension is absent; null when the probe could not run at all. */
+export async function detectAz(overridePath?: string): Promise<ToolStatus & { resolved?: ResolvedBinary }> {
+  const env = { ...AZ_ENV }
+  const result = await verifyBinary(overridePath ?? 'az', { versionArgs: ['version', ...AZ_PROBE_FLAGS], timeoutMs: AZ_PROBE_TIMEOUT_MS, env })
+  if ('error' in result) {
+    return { found: false, error: result.error, extension: null }
+  }
+  // `az version -o json` prints `{"azure-cli": "2.x.y", ...}`; the first line of that is `{`.
+  let version = result.version
+  try {
+    const parsed = JSON.parse(result.output) as { 'azure-cli'?: unknown }
+    if (typeof parsed['azure-cli'] === 'string') version = parsed['azure-cli']
+  } catch { /* an older az printing plain text keeps its first line */ }
+
+  const ext = await runCommand(
+    result.resolved.command, [...result.resolved.prefixArgs, 'extension', 'show', '--name', 'azure-devops', ...AZ_PROBE_FLAGS],
+    process.cwd(), { timeoutMs: AZ_PROBE_TIMEOUT_MS, env },
+  )
+  // A non-zero exit is az saying "no such extension"; a null exit code is the probe itself
+  // failing (timeout, spawn error) — not knowing must not read as "missing".
+  const extension = ext.ok ? true : ext.exitCode === null ? null : false
+  return { found: true, path: overridePath ?? 'az', version, extension, resolved: result.resolved }
 }
 
 /** A directory name that looks like a semver version — used to pick the newest installed
@@ -248,23 +302,30 @@ export interface DetectAllToolingResult extends ToolingReport {
    * git/gh commands, not just detect them. */
   gitResolved?: ResolvedBinary
   ghResolved?: ResolvedBinary
+  azResolved?: ResolvedBinary
 }
 
+/** Everything at once. Which of these BLOCK opening a project is not decided here: claude, uv,
+ * pluginScripts and git do; gh and az never do (ToolingReport's comment) — the renderer applies
+ * that rule, and the main process only reports what it found. */
 export async function detectAllTooling(overrides: {
   claudePath?: string
   uvPath?: string
   pluginScriptsPath?: string
   gitPath?: string
   ghPath?: string
+  azPath?: string
 }): Promise<DetectAllToolingResult> {
-  const [claude, uv, pluginScripts, gitDetect, ghDetect] = await Promise.all([
+  const [claude, uv, pluginScripts, gitDetect, ghDetect, azDetect] = await Promise.all([
     detectClaude(overrides.claudePath),
     detectUv(overrides.uvPath),
     detectPluginScripts(overrides.pluginScriptsPath),
     detectGit(overrides.gitPath),
     detectGh(overrides.ghPath),
+    detectAz(overrides.azPath),
   ])
   const { resolved: gitResolved, ...git } = gitDetect
   const { resolved: ghResolved, ...gh } = ghDetect
-  return { claude, uv, pluginScripts, git, gh, gitResolved, ghResolved }
+  const { resolved: azResolved, ...az } = azDetect
+  return { claude, uv, pluginScripts, git, gh, az, gitResolved, ghResolved, azResolved }
 }

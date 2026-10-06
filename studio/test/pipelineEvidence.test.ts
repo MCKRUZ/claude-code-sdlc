@@ -105,3 +105,37 @@ describe('gatherPipelineEvidence', () => {
     expect(r.error).toMatch(/pipeline_proof\.py/)
   })
 })
+
+describe('host-aware wording (code-host providers, Wave 7-B)', () => {
+  const ruleset = { live: null, enforcing: null, error: 'HTTP 403', required: [], missing_in_live: null }
+  const noRuleset = { live: false, enforcing: false, required: [], missing_in_live: [] }
+
+  it('with no host given the GitHub wording is byte-for-byte what it was', () => {
+    expect(parsePipelineEvidence(JSON.stringify({ ...SCRIPT_OUTPUT, ruleset })).protection?.detail)
+      .toBe("GitHub's rulesets could not be read: HTTP 403")
+    expect(parsePipelineEvidence(JSON.stringify({ ...SCRIPT_OUTPUT, ruleset: noRuleset }), 'github').protection?.detail)
+      .toBe('GitHub reports no branch ruleset, so nothing enforces the required checks.')
+  })
+
+  it('on Azure DevOps the protection line names the host and calls its rules branch policies', () => {
+    expect(parsePipelineEvidence(JSON.stringify({ ...SCRIPT_OUTPUT, ruleset }), 'azure-devops').protection?.detail)
+      .toBe("Azure DevOps's branch policies could not be read: HTTP 403")
+    expect(parsePipelineEvidence(JSON.stringify({ ...SCRIPT_OUTPUT, ruleset: noRuleset }), 'azure-devops').protection?.detail)
+      .toBe('Azure DevOps reports no branch policy, so nothing enforces the required checks.')
+  })
+
+  it('host none reads as GitHub — the CLI the script falls through to', () => {
+    expect(parsePipelineEvidence(JSON.stringify({ ...SCRIPT_OUTPUT, ruleset }), 'none').protection?.detail).toMatch(/^GitHub's rulesets/)
+  })
+
+  it('gatherPipelineEvidence passes the host to the wording only — the argv is unchanged', async () => {
+    vi.mocked(runPluginScript).mockReset()
+    vi.mocked(runPluginScript).mockResolvedValue({
+      id: '1', command: 'py', args: [], cwd: '', startedAt: '', durationMs: 0, exitCode: 0, ok: true, stderr: '',
+      stdout: JSON.stringify({ ...SCRIPT_OUTPUT, ruleset }),
+    })
+    const r = await gatherPipelineEvidence('/proj', '/plugin/scripts', 'azure-devops')
+    expect(runPluginScript).toHaveBeenCalledWith('/plugin/scripts', 'pipeline_proof.py', ['--repo', '/proj', '--write', '--json'])
+    expect(r.protection?.detail).toMatch(/^Azure DevOps's branch policies/)
+  })
+})

@@ -1,117 +1,22 @@
-/** The Documents tab, extracted verbatim out of StageHome for spec 0017 (the Workflow tab's
- * sibling). Its acceptance check is specific: byte-for-byte what existed before the Workflow
- * tab did — no snapshot file (this suite does not use `toMatchSnapshot()`), so the proof here
- * is a reference component holding the exact pre-0017 markup, rendered against the same props
- * and compared for literal string equality. If `DocumentsTab.tsx` drifts from this by so much
- * as an attribute, this test fails on the diff.
+// @vitest-environment jsdom
+/** The Documents tab as a BEHAVIOUR suite (studio-observatory.md §7 DocumentsTab row, decision D-B).
  *
- * Built with `createElement` rather than JSX, like the rest of this `.test.ts` suite (see
- * `signOffQuestions.test.ts`) — this file has no `.tsx` sibling to borrow a JSX transform from.
+ * Until Wave 3 this file compared `DocumentsTab` byte-for-byte against a reference copy of the
+ * pre-0017 StageHome markup. That proof did its job (spec 0017's "byte-for-byte" check) and then
+ * froze the component out of the kit and the dark theme. The Observatory replaces it with the
+ * semantics a person — and the documents e2e — actually rely on, each pinned by name BEFORE the
+ * component moved onto Card / Chip / Button / Eyebrow, so the migration is graded against
+ * behaviour rather than against class strings. The one semantic the migration ADDS is `data-tone`
+ * on the rows (a theme-independent hook for the status of each document).
+ *
+ * Built with `createElement` rather than JSX, like the rest of the `.test.ts` suite.
  */
 
-import { createElement as h, Fragment } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
-import { describe, expect, it } from 'vitest'
-import type {
-  DocumentFocus, ReadinessFinding, SignOffQuestion, StageDocument, StageReadiness,
-} from '../shared/types'
+import { createElement as h } from 'react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import { describe, expect, it, vi } from 'vitest'
+import type { ReadinessFinding, SignOffQuestion, StageDocument, StageReadiness } from '../shared/types'
 import { DocumentsTab } from '../src/components/DocumentsTab'
-import { SignOffQuestions } from '../src/components/SignOffQuestions'
-
-// --- the reference: StageHome's own JSX for this section, before spec 0017 touched it --------
-
-function referenceDescribe(finding: ReadinessFinding): string {
-  const doc = finding.path.split('/').pop() ?? finding.path
-  const where = finding.field ? `${finding.field} in ${finding.section}` : finding.section
-  return `${where} — ${doc}`
-}
-
-function ReferenceDocumentsMarkup({
-  readiness, actor, busyId, confirmError, onOpenDocument, onToggle,
-}: {
-  readiness: StageReadiness
-  actor: string
-  busyId: string | null
-  confirmError: string | null
-  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
-  onToggle: (question: SignOffQuestion, confirmed: boolean) => void
-}) {
-  const documentRows = readiness.documents.map((doc) => h(
-    'li', { key: doc.path },
-    h(
-      'button',
-      {
-        type: 'button',
-        disabled: !doc.exists || doc.folder,
-        onClick: () => onOpenDocument(doc.path),
-        className: 'flex w-full items-start justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-white',
-      },
-      h(
-        'span', { className: 'min-w-0' },
-        h(
-          'span', { className: 'block text-sm font-medium text-slate-900' },
-          doc.name,
-          doc.folder && h('span', { className: 'ml-2 text-xs font-normal text-slate-400' }, 'folder'),
-        ),
-        doc.description && h('span', { className: 'mt-0.5 block text-xs text-slate-500' }, doc.description),
-      ),
-      h(
-        'span', { className: 'shrink-0 text-xs font-medium' },
-        !doc.exists
-          ? h('span', { className: 'text-slate-400' }, 'Not started')
-          : doc.findingCount > 0
-            ? h('span', { className: 'text-amber-700' }, doc.findingCount, ' to fill')
-            : h('span', { className: 'text-[var(--color-command-ok)]' }, 'Complete'),
-      ),
-    ),
-  ))
-
-  const findingRows = readiness.findings.length > 0 && h(
-    'div', null,
-    h('h3', { className: 'mb-2 text-xs font-medium uppercase tracking-wide text-slate-400' }, 'What is missing'),
-    h(
-      'ul', { className: 'divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white' },
-      readiness.findings.map((f) => h(
-        'li', { key: `${f.path}#${f.section}#${f.field ?? ''}` },
-        h(
-          'button',
-          {
-            type: 'button',
-            onClick: () => onOpenDocument(f.path, { section: f.section, field: f.field }),
-            className: 'flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left hover:bg-slate-50',
-          },
-          h('span', { className: 'text-sm font-medium text-slate-900' }, referenceDescribe(f)),
-          h('span', { className: 'text-xs text-slate-500' }, f.reason),
-        ),
-      )),
-    ),
-  )
-
-  return h(
-    'div', { className: 'space-y-6' },
-    h(
-      'div', null,
-      h('h3', { className: 'mb-2 text-xs font-medium uppercase tracking-wide text-slate-400' }, 'Documents'),
-      h('ul', { className: 'divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white' }, documentRows),
-    ),
-    findingRows,
-    readiness.judgement.length > 0 && h(SignOffQuestions, {
-      questions: readiness.judgement, actor, busyId, error: confirmError, onToggle,
-    }),
-    h(
-      'div', { className: 'rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm' },
-      readiness.ready
-        ? h('span', { className: 'text-[var(--color-command-ok)]' }, 'Every required document is present and complete.')
-        : h(
-          'span', { className: 'text-amber-700' },
-          readiness.documents.filter((d) => !d.ready).length, ' document(s) still need work before this stage can be signed off.',
-        ),
-      readiness.signOff.signedOffBy && h(
-        'span', { className: 'ml-2 text-slate-500' }, 'Signed off by ', readiness.signOff.signedOffBy, '.',
-      ),
-    ),
-  )
-}
 
 // --- fixtures ----------------------------------------------------------------------------
 
@@ -124,6 +29,7 @@ const DOCS: StageDocument[] = [
 
 const FINDINGS: ReadinessFinding[] = [
   { path: 'requirements.md', section: 'FR-002', field: 'Dependencies', reason: 'absent or empty' },
+  { path: 'requirements.md', section: 'FR-003', field: undefined, reason: 'section is empty' },
 ]
 
 const QUESTIONS: SignOffQuestion[] = [
@@ -145,52 +51,129 @@ function makeReadiness(over: Partial<StageReadiness> = {}): StageReadiness {
   }
 }
 
-function props(over: Partial<StageReadiness> = {}) {
-  return {
-    readiness: makeReadiness(over),
-    actor: 'Matt K',
-    busyId: null as string | null,
-    confirmError: null as string | null,
-    onOpenDocument: () => {},
-    onToggle: () => {},
-  }
+function mount(over: Partial<StageReadiness> = {}, actor = 'Matt K') {
+  const onOpenDocument = vi.fn()
+  const onToggle = vi.fn()
+  render(h(DocumentsTab, {
+    readiness: makeReadiness(over), actor, busyId: null, confirmError: null, onOpenDocument, onToggle,
+  }))
+  return { onOpenDocument, onToggle }
 }
 
-describe('DocumentsTab (spec 0017)', () => {
-  it('renders byte-for-byte what StageHome rendered for this section before the Workflow tab existed', () => {
-    const p = props()
-    const reference = renderToStaticMarkup(h(Fragment, null, h(ReferenceDocumentsMarkup, p)))
-    const actual = renderToStaticMarkup(h(Fragment, null, h(DocumentsTab, p)))
-    expect(actual).toBe(reference)
+const ALL_READY = {
+  documents: DOCS.map((d) => ({ ...d, exists: true, findingCount: 0, ready: true })),
+  findings: [],
+  ready: true,
+  signOff: { status: 'signed_off' as const, signedOffBy: 'Priya N', completedAt: '2026-09-29T00:00:00.000Z' },
+}
+
+/** The document list is the first `<ul>` under the "Documents" heading; rows are its `<li>`s. */
+function documentRows(): HTMLElement[] {
+  const heading = screen.getByRole('heading', { name: 'Documents' })
+  const list = heading.parentElement!.querySelector('ul')!
+  return within(list).getAllByRole('listitem')
+}
+
+function rowFor(name: string): HTMLElement {
+  return documentRows().find((li) => li.textContent?.startsWith(name))!
+}
+
+// --- the pins (§7 DocumentsTab row), in the order the row lists them ---------------------
+
+describe('DocumentsTab: the behaviour suite (studio-observatory.md §7, D-B)', () => {
+  it('pin 1 — every document row carries a data-tone that says how it stands', () => {
+    mount()
+    expect(rowFor('requirements.md').dataset.tone).toBe('warn')
+    expect(rowFor('epics.md').dataset.tone).toBe('neutral')
+    expect(rowFor('adrs').dataset.tone).toBe('ok')
+    expect(rowFor('business-rules.md').dataset.tone).toBe('ok')
   })
 
-  it('stays byte-for-byte identical when the stage is fully ready and signed off', () => {
-    const p = props({
-      documents: DOCS.map((d) => ({ ...d, exists: true, findingCount: 0, ready: true })),
-      findings: [],
-      ready: true,
-      signOff: { status: 'signed_off', signedOffBy: 'Priya N', completedAt: '2026-09-29T00:00:00.000Z' },
-    })
-    const reference = renderToStaticMarkup(h(Fragment, null, h(ReferenceDocumentsMarkup, p)))
-    const actual = renderToStaticMarkup(h(Fragment, null, h(DocumentsTab, p)))
-    expect(actual).toBe(reference)
+  it('pin 2 — a document with findings shows an amber "N to fill" chip', () => {
+    mount()
+    const chip = within(rowFor('requirements.md')).getByText('2 to fill')
+    // Amber whichever palette spells it: the pre-kit literal or the kit's warn tone.
+    expect(chip.className).toMatch(/amber|warn/)
   })
 
-  it('stays byte-for-byte identical with no judgement questions and no findings', () => {
-    const p = props({ findings: [], judgement: [] })
-    const reference = renderToStaticMarkup(h(Fragment, null, h(ReferenceDocumentsMarkup, p)))
-    const actual = renderToStaticMarkup(h(Fragment, null, h(DocumentsTab, p)))
-    expect(actual).toBe(reference)
+  it('pin 3 — a missing document reads "Not started" and a finished one reads "Complete"', () => {
+    mount()
+    expect(within(rowFor('epics.md')).getByText('Not started')).toBeTruthy()
+    expect(within(rowFor('adrs')).getByText('Complete')).toBeTruthy()
+    expect(within(rowFor('business-rules.md')).getByText('Complete')).toBeTruthy()
+    // A folder is named as one, so nobody expects a single file to open.
+    expect(within(rowFor('adrs')).getByText('folder')).toBeTruthy()
   })
 
-  it('still lists every document and what is missing, in words a person can act on', () => {
-    const html = renderToStaticMarkup(h(DocumentsTab, props()))
-    expect(html).toContain('requirements.md')
-    expect(html).toContain('epics.md')
-    expect(html).toContain('Not started')
-    expect(html).toContain('2 to fill')
-    expect(html).toContain('What is missing')
-    expect(html).toContain('Dependencies in FR-002 — requirements.md')
-    expect(html).toContain('absent or empty')
+  it('pin 4 — folder rows and non-existent rows are disabled; a real document is not', () => {
+    mount()
+    expect(within(rowFor('adrs')).getByRole('button')).toHaveProperty('disabled', true)
+    expect(within(rowFor('epics.md')).getByRole('button')).toHaveProperty('disabled', true)
+    const open = within(rowFor('requirements.md')).getByRole('button')
+    expect(open).toHaveProperty('disabled', false)
+    // The documents e2e locates this row by `button /^requirements\.md/` — the name leads.
+    expect(screen.getByRole('button', { name: /^requirements\.md/ })).toBe(open)
+  })
+
+  it('pin 4b — opening a document row calls onOpenDocument with the path and no focus', () => {
+    const { onOpenDocument } = mount()
+    fireEvent.click(screen.getByRole('button', { name: /^requirements\.md/ }))
+    expect(onOpenDocument).toHaveBeenCalledTimes(1)
+    expect(onOpenDocument).toHaveBeenCalledWith('requirements.md')
+  })
+
+  it('pin 5 — a finding button names the field first, keeps focus, and opens the document at that field', () => {
+    const { onOpenDocument } = mount()
+    const finding = screen.getByRole('button', { name: /^Dependencies in FR-002 — requirements\.md/ })
+    expect(within(finding).getByText('absent or empty')).toBeTruthy()
+    finding.focus()
+    fireEvent.click(finding)
+    expect(document.activeElement).toBe(finding)
+    expect(onOpenDocument).toHaveBeenCalledWith('requirements.md', { section: 'FR-002', field: 'Dependencies' })
+    // A finding with no field names the section alone.
+    fireEvent.click(screen.getByRole('button', { name: /^FR-003 — requirements\.md/ }))
+    expect(onOpenDocument).toHaveBeenLastCalledWith('requirements.md', { section: 'FR-003', field: undefined })
+  })
+
+  it('pin 5b — "What is missing" appears only when there is something missing', () => {
+    mount()
+    expect(screen.getByRole('heading', { name: 'What is missing' })).toBeTruthy()
+  })
+
+  it('pin 5c — no findings, no "What is missing" section', () => {
+    mount({ findings: [] })
+    expect(screen.queryByRole('heading', { name: 'What is missing' })).toBeNull()
+  })
+
+  it('pin 6 — the sign-off questions render, each as a checkbox labelled with the question', () => {
+    const { onToggle } = mount()
+    const box = screen.getByRole('checkbox', { name: 'Scope boundaries are unambiguous' })
+    fireEvent.click(box)
+    expect(onToggle).toHaveBeenCalledWith(QUESTIONS[0], true)
+  })
+
+  it('pin 6b — no judgement questions, no checkboxes', () => {
+    mount({ judgement: [] })
+    expect(screen.queryAllByRole('checkbox')).toHaveLength(0)
+  })
+
+  it('pin 7 — the readiness banner counts the documents still needing work', () => {
+    mount()
+    expect(screen.getByText('2 document(s) still need work before this stage can be signed off.')).toBeTruthy()
+    expect(screen.queryByText(/Signed off by/)).toBeNull()
+  })
+
+  it('pin 7b — when every document is complete the banner says so and names who signed off', () => {
+    mount(ALL_READY)
+    expect(screen.getByText('Every required document is present and complete.')).toBeTruthy()
+    expect(screen.getByText('Signed off by Priya N.')).toBeTruthy()
+    expect(screen.queryByText(/to fill/)).toBeNull()
+    for (const li of documentRows()) expect(li.dataset.tone).toBe('ok')
+  })
+
+  it('keeps "Documents" a heading — the documents e2e waits on it by role', () => {
+    mount()
+    expect(screen.getByRole('heading', { name: 'Documents' })).toBeTruthy()
+    expect(screen.getByText('What the system must do.')).toBeTruthy()
   })
 })

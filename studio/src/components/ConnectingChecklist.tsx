@@ -1,3 +1,6 @@
+import { Check } from 'lucide-react'
+import { cn, Icon } from '../ui'
+
 /** The named sequence `ChatPanel` shows before its conversation is ready (spec 0018), replacing
  * what used to be an inert-looking "Starting the conversation…" line.
  *
@@ -18,7 +21,7 @@ export function ConnectingChecklist({ steps }: { steps: ConnectingStep[] }) {
   const firstPendingIndex = steps.findIndex((s) => !s.done)
 
   return (
-    <ul data-testid="connecting-checklist" className="flex-1 space-y-2.5 px-4 py-4">
+    <ul data-testid="connecting-checklist" aria-busy="true" className="flex-1 space-y-2.5 px-4 py-4">
       {steps.map((step, i) => {
         const active = i === firstPendingIndex
         return (
@@ -36,20 +39,26 @@ export function ConnectingChecklist({ steps }: { steps: ConnectingStep[] }) {
             className="flex items-center gap-2"
           >
             <span
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] ${
+              aria-hidden="true"
+              className={cn(
+                'flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
+                // Done is the ok fill; active is a thin accent ring with no pulse (motion is
+                // evidence, and nothing has happened yet); queued is a hairline (G4-17).
                 step.done
-                  ? 'bg-[var(--color-command-ok)] text-white'
+                  ? 'bg-status-ok-fill text-white'
                   : active
-                    ? 'border-2 border-brand-500'
-                    : 'border border-slate-200'
-              }`}
+                    ? 'border-[1.5px] border-accent-600'
+                    : 'border border-line-2',
+              )}
             >
-              {step.done && '✓'}
+              {step.done && <Icon icon={Check} size={14} className="scale-75" />}
             </span>
             <span
-              className={`text-xs ${
-                step.done ? 'text-slate-400 line-through' : active ? 'font-medium text-slate-800' : 'text-slate-300'
-              }`}
+              className={cn(
+                'text-xs',
+                // A done label recedes to ink-4; the tick already says done, so no strike-through.
+                step.done ? 'text-ink-4' : active ? 'font-medium text-ink-1' : 'text-ink-4',
+              )}
             >
               {step.label}
             </span>

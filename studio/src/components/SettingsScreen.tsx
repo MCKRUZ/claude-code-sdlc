@@ -1,9 +1,30 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import type { ConnectionInfo, ConnectionReport, ProjectSettings, Scorecard, ToolingReport } from '../../shared/types'
+import { Button, Card, Chip, DefinitionList, Eyebrow, Field, Input, Notice, SkeletonRows } from '../ui'
+import { useEnter } from '../motion/useEnter'
+import { AppearanceSection } from './AppearanceSection'
 import { GateAuthPanel } from './GateAuthPanel'
-import type {
-  ApprovalStage, ConnectionInfo, ConnectionReport, ProjectSettings, Scorecard, SettingsSection, ToolingReport, ToolStatus,
-} from '../../shared/types'
-import { claudeLacksMessage } from '../../shared/claudeContract'
+import { useListReveal } from './screenMotion'
+import { ApprovalEditor, CodeHostOverride, LimitEditor, Section, codeHostItems, describeClaude, describePlugin } from './SettingsSections'
+import { hostReasons } from '../hostReasons'
+import { TypedActorForm } from './TypedActorForm'
+import { connectionStore } from '../stores/connectionStore'
+import { STICKY_HEADER_CLASS, useStuck } from './useStuck'
+
+export { describeClaude, describePlugin } from './SettingsSections'
+
+/** The plugin path on its own mono line (a path breaks only at its separators), then the
+ * version and origin as prose — the same words `describePlugin` says, laid out to be read. */
+function PluginDetail({ status }: { status: ToolingReport['pluginScripts'] }) {
+  if (!status.found || !status.path) return <span>{describePlugin(status)}</span>
+  const rest = describePlugin(status).slice(status.path.length).replace(/^\s*—\s*/, '')
+  return (
+    <span className="block">
+      <span className="block font-mono text-xs text-ink-2 [overflow-wrap:anywhere]">{status.path}</span>
+      <span className="block text-ink-3">{rest}</span>
+    </span>
+  )
+}
 
 /** A fixed rolling window for the alarm comparison below — this screen is about configuration,
  * not a report a person tunes the window on, so one steady figure beats an extra control. */
@@ -25,9 +46,17 @@ const ALARM_WINDOW_DAYS = 14
  *   protected by something that is not there — which is why this spec's own acceptance check
  *   was amended before this screen existed.
  */
-export function SettingsScreen({ projectPath, actor }: { projectPath: string; actor: string }) {
+export function SettingsScreen({
+  projectPath, actor, connection: initialConnection = null,
+}: {
+  projectPath: string
+  actor: string
+  /** What App already knows about the code host, so the Repository rows render on first paint;
+   * this screen re-reads it on load and after a change either way. */
+  connection?: ConnectionInfo | null
+}) {
   const [settings, setSettings] = useState<ProjectSettings | null>(null)
-  const [connection, setConnection] = useState<ConnectionInfo | null>(null)
+  const [connection, setConnection] = useState<ConnectionInfo | null>(initialConnection)
   const [report, setReport] = useState<ConnectionReport | null>(null)
   /** For the review-wait alarm next to each team's limit below — the same figure spec 0013's
    * read-only scorecard shows, reused here rather than a second computation of "over alarm". */
@@ -47,6 +76,14 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
    * rather than a boolean, so the save can name exactly what it is committing. */
   const [unsaved, setUnsaved] = useState<string[]>([])
   const [reason, setReason] = useState('')
+
+  const root = useRef<HTMLDivElement>(null)
+  useEnter(root, 'rise', { key: projectPath })
+  useListReveal(root, settings ? projectPath : null)
+  // The edit bar is this screen's sticky header (G4-2): no always-on border or solid fill; the
+  // hairline appears only once a section has scrolled under it.
+  const headerRef = useRef<HTMLDivElement>(null)
+  useStuck(headerRef)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -82,6 +119,24 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
     await load()
   }
 
+  /** Pin the code host. The main process validates and writes through `set_setting.py
+   * code-host`, and answers with the refreshed connection — so the rows above update from what
+   * was actually re-resolved, not from what was clicked. A rejection is the plugin's sentence. */
+  const changeCodeHost = async (host: ConnectionInfo['host']) => {
+    setBusy(true)
+    setRefusal(null)
+    try {
+      const refreshed = await window.studio.setCodeHost(projectPath, host)
+      setConnection(refreshed)
+      connectionStore.set(refreshed)
+      setUnsaved((prev) => (prev.includes('.sdlc/code-host.yaml') ? prev : [...prev, '.sdlc/code-host.yaml']))
+    } catch (err) {
+      setRefusal(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   /** Send the change to the repository as an ordinary commit, with who and why — spec 0012's
    * own requirement. Deliberately a separate act from making the change: writing and
    * committing in one step gives nobody the chance to look at what they did first. */
@@ -98,88 +153,113 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
     setReason('')
   }
 
-  if (loading && !settings) return <p className="text-sm text-slate-400">Reading this project’s settings…</p>
+  if (loading && !settings) {
+    return (
+      <div ref={root} aria-busy="true">
+        <p role="status" className="text-sm text-ink-4">Reading this project’s settings…</p>
+        <SkeletonRows rows={3} className="mt-3" />
+      </div>
+    )
+  }
   if (!settings) return null
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-base font-semibold text-slate-900">Settings</h2>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Every setting here is stored in the project itself, not in Studio — so it travels with
-            the repository and changes like any other file.
-          </p>
+    <div ref={root} className="space-y-5">
+      {/* The edit bar stays in view while the sections scroll, inside the screen root so `<main>`
+          keeps rendering the screen directly. */}
+      <div ref={headerRef} className={STICKY_HEADER_CLASS}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">Settings</h2>
+            <p className="mt-1 max-w-[64ch] text-sm text-ink-3">
+              Every setting here is stored in the project itself, not in Tōgō — so it travels with
+              the repository and changes like any other file.
+            </p>
+          </div>
+          <div className="flex shrink-0 gap-2 pt-0.5">
+            <Button
+              size="sm"
+              variant={editing ? 'secondary' : 'primary'}
+              aria-pressed={editing}
+              onClick={() => { setEditing((on) => !on); setRefusal(null) }}
+            >
+              {editing ? 'Done editing' : 'Edit'}
+            </Button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => { setEditing((on) => !on); setRefusal(null) }}
-          className={editing
-            ? 'shrink-0 rounded-lg border border-brand-600 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700'
-            : 'shrink-0 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700'}
-        >
-          {editing ? 'Done editing' : 'Edit'}
-        </button>
       </div>
 
       {refusal && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {/* The plugin's own words — it knows why it refused, and it refused before writing,
-              so nothing needs undoing. */}
-          <p className="whitespace-pre-wrap">{refusal}</p>
-        </div>
+        // The plugin's own words — it knows why it refused, and it refused before writing, so
+        // nothing needs undoing.
+        <Notice tone="warn" className="text-sm"><p className="whitespace-pre-wrap">{refusal}</p></Notice>
       )}
 
       {unsaved.length > 0 && (
-        <div className="rounded-xl border border-brand-200 bg-brand-50 p-4">
-          <p className="text-sm font-medium text-brand-900">
-            Changed here, not yet in the repository
-          </p>
+        <Card tone="info">
+          <p className="text-sm font-medium text-ink-1">Changed here, not yet in the repository</p>
           <ul className="mt-1 space-y-0.5">
-            {unsaved.map((f) => <li key={f} className="font-mono text-xs text-brand-800">{f}</li>)}
+            {unsaved.map((f) => <li key={f} className="font-mono text-xs text-ink-2">{f}</li>)}
           </ul>
-          <label className="mt-3 block">
-            <span className="text-xs font-medium text-brand-900">Why did this change?</span>
-            <input
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-brand-300 px-3 py-2 text-sm"
-            />
-          </label>
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={saveToRepository}
-              disabled={busy || !reason.trim() || !actor.trim()}
-              className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
-            >
-              Save to the repository
-            </button>
-            {!reason.trim() && (
-              <span className="text-xs text-brand-800">
-                A reason is required — it becomes the commit message, which is how anyone later
-                finds out why this is set the way it is.
-              </span>
-            )}
-          </div>
-        </div>
+          <Field
+            label="Why did this change?"
+            className="mt-3"
+            hint={!reason.trim()
+              ? 'A reason is required — it becomes the commit message, which is how anyone later finds out why this is set the way it is.'
+              : undefined}
+          >
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} />
+          </Field>
+          <Button
+            variant="primary"
+            className="mt-2"
+            onClick={saveToRepository}
+            disabled={busy || !reason.trim() || !actor.trim()}
+            disabledReason={!actor.trim() ? 'A save needs a signed-in person to put on the commit.' : !reason.trim() ? 'Write the reason first.' : undefined}
+          >
+            Save to the repository
+          </Button>
+        </Card>
       )}
 
-      <Section title="Repository" file={connection?.localFolder ?? ''} fileLabel="This project lives at">
-        <dl className="grid grid-cols-2 gap-3 text-sm">
-          <Row label="Repository" value={connection?.repo || 'no remote configured'} />
-          <Row label="Branch" value={connection?.branch || 'unknown'} />
-          <Row label="Signed in as" value={connection?.account || 'not signed in'} />
-          <Row
-            label="Default branch protected"
-            value={
-              connection?.branchProtected === null || connection?.branchProtected === undefined
+      <Section id="repository" title="Repository" file={connection?.localFolder ?? ''} fileLabel="This project lives at">
+        <DefinitionList
+          columns={2}
+          className="text-sm"
+          items={[
+            { term: 'Repository', detail: connection?.repo || 'no remote configured' },
+            { term: 'Branch', detail: connection?.branch || 'unknown' },
+            // §7.1: "unavailable (az not installed)" when the CLI cannot say, from the one
+            // reason helper — "not signed in" only when the CLI is there and said so.
+            {
+              term: 'Signed in as',
+              detail: (
+                <>
+                  <span>{connection?.account || hostReasons(connection).signedInAs || 'not signed in'}</span>
+                  {/* D-OWNER-5: a typed name is offered only when the host could not identify the person. */}
+                  {connection && connection.accountSource === null && connection.cli.signedIn !== 'yes' && (
+                    <TypedActorForm
+                      projectPath={projectPath}
+                      className="mt-2"
+                      onIdentified={() => setConnection(connectionStore.getSnapshot())}
+                    />
+                  )}
+                </>
+              ),
+            },
+            {
+              term: 'Default branch protected',
+              detail: connection?.branchProtected === null || connection?.branchProtected === undefined
                 ? 'could not tell'
-                : connection.branchProtected ? 'yes' : 'no'
-            }
-          />
-        </dl>
-        <p className="mt-3 text-xs text-slate-400">
+                : connection.branchProtected ? 'yes' : 'no',
+            },
+            ...(connection ? codeHostItems(connection) : []),
+          ]}
+        />
+        {editing && connection && (
+          <CodeHostOverride value={connection.host} busy={busy} onSet={changeCodeHost} />
+        )}
+        <p className="mt-3 text-xs text-ink-4">
           Studio reads and writes the project's own documents and specs. It never writes your
           code — that stays read-only, and a save it makes is an ordinary commit with a person
           and a reason on it.
@@ -187,7 +267,7 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
         {/* Stated as best-effort because it is: the real gate is whether a push gets
             rejected, never this probe. Presenting a guess as a fact here would be the same
             mistake as listing an unenforced rule below. */}
-        <p className="mt-1 text-xs text-slate-400">
+        <p className="mt-1 text-xs text-ink-4">
           Whether the branch is protected is a best guess from the code host's settings. What
           actually decides is whether a direct push is refused.
         </p>
@@ -197,41 +277,34 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
           these settings live in files this screen edits; a credential lives on the code host
           and is never written here, so there is nothing to stage, nothing to save, and no
           reason to make somebody turn on editing to fix a gate that is failing closed. */}
-      <GateAuthPanel projectPath={projectPath} />
+      <GateAuthPanel projectPath={projectPath} connection={connection} />
 
       {report && (
-        <Section title="Connection checks" file="" fileLabel="">
+        <Section id="connection" title="Connection checks" file="" fileLabel="">
           <ul className="space-y-2">
             {report.checks.map((c) => (
-              <li key={c.check} className="flex items-baseline gap-3 text-sm">
+              <li key={c.check} className="flex items-baseline gap-3 text-sm" data-reveal="">
                 {/* Three states, never two. "Could not tell" is its own answer and reads
-                    differently from "no", because they send a person to different places. */}
-                <span
-                  className={`w-20 shrink-0 text-xs font-medium ${
-                    c.state === 'yes' ? 'text-[var(--color-command-ok)]'
-                      : c.state === 'no' ? 'text-amber-700'
-                      : 'text-slate-400'
-                  }`}
-                >
-                  {c.state === 'yes' ? 'yes' : c.state === 'no' ? 'no' : 'could not tell'}
+                    differently from "no", because they send a person to different places. The
+                    same chip language as everywhere else: ok / warn / neutral, dot and word. */}
+                <span className="w-24 shrink-0">
+                  <Chip size="xs" dot tone={c.state === 'yes' ? 'ok' : c.state === 'no' ? 'warn' : 'neutral'}>
+                    {c.state === 'yes' ? 'yes' : c.state === 'no' ? 'no' : 'could not tell'}
+                  </Chip>
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-slate-900">{c.question}</span>
-                  <span className="block text-xs text-slate-500">{c.detail}</span>
+                  <span className="block text-ink-1">{c.question}</span>
+                  <span className="block text-xs text-ink-3">{c.detail}</span>
                 </span>
               </li>
             ))}
           </ul>
           {Object.keys(report.not_universally_expected).length > 0 && (
             <details className="mt-3">
-              <summary className="cursor-pointer text-xs text-slate-400">
-                Pipelines not expected of every project
-              </summary>
+              <summary className="cursor-pointer text-xs text-ink-4">Pipelines not expected of every project</summary>
               <ul className="mt-1 space-y-0.5">
                 {Object.entries(report.not_universally_expected).map(([name, why]) => (
-                  <li key={name} className="text-xs text-slate-500">
-                    <span className="font-mono">{name}</span> — {why}
-                  </li>
+                  <li key={name} className="text-xs text-ink-3"><span className="font-mono">{name}</span> — {why}</li>
                 ))}
               </ul>
             </details>
@@ -239,18 +312,18 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
         </Section>
       )}
 
-      <Section title="People and teams" file={settings.roster.file} section={settings.roster}>
+      <Section id="people" title="People and teams" file={settings.roster.file} section={settings.roster}>
         {settings.roster.present && settings.roster.people.length > 0 ? (
-          <ul className="divide-y divide-slate-200">
+          // One row per person and nothing summed across them: a roster is who may hold a role,
+          // never a per-person tally.
+          <ul className="divide-y divide-line-1">
             {settings.roster.people.map((person) => (
-              <li key={person.handle} className="py-2 text-sm">
-                <span className="font-medium text-slate-900">{person.name || person.handle}</span>
-                <span className="ml-2 text-slate-500">{person.handle}</span>
-                {person.team && <span className="ml-2 text-slate-400">{person.team}</span>}
-                {settings.roster.teams.some((t) => t.lead === person.handle) && (
-                  <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">lead</span>
-                )}
-                <span className="mt-0.5 block text-xs text-slate-500">
+              <li key={person.handle} className="py-2 text-sm" data-reveal="">
+                <span className="font-medium text-ink-1">{person.name || person.handle}</span>
+                <span className="ml-2 text-ink-3">{person.handle}</span>
+                {person.team && <span className="ml-2 text-ink-4">{person.team}</span>}
+                {settings.roster.teams.some((t) => t.lead === person.handle) && <Chip size="xs" className="ml-2">lead</Chip>}
+                <span className="mt-0.5 block text-xs text-ink-3">
                   {person.roles?.length ? `May be: ${person.roles.join(', ')}` : 'No roles listed'}
                   {person.signs_off?.length ? ` · Signs off stages ${person.signs_off.join(', ')}` : ''}
                 </span>
@@ -258,50 +331,46 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
             ))}
           </ul>
         ) : null}
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-ink-4">
           Adding someone here records that they may hold a role. It grants nobody access —
           Studio never invites anyone or changes anyone's repository permissions.
         </p>
       </Section>
 
-      <Section title="Build limits" file={settings.wip_limits.file} section={settings.wip_limits}>
+      <Section id="limits" title="Build limits" file={settings.wip_limits.file} section={settings.wip_limits}>
         {settings.wip_limits.teams.length > 0 && (
           <ul className="space-y-2">
             {settings.wip_limits.teams.map((t) => {
               const alarm = scorecard?.team_alarms?.[t.team]
               return (
-                <li key={t.team} className="flex items-baseline justify-between gap-3 text-sm">
-                  <span className="text-slate-900">{t.team}</span>
+                <li key={t.team} className="flex items-baseline justify-between gap-3 text-sm" data-reveal="">
+                  <span className="text-ink-1">{t.team}</span>
                   {editing && (
-                    <LimitEditor
-                      current={t.wip_limit}
-                      busy={busy}
-                      onSet={(value) => change(() => window.studio.setTeamLimit(projectPath, t.team, value))}
-                    />
+                    <LimitEditor current={t.wip_limit} busy={busy} onSet={(value) => change(() => window.studio.setTeamLimit(projectPath, t.team, value))} />
                   )}
                   <span>
                     {/* The limit and what is actually in flight, always together. One without
                         the other invites the reader to supply the missing half from memory. */}
-                    <span className={t.over_limit ? "text-red-700" : t.at_limit ? "text-amber-700" : "text-slate-600"}>
+                    {/* §2.3 token table: a limit reached or passed is a warn-class fact (the
+                        Board chip and the Graph ring say it in amber too); `status-error` is
+                        reserved for hard errors, refusals and stderr. */}
+                    <span className={t.over_limit || t.at_limit ? 'text-status-warn-ink' : 'text-ink-2'}>
                       {t.in_flight} in flight / {t.wip_limit}
                     </span>
-                    {t.over_limit && <span className="ml-2 font-semibold text-red-700">over limit</span>}
-                    {t.at_limit && !t.over_limit && <span className="ml-2 font-semibold text-amber-700">at limit</span>}
-                    {/* Spec 0012: "a team whose alarm is sounding is named on this screen".
-                        The comparison itself is the plugin's (scorecard.py's
-                        build_team_alarms_payload) — never recomputed here from the two medians.
-                        The two alarms are shown SEPARATELY, each with its own figure — they come
-                        from disjoint event pools (review_waits vs. sec_waits) and a team can be
-                        over one without the other. Caught by correctness review after an earlier
-                        version of this collapsed both into one line under the review label,
-                        which could name the wrong alarm entirely. */}
+                    {t.over_limit && <span className="ml-2 font-semibold text-status-warn-ink">over limit</span>}
+                    {t.at_limit && !t.over_limit && <span className="ml-2 font-semibold text-status-warn-ink">at limit</span>}
+                    {/* Spec 0012: "a team whose alarm is sounding is named on this screen". The
+                        comparison itself is the plugin's (scorecard.py's build_team_alarms_payload)
+                        — never recomputed here from the two medians. The two alarms are shown
+                        SEPARATELY, each with its own figure — they come from disjoint event pools
+                        (review_waits vs. sec_waits) and a team can be over one without the other. */}
                     {alarm?.review_over_alarm === true && (
-                      <span className="ml-2 font-semibold text-red-700">
+                      <span className="ml-2 font-semibold text-status-warn-ink">
                         review-wait alarm sounding ({scorecard!.review_wait_median_hours?.toFixed(0)}h)
                       </span>
                     )}
                     {alarm?.security_over_alarm === true && (
-                      <span className="ml-2 font-semibold text-red-700">
+                      <span className="ml-2 font-semibold text-status-warn-ink">
                         security-review-wait alarm sounding ({scorecard!.security_review_wait_median_hours?.toFixed(0)}h)
                       </span>
                     )}
@@ -313,213 +382,65 @@ export function SettingsScreen({ projectPath, actor }: { projectPath: string; ac
         )}
       </Section>
 
-      <Section title="Change approval" file={settings.approval.file} section={settings.approval}>
+      <Section id="approval" title="Change approval" file={settings.approval.file} section={settings.approval}>
         {settings.approval.stages.length > 0 ? (
           <ul className="space-y-1 text-sm">
             {settings.approval.stages.map((st) => (
-              <li key={st.stage} className="flex items-baseline justify-between gap-3">
-                <span className="text-slate-900">{st.stage}</span>
+              <li key={st.stage} className="flex items-baseline justify-between gap-3" data-reveal="">
+                <span className="text-ink-1">{st.stage}</span>
                 {editing ? (
                   <ApprovalEditor
                     stage={st}
                     busy={busy}
                     people={settings.roster.people.map((p) => p.handle)}
-                    onSet={(required, approver) =>
-                      change(() => window.studio.setStageApproval(projectPath, st.stage, required, approver))}
+                    onSet={(required, approver) => change(() => window.studio.setStageApproval(projectPath, st.stage, required, approver))}
                   />
                 ) : (
-                  <span className="text-slate-600">
-                    {st.approval_required ? `needs ${st.approver || 'a named approver'}` : 'no approval needed'}
-                  </span>
+                  <span className="text-ink-2">{st.approval_required ? `needs ${st.approver || 'a named approver'}` : 'no approval needed'}</span>
                 )}
               </li>
             ))}
           </ul>
         ) : null}
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-ink-4">
           Where approval is on, changing a signed-off document saves your work to its own branch
           and asks the named person to approve it. Everyone else keeps seeing the signed-off
           version until they do.
         </p>
       </Section>
 
-      <Section title="Tooling on this machine" file="" fileLabel="">
+      <Section id="tooling" title="Tooling on this machine" file="" fileLabel="">
         {/* Not a project setting — it does not travel with the repository — but the question
             "which plugin is Studio running, and can this Claude Code run what it asks" has no
             other home, and both have been answered wrongly in silence before (F1, F2). */}
-        <dl className="grid gap-3 text-sm sm:grid-cols-2" data-testid="tooling-facts">
-          <Row label="Claude Code" value={tooling ? describeClaude(tooling.claude) : 'checking…'} />
-          <Row label="Plugin scripts" value={tooling ? describePlugin(tooling.pluginScripts) : 'checking…'} />
-        </dl>
+        <DefinitionList
+          columns={2}
+          className="text-sm"
+          data-testid="tooling-facts"
+          items={[
+            { term: 'Claude Code', detail: <span className="[overflow-wrap:anywhere]">{tooling ? describeClaude(tooling.claude) : 'checking…'}</span> },
+            { term: 'Plugin scripts', detail: tooling ? <PluginDetail status={tooling.pluginScripts} /> : 'checking…' },
+          ]}
+        />
       </Section>
 
-      <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">
-          Fixed here — change these in the playbook, not the project
-        </h3>
+      <AppearanceSection />
+
+      <Card as="section" id="fixed-rules" tone="inset" className="scroll-mt-28">
+        <Eyebrow as="h3">Fixed here — change these in the playbook, not the project</Eyebrow>
         <ul className="mt-2 space-y-2">
           {settings.fixed_rules.map((r) => (
-            <li key={r.rule} className="text-sm">
-              <span className="text-slate-900">{r.rule}</span>
-              {/* Where it is ACTUALLY enforced. A rule listed without that is a claim
-                  nobody can check. */}
-              <span className="mt-0.5 block text-xs text-slate-500">{r.enforced_by}</span>
+            <li key={r.rule} className="text-sm" data-reveal="">
+              <span className="text-ink-1">{r.rule}</span>
+              {/* Where it is ACTUALLY enforced. A rule listed without that is a claim nobody
+                  can check. */}
+              <span className="mt-0.5 block text-xs text-ink-3">{r.enforced_by}</span>
             </li>
           ))}
         </ul>
-      </div>
+      </Card>
 
-      <p className="text-xs text-slate-400">
-        Notifications and project details are not built yet.
-      </p>
-    </div>
-  )
-}
-
-function Section({
-  title, file, fileLabel = 'Stored in', section, children,
-}: {
-  title: string
-  file: string
-  fileLabel?: string
-  section?: SettingsSection
-  children?: React.ReactNode
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex items-baseline justify-between gap-4">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {file && (
-          <span className="shrink-0 font-mono text-xs text-slate-400">{fileLabel} {file}</span>
-        )}
-      </div>
-
-      {/* Not configured and misconfigured are different answers, shown differently. */}
-      {section && !section.present && (
-        <p className="mt-2 text-sm text-slate-500">
-          This project has not set this up. Nothing is wrong — the file simply does not exist yet.
-        </p>
-      )}
-      {section && section.errors.length > 0 && (
-        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-          <p className="text-xs font-medium text-amber-900">This file exists but could not be read cleanly:</p>
-          <ul className="mt-1 space-y-0.5">
-            {section.errors.map((e) => (
-              <li key={e} className="text-xs text-amber-900">{e}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <div className="mt-3">{children}</div>
-    </div>
-  )
-}
-
-/** One team's limit. Committed on blur or Enter rather than per keystroke — the plugin
- * validates and writes on every call, and doing that per character would write the file
- * four times to set a two-digit number. */
-function LimitEditor({
-  current, busy, onSet,
-}: {
-  current: number
-  busy: boolean
-  onSet: (value: number) => void
-}) {
-  const [value, setValue] = useState(String(current))
-
-  useEffect(() => { setValue(String(current)) }, [current])
-
-  const commit = () => {
-    const parsed = Number(value)
-    // Refused by the plugin anyway; not sending it saves a pointless round trip and an
-    // error message for something the person is probably mid-typing.
-    if (!Number.isInteger(parsed) || parsed < 1 || parsed === current) {
-      setValue(String(current))
-      return
-    }
-    onSet(parsed)
-  }
-
-  return (
-    <input
-      value={value}
-      disabled={busy}
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={commit}
-      onKeyDown={(e) => { if (e.key === 'Enter') commit() }}
-      className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs"
-      aria-label="limit"
-    />
-  )
-}
-
-/** Approval for one stage. The approver list is the ROSTER — the plugin refuses anyone not on
- * it, since nothing could route an approval to them, so offering a free-text box here would
- * only invite a refusal. */
-function ApprovalEditor({
-  stage, busy, people, onSet,
-}: {
-  stage: ApprovalStage
-  busy: boolean
-  people: string[]
-  onSet: (required: boolean, approver?: string) => void
-}) {
-  const [approver, setApprover] = useState(stage.approver ?? '')
-
-  return (
-    <span className="flex items-center gap-2">
-      <select
-        value={stage.approval_required ? 'on' : 'off'}
-        disabled={busy}
-        onChange={(e) => onSet(e.target.value === 'on', approver || undefined)}
-        className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-        aria-label={`approval for ${stage.stage}`}
-      >
-        <option value="off">no approval needed</option>
-        <option value="on">needs approval</option>
-      </select>
-      {stage.approval_required && (
-        <select
-          value={approver}
-          disabled={busy}
-          onChange={(e) => { setApprover(e.target.value); onSet(true, e.target.value) }}
-          className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
-          aria-label={`approver for ${stage.stage}`}
-        >
-          <option value="">choose someone</option>
-          {people.map((h) => <option key={h} value={h}>{h}</option>)}
-        </select>
-      )}
-    </span>
-  )
-}
-
-/** The installed Claude Code, and whether it accepts every flag Studio emits. */
-export function describeClaude(status: ToolStatus): string {
-  if (!status.found) return status.error ?? 'not found'
-  const missing = status.missingFlags ?? []
-  if (missing.length > 0) return claudeLacksMessage(status.version, missing)
-  return `${status.version ?? 'found'} — accepts every flag Studio uses`
-}
-
-/** Which plugin is driving this session, said plainly: the path alone does not say whether it is
- * the checkout beside Studio or an older marketplace copy (studio-improvements F2). */
-export function describePlugin(status: ToolStatus): string {
-  if (!status.found || !status.path) return status.error ?? 'not found'
-  const origin = status.source === 'sibling' ? 'the checkout beside Studio'
-    : status.source === 'cache' ? 'the plugin cache'
-    : status.source === 'override' ? 'the path set in Studio'
-    : 'origin not recorded'
-  const version = status.pluginVersion ? `version ${status.pluginVersion}` : 'version not readable'
-  return `${status.path} — ${version}, from ${origin}`
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs uppercase tracking-wide text-slate-400">{label}</dt>
-      <dd className="mt-0.5 break-all text-slate-900">{value}</dd>
+      <p className="text-xs text-ink-4">Notifications and project details are not built yet.</p>
     </div>
   )
 }

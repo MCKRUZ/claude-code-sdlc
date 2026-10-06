@@ -59,3 +59,43 @@ describe('isOursToMerge', () => {
     expect(isOursToMerge({ ...OURS, author: {} }, pushed, 'matt', 'MCKRUZ')).toBe(false)
   })
 })
+
+// Code-host providers (Wave 6-B): the same gate, fed an Azure DevOps pull request. The provider
+// fills PrListEntry from az's shapes — the author is a UPN (what the host writes on the PR, never
+// the roster handle), the "owner" is the repository GUID (`repository.id`, what a fork would
+// differ in), and `files` is null because Studio does not complete ADO pull requests in v1
+// (D-OWNER-8). The gate itself is untouched: these cases prove it needs no host-specific branch.
+describe('isOursToMerge — an Azure DevOps entry', () => {
+  const REPO_GUID = '00000000-0000-0000-0000-000000000003'
+  const ADO_OURS: PrListEntry = {
+    number: 40347,
+    headRefName: 'studio/1758700000000',
+    author: { login: 'person1@example.com' },
+    headRepositoryOwner: { login: REPO_GUID },
+    files: null,
+  }
+
+  it('merges when the UPN and the repository id both match the host\'s own answers', () => {
+    expect(isOursToMerge(ADO_OURS, pushed, 'person1@example.com', REPO_GUID)).toBe(true)
+  })
+
+  it('refuses the roster handle in place of the UPN — the host did not write the handle on the PR', () => {
+    expect(isOursToMerge(ADO_OURS, pushed, 'sam-k', REPO_GUID)).toBe(false)
+    expect(isOursToMerge(ADO_OURS, pushed, '@sam-k', REPO_GUID)).toBe(false)
+  })
+
+  it('refuses a fork: a different repository id on the head', () => {
+    expect(isOursToMerge({ ...ADO_OURS, headRepositoryOwner: { login: '11111111-1111-1111-1111-111111111111' } }, pushed, 'person1@example.com', REPO_GUID)).toBe(false)
+  })
+
+  it('refuses when the repository id could not be read (repos show gave no id)', () => {
+    expect(isOursToMerge(ADO_OURS, pushed, 'person1@example.com', null)).toBe(false)
+  })
+
+  it('files: null is accepted by the type and is the poll\'s fail-closed signal, not the gate\'s concern', () => {
+    // The gate answers "is this ours"; what the PR changes is the poll's next question, and
+    // `(pr.files ?? []).length === 0` there is what refuses to merge an ADO pull request.
+    expect(isOursToMerge(ADO_OURS, pushed, 'person1@example.com', REPO_GUID)).toBe(true)
+    expect((ADO_OURS.files ?? []).length).toBe(0)
+  })
+})

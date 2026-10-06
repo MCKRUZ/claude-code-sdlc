@@ -115,6 +115,25 @@ decides who *must* approve a given change, which stays with branch protection on
 it carries no RACI, cadence, or discipline structure of its own. Think of it as the roll call this
 document's disciplines draw names from, not a second model.
 
+### Two keys of identity: `handle`, and an optional `email`
+
+A person on the roster has **one roster key and at most one host key**:
+
+| Key | Rule |
+|---|---|
+| `handle` | The roster key on **every** code host: `^@[A-Za-z0-9-]+$`, unique. Spec frontmatter (`owner`, `team`, `checker`, `developer`), `check_spec.py`, `handoff.py --developer` and `track_specs.py` all name people by it and are unchanged by the second key. |
+| `email` | **Optional.** The sign-in identity on Azure DevOps (a UPN or mail), where a pull request names its reviewers and approvers by that identity rather than by a handle. Unique across the roster, compared case-insensitively. Needed only when the repository is hosted on Azure DevOps; GitHub reads the handle itself. |
+
+The only bridge between the two is the roster: `validate_team.people_by_email(roster)` (lower-cased
+email → handle) and `validate_team.email_for(roster, handle)` (email or `None`). **A provider never
+guesses** — not from a display name, not from the part of a UPN before the `@`. A reviewer whose
+email is not on the roster is reported by their UPN, honestly unmapped, and a hand-off that needs an
+email for a checker who has none says so (`assignment_error`) rather than inventing one. Add
+`email:` to a person with `set_setting.py person @handle --email …`; a roster with no `email` on
+anyone validates exactly as it did before the key existed. The repository's own code host is
+detected from `origin` and can be pinned with `set_setting.py code-host --host …`
+(`.sdlc/code-host.yaml`); see `references/code-host-providers.md`.
+
 ---
 
 ## Cadences and sign-off

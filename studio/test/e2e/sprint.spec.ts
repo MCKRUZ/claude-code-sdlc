@@ -109,8 +109,11 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
     await expect(rows).toHaveCount(3)
     for (const id of specIds) await expect(page.locator(`[data-testid="sprint-slate-row"][data-spec="${id}"]`)).toBeVisible()
     // A fresh scaffold has placeholders; the DoR line comes from check_spec, not from Studio.
-    await expect(page.getByText('NOT READY')).toHaveCount(3)
-    await page.getByText('NOT READY').first().click()
+    // Counted inside the slate: the readiness card below repeats each spec's DoR line in the
+    // plugin's own words ("0001: DoR: NOT READY (…)"), which is the same fact, not a fourth row.
+    const slate = page.getByTestId('sprint-slate')
+    await expect(slate.getByText('NOT READY')).toHaveCount(3)
+    await slate.getByText('NOT READY').first().click()
     await expect(page.locator('details[open]')).toHaveCount(1)
   })
 
@@ -153,9 +156,22 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
   })
 
   test('the Build › Workflow tab carries the same sprint as a compact panel', async () => {
+    test.setTimeout(120_000)
     await openBuildView(page, 'Documents')
     await page.getByRole('button', { name: 'Workflow' }).click()
-    const panel = page.getByTestId('sprint-panel')
+    // F11 (Observatory): the sprint activity's row offers "Open" and its panel renders in the
+    // main slot's FocusedActivityHost, so the test opens the activity first and reads the panel
+    // there — as runActivities / batchJobs / modelRunner / briefForm do. The panel's own testids
+    // are unchanged; only where it lives moved.
+    const row = page.locator('[data-testid="activity-row"][data-activity-id="sprint"]')
+    // The row arrives with the stage's readiness, a beat after the tab switch — wait for it
+    // before reading the button, or `count()` snapshots an empty list and Open is never pressed.
+    await expect(row).toBeVisible({ timeout: 30_000 })
+    const open = row.getByRole('button', { name: 'Open' })
+    if (await open.count()) await open.click()
+    const host = page.locator('[data-testid="focused-activity-host"][data-activity-id="sprint"]')
+    await expect(host).toBeVisible({ timeout: 60_000 })
+    const panel = host.getByTestId('sprint-panel')
     await expect(panel).toBeVisible({ timeout: 60_000 })
     await expect(panel.getByTestId('sprint-header')).toContainText('Sprint S07')
     await expect(panel.getByTestId('sprint-slate')).toHaveCount(0)
@@ -207,7 +223,9 @@ test.describe('[studio-improvements B2] a project with no sprint, in the real wi
 
   test('says there is no sprint and where to start one; shows no table and no count', async () => {
     await openBuildView(barePage, 'Sprint')
-    await expect(barePage.getByTestId('sprint-empty')).toHaveText('No sprint — open one with /sdlc-sprint new.', { timeout: 60_000 })
+    // The plugin's own note wins when it gives one ("no sprint record under … — create one with
+    // `sprint.py new`"); Studio's sentence is the fallback. Either names where to start.
+    await expect(barePage.getByTestId('sprint-empty')).toHaveText(/no sprint record|No sprint — open one with \/sdlc-sprint new\./, { timeout: 60_000 })
     await expect(barePage.getByTestId('sprint-slate')).toHaveCount(0)
     await expect(barePage.getByTestId('sprint-header')).toHaveCount(0)
     await expect(barePage.getByText(/0 of 0/)).toHaveCount(0)

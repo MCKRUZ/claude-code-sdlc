@@ -1,0 +1,172 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [],
+ "_secs": null,
+ "value": [
+  {
+   "name": "account_show",
+   "ok": true,
+   "secs": 0.2
+  },
+  {
+   "name": "repos_list",
+   "ok": true,
+   "secs": 3.4
+  },
+  {
+   "name": "pr_list_project",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "repos_show",
+   "ok": true,
+   "secs": 1.0
+  },
+  {
+   "name": "pr_list_repo",
+   "ok": true,
+   "secs": 0.9
+  },
+  {
+   "name": "pr_show_active",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "pr_policy_list_active",
+   "ok": true,
+   "secs": 1.1
+  },
+  {
+   "name": "pr_reviewer_list_active",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "pr_threads_active",
+   "ok": true,
+   "secs": 1.4
+  },
+  {
+   "name": "pr_commits_active",
+   "ok": true,
+   "secs": 1.5
+  },
+  {
+   "name": "pr_show_completed",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "pr_policy_list_completed",
+   "ok": true,
+   "secs": 1.0
+  },
+  {
+   "name": "pr_reviewer_list_completed",
+   "ok": true,
+   "secs": 1.3
+  },
+  {
+   "name": "pr_threads_completed",
+   "ok": true,
+   "secs": 1.4
+  },
+  {
+   "name": "pr_commits_completed",
+   "ok": true,
+   "secs": 1.4
+  },
+  {
+   "name": "policy_list",
+   "ok": true,
+   "secs": 1.4
+  },
+  {
+   "name": "pipelines_list",
+   "ok": true,
+   "secs": 1.4
+  },
+  {
+   "name": "pipelines_list_all",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "runs_list_2265",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "runs_list_2266",
+   "ok": true,
+   "secs": 1.0
+  },
+  {
+   "name": "runs_list_2267",
+   "ok": true,
+   "secs": 1.0
+  },
+  {
+   "name": "runs_list_2268",
+   "ok": true,
+   "secs": 1.1
+  },
+  {
+   "name": "runs_list_2269",
+   "ok": true,
+   "secs": 1.0
+  },
+  {
+   "name": "runs_list_2282",
+   "ok": true,
+   "secs": 1.1
+  },
+  {
+   "name": "timeline",
+   "ok": true,
+   "secs": 1.5
+  },
+  {
+   "name": "runs_show",
+   "ok": true,
+   "secs": 0.9
+  },
+  {
+   "name": "variable_groups",
+   "ok": true,
+   "secs": 1.1
+  },
+  {
+   "name": "variable_group_variables",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "environments",
+   "ok": true,
+   "secs": 1.3
+  },
+  {
+   "name": "deployment_records",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "boards_query",
+   "ok": true,
+   "secs": 1.2
+  },
+  {
+   "name": "boards_query_bugs",
+   "ok": true,
+   "secs": 1.0
+  },
+  {
+   "name": "devops_user_show",
+   "ok": false,
+   "secs": 2.2
+  }
+ ]
+}

@@ -1,10 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { SetupPlan } from '../../shared/types'
+import { Button, Card, EYEBROW_CLASS, Field, Notice, Select } from '../ui'
+import { useEnter } from '../motion/useEnter'
+import { useStudioGSAP } from '../motion/useStudioGSAP'
+import { listStagger } from '../motion/choreo'
+import { EntryShell, choreoContext } from './entryScreenBits'
 
 function humanize(profileId: string): string {
   return profileId.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
+/** The setup wizard an existing folder (or a just-created one) goes through: pick a playbook,
+ * see exactly what will be written, confirm. The plan is the plugin's preview, shown as-is. */
 export function SetupFlow({
   projectPath,
   onCancel,
@@ -19,6 +26,9 @@ export function SetupFlow({
   const [plan, setPlan] = useState<SetupPlan | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const wellRef = useRef<HTMLDivElement | null>(null)
+  useEnter(cardRef, 'rise')
 
   useEffect(() => {
     window.studio.listProfiles().then((list) => {
@@ -27,72 +37,83 @@ export function SetupFlow({
     })
   }, [])
 
+  // Latest wins. Each preview is a subprocess, and two can be in flight when the profile changes
+  // before the first answers; without the guard the slower one landed last and the plan on
+  // screen belonged to a profile no longer selected — a confirm would then write the wrong
+  // profile. The effect's cleanup marks the previous request stale, so only the newest result is
+  // ever shown.
   useEffect(() => {
     if (!selected) return
+    let stale = false
     setPlan(null)
     setError(null)
     window.studio.previewSetup(projectPath, selected).then((result) => {
+      if (stale) return
       if (result.error) setError(result.error)
       else if (result.plan) setPlan(result.plan)
     })
+    return () => { stale = true }
   }, [projectPath, selected])
 
+  // The "This will create" lines arrive together when the preview lands; they stagger in once
+  // per plan (§4 #4), never on a re-render.
+  useStudioGSAP(
+    () => {
+      const well = wellRef.current
+      if (!well) return
+      listStagger.play(choreoContext(well), { items: Array.from(well.querySelectorAll('[data-reveal]')) })
+    },
+    { scope: wellRef, dependencies: [plan] },
+  )
+
+  const canConfirm = Boolean(selected && plan && !plan.already_exists)
+
   return (
-    <div className="flex h-screen items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-lg space-y-4 rounded-2xl border border-slate-200 bg-white p-6">
+    <EntryShell>
+      <Card ref={cardRef} className="mx-auto w-full max-w-lg space-y-4 rounded-4 p-6 shadow-2">
         <div>
-          <h1 className="text-lg font-semibold text-slate-900">Set up a project here</h1>
-          <p className="mt-1 text-xs text-slate-500">{projectPath}</p>
+          <h1 className="text-lg text-ink-1">Set up a project here</h1>
+          <p className="mt-1 break-all font-mono text-xs text-ink-3">{projectPath}</p>
         </div>
 
-        <label className="block text-sm">
-          <span className="mb-1 block font-medium text-slate-700">Playbook</span>
-          <select
+        <Field label="Playbook">
+          <Select
             value={selected ?? ''}
-            onChange={(e) => setSelected(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-          >
-            {profiles.map((p) => (
-              <option key={p} value={p}>
-                {humanize(p)}
-              </option>
-            ))}
-          </select>
-        </label>
+            onChange={(v) => setSelected(v)}
+            options={profiles.map((p) => ({ value: p, label: humanize(p) }))}
+          />
+        </Field>
 
-        {error && <p className="text-sm text-[var(--color-command-error)]">{error}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
 
         {plan?.already_exists && (
-          <p className="text-sm text-slate-600">This folder already has a project — nothing would be created.</p>
+          <Notice tone="info">This folder already has a project — nothing would be created.</Notice>
         )}
 
         {plan && !plan.already_exists && (
           <div>
-            <h2 className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">
-              This will create
-            </h2>
-            <div className="max-h-48 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2 font-mono text-xs text-slate-600">
+            <h2 className={`${EYEBROW_CLASS} mb-1`}>This will create</h2>
+            <div ref={wellRef} className="max-h-48 overflow-auto rounded-[10px] border border-line-1 bg-surface-2 p-3 font-mono text-code text-ink-3">
               {plan.directories.map((d) => (
-                <div key={d}>{d}/</div>
+                <div key={d} data-reveal="">{d}/</div>
               ))}
               {plan.files.map((f) => (
-                <div key={f} className="text-slate-800">{f}</div>
+                <div key={f} data-reveal="" className="text-ink-1">{f}</div>
               ))}
             </div>
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-lg px-3 py-2 text-sm text-slate-500 hover:text-slate-700"
-          >
+          <Button variant="ghost" onClick={onCancel} className="text-sm">
             Cancel
-          </button>
-          <button
-            type="button"
-            disabled={!selected || !plan || plan.already_exists || running}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!canConfirm}
+            loading={running}
+            loadingLabel="Setting up…"
+            className="px-4 text-sm"
             onClick={async () => {
               if (!selected) return
               setRunning(true)
@@ -102,12 +123,11 @@ export function SetupFlow({
                 setRunning(false)
               }
             }}
-            className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
           >
-            {running ? 'Setting up…' : 'Set up project'}
-          </button>
+            Set up project
+          </Button>
         </div>
-      </div>
-    </div>
+      </Card>
+    </EntryShell>
   )
 }

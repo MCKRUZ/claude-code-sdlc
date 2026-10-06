@@ -6,9 +6,10 @@ state its own tooling rejects. The failure that prevents is specific: a roster s
 typo makes every later spec fail its owner check, and whoever broke it is three screens away
 by the time anyone notices.
 
-  person    Add or update someone in the roster.
-  limit     Set a team's work-in-progress limit.
-  approval  Turn change-approval on or off for a stage.
+  person     Add or update someone in the roster (optionally their code-host `email`).
+  limit      Set a team's work-in-progress limit.
+  approval   Turn change-approval on or off for a stage.
+  code-host  Pin which code host this repository is on (.sdlc/code-host.yaml).
 
 NOTHING IS REGENERATED. Every write is a targeted edit that leaves the rest of the file
 byte-for-byte alone, which matters more than it sounds: the first version of the roster write
@@ -39,7 +40,17 @@ import cadence_plan as cp
 import validate_team as vt
 
 HANDLE_RE = re.compile(r"^@[A-Za-z0-9][A-Za-z0-9-]*$")
-FIELD_ORDER = ("name", "team", "roles", "signs_off")
+FIELD_ORDER = ("name", "email", "team", "roles", "signs_off")
+
+# The code hosts the plugin knows how to talk to. `none` is a real, deliberate answer — "do
+# not treat this remote as either" — not the absence of one, which is why it is a value a
+# person can write rather than the result of deleting the file. Mirrors code_host.py's set.
+CODE_HOSTS = ("github", "azure-devops", "none")
+CODE_HOST_FIELDS = ("host", "organization", "project", "repository")
+CODE_HOST_HEADER = (
+    "# Code host for this repository, pinned by hand — written by `set_setting.py code-host`.\n"
+    "# Read ahead of the `origin` remote; a `--host` flag on a command or SDLC_CODE_HOST in the\n"
+    "# environment still wins. Delete this file to go back to detecting the host from `origin`.\n")
 
 
 class SettingError(Exception):
@@ -178,10 +189,19 @@ def apply_person_edit(text: str, handle: str, fields: dict) -> str:
 
 
 def set_person(repo_root: Path, handle: str, name: str | None, team: str | None,
-               roles: list[str] | None, signs_off: list[str] | None) -> dict:
+               roles: list[str] | None, signs_off: list[str] | None,
+               email: str | None = None) -> dict:
     if not HANDLE_RE.match(handle or ""):
         raise SettingError(
             f"'{handle}' is not a code-host handle — expected something like @sam-k.", "bad_handle")
+    # The same narrow check validate_team applies, done here so a refusal names the field and
+    # leaves the file untouched. Whether it duplicates somebody else's is caught below, by
+    # validating the whole proposed roster, since that needs every other entry.
+    if email is not None and (
+            not email.strip() or any(c in email for c in "\r\n") or "@" not in email):
+        raise SettingError(
+            f"'{email}' is not an email — expected one line containing '@', like sam@example.com.",
+            "bad_email")
 
     roster = _load_roster(repo_root)
     known_teams = {t.get("name") for t in roster.get("teams") or []}
@@ -207,7 +227,8 @@ def set_person(repo_root: Path, handle: str, name: str | None, team: str | None,
     updating = any(p.get("handle") == handle for p in roster.get("people") or [])
     proposed = apply_person_edit(
         original, handle,
-        {"name": name, "team": team, "roles": roles, "signs_off": signs_off})
+        {"name": name, "email": email.strip() if email else None, "team": team,
+         "roles": roles, "signs_off": signs_off})
 
     _check_roster_text(proposed)
 
@@ -328,6 +349,108 @@ def set_approval(repo_root: Path, stage: str, required: bool, approver: str | No
             "note": "While a draft waits, everyone else keeps seeing the signed-off version."}
 
 
+def _code_host_path(repo_root: Path) -> Path:
+    return repo_root / ".sdlc" / "code-host.yaml"
+
+
+def parse_code_host_text(text: str) -> tuple[dict, list[str]]:
+    """(fields, errors) for a .sdlc/code-host.yaml. Validated like the other .sdlc singletons:
+    every error names the key, and a reader treats any error as "no usable override" rather
+    than guessing a host from a half-readable file — the remote is a safer answer than a typo."""
+    errors: list[str] = []
+    if not text.strip():
+        return {}, errors
+    try:
+        doc = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        return {}, [f"invalid YAML: {e}"]
+    if doc is None:
+        return {}, errors
+    if not isinstance(doc, dict):
+        return {}, ["Root: expected a YAML mapping"]
+    for key in doc:
+        if key not in CODE_HOST_FIELDS:
+            errors.append(f"{key}: unknown key (expected one of {', '.join(CODE_HOST_FIELDS)})")
+    host = doc.get("host")
+    if "host" not in doc:
+        errors.append("host: missing")
+    elif host not in CODE_HOSTS:
+        errors.append(f"host: '{host}' is not a code host ({', '.join(CODE_HOSTS)})")
+    for key in CODE_HOST_FIELDS[1:]:
+        if key in doc:
+            value = doc[key]
+            if not isinstance(value, str) or not value.strip() or any(c in value for c in "\r\n"):
+                errors.append(f"{key}: must be one non-empty line of text")
+    return ({k: v for k, v in doc.items() if k in CODE_HOST_FIELDS} if not errors else {}), errors
+
+
+def apply_code_host_edit(text: str, fields: dict) -> str:
+    """Set top-level keys in the file's text, replacing a key's line where it exists and
+    appending the rest, so a comment somebody wrote above `host:` survives the change."""
+    given = {k: v for k, v in fields.items() if v is not None}
+    if not text.strip():
+        return CODE_HOST_HEADER + "".join(
+            _render_field("", k, given[k], "\n") for k in CODE_HOST_FIELDS if k in given)
+    lines = text.splitlines(keepends=True)
+    eol = "\r\n" if text.find("\r\n") != -1 else "\n"
+    out, seen = [], set()
+    for line in lines:
+        m = re.match(r"^([A-Za-z_]+):", line)
+        if m and m.group(1) in given:
+            out.append(_render_field("", m.group(1), given[m.group(1)], eol))
+            seen.add(m.group(1))
+        else:
+            out.append(line)
+    if out and not out[-1].endswith(("\n", "\r")):
+        out[-1] += eol
+    out.extend(_render_field("", k, given[k], eol) for k in CODE_HOST_FIELDS
+               if k in given and k not in seen)
+    return "".join(out)
+
+
+def set_code_host(repo_root: Path, host: str, organization: str | None = None,
+                  project: str | None = None, repository: str | None = None) -> dict:
+    """Pin the repository's code host. Overrides what `origin` says; never touches state.yaml."""
+    if host not in CODE_HOSTS:
+        raise SettingError(
+            f"'{host}' is not a code host — expected one of {', '.join(CODE_HOSTS)}.", "bad_host")
+    given = {"host": host, "organization": organization, "project": project,
+             "repository": repository}
+    for key, value in given.items():
+        if value is not None and (not value.strip() or any(c in value for c in "\r\n")):
+            raise SettingError(f"--{key} must be one non-empty line of text.", "bad_value")
+
+    path = _code_host_path(repo_root)
+    original = path.read_text(encoding="utf-8") if path.exists() else ""
+    existing, errors = parse_code_host_text(original)
+    if errors:
+        raise SettingError(
+            f"The existing {path.name} could not be read, so this change is refused rather than "
+            "written over it: " + "; ".join(errors), "malformed")
+
+    proposed = apply_code_host_edit(original, given)
+    parsed, errors = parse_code_host_text(proposed)
+    if errors:
+        raise SettingError(
+            "That change would leave the code-host file invalid: " + "; ".join(errors),
+            "would_be_invalid")
+    # Same discipline as the roster: the result must contain exactly the keys that were there
+    # plus the ones named, with the named ones holding the values given — a value carrying its
+    # own YAML structure is serialized, so this is the backstop, not the only guard.
+    expected = {**existing, **{k: v.strip() for k, v in given.items() if v is not None}}
+    if parsed != expected:
+        raise SettingError(
+            "That change would write something other than what was asked. Nothing was written.",
+            "would_be_invalid")
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(proposed, encoding="utf-8")
+    return {"ok": True, "changed": proposed != original, "file": ".sdlc/code-host.yaml",
+            "message": f"This repository's code host is pinned to {host}.",
+            "note": "Overrides what the `origin` remote says; a `--host` flag or SDLC_CODE_HOST "
+                    "still wins over this file. Delete it to detect the host from the remote again."}
+
+
 def resolve_repo_root(args) -> Path:
     if args.state:
         state = Path(args.state)
@@ -349,6 +472,8 @@ def main():
     person = sub.add_parser("person", help="Add or update someone in the roster")
     person.add_argument("handle", help="Code-host handle, e.g. @sam-k")
     person.add_argument("--name")
+    person.add_argument("--email", default=None,
+                        help="Sign-in identity on Azure DevOps (UPN or mail); optional, unique")
     person.add_argument("--team")
     person.add_argument("--roles", nargs="*", help=f"Any of {', '.join(vt.ROLES)}")
     person.add_argument("--signs-off", nargs="*", metavar="STAGE")
@@ -364,15 +489,29 @@ def main():
     approval.add_argument("--approver", default=None)
     approval.set_defaults(required=True)
 
+    code_host = sub.add_parser(
+        "code-host", help="Pin which code host this repository is on (.sdlc/code-host.yaml)")
+    code_host.add_argument("--host", required=True, choices=CODE_HOSTS,
+                           help="github, azure-devops, or none (treat the remote as neither)")
+    code_host.add_argument("--organization", default=None,
+                           help="Azure DevOps organization, when the remote cannot be parsed")
+    code_host.add_argument("--project", default=None,
+                           help="Azure DevOps project, when the remote cannot be parsed")
+    code_host.add_argument("--repository", default=None,
+                           help="Repository name, when the remote cannot be parsed")
+
     args = parser.parse_args()
     repo_root = resolve_repo_root(args)
 
     try:
         if args.action == "person":
             result = set_person(repo_root, args.handle, args.name, args.team,
-                               args.roles, args.signs_off)
+                               args.roles, args.signs_off, email=args.email)
         elif args.action == "limit":
             result = set_limit(repo_root, args.team, args.limit)
+        elif args.action == "code-host":
+            result = set_code_host(repo_root, args.host, args.organization, args.project,
+                                   args.repository)
         else:
             result = set_approval(repo_root, args.stage, args.required, args.approver)
     except SettingError as e:
@@ -380,7 +519,9 @@ def main():
             print(json.dumps({"ok": False, "refusal": {"kind": e.kind, "message": str(e)}}, indent=2))
         else:
             print(f"Refused: {e}")
-        sys.exit(1)
+        # An unknown host is a usage error (argparse already exits 2 for it on the command
+        # line); every other refusal keeps the exit code the earlier verbs have always used.
+        sys.exit(2 if e.kind == "bad_host" else 1)
 
     print(json.dumps(result, indent=2) if args.json else f"{result['message']}\n  {result['note']}")
 

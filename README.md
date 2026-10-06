@@ -90,6 +90,42 @@ cd claude-code-sdlc/scripts
 uv sync
 ```
 
+### Code hosts
+
+The plugin talks to the repository's code host for the pull-request-facing work — a spec's
+live status, the hand-off's draft PR, the connection report, branch policies, pipeline evidence,
+the gates' credentials, and the scorecard import. Two hosts are supported, and **the repository
+chooses**, by its `origin` remote: a GitHub remote uses the GitHub CLI (`gh`), an Azure DevOps
+remote (`dev.azure.com`, `*.visualstudio.com`, `ssh.dev.azure.com`) uses the Azure CLI (`az`)
+with the `azure-devops` extension. Neither CLI is required to open a project, run the gates, or
+read a board built from the spec files; it is required only for the features that read or write
+pull requests, and each of those says which CLI it is missing instead of failing.
+
+| Feature | GitHub | Azure DevOps |
+|---|---|---|
+| `/sdlc-spec-status`, `/sdlc-handoff` (the draft PR and reviewer request), `connection_report.py`, `pipeline_proof.py`'s PR reads, `gate_auth.py status` | `gh`, signed in | `az` + `azure-devops` extension, signed in |
+| Scorecard import | `scorecard.py import` or `import_outcomes.py` | `import_outcomes.py` |
+| `gate_auth.py set` / `clear` | `gh` | prints the manual `az` command (variable groups are not written from here) |
+| Pipelines, secrets, `/sdlc-doctor` | follow the **installed CI pack** (`.claude/harness-manifest.json`), not the remote — a GitHub repository on Azure Pipelines is a legitimate mix and is reported, never resolved silently |
+
+Setting up `az`: `az extension add --name azure-devops`, then sign in. The CLI's **default account
+decides the token**, so a guest or contractor identity in the organisation's tenant must sign in
+as that identity with `az login --allow-no-subscriptions`; and an identity that has never opened
+the organisation in a browser gets HTTP 403 "identity … has not been materialized" until it has
+signed in once there interactively. `code_host.py --repo <path>` says which host was detected,
+why, and whether its CLI answered.
+
+Two optional files complete the Azure DevOps side. Azure DevOps names people by sign-in identity
+(UPN), not by handle, so a roster entry in `.sdlc/team.yaml` gains an optional `email:` — the only
+way a PR's reviewer is resolved to an `@handle`; nothing guesses it from a display name, and a
+checker without one is reported as an `assignment_error` on hand-off, not invented. When the
+remote cannot be recognised (GitHub Enterprise Server, an unusual proxy), `.sdlc/code-host.yaml`
+pins the host for that clone — written with
+`uv run scripts/set_setting.py --repo <path> code-host --host azure-devops` (plus
+`--organization`, `--project`, `--repository` when the remote cannot be parsed at all). A one-off
+override is `--host` on any host-touching script, or the `SDLC_CODE_HOST` environment variable.
+Full rules: `references/code-host-providers.md`.
+
 ## Quick Start
 
 ```
@@ -170,6 +206,11 @@ microsoft-enterprise's stack, hosted on Azure DevOps:
   branch policies) and never asks it to authenticate `gh`. PR-flow rails (the review-gate
   hook, `pr-writer`) recognize `az repos pr create` the same way they recognize `gh pr
   create`.
+- **The code host is read through `az` too:** `/sdlc-spec-status` (checks, grader verdict,
+  approvals, who it is waiting on), `/sdlc-handoff`'s draft PR with the checker as a required
+  reviewer, the connection report, branch policies, pipeline evidence and the scorecard import
+  (`import_outcomes.py`) all read and write Azure Repos pull requests. The repository's
+  `origin` remote decides the host; see **Code hosts** under Installation.
 
 ### ado-enterprise-python
 ado-enterprise's Python sibling — same rails, FastAPI + React stack:

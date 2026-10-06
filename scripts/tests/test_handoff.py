@@ -299,3 +299,159 @@ class TestAHandleCannotBecomeAnotherField:
         out = h.set_status_and_developer(READY_SPEC, "@sam-k")
         fm, _ = h.cs.parse_frontmatter(out)
         assert fm["developer"] == "@sam-k" and fm["status"] == "in-flight"
+
+
+# ---------------------------------------------------------------------------
+# Azure DevOps (code-host providers, Wave 4) — additive; everything above is untouched
+# ---------------------------------------------------------------------------
+
+import json  # noqa: E402  (appended with the class below; the file above is byte-identical)
+import sys  # noqa: E402
+
+import ado_transport  # noqa: E402
+import code_host  # noqa: E402
+from tests.ado_fixtures import ADO_REMOTE, FakeAz  # noqa: E402
+
+ADO_ROSTER = yaml.dump({
+    "teams": [{"name": "claims", "lead": "@priya-n"}],
+    "people": [
+        {"handle": "@priya-n", "name": "Priya", "team": "claims", "roles": ["owner", "lead"],
+         "email": "priya@contoso.example"},
+        {"handle": "@sam-k", "name": "Sam", "team": "claims", "roles": ["developer"]},
+    ],
+})
+ADO_PR_URL = "https://dev.azure.com/contoso/Claims/_git/claims-api/pullrequest/77"
+
+
+class TestOnAzureDevOps:
+    """The assignment step on Azure DevOps. ADO has no assignee on a pull request, so the
+    developer is named in the description; the checker is a required reviewer by roster EMAIL
+    (an `@handle` is a CLIError to az); a checker with no email is an assignment_error with the
+    PR still open and `ok: true` — the local half is never failed over the host half. The
+    GitHub path is pinned unchanged by TestAssignOnHost above and by test_gh_argv_golden."""
+
+    @pytest.fixture
+    def az(self, monkeypatch):
+        ado_transport.clear_caches()
+        # Both this module's detection and ado_transport's scope read origin through code_host.
+        monkeypatch.setattr(code_host, "origin_url", lambda root: ADO_REMOTE)
+        fake = FakeAz(answers={"repos pr create": lambda args: 77})  # `--query pullRequestId` → a bare id
+        monkeypatch.setattr(ado_transport, "az_json", fake)
+        monkeypatch.setattr(h, "find_existing_handoff", lambda *a, **k: None)
+        monkeypatch.setattr(h, "resolve_base_branch", lambda repo_root: "main")
+        monkeypatch.setattr(h, "push_handoff_commit", lambda *a, **k: None)
+        yield fake
+        ado_transport.clear_caches()
+
+    def _run(self, tmp_path, roster, checker="@priya-n"):
+        repo = make_repo(tmp_path, roster=roster, checker=checker)
+        return h.handoff(repo, repo / "specs" / "0007-reject-duplicate-claims.md", "@sam-k", None)
+
+    def test_opens_a_draft_pr_with_the_checker_as_required_reviewer_by_email(self, tmp_path, az):
+        result = self._run(tmp_path, ADO_ROSTER)
+        assert result["pr_url"] == ADO_PR_URL          # built from pullRequestId, never read from az
+        assert result["assignment_error"] is None
+        assert len(az.calls) == 1, az.calls              # exactly one az call: the PR create
+        args = az.calls[0]
+        assert args[:3] == ["repos", "pr", "create"]
+        assert args[args.index("--draft") + 1] == "true"
+        assert args[args.index("--required-reviewers") + 1] == "priya@contoso.example"
+        assert args[args.index("--source-branch") + 1] == "spec/0007-reject-duplicate-claims"
+        assert args[args.index("--target-branch") + 1] == "main"
+        assert args[args.index("--query") + 1] == "pullRequestId"
+        assert "--detect" in args and args[args.index("--detect") + 1] == "false"
+        assert "--assignee" not in args and "--reviewer" not in args   # gh vocabulary never leaks
+
+    def test_the_developer_is_named_in_the_description_because_ado_has_no_assignee(self, tmp_path, az):
+        self._run(tmp_path, ADO_ROSTER)
+        args = az.calls[0]
+        description = args[args.index("--description") + 1: args.index("--draft")]
+        assert any(line.startswith("Developer: @sam-k") for line in description), description
+        assert any("specs/0007-reject-duplicate-claims.md" in line for line in description)
+
+    def test_a_checker_without_an_email_still_gets_a_pr_and_an_assignment_error(self, tmp_path, az):
+        result = self._run(tmp_path, ROSTER)  # the GitHub-era roster: no `email` anywhere
+        assert result["pr_url"] == ADO_PR_URL
+        assert result["assignment_error"] == (
+            "checker @priya-n has no email in .sdlc/team.yaml; Azure DevOps needs one to add a reviewer")
+        args = az.calls[0]
+        assert "--required-reviewers" not in args
+        assert any("no email" in line for line in args[args.index("--description") + 1:])
+
+    def test_no_checker_means_no_reviewer_and_no_error(self, tmp_path, az):
+        result = self._run(tmp_path, ADO_ROSTER, checker="")
+        assert result["assignment_error"] is None and result["pr_url"] == ADO_PR_URL
+        assert "--required-reviewers" not in az.calls[0]
+
+    def test_an_az_failure_is_an_assignment_error_not_a_crash(self, tmp_path, monkeypatch, az):
+        failing = FakeAz(fail={"pr create": "TF401027: You need the Git 'PullRequestContribute' permission"})
+        monkeypatch.setattr(ado_transport, "az_json", failing)
+        result = self._run(tmp_path, ADO_ROSTER)
+        assert result["pr_url"] is None
+        assert "TF401027" in result["assignment_error"]
+        assert result["already_in_flight"] is False      # the local half still counts as done
+
+    def test_an_az_call_the_fixture_was_not_told_about_fails_loudly(self, tmp_path, monkeypatch, az):
+        # The read-only / exact-argv pin: FakeAz answers only what it was given.
+        monkeypatch.setattr(ado_transport, "az_json", FakeAz())
+        with pytest.raises(AssertionError, match="unexpected az call"):
+            self._run(tmp_path, ADO_ROSTER)
+
+    def test_the_github_path_never_touches_az(self, tmp_path, monkeypatch, az):
+        captured = {}
+
+        def fake_run_gh(args, cwd):
+            captured["args"] = args
+            return "https://gh/pull/7\n"
+        monkeypatch.setattr(h, "run_gh", fake_run_gh)
+        repo = make_repo(tmp_path, roster=ADO_ROSTER, checker="@priya-n")
+        result = h.handoff(repo, repo / "specs" / "0007-reject-duplicate-claims.md", "@sam-k", None,
+                           host="github")
+        assert result["pr_url"] == "https://gh/pull/7"
+        assert az.calls == []
+        assert "--draft" in captured["args"]
+        assert captured["args"][captured["args"].index("--assignee") + 1] == "sam-k"
+        assert captured["args"][captured["args"].index("--reviewer") + 1] == "priya-n"
+
+    def test_host_fn_resolves_the_module_global_at_call_time(self, monkeypatch):
+        # Existing tests patch `h.assign_on_host` by name; the dispatch must see that patch.
+        monkeypatch.setattr(h, "assign_on_host", lambda *a, **k: "patched")
+        assert h._host_fn("assign_on_host", "github")(*range(7)) == "patched"
+        assert h._host_fn("assign_on_host", "none")(*range(7)) == "patched"
+        import ado_import
+        assert h._host_fn("assign_on_host", "azure-devops") is ado_import.create_draft_pr
+
+    def test_reviewer_gap_treats_an_email_as_already_resolvable(self, tmp_path):
+        repo = make_repo(tmp_path, roster=ROSTER)
+        assert h.reviewer_gap(repo, "priya@contoso.example") is None
+        assert h.reviewer_gap(repo, "") is None
+        assert "no email" in h.reviewer_gap(repo, "@priya-n")
+
+    def _main(self, monkeypatch, capsys, tmp_path, result, *extra):
+        monkeypatch.setattr(code_host, "origin_url", lambda root: ADO_REMOTE)
+        monkeypatch.setattr(code_host, "cli_state", lambda host, **k: ("available", "probed by a stub"))
+        monkeypatch.setattr(h, "handoff", lambda *a, **k: result)
+        monkeypatch.setattr(sys, "argv", ["handoff.py", "--repo", str(tmp_path), "--spec", "x.md",
+                                          "--developer", "@sam-k", *extra])
+        h.main()
+        return capsys.readouterr().out
+
+    def test_json_carries_the_top_level_host_block(self, tmp_path, monkeypatch, capsys):
+        result = {"already_in_flight": False, "branch": "spec/0007-x", "developer": "@sam-k",
+                  "checker": "@priya-n", "pr_url": ADO_PR_URL, "assignment_error": None,
+                  "spec_rel_path": "specs/0007-x.md"}
+        out = json.loads(self._main(monkeypatch, capsys, tmp_path, result, "--json", "--host", "azure-devops"))
+        assert out["ok"] is True and out["pr_url"] == ADO_PR_URL
+        assert out["host"]["name"] == "azure-devops" and out["host"]["source"] == "flag"
+        assert out["host"]["cli"] == "az" and out["host"]["cli_state"] == "available"
+
+    def test_text_claims_review_requested_only_when_it_was(self, tmp_path, monkeypatch, capsys):
+        result = {"already_in_flight": False, "branch": "spec/0007-x", "developer": "@sam-k",
+                  "checker": "@priya-n", "pr_url": ADO_PR_URL,
+                  "assignment_error": "checker @priya-n has no email in .sdlc/team.yaml; Azure DevOps needs one to add a reviewer",
+                  "spec_rel_path": "specs/0007-x.md"}
+        out = self._main(monkeypatch, capsys, tmp_path, result)
+        assert f"PR: {ADO_PR_URL}" in out
+        assert "review requested" not in out
+        assert "Could not assign on the code host: checker @priya-n has no email" in out
+        assert "Code host: azure-devops (from remote)" in out

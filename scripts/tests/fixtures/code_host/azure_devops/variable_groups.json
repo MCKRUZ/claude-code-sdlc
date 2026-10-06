@@ -1,0 +1,28 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "id": 5,
+      "name": "claude-gates",
+      "type": "Vsts",
+      "variables": {
+        "ANTHROPIC_API_KEY": {
+          "isSecret": true,
+          "value": null
+        }
+      }
+    },
+    {
+      "id": 6,
+      "name": "unrelated",
+      "type": "Vsts",
+      "variables": {
+        "OTHER": {
+          "isSecret": false,
+          "value": "x"
+        }
+      }
+    }
+  ]
+}

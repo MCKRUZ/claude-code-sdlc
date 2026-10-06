@@ -139,3 +139,104 @@ class TestValidateTeamFunction:
     def test_teams_wrong_shape(self):
         errors = validate_team({"teams": "nope", "people": []}, {"required": []})
         assert any("teams: expected array" in e for e in errors)
+
+
+# --- Roster identity: optional `email` (code-host providers, Wave 2) --------------------------
+# Additive: everything above is byte-identical to before `email` existed.
+
+from validate_team import email_for, people_by_email  # noqa: E402
+
+
+def _with_emails():
+    data = dict(VALID)
+    data["people"] = [
+        dict(VALID["people"][0], email="priya.nair@example.com"),
+        dict(VALID["people"][1], email="jordan.b@example.com"),
+    ]
+    return data
+
+
+class TestEmailIsOptional:
+    """A roster written before `email` existed validates exactly as it did then."""
+
+    def test_no_email_anywhere_still_passes(self, tmp_path):
+        assert "email" not in str(VALID)
+        r = run_validate(write_roster(tmp_path, VALID))
+        assert r.returncode == 0 and "PASS" in r.stdout
+
+    def test_a_valid_email_passes(self, tmp_path):
+        r = run_validate(write_roster(tmp_path, _with_emails()))
+        assert r.returncode == 0 and "PASS" in r.stdout
+
+    def test_only_some_people_having_one_passes(self, tmp_path):
+        data = dict(VALID)
+        data["people"] = [dict(VALID["people"][0], email="priya.nair@example.com"), VALID["people"][1]]
+        assert run_validate(write_roster(tmp_path, data)).returncode == 0
+
+
+class TestEmailRules:
+    def test_duplicate_email_fails_case_insensitively(self, tmp_path):
+        data = _with_emails()
+        data["people"][1]["email"] = "PRIYA.NAIR@example.com"
+        r = run_validate(write_roster(tmp_path, data))
+        assert r.returncode == 1
+        assert "duplicate email 'PRIYA.NAIR@example.com' (first seen at people[0])" in r.stdout
+
+    def test_email_without_an_at_sign_fails(self, tmp_path):
+        data = _with_emails()
+        data["people"][0]["email"] = "priya.nair.example.com"
+        r = run_validate(write_roster(tmp_path, data))
+        assert r.returncode == 1
+        assert "people[0].email: 'priya.nair.example.com' does not contain '@'" in r.stdout
+
+    def test_email_spanning_two_lines_fails(self):
+        data = _with_emails()
+        data["people"][0]["email"] = "priya@example.com\n  - handle: '@ghost'"
+        errors = validate_team(data, {"required": []})
+        assert any("people[0].email: contains a line break" in e for e in errors)
+
+    @pytest.mark.parametrize("value", ["", "   ", None])
+    def test_a_present_but_empty_email_fails(self, value):
+        # The key present and blank is a mistake, not "unknown" — unknown is the key absent.
+        data = _with_emails()
+        data["people"][0]["email"] = value
+        errors = validate_team(data, {"required": []})
+        assert any("people[0].email: present but empty" in e for e in errors)
+
+    def test_existing_error_strings_are_untouched(self, tmp_path):
+        # The strings other modules and tests match on must read exactly as before.
+        data = dict(VALID)
+        data["people"] = VALID["people"] + [
+            {"handle": "@priya-n", "name": "Dup", "team": "claims", "roles": ["developer"]}]
+        r = run_validate(write_roster(tmp_path, data))
+        assert "duplicate handle '@priya-n' (first seen at people[0])" in r.stdout
+
+
+class TestEmailHelpers:
+    """people_by_email / email_for are the ONLY bridge from a host identity to a handle."""
+
+    def test_people_by_email_is_keyed_lower_case(self):
+        data = _with_emails()
+        data["people"][0]["email"] = "Priya.Nair@Example.com"
+        assert people_by_email(data) == {
+            "priya.nair@example.com": "@priya-n", "jordan.b@example.com": "@jordan-b"}
+
+    def test_email_for_returns_the_recorded_email_or_none(self):
+        assert email_for(_with_emails(), "@priya-n") == "priya.nair@example.com"
+        assert email_for(VALID, "@priya-n") is None          # no email recorded
+        assert email_for(_with_emails(), "@nobody") is None  # not on the roster
+
+    def test_helpers_never_guess(self):
+        # A display name or a UPN prefix that happens to resemble a handle is not a mapping.
+        data = dict(VALID)
+        data["people"] = [dict(VALID["people"][0], email="jordan-b@example.com")]
+        assert people_by_email(data) == {"jordan-b@example.com": "@priya-n"}
+        assert email_for(data, "@jordan-b") is None
+
+    def test_malformed_roster_returns_empty(self):
+        assert people_by_email({"people": "not a list"}) == {}
+        assert people_by_email("not even a dict") == {}
+        assert email_for({"people": None}, "@priya-n") is None
+
+    def test_a_person_with_email_but_no_handle_is_skipped(self):
+        assert people_by_email({"people": [{"email": "x@y.z"}]}) == {}

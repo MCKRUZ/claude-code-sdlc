@@ -81,6 +81,12 @@ The runbook:
 5. Re-run `/sdlc-doctor` — it follows the installed pack (`az` checks on ADO, `gh` on GitHub) —
    and re-prove the rails with the shakedown drills in `.github/RAILS.md` (the rails guide keeps
    that path on both platforms; the ADO pack deliberately overlays it).
+6. The CI platform is the only thing this switch changes. The **code host** the PR-facing
+   commands speak to (`/sdlc-spec-status`, `/sdlc-handoff`, the connection report) follows the
+   repository's `origin` remote — `gh` for GitHub, `az` for Azure DevOps — not the pack, so a
+   repository that stays on GitHub while its pipelines move to Azure keeps using `gh` for its
+   pull requests. If the repository itself moved, update `origin`; only a remote the plugin
+   cannot recognise needs `.sdlc/code-host.yaml` (`set_setting.py code-host --host …`).
 
 ## Error Handling
 - If uv is not installed: `pip install uv` or `brew install uv`.

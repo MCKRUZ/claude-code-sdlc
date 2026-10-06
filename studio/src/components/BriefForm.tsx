@@ -4,7 +4,8 @@ import { buildIssue, buildSelections, isWorkshopQuestion, type BriefCandidates }
 import {
   clearBriefForm, initialBriefForm, loadBriefForm, saveBriefForm, type BriefFormState,
 } from '../briefFormStore'
-import { messageOf, PANEL_BUTTON, PanelError, useLoaded } from './activityPanelBits'
+import { Notice } from '../ui'
+import { messageOf, PanelButton, PanelError, PanelLoading, useLoaded } from './activityPanelBits'
 import { toggled, withoutIndex } from './briefBits'
 import { LogisticsSection } from './BriefLogistics'
 import { ContradictionsSection, DocumentsSection, QuestionsSection } from './BriefPicks'
@@ -30,7 +31,7 @@ export function BriefForm({ projectPath, actor = '', onOpenDocument }: BriefForm
   const loaded = useLoaded<BriefCandidatesResult>(projectPath, () => window.studio.getBriefCandidates(projectPath), CANDIDATES_FAILED)
   return (
     <div data-testid="brief-panel" className="mt-2 space-y-2">
-      {loaded.kind === 'loading' && <p className="text-xs text-slate-500">Reading the brief candidates…</p>}
+      {loaded.kind === 'loading' && <PanelLoading lines={3}>Reading the brief candidates…</PanelLoading>}
       {loaded.kind === 'failed' && <PanelError message={loaded.message} />}
       {loaded.kind === 'ready' && <Candidates result={loaded.value} projectPath={projectPath} actor={actor} onOpenDocument={onOpenDocument} />}
     </div>
@@ -40,7 +41,7 @@ export function BriefForm({ projectPath, actor = '', onOpenDocument }: BriefForm
 function Candidates({ result, ...rest }: { result: BriefCandidatesResult } & BriefFormProps) {
   if (!result.ok) return <PanelError message={result.error || CANDIDATES_FAILED} />
   if (!result.hasData) {
-    return <div className="space-y-1 text-xs text-slate-600">{result.notes.map((note) => <p key={note}>{note}</p>)}</div>
+    return <div className="space-y-1 text-xs text-ink-2">{result.notes.map((note) => <p key={note}>{note}</p>)}</div>
   }
   return <BriefFormBody key={rest.projectPath} candidates={result} {...rest} />
 }
@@ -196,24 +197,24 @@ interface BuildBarProps {
   onBuild: () => void
 }
 
+/** The reason Build is off (`brief-build-reason`) is printed once beside it, so it is not also
+ * handed to the Button as a `disabledReason` — that would read twice. */
 function BuildBar({ candidates, form, update, issue, busy, onBuild }: BuildBarProps) {
   return (
     <div className="space-y-2">
       {candidates.existingBrief && (
-        <div className="space-y-1 text-xs text-slate-700">
+        <Notice tone="warn" role="none">
           <p>A brief already exists.</p>
-          <label className="flex items-center gap-2">
+          <label className="mt-1 flex items-center gap-2">
             <input type="checkbox" checked={form.replaceExisting} onChange={(e) => update({ replaceExisting: e.target.checked })} />
             Replace the existing brief
           </label>
-        </div>
+        </Notice>
       )}
       <div className="flex flex-wrap items-center gap-3">
-        <button type="button" disabled={busy || issue !== null} onClick={onBuild} className={PANEL_BUTTON}>
-          Build the brief
-        </button>
-        {busy && <p role="status" className="text-xs text-slate-600">Building…</p>}
-        {issue && <p data-testid="brief-build-reason" className="text-xs text-slate-500">{issue}</p>}
+        <PanelButton disabled={busy || issue !== null} onClick={onBuild}>Build the brief</PanelButton>
+        {busy && <p role="status" className="text-xs text-ink-2">Building…</p>}
+        {issue && <p data-testid="brief-build-reason" className="text-xs text-ink-3">{issue}</p>}
       </div>
     </div>
   )

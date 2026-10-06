@@ -1,16 +1,24 @@
 // Repository sync (spec 0009) — the orchestration layer. Pull, save, and clash resolution,
-// built on git.ts (the plugin's own proven git/gh contract), sectionMerge.ts (the pure
+// built on git.ts (the plugin's own proven git contract), sectionMerge.ts (the pure
 // per-section 3-way merge), and settings.ts (Studio's local ancestor bookkeeping — see
 // decision 4 in the spec's plan: no scratch clone, every git operation runs straight
 // against the person's real project folder, because fetch and the plumbing commands used
 // here never touch a working file, so there's nothing to isolate them from).
+//
+// Everything that talks to the CODE HOST — who is signed in, the pull-request fallback when
+// a direct push is refused, the poll that merges Studio's own pull request — goes through the
+// provider codeHost.ts resolves for the project (GitHub via gh, Azure DevOps via az; code-host
+// providers, Wave 6). This file never names a CLI: it asks the provider, and when the provider
+// cannot answer it says why in the §7.1 wording rather than failing on an ENOENT.
 
 import { createHash } from 'node:crypto'
 import { rawStdout } from './commandRunner'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
-import { runGit, runGitTolerant, runGh, ghJson } from './git'
+import { hostFeatureReason } from '../../shared/codeHostModel'
+import { CodeHostUnavailable, resolveCodeHost as defaultResolveCodeHost, type CodeHost, type Identity, type ResolveCodeHostDeps, type ResolvedCodeHost } from './codeHost'
+import { runGit, runGitTolerant } from './git'
 import { recordVersion } from './history'
 import { runPluginScript } from './project'
 import { isAllowlisted, isSafeInProject, resolveInProject } from './projectPaths'
@@ -19,11 +27,12 @@ import {
   threeWayMerge, writeShapeUpdates, type SectionUnit,
 } from './sectionMerge'
 import {
-  getProjectSyncState, readAncestorBlob, saveProjectSyncState, storeAncestorBlob,
+  getProjectSettings, getProjectSyncState, readAncestorBlob, saveProjectSyncState, storeAncestorBlob,
 } from './settings'
+import { forgetTypedActor, getTypedActor, rememberTypedActor, TYPED_NAME_SUFFIX, validateTypedActor } from './typedActor'
 import type {
   ArrivedChange, ClashChoice, ClashSection, ConnectionInfo, FileClash, PullResult,
-  ProjectSyncState, ResolveClashResult, SaveResult, SyncState,
+  ProjectSyncState, ResolveClashResult, RosterPerson, SaveResult, SyncState,
 } from '../../shared/types'
 
 // --- Allowlist ------------------------------------------------------------------------
@@ -210,9 +219,102 @@ function pendingSectionCount(syncState: ProjectSyncState): number {
   return Object.values(syncState.files).reduce((n, f) => n + (f.pendingClashSections?.length ?? 0), 0)
 }
 
+// --- the code host, and who is acting ----------------------------------------------------
+
+/** The two things this file needs from outside to answer "who is acting": the project's code
+ * host and the roster. Both default to the real ones; a test swaps them for fakes through
+ * setCodeHostSeam so nothing here ever needs a live gh or az to be proven. */
+export interface CodeHostSeam {
+  resolve: (projectPath: string, deps?: ResolveCodeHostDeps) => Promise<ResolvedCodeHost>
+  readRoster: (projectPath: string, pluginScriptsDir: string) => Promise<RosterPerson[]>
+}
+
+async function defaultReadRoster(projectPath: string, pluginScriptsDir: string): Promise<RosterPerson[]> {
+  const settings = await getProjectSettings(projectPath, pluginScriptsDir)
+  return settings.roster.people ?? []
+}
+
+let seam: CodeHostSeam = { resolve: defaultResolveCodeHost, readRoster: defaultReadRoster }
+
+/** Tests only. Returns the restore function. */
+export function setCodeHostSeam(over: Partial<CodeHostSeam>): () => void {
+  const before = seam
+  seam = { ...seam, ...over }
+  return () => { seam = before }
+}
+
+/** What tooling detection found, so resolving a host does not re-probe `--version` on every
+ * call. Set from index.ts after each detection; undefined until then (the resolver probes). */
+let cliFound: ResolveCodeHostDeps['found']
+
+export function noteCliDetection(found: { gh: boolean; az: boolean }): void {
+  cliFound = found
+}
+
+function resolveHost(projectPath: string): Promise<ResolvedCodeHost> {
+  return seam.resolve(projectPath, { found: cliFound })
+}
+
+/** The signed-in identity, or null when the host cannot say — which is the ONLY case a typed
+ * name may stand in (D-OWNER-5). A sign-in state the resolver already established as 'no' is
+ * not probed again; anything else is asked (the provider memoises per poll interval). */
+async function identify(resolved: ResolvedCodeHost): Promise<Identity | null> {
+  if (!resolved.cli.found || resolved.cli.signedIn === 'no') return null
+  try {
+    return await resolved.provider.whoAmI()
+  } catch {
+    return null
+  }
+}
+
+const bareHandle = (handle: string): string => handle.trim().replace(/^@/, '')
+
+/** The roster handle a host identity resolves to, or null. The rule is the plugin's
+ * (validate_team.py `people_by_email`): an Azure DevOps UPN matches a person's `email:`,
+ * lower-cased, and nothing else — never a display name, never the UPN's local part. A GitHub
+ * login IS the handle, so it matches `handle:` directly (case-insensitively, as GitHub does). */
+export function rosterHandleFor(identity: Identity, people: RosterPerson[]): string | null {
+  const login = identity.login.trim().toLowerCase()
+  if (!login) return null
+  const hit = identity.kind === 'upn'
+    ? people.find((p) => typeof p.email === 'string' && p.email.trim().toLowerCase() === login)
+    : people.find((p) => typeof p.handle === 'string' && bareHandle(p.handle).toLowerCase() === login)
+  return hit?.handle ?? null
+}
+
+/** The email the roster records for a handle, or null — an honest answer, not a failure: the
+ * caller that needs one (an Azure DevOps reviewer) says so rather than guessing. Handles are
+ * matched exactly apart from the leading `@`, as the roster's own rule is. */
+export function rosterEmailFor(handle: string, people: RosterPerson[]): string | null {
+  const want = bareHandle(handle)
+  const hit = people.find((p) => typeof p.handle === 'string' && bareHandle(p.handle) === want)
+  const email = hit?.email?.trim()
+  return email ? email : null
+}
+
+/** Who is acting, in order of trust: the roster's handle for the signed-in identity, the
+ * identity itself, a name typed for this session — and the last only while the host cannot
+ * identify the person. Once it can, a typed name is forgotten rather than left to shadow it.
+ * `account` is the handle without its `@`, the form every actor comparison already uses. */
+export function actorFor(
+  projectPath: string, identity: Identity | null, people: RosterPerson[],
+): Pick<ConnectionInfo, 'account' | 'accountSource' | 'rosterHandle'> {
+  if (identity) {
+    forgetTypedActor(projectPath)
+    const handle = rosterHandleFor(identity, people)
+    return handle
+      ? { account: bareHandle(handle), accountSource: 'roster', rosterHandle: handle }
+      : { account: identity.login, accountSource: 'host', rosterHandle: null }
+  }
+  const typed = getTypedActor(projectPath)
+  return typed
+    ? { account: typed, accountSource: 'typed', rosterHandle: null }
+    : { account: null, accountSource: null, rosterHandle: null }
+}
+
 // --- connection info -----------------------------------------------------------------------
 
-export async function getConnectionInfo(projectPath: string): Promise<ConnectionInfo> {
+export async function getConnectionInfo(projectPath: string, pluginScriptsDir: string | null = null): Promise<ConnectionInfo> {
   const branch = await currentBranch(projectPath).catch(() => '')
 
   let repo = ''
@@ -222,28 +324,46 @@ export async function getConnectionInfo(projectPath: string): Promise<Connection
     // no remote configured yet
   }
 
-  let account: string | null = null
-  try {
-    account = (await runGh(['api', 'user', '--jq', '.login'], projectPath)).trim() || null
-  } catch {
-    // not signed in, or gh unavailable — reported via tooling detection, not here
-  }
+  const resolved = await resolveHost(projectPath)
+  const identity = await identify(resolved)
+  // Without the plugin there is no roster to read; the identity is then reported as the host
+  // gave it, which is still true — just not in the roster's form.
+  const people = identity && pluginScriptsDir ? await seam.readRoster(projectPath, pluginScriptsDir).catch(() => []) : []
+  const actor = actorFor(projectPath, identity, people)
 
   // Best-effort display only — never the actual gate. The real gate is whether a direct
   // push gets rejected (finding 9); this is purely for the connection screen to show
-  // something before the person ever saves.
+  // something before the person ever saves. Null is "couldn't read", not "no".
   let branchProtected: boolean | null = null
   try {
-    const rulesets = await ghJson<Array<{ enforcement?: string }>>(
-      ['api', 'repos/{owner}/{repo}/rulesets'], projectPath,
-    )
-    branchProtected = Array.isArray(rulesets) && rulesets.some((r) => r.enforcement === 'active')
+    branchProtected = await resolved.provider.isBranchProtected(branch)
   } catch {
     branchProtected = null
   }
 
   const state = getProjectSyncState(projectPath)
-  return { repo, branch, localFolder: projectPath, account, lastPulledAt: state.lastPulledAt, branchProtected }
+  return {
+    repo, branch, localFolder: projectPath, ...actor,
+    host: resolved.host, hostSource: resolved.source, cli: resolved.cli,
+    lastPulledAt: state.lastPulledAt, branchProtected,
+  }
+}
+
+/** D-OWNER-5: accept a typed name for this project, for this process, ONLY while the host
+ * cannot say who the person is. Refused (a rejected promise, with the reason) when the name
+ * fails validation or when the host already identifies them — a typed name must never be a
+ * way around a sign-in that works. Resolves to the refreshed connection info. */
+export async function setTypedActor(projectPath: string, pluginScriptsDir: string | null, name: unknown): Promise<ConnectionInfo> {
+  const check = validateTypedActor(name)
+  if (!check.ok) throw new Error(check.error)
+  const resolved = await resolveHost(projectPath)
+  const identity = await identify(resolved)
+  if (identity) {
+    const hostName = resolved.host === 'azure-devops' ? 'Azure DevOps' : 'GitHub'
+    throw new Error(`${hostName} already identifies you as ${identity.login}; a typed name is only for when it cannot.`)
+  }
+  rememberTypedActor(projectPath, check.name)
+  return getConnectionInfo(projectPath, pluginScriptsDir)
 }
 
 // --- pull ------------------------------------------------------------------------------
@@ -682,6 +802,27 @@ async function approvalSettingsForFiles(
   return { required: false, approver: null, known }
 }
 
+/** Who the pull request asks for review. GitHub takes the approver's login (the provider
+ * tolerates a leading `@`); Azure DevOps takes an EMAIL, which only the roster can supply — a
+ * handle with no `email:` in .sdlc/team.yaml opens the pull request without a reviewer and
+ * says so in `note`, rather than guessing an address or failing the save. */
+async function reviewerFor(
+  resolved: ResolvedCodeHost,
+  approval: { required: boolean; approver: string | null },
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<{ reviewer: string | null; note?: string }> {
+  if (!approval.required || !approval.approver) return { reviewer: null }
+  if (resolved.host !== 'azure-devops') return { reviewer: approval.approver.replace(/^@/, '') }
+  const people = await seam.readRoster(projectPath, pluginScriptsDir).catch(() => [] as RosterPerson[])
+  const email = rosterEmailFor(approval.approver, people)
+  if (email) return { reviewer: email }
+  return {
+    reviewer: null,
+    note: `${approval.approver} has no email: in .sdlc/team.yaml, which is what Azure DevOps needs to request a review — the pull request was opened without a reviewer.`,
+  }
+}
+
 // --- save --------------------------------------------------------------------------------
 
 export interface SaveOptions {
@@ -787,7 +928,12 @@ export async function save(
       await runGit(['update-index', '--add', '--cacheinfo', `100644,${blobSha},${relPath}`], projectPath, { env })
     }
     const newTree = (await runGit(['write-tree'], projectPath, { env })).trim()
-    const newCommit = (await runGit(['commit-tree', newTree, '-p', baseSha, '-m', changeNote], projectPath)).trim()
+    // A name the person typed because the host could not identify them (D-OWNER-5) is labelled
+    // in Studio's own commit message, so the repository's history says which saves carried an
+    // unverified name. The plugin's ledgers get the plain name — they match on `@handle`.
+    const typedInUse = Boolean(options.actor) && options.actor === getTypedActor(projectPath)
+    const commitMessage = typedInUse ? `${changeNote}${TYPED_NAME_SUFFIX}` : changeNote
+    const newCommit = (await runGit(['commit-tree', newTree, '-p', baseSha, '-m', commitMessage], projectPath)).trim()
 
     const directPush = await runGitTolerant(['push', 'origin', `${newCommit}:refs/heads/${branch}`], projectPath)
 
@@ -817,21 +963,30 @@ export async function save(
     }
 
     const approval = await approvalSettingsForFiles(pluginScriptsDir, projectPath, changedFiles)
-    const prArgs = [
-      'pr', 'create', '--base', branch, '--head', branchName,
-      '--title', (changeNote.split('\n')[0] || `Studio save ${branchName}`).slice(0, 72),
-      '--body', `Saved from SDLC Studio.\n\n${changeNote}`,
-    ]
-    if (approval.required && approval.approver) {
-      prArgs.push('--reviewer', approval.approver.replace(/^@/, ''))
-    }
+    const resolved = await resolveHost(projectPath)
+    const review = await reviewerFor(resolved, approval, projectPath, pluginScriptsDir)
 
     let prUrl: string
+    let hostNote: string | undefined
     try {
-      prUrl = (await runGh(prArgs, projectPath)).trim()
+      const created = await resolved.provider.createPullRequest({
+        base: branch, head: branchName,
+        title: (changeNote.split('\n')[0] || `Studio save ${branchName}`).slice(0, 72),
+        body: `Saved from Tōgō.\n\n${changeNote}`,
+        reviewer: review.reviewer,
+      })
+      prUrl = created.url
+      hostNote = created.note
     } catch (err) {
-      return { ok: false, entries: [directPush, pushBranch], error: err instanceof Error ? err.message : String(err) }
+      // The CLI could not do it here (absent, extension missing, signed out): the §7.1
+      // sentence for this feature, which also says the truth — the branch is pushed, but
+      // nothing reached the shared branch. A real failure of a real call is passed on as said.
+      const unavailable = err instanceof CodeHostUnavailable
+        ? hostFeatureReason({ host: resolved.host, cli: resolved.cli }, 'saveWhenProtected')
+        : null
+      return { ok: false, entries: [directPush, pushBranch], error: unavailable ?? (err instanceof Error ? err.message : String(err)) }
     }
+    const note = [review.note, hostNote].filter((n): n is string => Boolean(n)).join(' ')
 
     for (const relPath of changedFiles) {
       const bytes = readFileSync(join(projectPath, relPath))
@@ -854,7 +1009,7 @@ export async function save(
         : { kind: 'waitingForChecks' },
     )
 
-    return { ok: true, outcome: 'opened_pull_request', prUrl, entries: [directPush, pushBranch] }
+    return { ok: true, outcome: 'opened_pull_request', prUrl, entries: [directPush, pushBranch], ...(note ? { note } : {}) }
   } finally {
     try { rmSync(tmpDir, { recursive: true, force: true }) } catch { /* best effort cleanup */ }
   }
@@ -867,7 +1022,9 @@ export interface PrListEntry {
   headRefName: string
   author?: { login?: string } | null
   headRepositoryOwner?: { login?: string } | null
-  files?: Array<{ path: string }>
+  /** `null` is Azure DevOps in v1 (D-OWNER-8): the host does not say what the pull request
+   * changes, so the poll's "can't tell what it changes, so don't merge it" branch refuses. */
+  files?: Array<{ path: string }> | null
   statusCheckRollup?: Array<{ status: string; conclusion: string | null }>
   reviews?: Array<{ state: string }>
 }
@@ -902,22 +1059,23 @@ export async function pollAndMergeOpenPullRequest(
   const pushedBranch = syncState.pendingPrBranch
   if (!pushedBranch) return { merged: false } // this Studio has no pull request outstanding
 
+  // The two comparands isOursToMerge needs, straight from the host: the raw identity (a GitHub
+  // login, an Azure DevOps UPN — never the roster handle, which is not what the host writes on
+  // a pull request) and the owner key (the owner login on GitHub, the repository GUID on ADO).
+  let provider: CodeHost
   let account: string | null = null
   let repoOwner: string | null = null
   try {
-    account = (await runGh(['api', 'user', '--jq', '.login'], projectPath)).trim() || null
-    repoOwner = (await runGh(['repo', 'view', '--json', 'owner', '--jq', '.owner.login'], projectPath)).trim() || null
+    provider = (await resolveHost(projectPath)).provider
+    account = (await provider.whoAmI()).login.trim() || null
+    repoOwner = (await provider.repoView()).headOwnerKey
   } catch {
     return { merged: false } // can't establish whose it is, so don't merge anything
   }
 
   let prs: PrListEntry[]
   try {
-    prs = await ghJson<PrListEntry[]>(
-      ['pr', 'list', '--head', pushedBranch, '--state', 'open',
-        '--json', 'number,headRefName,author,headRepositoryOwner,files,statusCheckRollup,reviews'],
-      projectPath,
-    )
+    prs = await provider.listOpenPullRequests(pushedBranch)
   } catch {
     return { merged: false }
   }
@@ -951,7 +1109,7 @@ export async function pollAndMergeOpenPullRequest(
   // necessary relationship to the pull request being merged — someone could edit a
   // stage needing no approval locally and unlock the merge of one that does.
   const prFiles = (pr.files ?? []).map((f) => f.path)
-  if (prFiles.length === 0) return { merged: false } // can't tell what it changes, so don't merge it
+  if (prFiles.length === 0) return { merged: false } // can't tell what it changes (ADO's `files: null` included), so don't merge it
 
   const approval = await approvalSettingsForFiles(pluginScriptsDir, projectPath, prFiles)
   if (!approval.known) return { merged: false } // can't tell whether approval is needed, so don't merge
@@ -965,7 +1123,7 @@ export async function pollAndMergeOpenPullRequest(
   }
 
   try {
-    const out = await runGh(['pr', 'merge', String(pr.number), '--merge'], projectPath)
+    const out = await provider.mergePullRequest(pr.number)
     const after = getProjectSyncState(projectPath)
     after.pendingPrBranch = null // merged — this Studio has nothing outstanding again
     after.pendingDraftOwner = null

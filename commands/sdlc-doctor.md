@@ -41,6 +41,8 @@ Run it after `/sdlc-setup`, when onboarding a second developer, and any time a g
 
 The doctor is **pack-aware**: it reads the installed CI/CD pack from `.claude/harness-manifest.json` and the platform-facing checks follow it — an Azure DevOps install is checked with `az` (variable groups, branch policies) and is never told to install `gh` for a platform it does not use.
 
+That is the **CI platform** axis. The **code host** — which CLI the PR-facing commands (`/sdlc-spec-status`, `/sdlc-handoff`, `connection_report.py`, `pipeline_proof.py`'s PR reads) speak to — is a separate question answered by the repository's `origin` remote, not by the pack: a GitHub remote means `gh`, an Azure DevOps remote means `az`. The two usually agree, but a GitHub repository running Azure Pipelines is legitimate; `connection_report.py --json` reports both (`host`, `ci_platform`) and notes a mismatch without failing. Neither CLI is needed to open a project or run the gates. `code_host.py --repo <path>` prints which host was detected and why.
+
 Required secrets (GitHub) / variable-group references (ADO) are read from **this repo's installed workflows/pipelines**, not from a fixed list. A repo that has adapted `ANTHROPIC_API_KEY` to `CLAUDE_CODE_OAUTH_TOKEN`, or deleted the eval workflows, is checked against what it actually runs — the doctor must never tell someone to "fix" a working setup.
 
 See `ONBOARDING.md` in the repo root for the day-1 checklist this command automates.

@@ -121,6 +121,32 @@ describe('SprintBoard: the sprint as the plugin reports it', () => {
     expect(within(rows[0]).getByText('n/a')).toBeTruthy()
   })
 
+  it('the slate sits in one labelled, keyboard-reachable scroll box, and the right-edge fade is only drawn when there is more to the right', async () => {
+    install()
+    render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)
+    const slate = await screen.findByTestId('sprint-slate')
+    // Ten columns in a ≈ 720 px column: the box scrolls sideways (observatory v4 critique,
+    // sprint-table), so it is a region a keyboard user can focus and scroll, named for what it is.
+    const scroller = within(slate).getByRole('region', { name: 'Sprint slate, scrolls sideways' })
+    expect(scroller.getAttribute('tabindex')).toBe('0')
+    expect(scroller.className).toContain('overflow-x-auto')
+    expect(scroller.contains(within(slate).getByRole('table', { name: 'Sprint slate' }))).toBe(true)
+    // Exactly one scroll box: the kit table's own wrapper is told not to clip.
+    expect(scroller.className).toContain('[&>div]:overflow-visible')
+    // jsdom has no layout, so nothing overflows: no fade is drawn — it is read from the box's own
+    // scroll metrics, never assumed.
+    expect(within(slate).queryByTestId('sprint-slate-fade')).toBeNull()
+    // A box with more to the right (declared, since jsdom cannot lay one out) grows the fade.
+    Object.defineProperty(scroller, 'scrollWidth', { value: 1200, configurable: true })
+    Object.defineProperty(scroller, 'clientWidth', { value: 720, configurable: true })
+    fireEvent.scroll(scroller)
+    expect(await within(slate).findByTestId('sprint-slate-fade')).toBeTruthy()
+    // Scrolled to the end: the fade goes.
+    Object.defineProperty(scroller, 'scrollLeft', { value: 480, configurable: true })
+    fireEvent.scroll(scroller)
+    await waitFor(() => expect(within(slate).queryByTestId('sprint-slate-fade')).toBeNull())
+  })
+
   it('a NOT READY row holds the checker\'s blocking lines behind a disclosure, in its words', async () => {
     install()
     render(<SprintBoard projectPath="/p" onOpenSpec={vi.fn()} />)

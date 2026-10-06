@@ -33,7 +33,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
        --state .sdlc/state.yaml --phase <phase-number>
      ```
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
-   - **Confirm the sign-off questions first.** Each phase's exit gate carries questions only a person can answer, and the human ticks each one (in this conversation or in SDLC Studio — one shared record). Read where they stand:
+   - **Confirm the sign-off questions first.** Each phase's exit gate carries questions only a person can answer, and the human ticks each one (in this conversation or in Tōgō, the desktop app — one shared record). Read where they stand:
      ```bash
      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sign_off_confirmations.py status --state .sdlc/state.yaml --json
      ```

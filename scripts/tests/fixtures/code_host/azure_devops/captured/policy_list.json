@@ -1,0 +1,21 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "repos",
+  "policy",
+  "list",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1",
+  "--repository-id",
+  "b42a3a88-690a-4784-afbf-6891c5ac7fc1",
+  "--branch",
+  "master"
+ ],
+ "_secs": 1.4,
+ "value": []
+}

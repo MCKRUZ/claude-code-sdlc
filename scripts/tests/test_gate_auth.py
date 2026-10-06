@@ -309,3 +309,185 @@ class TestACredentialNothingReads:
         # actually look. Saying so without evidence would be the same sin in reverse.
         monkeypatch.setattr(ga.Path, "is_dir", lambda self: False)
         assert ga._any_pipeline_reads("ANYTHING") is True
+
+
+# ---------------------------------------------------------------------------
+# Azure DevOps (code-host providers, Wave 4) — additive; everything above is untouched
+# ---------------------------------------------------------------------------
+
+import io  # noqa: E402  (appended with the class below; the file above is byte-identical)
+import sys  # noqa: E402
+
+import ado_transport  # noqa: E402
+import code_host  # noqa: E402
+from tests.ado_fixtures import ADO_REMOTE, FakeAz  # noqa: E402
+
+GROUP_VARIABLES = {  # the captured shape: a dict keyed by variable name → {isSecret, value}
+    "5": {"CLAUDE_CODE_OAUTH_TOKEN": {"isSecret": True, "value": None}},
+    "6": {"OTHER": {"isSecret": False, "value": "x"}},
+}
+
+
+def _variables_for(args):
+    return GROUP_VARIABLES[args[args.index("--group-id") + 1]]
+
+
+class TestOnAzureDevOps:
+    """Azure Pipelines read their secrets from VARIABLE GROUPS, not repository secrets, so on
+    Azure DevOps `status` reads the variables in the groups the pipelines reference and
+    `set`/`clear` refuse with the exact manual az command (the value never on it — az prompts).
+    `gh` is never called on this path, and `az` is never called by a refusal."""
+
+    @pytest.fixture
+    def ado(self, tmp_path, monkeypatch):
+        ado_transport.clear_caches()
+        monkeypatch.delenv(code_host.ENV_VAR, raising=False)
+
+        def git_only(cmd, input=None, capture_output=True, text=True, check=False):
+            if cmd[:2] == ["git", "-C"]:
+                return subprocess.CompletedProcess(cmd, 0, ADO_REMOTE + "\n", "")
+            raise AssertionError(f"gh must not be called on Azure DevOps: {cmd}")
+        monkeypatch.setattr(ga.subprocess, "run", git_only)
+        monkeypatch.setattr(code_host, "origin_url", lambda root: ADO_REMOTE)  # ado_transport's read
+        pipelines = tmp_path / ".azuredevops" / "pipelines"
+        pipelines.mkdir(parents=True)
+        (pipelines / "grader.yml").write_text("variables:\n  - group: claude-gates\n", encoding="utf-8")
+        # Self-contained answers (not the shared fixture files): this test is about WHICH groups are
+        # read, so the group list is stated here beside the assertion that depends on it.
+        fake = FakeAz(answers={
+            "pipelines variable-group list": [{"id": 5, "name": "claude-gates", "variables": {}},
+                                              {"id": 6, "name": "unrelated", "variables": {}}],
+            "pipelines variable-group variable list": _variables_for,
+        })
+        monkeypatch.setattr(ado_transport, "az_json", fake)
+        yield fake
+        ado_transport.clear_caches()
+
+    def test_status_reads_only_the_variable_groups_the_pipelines_reference(self, tmp_path, ado):
+        result = ga.status(tmp_path)
+        assert result["repo"] == "contoso/Claims/claims-api"
+        assert result["configured"] == ["subscription"]
+        assert result["gates_can_sign_in"] is True and result["checked"] is True
+        assert result["variable_groups"] == ["claude-gates"]
+        listed = [c[c.index("--group-id") + 1] for c in ado.calls if "--group-id" in c]
+        assert listed == ["5"]            # `unrelated` (id 6) is not this project's business
+
+    def test_groups_that_cannot_be_listed_read_unknown_not_no(self, tmp_path, monkeypatch, ado):
+        monkeypatch.setattr(ado_transport, "az_json",
+                            FakeAz(fail={"variable-group list": "Please run 'az login' to setup account."}))
+        result = ga.status(tmp_path)
+        assert result["gates_can_sign_in"] is None and result["checked"] is False
+        assert result["configured"] == []
+        assert "az login" in result["detail"]
+        text = ga.format_status(result)
+        assert "NOT checked" in text and "fail closed" not in text
+
+    def test_set_refuses_with_the_manual_command_and_sends_nothing(self, tmp_path, ado):
+        before = {p for p in tmp_path.rglob("*")}
+        with pytest.raises(ga.GateAuthError) as e:
+            ga.set_credential(tmp_path, "subscription", GOOD_TOKEN)
+        assert e.value.kind == "unsupported_host"
+        msg = str(e.value)
+        assert ("az pipelines variable-group variable create --group-id <group-id> "
+                "--name CLAUDE_CODE_OAUTH_TOKEN --secret true "
+                "--org https://dev.azure.com/contoso --project Claims") in msg
+        assert "claude-gates" in msg                 # names the group the pipelines reference
+        assert "--value" not in msg and GOOD_TOKEN not in msg
+        assert ado.calls == []                       # a refusal makes no az call at all
+        assert {p for p in tmp_path.rglob("*")} == before
+
+    def test_set_still_validates_the_shape_first_so_a_bad_paste_is_a_bad_paste(self, tmp_path, ado):
+        with pytest.raises(ga.GateAuthError) as e:
+            ga.set_credential(tmp_path, "api-key", "nonsense-zzzq7")
+        assert e.value.kind == "bad_shape" and "zzzq7" not in str(e.value)
+
+    def test_clear_refuses_with_the_delete_command(self, tmp_path, ado):
+        with pytest.raises(ga.GateAuthError) as e:
+            ga.clear_credential(tmp_path, "api-key")
+        assert e.value.kind == "unsupported_host"
+        assert "az pipelines variable-group variable delete --group-id <group-id> --name ANTHROPIC_API_KEY --yes" in str(e.value)
+        assert ado.calls == []
+
+    def _main(self, monkeypatch, capsys, argv, stdin=""):
+        monkeypatch.setattr(code_host, "cli_state", lambda host, **k: ("available", "probed by a stub"))
+        monkeypatch.setattr(sys, "argv", ["gate_auth.py", *argv])
+        monkeypatch.setattr(sys, "stdin", io.StringIO(stdin))
+        rc = ga.main()
+        return rc, capsys.readouterr()
+
+    def test_main_set_exits_1_with_kind_and_host_block_and_never_echoes(self, tmp_path, monkeypatch, capsys, ado):
+        rc, out = self._main(monkeypatch, capsys, ["--repo", str(tmp_path), "--json", "set", "subscription"], GOOD_TOKEN)
+        assert rc == 1
+        doc = json.loads(out.out)
+        assert doc["ok"] is False and doc["refusal"]["kind"] == "unsupported_host"
+        assert "variable create" in doc["refusal"]["message"]
+        assert doc["host"] == {"name": "azure-devops", "source": "remote", "cli": "az",
+                               "cli_state": "available", "detail": f"from origin {ADO_REMOTE}"}
+        assert GOOD_TOKEN not in out.out and GOOD_TOKEN not in out.err
+
+    def test_main_set_text_mode_prints_the_command_on_stderr_and_exits_1(self, tmp_path, monkeypatch, capsys, ado):
+        rc, out = self._main(monkeypatch, capsys, ["--repo", str(tmp_path), "set", "subscription"], GOOD_TOKEN)
+        assert rc == 1
+        assert "Refused:" in out.err and "az pipelines variable-group variable create" in out.err
+        assert GOOD_TOKEN not in out.err
+
+    def test_main_status_json_carries_the_host_block_and_exits_0(self, tmp_path, monkeypatch, capsys, ado):
+        rc, out = self._main(monkeypatch, capsys, ["--repo", str(tmp_path), "--json", "status"])
+        assert rc == 0
+        doc = json.loads(out.out)
+        assert doc["configured"] == ["subscription"] and doc["checked"] is True
+        assert doc["host"]["name"] == "azure-devops" and doc["host"]["cli"] == "az"
+
+    def test_main_status_text_names_the_code_host(self, tmp_path, monkeypatch, capsys, ado):
+        rc, out = self._main(monkeypatch, capsys, ["--repo", str(tmp_path), "status"])
+        assert rc == 0
+        assert "Repository: contoso/Claims/claims-api" in out.out
+        assert "Code host: azure-devops (from remote)" in out.out
+
+    def test_host_flag_forces_azure_devops_on_an_unrecognised_remote(self, tmp_path, monkeypatch, capsys, ado):
+        # Both origin reads (this module's and ado_transport's) see a remote nobody can parse:
+        # the flag still picks the host, and with no org to read from the answer is "unknown".
+        unknown = "https://git.example.invalid/x/y.git"
+        monkeypatch.setattr(ga, "_origin_url", lambda root: unknown)
+        monkeypatch.setattr(code_host, "origin_url", lambda root: unknown)
+        ado_transport.clear_caches()
+        rc, out = self._main(monkeypatch, capsys, ["--repo", str(tmp_path), "--host", "azure-devops", "--json", "status"])
+        doc = json.loads(out.out)
+        assert rc == 0 and doc["host"]["source"] == "flag"
+        assert doc["gates_can_sign_in"] is None and doc["checked"] is False
+        assert code_host.CODE_HOST_FILE in doc["detail"]       # names the escape hatch
+        assert ado.calls == []                                 # nothing was asked of az without a scope
+
+    def test_the_github_path_still_uses_gh_and_never_az(self, tmp_path, monkeypatch):
+        monkeypatch.delenv(code_host.ENV_VAR, raising=False)
+        monkeypatch.setattr(ga.subprocess, "run", FakeGh(secrets=[ga.API_KEY_SECRET]))
+        fake = FakeAz()
+        monkeypatch.setattr(ado_transport, "az_json", fake)
+        result = ga.status(tmp_path)
+        assert result["configured"] == ["api-key"] and result["gates_can_sign_in"] is True
+        assert "checked" not in result and "host" not in result    # GitHub's output shape is unchanged
+        assert fake.calls == []
+
+    @pytest.mark.parametrize("url", [
+        "https://github.com/acme/widgets.git",
+        "git@github.com:acme/widgets.git",
+        ADO_REMOTE,
+        "git@ssh.dev.azure.com:v3/contoso/Claims/claims-api",
+        None,
+    ])
+    def test_the_detection_twin_agrees_with_code_host(self, tmp_path, monkeypatch, url):
+        monkeypatch.delenv(code_host.ENV_VAR, raising=False)
+        monkeypatch.setattr(code_host, "origin_url", lambda root: url)
+        monkeypatch.setattr(ga, "_origin_url", lambda root: url)
+        assert ga.detect_host(tmp_path) == code_host.detect_host(tmp_path)
+
+    def test_the_detection_twin_honours_the_env_and_file_overrides(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ga, "_origin_url", lambda root: "https://github.com/acme/widgets.git")
+        monkeypatch.setenv(code_host.ENV_VAR, "azure-devops")
+        assert ga.detect_host(tmp_path).source == "env"
+        monkeypatch.delenv(code_host.ENV_VAR)
+        (tmp_path / ".sdlc").mkdir()
+        (tmp_path / ".sdlc" / "code-host.yaml").write_text("host: azure-devops\n", encoding="utf-8")
+        det = ga.detect_host(tmp_path)
+        assert det.source == "file" and det.host == "azure-devops"
+        assert det.remote.host == "github"           # the parsed remote is kept for the record

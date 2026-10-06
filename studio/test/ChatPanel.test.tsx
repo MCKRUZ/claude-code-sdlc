@@ -653,3 +653,25 @@ describe('ChatPanel — replies are drawn as formatted text, and the panel can b
     localStorage.clear()
   })
 })
+
+describe('ChatPanel — Rules of Hooks across the placeholder boundary', () => {
+  it('survives stageId → null → stageId on the same fiber without a hook-order error (useRegisterDirty sits above the early return)', async () => {
+    installStudioMock()
+    const errors: unknown[] = []
+    const onError = (e: ErrorEvent) => { errors.push(e.error ?? e.message); e.preventDefault() }
+    window.addEventListener('error', onError)
+    try {
+      // Frame renders `<MemoChatPanel stageId={stageId ?? null}>` with no key, so this is the
+      // exact transition the app performs when `currentStageId` becomes undefined and back.
+      const { rerender } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+      expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
+      rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId={null} />)
+      expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy()
+      rerender(<ChatPanel status={status()} projectPath="/p" actor="" stageId="1" />)
+      await waitFor(() => expect(screen.getByText('Can see: demo, Discovery.')).toBeTruthy())
+      expect(errors).toEqual([])
+    } finally {
+      window.removeEventListener('error', onError)
+    }
+  })
+})

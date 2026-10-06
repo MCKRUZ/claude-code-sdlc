@@ -1,0 +1,12 @@
+  yes      Signed in to the code host?
+           as priya-n
+  yes      Can read this repository?
+           acme/app
+  yes      Can open pull requests?
+           permission: WRITE
+  yes      Is the default branch protected?
+           1 active rule set(s)
+  NO       Which checks does this project have?
+           no pipeline definitions found in .github/workflows
+  yes      Any check the playbook expects but is missing?
+           ci.yml, correctness.yml, dependency-scan.yml, grader.yml, security.yml

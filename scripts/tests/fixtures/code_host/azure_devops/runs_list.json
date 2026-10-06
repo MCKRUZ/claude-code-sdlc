@@ -1,0 +1,70 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "id": 901,
+      "buildNumber": "20260926.1",
+      "status": "completed",
+      "result": "failed",
+      "reason": "pullRequest",
+      "queueTime": "2026-09-26T10:00:00Z",
+      "sourceBranch": "refs/pull/42/merge",
+      "sourceVersion": "abc123",
+      "definition": {
+        "id": 12,
+        "name": "build-and-test"
+      },
+      "_links": {
+        "web": {
+          "href": "https://dev.azure.com/contoso/Claims/_build/results?buildId=901"
+        }
+      }
+    },
+    {
+      "id": 902,
+      "buildNumber": "20260926.2",
+      "status": "completed",
+      "result": "succeeded",
+      "reason": "individualCI",
+      "queueTime": "2026-09-26T11:00:00Z",
+      "sourceBranch": "refs/heads/main",
+      "sourceVersion": "def456",
+      "definition": {
+        "id": 12,
+        "name": "build-and-test"
+      },
+      "_links": {
+        "web": {
+          "href": "https://dev.azure.com/contoso/Claims/_build/results?buildId=902"
+        }
+      }
+    },
+    {
+      "id": 903,
+      "buildNumber": "20260926.3",
+      "status": "inProgress",
+      "result": null,
+      "reason": "manual",
+      "queueTime": "2026-09-26T12:00:00Z",
+      "sourceBranch": "refs/heads/spec/0042-duplicate-claim",
+      "definition": {
+        "id": 12,
+        "name": "build-and-test"
+      }
+    },
+    {
+      "id": 904,
+      "buildNumber": "20260926.4",
+      "status": "completed",
+      "result": "canceled",
+      "reason": "batchedCI",
+      "queueTime": "2026-09-26T13:00:00Z",
+      "sourceBranch": "refs/heads/main",
+      "definition": {
+        "id": 12,
+        "name": "build-and-test"
+      }
+    }
+  ]
+}

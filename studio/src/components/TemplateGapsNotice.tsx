@@ -1,3 +1,5 @@
+import { Notice } from '../ui'
+
 /** The plugin reports a missing required section as `section 'Data Model' not found`. */
 export function missingSectionNames(warnings: string[]): string[] {
   return warnings.map((w) => /^section '(.*)' not found$/.exec(w)?.[1] ?? w)
@@ -11,10 +13,12 @@ export function TemplateGapsNotice({ warnings }: { warnings: string[] }) {
   if (warnings.length === 0) return null
   const names = missingSectionNames(warnings)
   return (
-    <div data-testid="template-gaps" className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-      <p className="font-medium">
-        {`This document is missing ${names.length} ${names.length === 1 ? 'section' : 'sections'} its template expects.`}
-      </p>
+    <Notice
+      tone="warn"
+      data-testid="template-gaps"
+      className="text-sm"
+      title={`This document is missing ${names.length} ${names.length === 1 ? 'section' : 'sections'} its template expects.`}
+    >
       <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs">
         {names.map((n) => <li key={n}>{n}</li>)}
       </ul>
@@ -23,6 +27,6 @@ export function TemplateGapsNotice({ warnings }: { warnings: string[] }) {
         content is in the document under a different heading, renaming the heading to the template&apos;s
         wording will bring it in.
       </p>
-    </div>
+    </Notice>
   )
 }

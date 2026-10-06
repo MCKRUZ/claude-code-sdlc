@@ -1,0 +1,186 @@
+// @vitest-environment jsdom
+// The single keydown listener: chords land within their window and not after it, single keys
+// are suppressed while typing unless the binding says `inInputs`, the primary modifier follows
+// the platform, and Esc walks its layers and never goes back while something is being edited.
+import { act, render } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { chordFromEvent, kbdKeys, normalizeChord, SHORTCUT_MAP } from '../src/shortcuts/shortcutMap'
+import { useShortcuts, isEditableTarget } from '../src/shortcuts/useShortcuts'
+import type { ShortcutHandlers, UseShortcutsOptions } from '../src/shortcuts/useShortcuts'
+import { resetStageTabStore, SPINE_COLLAPSED_STORAGE_KEY, stageTabStore, useStageTabRequest, useSpineCollapsed } from '../src/stores/stageTabStore'
+
+function Host(props: UseShortcutsOptions) {
+  useShortcuts(props)
+  return <div><input aria-label="search" /><button>b</button></div>
+}
+
+function press(key: string, init: KeyboardEventInit & { target?: Element } = {}) {
+  const { target, ...rest } = init
+  const ev = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...rest })
+  ;(target ?? document.body).dispatchEvent(ev)
+  return ev
+}
+
+function setPlatform(platform: string) {
+  Object.defineProperty(window.navigator, 'platform', { value: platform, configurable: true })
+}
+
+describe('chord vocabulary', () => {
+  it('normalises modifier order and letter case', () => {
+    expect(normalizeChord('Shift+Mod+k')).toBe('Mod+Shift+K')
+    expect(normalizeChord('g')).toBe('g')
+  })
+  it('reads Mod from ⌘ on a Mac and Ctrl elsewhere; drops Shift for shifted punctuation', () => {
+    const e = { key: 'k', metaKey: true, ctrlKey: false, altKey: false, shiftKey: false }
+    expect(chordFromEvent(e, true)).toBe('Mod+K')
+    expect(chordFromEvent(e, false)).toBe('Meta+K')
+    expect(chordFromEvent({ ...e, metaKey: false, ctrlKey: true }, false)).toBe('Mod+K')
+    expect(chordFromEvent({ key: '?', metaKey: false, ctrlKey: false, altKey: false, shiftKey: true }, true)).toBe('?')
+    expect(chordFromEvent({ key: 'Shift', metaKey: false, ctrlKey: false, altKey: false, shiftKey: true }, true)).toBeNull()
+    expect(kbdKeys('Mod+K', true)).toEqual(['⌘', 'K'])
+    expect(kbdKeys('Mod+K', false)).toEqual(['Ctrl', 'K'])
+  })
+  it('the map avoids the Electron and OS defaults', () => {
+    const singles = SHORTCUT_MAP.filter((b) => b.keys.length === 1).map((b) => normalizeChord(b.keys[0]))
+    for (const forbidden of ['Mod+W', 'Mod+Q', 'Mod+R', 'Mod+1', 'Mod+9', 'F5']) expect(singles).not.toContain(forbidden)
+  })
+})
+
+describe('useShortcuts', () => {
+  afterEach(() => setPlatform('MacIntel'))
+
+  function mount(handlers: ShortcutHandlers, over: Partial<UseShortcutsOptions> = {}) {
+    return render(<Host handlers={handlers} scopes={['project', 'stageHome']} {...over} />)
+  }
+
+  it('runs a two-key chord inside the window and forgets it after 800 ms', () => {
+    vi.useFakeTimers()
+    setPlatform('MacIntel')
+    const goBuildView = vi.fn()
+    mount({ goBuildView })
+    press('g')
+    vi.advanceTimersByTime(500)
+    press('b')
+    expect(goBuildView).toHaveBeenCalledWith('board')
+    press('g')
+    vi.advanceTimersByTime(900)
+    press('s')
+    expect(goBuildView).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('g then a digit goes to that phase id; g then . goes to close', () => {
+    const goStage = vi.fn()
+    mount({ goStage })
+    press('g'); press('2')
+    press('g'); press('.')
+    expect(goStage.mock.calls.map((c) => c[0])).toEqual(['2', 'close'])
+  })
+
+  it('suppresses single keys while typing, except bindings marked inInputs', () => {
+    setPlatform('MacIntel')
+    const openPalette = vi.fn()
+    const stageTab = vi.fn()
+    const { container } = mount({ openPalette, stageTab })
+    const field = container.querySelector('input')!
+    field.focus()
+    press('/', { target: field })
+    press('1', { target: field })
+    expect(openPalette).not.toHaveBeenCalled()
+    expect(stageTab).not.toHaveBeenCalled()
+    press('k', { target: field, metaKey: true })
+    expect(openPalette).toHaveBeenCalledTimes(1)
+    press('/', { target: container.querySelector('button')! })
+    expect(openPalette).toHaveBeenCalledTimes(2)
+    expect(isEditableTarget(container.querySelector('button'))).toBe(false)
+  })
+
+  it('uses Ctrl as Mod on Windows', () => {
+    setPlatform('Win32')
+    const toggleConsole = vi.fn()
+    mount({ toggleConsole })
+    press('j', { ctrlKey: true })
+    expect(toggleConsole).toHaveBeenCalledTimes(1)
+    press('j', { metaKey: true })
+    expect(toggleConsole).toHaveBeenCalledTimes(1)
+  })
+
+  it('a binding outside the live scopes does nothing', () => {
+    const stepDocument = vi.fn()
+    mount({ stepDocument })
+    press('ArrowDown', { altKey: true })
+    expect(stepDocument).not.toHaveBeenCalled()
+  })
+
+  it('Esc: layers first, then back — and never back while dirty', () => {
+    const closeDialog = vi.fn(() => false)
+    const clearSearch = vi.fn(() => true)
+    const onBack = vi.fn()
+    let dirty = false
+    mount({}, { escLayers: [closeDialog, clearSearch], onBack, isDirty: () => dirty })
+    let ev = press('Escape')
+    expect(closeDialog).toHaveBeenCalledTimes(1)
+    expect(clearSearch).toHaveBeenCalledTimes(1)
+    expect(onBack).not.toHaveBeenCalled()
+    expect(ev.defaultPrevented).toBe(true)
+    clearSearch.mockReturnValue(false)
+    press('Escape')
+    expect(onBack).toHaveBeenCalledTimes(1)
+    dirty = true
+    ev = press('Escape')
+    expect(onBack).toHaveBeenCalledTimes(1)
+    expect(ev.defaultPrevented).toBe(false)
+  })
+
+  it('leaves an event another handler already consumed alone', () => {
+    const openPalette = vi.fn()
+    mount({ openPalette })
+    const ev = new KeyboardEvent('keydown', { key: '/', bubbles: true, cancelable: true })
+    ev.preventDefault()
+    document.body.dispatchEvent(ev)
+    expect(openPalette).not.toHaveBeenCalled()
+  })
+})
+
+describe('stageTabStore (what 1 / 2 / 3 and the Spine row write)', () => {
+  afterEach(() => {
+    window.localStorage.removeItem(SPINE_COLLAPSED_STORAGE_KEY)
+    resetStageTabStore()
+  })
+
+  it('a request carries the tab by name and a fresh nonce each time, so a repeat press is a new event', () => {
+    expect(stageTabStore.tabRequest).toBeNull()
+    stageTabStore.request(2)
+    expect(stageTabStore.tabRequest).toEqual({ tab: 'documents', nonce: 1 })
+    stageTabStore.request('documents')
+    expect(stageTabStore.tabRequest).toEqual({ tab: 'documents', nonce: 2 })
+    stageTabStore.request(3)
+    expect(stageTabStore.tabRequest?.tab).toBe('guide')
+  })
+
+  it('re-renders a subscriber on request, and the digit shortcut reaches it through the handler', () => {
+    const seen: string[] = []
+    function Probe() {
+      const req = useStageTabRequest()
+      seen.push(req ? `${req.tab}#${req.nonce}` : 'none')
+      return null
+    }
+    render(<><Host handlers={{ stageTab: (t) => stageTabStore.request(t) }} scopes={['project', 'stageHome']} /><Probe /></>)
+    // A store write outside React's own event path needs act() to flush the subscriber's render.
+    act(() => { press('1') })
+    act(() => { press('3') })
+    expect(seen.slice(-2)).toEqual(['workflow#1', 'guide#2'])
+  })
+
+  it('the Spine toggle persists under studio.spine.collapsed and notifies', () => {
+    const seen: boolean[] = []
+    function Probe() { seen.push(useSpineCollapsed()); return null }
+    render(<Probe />)
+    expect(stageTabStore.spineCollapsed).toBe(false)
+    act(() => { stageTabStore.toggleSpineCollapsed() })
+    expect(window.localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY)).toBe('1')
+    act(() => { stageTabStore.toggleSpineCollapsed() })
+    expect(window.localStorage.getItem(SPINE_COLLAPSED_STORAGE_KEY)).toBeNull()
+    expect(seen).toEqual([false, true, false])
+  })
+})

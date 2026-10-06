@@ -37,14 +37,22 @@ export interface ToolStatus {
   /** Plugin scripts only: how the directory was chosen — the checkout Studio ships in, the
    * marketplace cache, or a path the person typed. */
   source?: 'sibling' | 'cache' | 'override'
+  /** az only: whether the azure-devops extension is installed. `null` when az itself was not
+   * found or the extension probe could not run — not knowing is never reported as "missing". */
+  extension?: boolean | null
 }
 
+/** What the machine has. claude, uv, pluginScripts and git are REQUIRED to open a project; gh and
+ * az are not (code-host providers, D4) — a project opens without either, and what a missing CLI
+ * costs is said per feature from `ConnectionInfo.cli`. The renderer owns that gate (Wave 7);
+ * nothing in the main process treats either code-host CLI as blocking. */
 export interface ToolingReport {
   claude: ToolStatus
   uv: ToolStatus
   pluginScripts: ToolStatus
   git: ToolStatus
   gh: ToolStatus
+  az: ToolStatus
 }
 
 export interface RecentProject {
@@ -93,6 +101,7 @@ export interface Settings {
   pluginScriptsPathOverride?: string
   gitPathOverride?: string
   ghPathOverride?: string
+  azPathOverride?: string
   /** Keyed by project path. */
   projectSyncState?: Record<string, ProjectSyncState>
   /** Keyed by `${projectPath}\u0000${stageId}` — spec 0016's chat transcripts. Local-only, by
@@ -150,15 +159,45 @@ export interface RunSetupResult {
 
 // --- Repository sync (spec 0009) ---------------------------------------------------------
 
+/** The code-host CLI a project needs, and what the main process actually established about it.
+ * Honesty rules (code-host-providers.md §8): `found` is a fact from tooling detection;
+ * `extension` is null until probed (gh has none — always null there); `signedIn` is 'unknown'
+ * until a probe ran and 'no' only when the CLI itself said so. `reason` is the exact §7.1
+ * sentence for whatever is wrong, when something is — the renderer's one reason helper
+ * (shared/codeHostModel.ts hostFeatureReason) matches on it. */
+export interface CodeHostCliStatus {
+  name: 'gh' | 'az' | null
+  found: boolean
+  extension: boolean | null
+  signedIn: 'yes' | 'no' | 'unknown'
+  reason?: string
+}
+
 export interface ConnectionInfo {
   repo: string
   branch: string
   localFolder: string
-  /** The signed-in code-host account (`gh api user`), or null when unknown/unauthenticated. */
+  /** Who is acting, in the roster's own form when the roster knows them: the `@handle`-style
+   * roster handle when `.sdlc/team.yaml` maps the signed-in identity to one, otherwise the
+   * host's identity as-is (a GitHub login, an Azure DevOps UPN), otherwise the name a person
+   * typed for this session (D-OWNER-5 — only when the host could not identify them). Null when
+   * nobody could be identified; `cli.signedIn` and `cli.reason` then say why. */
   account: string | null
+  /** Where `account` came from. 'typed' is held in the main process for this session only. */
+  accountSource: 'roster' | 'host' | 'typed' | null
+  /** The roster handle the signed-in identity resolved to, or null when the roster has no row
+   * for them (or there is no roster). Carried separately so a screen can show both halves:
+   * "signed in as sam@corp.com (roster: @sam-k)". */
+  rosterHandle: string | null
+  /** Which code host this project is on and how that was decided — the same precedence the
+   * plugin scripts use (env → .sdlc/code-host.yaml → origin remote → harness manifest → none). */
+  host: 'github' | 'azure-devops' | 'none'
+  hostSource: 'flag' | 'env' | 'file' | 'remote' | 'manifest' | 'default'
+  cli: CodeHostCliStatus
   lastPulledAt: string | null
-  /** Best-effort display only (a `gh api .../rulesets` probe) — the actual gate is always
-   * "did the direct push get rejected," never this value. See sync.ts. */
+  /** Best-effort display only (a rulesets / branch-policy probe) — the actual gate is always
+   * "did the direct push get rejected," never this value. Null means "couldn't read", which is
+   * not the same as "no". See sync.ts. */
   branchProtected: boolean | null
 }
 
@@ -217,6 +256,10 @@ export interface SaveResult {
   prUrl?: string
   entries: ConsoleEntry[]
   error?: string
+  /** Something the save did differently from what was asked, in words for the toast: the
+   * reviewer could not be resolved to an email on Azure DevOps, or the host will not complete
+   * the pull request itself (D-OWNER-8). Only ever present on an `ok: true` result. */
+  note?: string
 }
 
 // --- Documents (spec 0010) ---------------------------------------------------------------
@@ -1069,6 +1112,9 @@ export interface SettingsSection {
 
 export interface RosterPerson {
   handle: string
+  /** The sign-in identity on Azure DevOps (a UPN), where pull requests name people by email
+   * rather than handle. This is the only bridge between a host identity and a roster handle. */
+  email?: string
   name?: string
   team?: string
   roles?: string[]
@@ -1477,7 +1523,19 @@ export type SprintReportResult = { ok: true; relOutput: string } | { ok: false; 
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
-  setToolOverride(kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', path: string): Promise<Settings>
+  setToolOverride(kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh' | 'az', path: string): Promise<Settings>
+  /** D-OWNER-5: a name typed by the person, accepted ONLY while the code host cannot say who
+   * they are (PAT-only, signed out). Validated in the main process (trimmed, 2–80 characters,
+   * one line, not an AI-looking name) and held in memory for this process only — never written
+   * to settings. Resolves to the refreshed connection info; rejects with the reason when the
+   * name is refused or the host already identifies the person. */
+  setTypedActor(projectPath: string, name: string): Promise<ConnectionInfo>
+  /** Pin which code host this repository is on — writes `.sdlc/code-host.yaml` through
+   * `set_setting.py code-host` (the repository file IS the override; nothing is kept in
+   * Studio's own settings). The main process validates the host, forgets what it had probed
+   * about the old host, and resolves to the refreshed connection info. Rejects with the
+   * plugin's own refusal sentence when the write was refused — the file is then untouched. */
+  setCodeHost(projectPath: string, host: 'github' | 'azure-devops' | 'none'): Promise<ConnectionInfo>
 
   pickFolder(): Promise<string | null>
   /** Makes `<parent>/<name>` and starts version tracking in it, so a person with no folder yet

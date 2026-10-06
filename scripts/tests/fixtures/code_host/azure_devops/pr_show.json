@@ -1,0 +1,51 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "pullRequestId": 42,
+  "status": "active",
+  "isDraft": false,
+  "sourceRefName": "refs/heads/spec/0042-duplicate-claim",
+  "targetRefName": "refs/heads/main",
+  "creationDate": "2026-09-20T09:00:00.000Z",
+  "closedDate": null,
+  "createdBy": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "displayName": "Person 1",
+    "uniqueName": "person1@example.com"
+  },
+  "reviewers": [
+    {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "displayName": "Person 2",
+      "uniqueName": "person2@example.com",
+      "vote": 0,
+      "isRequired": true,
+      "isContainer": false,
+      "hasDeclined": false,
+      "isFlagged": false
+    },
+    {
+      "id": "00000000-0000-0000-0000-000000000004",
+      "displayName": "Person 4",
+      "uniqueName": "person4@example.com",
+      "vote": 0,
+      "isRequired": false,
+      "isContainer": true,
+      "hasDeclined": false,
+      "isFlagged": false
+    }
+  ],
+  "labels": [],
+  "lastMergeCommit": null,
+  "repository": {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "claims-api",
+    "defaultBranch": "refs/heads/main",
+    "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+    "project": {
+      "id": "00000000-0000-0000-0000-000000000002",
+      "name": "Claims"
+    }
+  },
+  "url": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000001/pullRequests/42",
+  "title": "Spec 42"
+}

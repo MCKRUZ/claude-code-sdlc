@@ -1,0 +1,11 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "ANTHROPIC_API_KEY": {
+    "isSecret": true,
+    "value": null
+  },
+  "CLAUDE_CODE_OAUTH_TOKEN": {
+    "isSecret": true,
+    "value": null
+  }
+}

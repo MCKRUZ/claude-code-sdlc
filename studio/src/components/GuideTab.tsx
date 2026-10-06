@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { StageGuide, StageReadiness } from '../../shared/types'
+import { Card, Eyebrow, SkeletonBlock } from '../ui'
 import { slashCommand } from '../workflowSteps'
 import { MarkdownView } from './MarkdownView'
 
@@ -39,15 +40,24 @@ function GuideText({ definition }: { definition: string | null }) {
     return () => { cancelled = true }
   }, [definition])
 
-  if (definition === null) return <p className="text-sm text-slate-400">{NO_GUIDANCE}</p>
-  if (loaded?.definition !== definition) return <p className="text-sm text-slate-400">Reading the guidance…</p>
+  if (definition === null) return <p className="text-sm text-ink-3">{NO_GUIDANCE}</p>
+  if (loaded?.definition !== definition) {
+    // The sentence stays (tests and readers find it); the skeleton only sits beside it (#5).
+    return (
+      <div role="status" aria-busy="true" className="space-y-3">
+        <p className="text-sm text-ink-3">Reading the guidance…</p>
+        <SkeletonBlock lines={4} />
+      </div>
+    )
+  }
   if (!loaded.guide.ok || loaded.guide.markdown === undefined) {
-    return <p className="text-sm text-slate-400">{NO_GUIDANCE}</p>
+    return <p className="text-sm text-ink-3">{NO_GUIDANCE}</p>
   }
   return (
-    <div data-testid="guide-markdown" className="rounded-xl border border-slate-200 bg-white p-4">
+    // Prose gets prose leading (14/22) and a little more room than a data card.
+    <Card data-testid="guide-markdown" className="p-5 text-base" padding="none">
       <MarkdownView source={loaded.guide.markdown} />
-    </div>
+    </Card>
   )
 }
 
@@ -56,14 +66,14 @@ function ActivityCommands({ readiness }: { readiness: StageReadiness }) {
   if (activities.length === 0) return null
   return (
     <section aria-labelledby="guide-activities-title">
-      <h3 id="guide-activities-title" className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+      <Eyebrow as="h3" id="guide-activities-title" className="font-semibold text-ink-3">
         Everything you can do in this stage
-      </h3>
+      </Eyebrow>
       <ul className="mt-2 space-y-1">
         {activities.map((a) => (
-          <li key={a.id} data-testid="guide-activity" data-activity-id={a.id} className="text-sm text-slate-800">
+          <li key={a.id} data-testid="guide-activity" data-activity-id={a.id} data-reveal="" className="text-sm text-ink-1">
             {a.label}
-            {a.command && <> <code className="rounded bg-slate-100 px-1 py-0.5 text-xs text-slate-700">{slashCommand(a.command)}</code></>}
+            {a.command && <> <code className="rounded bg-surface-2 px-1 py-0.5 text-code text-ink-2">{slashCommand(a.command)}</code></>}
           </li>
         ))}
       </ul>

@@ -641,3 +641,128 @@ class TestReportAllOnlyListsSpecFiles:
         rows = ss.report_all(tmp_path)["specs"]
         assert [r["path"] for r in rows] == ["0099-broken.md"]
         assert "frontmatter" in rows[0]["error"]
+
+
+class TestOnAzureDevOps:
+    """Additive (code-host providers, Wave 3): the same report over `ado_import`, driven by FakeAz
+    on the CAPTURED fixtures. `gh` is never called and bulk mode never runs git; the classes above
+    are untouched and the GitHub text is pinned by test_gh_argv_golden.py."""
+
+    BRANCH = "spec/0042-duplicate-claim"
+
+    @pytest.fixture(autouse=True)
+    def _ado(self, monkeypatch):
+        import ado_import
+        import ado_transport
+        import code_host
+        from tests.ado_fixtures import ADO_REMOTE, FakeAz, load
+        ado_import.clear_caches()
+        monkeypatch.delenv(code_host.ENV_VAR, raising=False)
+        monkeypatch.setattr(code_host, "origin_url", lambda root: ADO_REMOTE)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: pytest.fail("gh was called on an Azure DevOps repository"))
+        monkeypatch.setattr(ss, "run_git", lambda *a, **k: pytest.fail("bulk mode ran git"))
+        self.az = FakeAz()
+        # The captured PRs sit on the anonymised `branch-x` (the newest is active); here they are
+        # re-labelled onto the spec's branch (handoff.branch_name_for) so the board can match them.
+        # Derived, and said so.
+        self.prs = [{**p, "sourceRefName": f"refs/heads/{self.BRANCH}"} for p in load("pr_list")]
+        self.az.answers["repos pr list"] = lambda args: (
+            self.prs if "--source-branch" not in args or args[args.index("--source-branch") + 1] == self.BRANCH else [])
+        monkeypatch.setattr(ado_transport, "az_json", self.az)
+        yield
+        ado_import.clear_caches()
+
+    def _roster(self, repo):
+        (repo / ".sdlc").mkdir(exist_ok=True)
+        (repo / ".sdlc" / "team.yaml").write_text(
+            "people:\n  - handle: '@priya-n'\n    name: Priya\n    team: claims\n    roles: [checker]\n"
+            "    email: person2@example.com\nteams:\n  - name: claims\n    lead: '@priya-n'\n", encoding="utf-8")
+
+    def test_single_spec_is_read_through_az_and_carries_the_host_block(self, tmp_path):
+        spec = _write_spec(tmp_path)
+        import ado_import
+        from tests.ado_fixtures import load
+        result = ss.report_status(tmp_path, spec)
+        pr = result["pull_request"]
+        newest = max(self.prs, key=lambda p: p["pullRequestId"])  # the captured branch's newest PR is active
+        assert newest["status"] == "active"
+        assert result["code_host_available"] is True and pr["number"] == newest["pullRequestId"] and pr["state"] == "OPEN"
+        # Captured: `pr policy list` on the active PR is [] — no policy on its target branch, so no checks (not "unknown").
+        assert sorted(c["name"] for c in pr["checks"]) == sorted(c["name"] for c in ado_import.map_checks(load("pr_policy_list")))
+        assert pr["waiting_on"] == "waiting for the grader to run"  # no check named `grader` among the policies
+        assert pr["url"] == f"https://dev.azure.com/contoso/Claims/_git/claims-api/pullrequest/{newest['pullRequestId']}"
+        assert result["host"] == {"name": "azure-devops", "source": "remote", "cli": "az", "cli_state": "available",
+                                  "detail": "from origin https://dev.azure.com/contoso/Claims/_git/claims-api"}
+        text = ss.format_report(result)
+        assert text.splitlines()[-1] == "Code host: azure-devops (from origin)"
+        assert any(c[:4] == ["repos", "pr", "policy", "list"] for c in self.az.calls)
+
+    def test_approvals_carry_a_null_time_and_the_roster_handle(self, tmp_path):
+        self._roster(tmp_path)
+        approved = {**self.prs[0], "reviewers": [{**self.prs[0]["reviewers"][0], "vote": 10}]}  # person2 approves (derived)
+        self.az.answers["repos pr list"] = lambda args: [approved]
+        result = ss.report_status(tmp_path, _write_spec(tmp_path))
+        assert result["pull_request"]["approvals"] == [{"by": "person2@example.com", "at": None, "handle": "@priya-n"}]
+        text = ss.format_report(result)
+        assert "  Approved by: @priya-n (person2@example.com) (time not recorded by Azure DevOps)" in text
+
+    def test_board_rows_past_the_checks_cap_say_live_checks_not_read(self, tmp_path, monkeypatch):
+        import ado_import
+        monkeypatch.setattr(ado_import, "ADO_CHECKS_MAX", 0)
+        self._roster(tmp_path)
+        _write_spec(tmp_path)
+        result = ss.report_all(tmp_path)
+        assert result["code_host_available"] is True and result["host"]["name"] == "azure-devops"
+        pr = result["specs"][0]["pull_request"]
+        assert pr["waiting_on"] == "live checks not read for this row"
+        assert pr["updated_at"] is None  # GitPullRequest has no last-moved field; "unknown", not creationDate
+        assert pr["waiting_on_handle"] == "@priya-n"  # the roster handle, not the UPN
+        # The review-request moment comes from the ReviewersUpdate thread (captured), so an age IS known here.
+        assert "wait_hours" in pr and pr["wait_hours"] > 0 and isinstance(pr["over_alarm"], bool)
+        assert not any(c[:4] == ["repos", "pr", "policy", "list"] for c in self.az.calls)
+        text = ss.format_all_report(result)
+        assert "live checks not read for this row" in text and text.splitlines()[-1] == "Code host: azure-devops (from origin)"
+
+    def test_board_rows_under_the_cap_read_the_ladder(self, tmp_path):
+        _write_spec(tmp_path)
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert pr["waiting_on"] == "waiting for the grader to run"
+        assert pr["waiting_on_handle"] == "@person2@example.com"  # no roster: the UPN is what is known
+
+    def test_no_request_timestamp_means_the_keys_are_absent_not_zero(self, tmp_path):
+        from tests.ado_fixtures import load
+        self.az.answers["devops invoke git pullRequestThreads"] = load("pr_threads_active")  # RefUpdate only
+        _write_spec(tmp_path)
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert "wait_hours" not in pr and "over_alarm" not in pr
+        assert ss.format_all_report(ss.report_all(tmp_path)).count("h]") == 0
+
+    def test_an_az_failure_is_code_host_available_false_with_the_az_detail(self, tmp_path):
+        self.az.fail["repos pr list"] = "ERROR: Please run 'az login' to setup account."
+        result = ss.report_status(tmp_path, _write_spec(tmp_path))
+        assert result["code_host_available"] is False and "az login" in result["error"]
+        assert result["host"]["cli_state"] == "signed_out" and result["host"]["cli"] == "az"
+        text = ss.format_report(result)
+        assert "Code-host data unavailable" in text and text.splitlines()[-1] == "Code host: azure-devops (from origin)"
+        board = ss.report_all(tmp_path)
+        assert board["code_host_available"] is False and board["specs"][0]["pull_request"] is None
+        assert board["host"]["cli_state"] == "signed_out"
+
+    def test_no_pull_request_is_a_clean_answer(self, tmp_path):
+        self.az.answers["repos pr list"] = lambda args: []
+        result = ss.report_status(tmp_path, _write_spec(tmp_path))
+        assert result["code_host_available"] is True and result["pull_request"] is None
+        assert "No pull request found for this branch." in ss.format_report(result)
+
+    def test_reviewer_handle_prefers_the_roster_handle(self):
+        assert ss._reviewer_handle({"login": "person2@example.com", "handle": "@priya-n"}) == "priya-n"
+        assert ss._reviewer_handle({"login": "person2@example.com", "handle": None}) == "person2@example.com"
+        assert ss._reviewer_handle({"login": "priya-n"}) == "priya-n"  # gh entries: unchanged
+
+    def test_host_flag_github_on_an_ado_remote_uses_gh(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        _write_spec(tmp_path)
+        result = ss.report_all(tmp_path, host="github")
+        assert result["host"]["name"] == "github" and result["host"]["source"] == "flag"
+        assert not self.az.calls and result["specs"][0]["pull_request"] is None
+        assert "Code host:" not in ss.format_all_report(result)

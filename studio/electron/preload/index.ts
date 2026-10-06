@@ -22,6 +22,8 @@ const studio: StudioApi = {
   runSetup: (projectPath, profileId) => ipcRenderer.invoke('studio:runSetup', projectPath, profileId),
 
   getConnectionInfo: (projectPath) => ipcRenderer.invoke('studio:getConnectionInfo', projectPath),
+  setTypedActor: (projectPath, name) => ipcRenderer.invoke('studio:setTypedActor', projectPath, name),
+  setCodeHost: (projectPath, host) => ipcRenderer.invoke('studio:setCodeHost', projectPath, host),
   pull: (projectPath) => ipcRenderer.invoke('studio:pull', projectPath),
   resolveClash: (projectPath, filePath, sectionKey, choice, combinedText) =>
     ipcRenderer.invoke('studio:resolveClash', projectPath, filePath, sectionKey, choice, combinedText),

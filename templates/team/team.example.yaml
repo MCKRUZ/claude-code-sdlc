@@ -7,6 +7,10 @@
 # developer: drives the agent, approves the plan; checker: non-author approval; security:
 # named sign-off on HIGH specs). This roster never decides WHO must approve a given change —
 # that stays with branch protection on the code host.
+#
+# `email` is optional and matters only when the repository is on Azure DevOps, where a pull
+# request names people by sign-in identity (UPN) rather than by handle. It maps that identity
+# back to the handle; nothing ever guesses it from a name. Unique across the roster.
 version: "1.0"
 
 teams:
@@ -18,6 +22,7 @@ teams:
 people:
   - handle: "@priya-n"
     name: "Priya Nair"
+    email: "priya.nair@example.com"
     team: claims
     roles: [owner, developer, lead]
     signs_off: ["1", "2", "build"]

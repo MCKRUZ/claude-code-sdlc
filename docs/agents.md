@@ -262,7 +262,7 @@ Cross-document analysis for discovery: finds where the intake corpus disagrees w
 
 ### 2.9 document-summarizer
 
-Writes the summary of ONE document in the intake corpus, to `templates/phases/00-discovery/document-summary.md` and the catalog's `summary_budget_tokens`. Spawned once per document by `/sdlc-intake` (Phase 0 Step 0c), in priority order, and by SDLC Studio's *Summarise the documents* button.
+Writes the summary of ONE document in the intake corpus, to `templates/phases/00-discovery/document-summary.md` and the catalog's `summary_budget_tokens`. Spawned once per document by `/sdlc-intake` (Phase 0 Step 0c), in priority order, and by Tōgō (the desktop app)'s *Summarise the documents* button.
 
 **Produces:** `.sdlc/context/intake/DOC-NNN-<slug>.md` — overview, purpose / audience / scope, extractable requirements, key terms, relevance. A document over ~100K tokens is read by its opening, closing and headings and the summary says "Partial extraction".
 

@@ -1,0 +1,477 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "devops",
+  "invoke",
+  "--area",
+  "git",
+  "--resource",
+  "pullRequestThreads",
+  "--route-parameters",
+  "project=repo-1",
+  "repositoryId=32259df1-7c26-4c42-b228-092bae386a79",
+  "pullRequestId=40236",
+  "--api-version",
+  "7.1",
+  "--org",
+  "https://dev.azure.com/contoso"
+ ],
+ "_secs": 1.3,
+ "value": {
+  "continuation_token": null,
+  "count": 6,
+  "value": [
+   {
+    "_links": {
+     "repository": {
+      "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+     },
+     "self": {
+      "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237939"
+     }
+    },
+    "comments": [
+     {
+      "_links": {
+       "pullRequests": {
+        "href": "https://dev.azure.com/contoso/_apis/git/pullRequests/40236"
+       },
+       "repository": {
+        "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+       },
+       "self": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237939/comments/1"
+       },
+       "threads": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237939"
+       }
+      },
+      "author": {
+       "_links": {
+        "avatar": {
+         "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA"
+        }
+       },
+       "descriptor": "s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+       "displayName": "Microsoft.VisualStudio.Services.TFS",
+       "id": "00000000-0000-0000-0000-000000000029",
+       "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+       "uniqueName": "",
+       "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000029"
+      },
+      "commentType": "system",
+      "content": "The reference refs/heads/branch-x was updated.",
+      "id": 1,
+      "lastContentUpdatedDate": "2026-10-02T15:52:05.557Z",
+      "lastUpdatedDate": "2026-10-02T15:52:05.557Z",
+      "parentCommentId": 0,
+      "publishedDate": "2026-10-02T15:52:05.557Z",
+      "usersLiked": []
+     }
+    ],
+    "id": 237939,
+    "identities": {
+     "1": {
+      "_links": {
+       "avatar": {
+        "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+       }
+      },
+      "descriptor": "aad.REDACTED",
+      "displayName": "Person 2",
+      "id": "00000000-0000-0000-0000-000000000005",
+      "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
+      "uniqueName": "person2@example.com",
+      "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+     }
+    },
+    "isDeleted": false,
+    "lastUpdatedDate": "2026-10-02T15:52:05.557Z",
+    "properties": {
+     "CodeReviewRefName": {
+      "$type": "System.String",
+      "$value": "refs/heads/branch-x"
+     },
+     "CodeReviewRefNewCommits": {
+      "$type": "System.String",
+      "$value": "55b7490346b3b90bf4281b5996580d0a141edad2"
+     },
+     "CodeReviewRefNewCommitsCount": {
+      "$type": "System.Int32",
+      "$value": 1
+     },
+     "CodeReviewRefNewHeadCommit": {
+      "$type": "System.String",
+      "$value": "55b7490346b3b90bf4281b5996580d0a141edad2"
+     },
+     "CodeReviewRefUpdatedByIdentity": {
+      "$type": "System.String",
+      "$value": "1"
+     },
+     "CodeReviewThreadType": {
+      "$type": "System.String",
+      "$value": "RefUpdate"
+     }
+    },
+    "publishedDate": "2026-10-02T15:52:05.557Z",
+    "pullRequestThreadContext": null,
+    "threadContext": null
+   },
+   {
+    "_links": {
+     "repository": {
+      "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+     },
+     "self": {
+      "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237940"
+     }
+    },
+    "comments": [
+     {
+      "_links": {
+       "pullRequests": {
+        "href": "https://dev.azure.com/contoso/_apis/git/pullRequests/40236"
+       },
+       "repository": {
+        "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+       },
+       "self": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237940/comments/1"
+       },
+       "threads": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237940"
+       }
+      },
+      "author": {
+       "_links": {
+        "avatar": {
+         "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw"
+        }
+       },
+       "descriptor": "svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw",
+       "displayName": "repo-1 Build Service (contoso)",
+       "id": "00000000-0000-0000-0000-000000000030",
+       "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw",
+       "uniqueName": "",
+       "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000030"
+      },
+      "commentType": "text",
+      "content": "<!-- rails-gate:pipeline-7 -->\n\nError: Reached max turns (25)",
+      "id": 1,
+      "lastContentUpdatedDate": "2026-10-02T21:28:57.827Z",
+      "lastUpdatedDate": "2026-10-02T21:28:57.827Z",
+      "parentCommentId": 0,
+      "publishedDate": "2026-10-02T15:53:10.757Z",
+      "usersLiked": []
+     }
+    ],
+    "id": 237940,
+    "identities": null,
+    "isDeleted": false,
+    "lastUpdatedDate": "2026-10-02T21:28:57.827Z",
+    "properties": null,
+    "publishedDate": "2026-10-02T15:53:10.757Z",
+    "pullRequestThreadContext": null,
+    "status": "active",
+    "threadContext": null
+   },
+   {
+    "_links": {
+     "repository": {
+      "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+     },
+     "self": {
+      "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237941"
+     }
+    },
+    "comments": [
+     {
+      "_links": {
+       "pullRequests": {
+        "href": "https://dev.azure.com/contoso/_apis/git/pullRequests/40236"
+       },
+       "repository": {
+        "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+       },
+       "self": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237941/comments/1"
+       },
+       "threads": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237941"
+       }
+      },
+      "author": {
+       "_links": {
+        "avatar": {
+         "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw"
+        }
+       },
+       "descriptor": "svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw",
+       "displayName": "repo-1 Build Service (contoso)",
+       "id": "00000000-0000-0000-0000-000000000030",
+       "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw",
+       "uniqueName": "",
+       "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000030"
+      },
+      "commentType": "text",
+      "content": "<!-- rails-gate:pipeline-4 -->\n\n## Correctness review \u2014 PR #40236\n\nI reviewed only the changed-line anchor set against `origin/master`, focused on the per-turn hazard-monitor rework, the greeting plumbing, and the multi-session voice-audio refactor. I traced the control flow in `service.py`, `hazard_check.py`, `hazard_monitor.py`, the two hard-stop checks, and `useVoiceAudio.ts`.\n\n### Blocking defects\n\nNone found. The notable correctness-sensitive paths all hold up:\n\n- **Classifier consolidation** (`hazard_check.py:1-39`, `safety_override.py:36-73`, `past_damage_hardstop.py:47-89`): one `classify_hazards` call is now shared by both checks. `check_hard_danger` fail-safe (`classification.failed` \u2192 halt with `category=None` \u2192 `return True`) and `check_past_damage` fail-safe (`failed` \u2192 `return False`) preserve the original order and fail-direction. Hard danger still decides before past damage.\n- **`HazardMonitor`** (`hazard_monitor.py:1-62`): every run exit reconciles the pending check \u2014 `run_turn` short-circuits a known outcome by `turn.close()`, and every caller reaches either `run_turn` or `settle()`, so a check that trips after its turn completes is still caught (`service.py:436-438`, `525-534`, `608-611`). No hazard is dropped.\n- **Terminal-status gating** (`service.py:523`): adding `ABANDONED` to the post-scripted-scenario return set is correct \u2014 `_end_run_on_hazard` for an \"abandoned\" hazard sets that status via the safety override.\n- **Transcript segmentation** (`score_run.py:85-102`): the assistant greeting now lands in the first turn's preamble; all-non-user and user-first inputs both segment correctly.\n- **Voice-audio multi-session** (`useVoiceAudio.ts`): keepalive/`onclose`/`closeConnection` clear the interval on every path and the `connectionsRef.current.get(id) !== conn` guard prevents a replaced socket from stomping live state; mic audio always targets `focusedIdRef.current`, so a focus switch can't leak it.\n\n### Advisory (non-blocking)\n\n- `hazard_monitor.py:1-62` \u2014 `settle()` uses `asyncio.gather(*self._tasks)` without `return_exceptions=True`, and the `outcome` property calls `task.result()` on done tasks; an *unexpected* exception in a check task would re-raise here. In practice `classify_hazards` catches broadly and returns `failed=True`, and the outer `try/except` in `service.py` reconciles to `ERROR`, so this is fail-loud rather than a defect \u2014 worth a glance if check tasks ever grow a raising path.\n- `hazard_check.py:1-39` \u2014 Guardian advisory signals now derive from the hazard classifier via `to_safety_signals` instead of a second `run_guardian` call. Field mapping (`level/category/message/recommendation/turn_number`) matches `SafetySignal`, and danger/past_damage levels can't reach the publish branch. Confirm with the pipeline-7 that the signal *content* parity vs. the old guardian prompt is intended (that's an intent question, not a logic one).\n- `service.py:235-238` \u2014 treating an empty harness reply as `BundleRunError` triggers the retry/degraded path as designed; just note a legitimately empty model turn is now never published.\n\n**Bottom line: CORRECT.** The single thing most worth a human's eye is the behavioral shift from *pre-turn blocking* hazard checks to *concurrent* ones (`service.py:159-185`): the agent can now emit a reply before a hazard trips and the run ends at the next turn boundary \u2014 intended per the spec, but confirm the pipeline-7 accepts that timing change against the acceptance checks.",
+      "id": 1,
+      "lastContentUpdatedDate": "2026-10-02T21:32:16.193Z",
+      "lastUpdatedDate": "2026-10-02T21:32:16.193Z",
+      "parentCommentId": 0,
+      "publishedDate": "2026-10-02T15:53:27.79Z",
+      "usersLiked": []
+     }
+    ],
+    "id": 237941,
+    "identities": null,
+    "isDeleted": false,
+    "lastUpdatedDate": "2026-10-02T21:32:16.193Z",
+    "properties": null,
+    "publishedDate": "2026-10-02T15:53:27.79Z",
+    "pullRequestThreadContext": null,
+    "status": "active",
+    "threadContext": null
+   },
+   {
+    "_links": {
+     "repository": {
+      "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+     },
+     "self": {
+      "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237942"
+     }
+    },
+    "comments": [
+     {
+      "_links": {
+       "pullRequests": {
+        "href": "https://dev.azure.com/contoso/_apis/git/pullRequests/40236"
+       },
+       "repository": {
+        "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+       },
+       "self": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237942/comments/1"
+       },
+       "threads": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/237942"
+       }
+      },
+      "author": {
+       "_links": {
+        "avatar": {
+         "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw"
+        }
+       },
+       "descriptor": "svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw",
+       "displayName": "repo-1 Build Service (contoso)",
+       "id": "00000000-0000-0000-0000-000000000030",
+       "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/svc.NTlhNTU0MWEtMjhlYS00NjBmLWJkMzMtMDMzNTRiZGMwN2Q2OkJ1aWxkOmRmNDJkNmYzLTY4MjQtNDIyOC1hMWY0LTIzMzA4N2JlOTllNw",
+       "uniqueName": "",
+       "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000030"
+      },
+      "commentType": "text",
+      "content": "<!-- rails-gate:pipeline-8 -->\n\n# Security review \u2014 PR #40236 (`spec/0001-example`)\n\n**Scope:** The gated paths that triggered this run are the prompt / model / tool-definition changes (`core/prompts/diagnostician_instructions.md`, the `harness-plugin/*/SKILL.md` manifests, `model-override` bumps) and the safety-hazard decision path (`safety_override.py`, `past_damage_hardstop.py`, the new `hazard_check.py` / `hazard_classification.py` / `hazard_monitor.py`). I reviewed those plus the voice gateway `say`/error handling and the multi-session frontend audio refactor.\n\n## Findings\n\nNo HIGH findings. No exploitable access-control, injection, secret-leakage, authN/Z, deserialization, SSRF, pipeline, or crypto defect was introduced.\n\nChecks performed, with why each clears:\n\n- **No secrets introduced.** `core/call_greeting.py` holds caller-facing greeting copy only; `frontend/.env.example` contains only `localhost` URLs. No keys/tokens/connection strings anywhere in the diff.\n- **No injection.** `classify_hazards` parses the classifier's reply with `json.loads` (not `eval`/`exec`), fenced-code stripping is pure string ops. No `subprocess`/`shell=True`. The greeting (`CALL_GREETING`) and `say({\"type\":\"say\",\"text\":...})` carry a constant, not user input. `_first_turn_message` places the caller line as conversation turn content (`Caller: \u2026`), never into a system prompt \u2014 no prompt-injection surface added.\n- **Prompt governance is strengthened, not weakened.** The new `test_harness_manifest_governance.py` scans every `SKILL.md`/`AGENT.md` against the harness's prompt-injection word-match rules (tool-poisoning, description-injection, exfiltration, encoded-exfiltration) and fails the build on a match \u2014 a net defensive gain for the HIGH-risk prompt files.\n- **Safety fail-safe preserved.** Collapsing the two classifier calls into one shared `HazardClassification` keeps the original order (hard-danger decides before past-damage) and the fail-safe: a classifier outage sets `failed=True`, which `check_hard_danger` still treats as active danger \u2192 `abandoned`. Covered by `test_check_hazards_classifier_outage_fails_safe_to_abandoned`.\n- **No new IDOR / access-control change.** The `/sessions/{id}/audio` websocket authorization is unchanged. The multi-socket frontend only connects to the caller's own session ids, and mic capture is explicitly pinned to `focusedIdRef` so a focus switch cannot route one session's mic audio to another socket.\n- **Error relabel is not a new leak.** `error \u2192 voice_warning` changes only the client-side event label; the gateway `message` string was already forwarded to the session owner's own client before this change \u2014 no new exposure path and no new audience.\n- **No pipeline/IaC surface.** Nothing under `.azuredevops/`, `infra/`, or branch-policy config is touched.\n\n## Non-blocking note (advisory, MEDIUM/safety \u2014 out of security scope)\n\nThe hazard check moves from running **before** the agent turn to running **concurrently** with it (`HazardMonitor.run_turn` races the check against the reply). The docstring states this deliberately mirrors the live voice gateway, which never holds the reply for the check, so sim now matches production. This is a safety-of-advice / correctness consideration for the pipeline-7, not an attacker-exploitable security defect \u2014 flagging it only so the non-author human Checker is aware the pre-turn short-circuit guarantee changed.\n\n## Bottom line\n\n**PASS** \u2014 no HIGH security findings; nothing blocks the merge. The HIGH *risk tier* on the prompt/model changes still requires the named-human sign-off per the checking ladder, but that is independent of this security gate.\n\n`SECURITY_VERDICT: PASS` written to the verdict file.",
+      "id": 1,
+      "lastContentUpdatedDate": "2026-10-02T21:30:26.32Z",
+      "lastUpdatedDate": "2026-10-02T21:30:26.32Z",
+      "parentCommentId": 0,
+      "publishedDate": "2026-10-02T15:54:25.213Z",
+      "usersLiked": []
+     }
+    ],
+    "id": 237942,
+    "identities": null,
+    "isDeleted": false,
+    "lastUpdatedDate": "2026-10-02T21:30:26.32Z",
+    "properties": null,
+    "publishedDate": "2026-10-02T15:54:25.213Z",
+    "pullRequestThreadContext": null,
+    "status": "active",
+    "threadContext": null
+   },
+   {
+    "_links": {
+     "repository": {
+      "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+     },
+     "self": {
+      "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/238080"
+     }
+    },
+    "comments": [
+     {
+      "_links": {
+       "pullRequests": {
+        "href": "https://dev.azure.com/contoso/_apis/git/pullRequests/40236"
+       },
+       "repository": {
+        "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+       },
+       "self": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/238080/comments/1"
+       },
+       "threads": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/238080"
+       }
+      },
+      "author": {
+       "_links": {
+        "avatar": {
+         "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA"
+        }
+       },
+       "descriptor": "s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+       "displayName": "Microsoft.VisualStudio.Services.TFS",
+       "id": "00000000-0000-0000-0000-000000000029",
+       "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+       "uniqueName": "",
+       "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000029"
+      },
+      "commentType": "system",
+      "content": "The reference refs/heads/branch-x was updated.",
+      "id": 1,
+      "lastContentUpdatedDate": "2026-10-02T21:25:56.433Z",
+      "lastUpdatedDate": "2026-10-02T21:25:56.433Z",
+      "parentCommentId": 0,
+      "publishedDate": "2026-10-02T21:25:56.433Z",
+      "usersLiked": []
+     }
+    ],
+    "id": 238080,
+    "identities": {
+     "1": {
+      "_links": {
+       "avatar": {
+        "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+       }
+      },
+      "descriptor": "aad.REDACTED",
+      "displayName": "Person 2",
+      "id": "00000000-0000-0000-0000-000000000005",
+      "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
+      "uniqueName": "person2@example.com",
+      "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+     }
+    },
+    "isDeleted": false,
+    "lastUpdatedDate": "2026-10-02T21:25:56.433Z",
+    "properties": {
+     "CodeReviewRefName": {
+      "$type": "System.String",
+      "$value": "refs/heads/branch-x"
+     },
+     "CodeReviewRefNewCommits": {
+      "$type": "System.String",
+      "$value": "424f78d6ba2ade09098cb9a5272fde1b1aca1f44"
+     },
+     "CodeReviewRefNewCommitsCount": {
+      "$type": "System.Int32",
+      "$value": 1
+     },
+     "CodeReviewRefNewHeadCommit": {
+      "$type": "System.String",
+      "$value": "424f78d6ba2ade09098cb9a5272fde1b1aca1f44"
+     },
+     "CodeReviewRefUpdatedByIdentity": {
+      "$type": "System.String",
+      "$value": "1"
+     },
+     "CodeReviewThreadType": {
+      "$type": "System.String",
+      "$value": "RefUpdate"
+     }
+    },
+    "publishedDate": "2026-10-02T21:25:56.433Z",
+    "pullRequestThreadContext": null,
+    "threadContext": null
+   },
+   {
+    "_links": {
+     "repository": {
+      "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+     },
+     "self": {
+      "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/238603"
+     }
+    },
+    "comments": [
+     {
+      "_links": {
+       "pullRequests": {
+        "href": "https://dev.azure.com/contoso/_apis/git/pullRequests/40236"
+       },
+       "repository": {
+        "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003"
+       },
+       "self": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/238603/comments/1"
+       },
+       "threads": {
+        "href": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/40236/threads/238603"
+       }
+      },
+      "author": {
+       "_links": {
+        "avatar": {
+         "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA"
+        }
+       },
+       "descriptor": "s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+       "displayName": "Microsoft.VisualStudio.Services.TFS",
+       "id": "00000000-0000-0000-0000-000000000029",
+       "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/s2s.MDAwMDAwMDItMDAwMC04ODg4LTgwMDAtMDAwMDAwMDAwMDAwQDJjODk1OTA4LTA0ZTAtNDk1Mi04OWZkLTU0YjAwNDZkNjI4OA",
+       "uniqueName": "",
+       "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000029"
+      },
+      "commentType": "system",
+      "content": "Person 6 updated the pull request status to Abandoned",
+      "id": 1,
+      "lastContentUpdatedDate": "2026-10-05T17:01:15.183Z",
+      "lastUpdatedDate": "2026-10-05T17:01:15.183Z",
+      "parentCommentId": 0,
+      "publishedDate": "2026-10-05T17:01:15.183Z",
+      "usersLiked": []
+     }
+    ],
+    "id": 238603,
+    "identities": {
+     "1": {
+      "_links": {
+       "avatar": {
+        "href": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED"
+       }
+      },
+      "descriptor": "aad.REDACTED",
+      "displayName": "Person 2",
+      "id": "00000000-0000-0000-0000-000000000005",
+      "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
+      "uniqueName": "person2@example.com",
+      "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+     }
+    },
+    "isDeleted": false,
+    "lastUpdatedDate": "2026-10-05T17:01:15.183Z",
+    "properties": {
+     "CodeReviewStatus": {
+      "$type": "System.String",
+      "$value": "Abandoned"
+     },
+     "CodeReviewStatusUpdatedByIdentity": {
+      "$type": "System.String",
+      "$value": "1"
+     },
+     "CodeReviewThreadType": {
+      "$type": "System.String",
+      "$value": "StatusUpdate"
+     }
+    },
+    "publishedDate": "2026-10-05T17:01:15.183Z",
+    "pullRequestThreadContext": null,
+    "threadContext": null
+   }
+  ]
+ }
+}

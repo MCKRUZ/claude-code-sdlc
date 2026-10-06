@@ -68,6 +68,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
   // Bearer headers and JSON Web Tokens, which carry the credential in the clear.
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{20,}/gi, '$1 ***'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '***'],
+  // The Azure DevOps extension's own credential variables (code-host providers). An ADO PAT has
+  // no fixed prefix to match on, so the VARIABLE is what is recognised — and `AUTH_TOKEN=`
+  // slips past the catch-all below because `_` is a word character, so `\btoken` never matches
+  // inside it. A bare PAT in prose still relies on the Basic/Bearer/token= backstops.
+  [/\b(AZURE_DEVOPS_EXT_PAT|AZURE_DEVOPS_EXT_AUTH_TOKEN)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/g, '$1=***'],
   // A labelled secret in any shape — the catch-all, deliberately last so a more precise
   // pattern above gets to describe what it matched first.
   [/\b(pass(?:word)?|token|secret|api[_-]?key|auth)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi, '$1=***'],

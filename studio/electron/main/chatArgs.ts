@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeWorkingDirectory, CLAUDE_SHARED_SAFE_ARGS } from './claudeAssist'
 import { ASK_QUESTION_TOOL as ASK_QUESTION, PROPOSE_WRITE_TOOL as PROPOSE_WRITE } from './chatMcpServer'
+import { hostLabel, type HostName } from '../../shared/codeHostModel'
+
 
 // --- the fixed tool surface ---------------------------------------------------------------
 // An explicit ALLOW-list, not a block-list (spec's own acceptance check: provable by
@@ -50,9 +52,10 @@ export function buildSystemPrompt(opts: {
   pluginName: string
   stageId: string
   stageDisplay: string
+  host?: HostName
 }): string {
   return [
-    'You are the SDLC assistant inside SDLC Studio\'s chat panel, authoring this project\'s '
+    'You are the SDLC assistant inside Tōgō\'s chat panel, authoring this project\'s '
       + 'documents through a live conversation. You have no Edit, Write or Bash tool — you '
       + 'cannot and must not write to any file yourself, on this machine or any other, by any '
       + 'means. Never claim a write happened; only ProposeWrite reaches the person, and only '
@@ -87,10 +90,10 @@ export function buildSystemPrompt(opts: {
       + 'cannot find the field\'s exact declared label, read the shape file again rather than '
       + 'inventing one.',
     '',
-    'You cannot run commands, so you cannot read GitHub yourself. When the person needs evidence '
+    `You cannot run commands, so you cannot read ${hostLabel(opts.host)} yourself. When the person needs evidence `
       + 'about this repository\'s delivery pipeline (which CI rails have fired, whether branch '
       + 'protection is enforcing, which pull requests merged), tell them to use the "Gather '
-      + 'pipeline evidence" button on the Foundation stage, which reads GitHub and writes '
+      + `pipeline evidence" button on the Foundation stage, which reads ${hostLabel(opts.host)} and writes `
       + '.sdlc/artifacts/03-foundation/pipeline-proof.md — then read that file and help them with '
       + 'it. Do not write them a prompt to paste into another session; they should never have to '
       + 'leave this app for it.',
@@ -123,6 +126,9 @@ export interface ChatArgsOptions {
    * one with --session-id. */
   resume: boolean
   sessionId: string
+  /** The project's code host (ConnectionInfo.host), for the sentence about the pipeline-evidence
+   * button. Absent reads as GitHub — today's wording. */
+  host?: HostName
 }
 
 /** Pure: no I/O, no process spawn — every acceptance check about "the session's own launch

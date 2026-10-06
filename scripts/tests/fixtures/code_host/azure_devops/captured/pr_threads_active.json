@@ -1,0 +1,26 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "devops",
+  "invoke",
+  "--area",
+  "git",
+  "--resource",
+  "pullRequestThreads",
+  "--route-parameters",
+  "project=repo-1",
+  "repositoryId=b42a3a88-690a-4784-afbf-6891c5ac7fc1",
+  "pullRequestId=38768",
+  "--api-version",
+  "7.1",
+  "--org",
+  "https://dev.azure.com/contoso"
+ ],
+ "_secs": 1.4,
+ "value": {
+  "continuation_token": null,
+  "count": 0,
+  "value": []
+ }
+}

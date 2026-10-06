@@ -1,0 +1,37 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "repos",
+  "pr",
+  "reviewer",
+  "list",
+  "--id",
+  "38768",
+  "--org",
+  "https://dev.azure.com/contoso"
+ ],
+ "_secs": 1.2,
+ "value": [
+  {
+   "descriptor": null,
+   "directoryAlias": null,
+   "displayName": "Person 2",
+   "hasDeclined": false,
+   "id": "00000000-0000-0000-0000-000000000005",
+   "imageUrl": "https://dev.azure.com/contoso/_api/_common/identityImage?id=00000000-0000-0000-0000-000000000005",
+   "inactive": null,
+   "isAadIdentity": null,
+   "isContainer": null,
+   "isDeletedInOrigin": null,
+   "isFlagged": false,
+   "isRequired": null,
+   "profileUrl": null,
+   "reviewerUrl": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003/pullRequests/38768/reviewers/00000000-0000-0000-0000-000000000005",
+   "uniqueName": "person2@example.com",
+   "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005",
+   "vote": 0,
+   "votedFor": null
+  }
+ ]
+}

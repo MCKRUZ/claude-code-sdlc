@@ -1,0 +1,149 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "pipelines",
+  "show",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1",
+  "--id",
+  "2316"
+ ],
+ "_secs": 0.8,
+ "value": {
+  "authoredBy": {
+   "descriptor": "aad.REDACTED",
+   "directoryAlias": null,
+   "displayName": "Person 3",
+   "id": "00000000-0000-0000-0000-000000000007",
+   "imageUrl": "https://dev.azure.com/contoso/_apis/GraphProfile/MemberAvatars/aad.REDACTED",
+   "inactive": null,
+   "isAadIdentity": null,
+   "isContainer": null,
+   "isDeletedInOrigin": null,
+   "profileUrl": null,
+   "uniqueName": "person3@example.com",
+   "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000007"
+  },
+  "badgeEnabled": null,
+  "buildNumberFormat": null,
+  "comment": null,
+  "createdDate": "2026-09-21T21:38:38.303000+00:00",
+  "demands": null,
+  "description": null,
+  "draftOf": null,
+  "drafts": [],
+  "dropLocation": null,
+  "id": 2316,
+  "jobAuthorizationScope": "projectCollection",
+  "jobCancelTimeoutInMinutes": 5,
+  "jobTimeoutInMinutes": null,
+  "latestBuild": null,
+  "latestCompletedBuild": null,
+  "metrics": null,
+  "name": "pipeline-1",
+  "options": [
+   {
+    "definition": {
+     "id": "00000000-0000-0000-0000-000000000013"
+    },
+    "enabled": false,
+    "inputs": {
+     "additionalFields": "{}",
+     "branchFilters": "[\"+refs/heads/*\"]"
+    }
+   },
+   {
+    "definition": {
+     "id": "00000000-0000-0000-0000-000000000014"
+    },
+    "enabled": false,
+    "inputs": {}
+   },
+   {
+    "definition": {
+     "id": "00000000-0000-0000-0000-000000000015"
+    },
+    "enabled": false,
+    "inputs": {
+     "additionalFields": "{}",
+     "assignToRequestor": "true",
+     "workItemType": "Bug"
+    }
+   }
+  ],
+  "path": "\\",
+  "process": {
+   "type": 2,
+   "yamlFilename": ".azuredevops/pipelines/backend/ci-cd.yml"
+  },
+  "processParameters": null,
+  "project": {
+   "abbreviation": null,
+   "defaultTeamImageUrl": null,
+   "description": "Pull request description.",
+   "id": "00000000-0000-0000-0000-000000000002",
+   "lastUpdateTime": "2026-07-13T18:46:49.4Z",
+   "name": "repo-1",
+   "revision": 1533,
+   "state": "wellFormed",
+   "url": "https://dev.azure.com/contoso/_apis/projects/00000000-0000-0000-0000-000000000002",
+   "visibility": "private"
+  },
+  "properties": {},
+  "quality": "definition",
+  "queue": {
+   "id": 1240,
+   "name": "Hosted Ubuntu 1604",
+   "pool": {
+    "id": 8,
+    "isHosted": true,
+    "name": "Hosted Ubuntu 1604"
+   },
+   "url": "https://dev.azure.com/contoso/_apis/build/Queues/1240"
+  },
+  "queueStatus": "enabled",
+  "repository": {
+   "checkoutSubmodules": false,
+   "clean": "false",
+   "defaultBranch": "refs/heads/master",
+   "id": "00000000-0000-0000-0000-000000000016",
+   "name": "repo-3",
+   "properties": {
+    "checkoutNestedSubmodules": "false",
+    "cleanOptions": "0",
+    "fetchDepth": "0",
+    "gitLfsSupport": "false",
+    "labelSources": "0",
+    "labelSourcesFormat": "$(build.buildNumber)",
+    "reportBuildStatus": "false",
+    "skipSyncSource": "false"
+   },
+   "rootFolder": null,
+   "type": "TfsGit",
+   "url": "https://dev.azure.com/contoso/repo-1/_git/repo-3"
+  },
+  "retentionRules": null,
+  "revision": 2,
+  "tags": [],
+  "triggers": [
+   {
+    "batchChanges": false,
+    "branchFilters": [],
+    "maxConcurrentBuildsPerBranch": 1,
+    "pathFilters": [],
+    "settingsSourceType": 2,
+    "triggerType": "continuousIntegration"
+   }
+  ],
+  "type": "build",
+  "uri": "vstfs:///Build/Definition/2316",
+  "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Definitions/2316?revision=2",
+  "variableGroups": null,
+  "variables": null
+ }
+}

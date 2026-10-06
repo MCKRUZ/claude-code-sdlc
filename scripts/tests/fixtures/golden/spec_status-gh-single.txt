@@ -1,0 +1,8 @@
+Spec 0042 — spec/0042-duplicate-claim
+  PR #42: https://gh/pull/42 [OPEN]
+  Checks:
+    build-and-test               SUCCESS
+    grader                       SUCCESS
+  Grader: 1/2 acceptance checks covered
+  Approvals: none yet
+  Waiting on: waiting for a non-author approval; requested from @priya-n

@@ -1,0 +1,327 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "repos",
+  "pr",
+  "policy",
+  "list",
+  "--id",
+  "40236",
+  "--org",
+  "https://dev.azure.com/contoso"
+ ],
+ "_secs": 1.0,
+ "value": [
+  {
+   "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002%2f40236",
+   "completedDate": "2026-10-02T21:30:32.922164+00:00",
+   "configuration": {
+    "createdBy": {
+     "descriptor": "aad.REDACTED",
+     "directoryAlias": null,
+     "displayName": "Person 2",
+     "id": "00000000-0000-0000-0000-000000000005",
+     "imageUrl": "https://dev.azure.com/contoso/_api/_common/identityImage?id=00000000-0000-0000-0000-000000000005",
+     "inactive": null,
+     "isAadIdentity": null,
+     "isContainer": null,
+     "isDeletedInOrigin": null,
+     "profileUrl": null,
+     "uniqueName": "person2@example.com",
+     "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+    },
+    "createdDate": "2026-09-15T03:58:32.627307+00:00",
+    "id": 3788,
+    "isBlocking": true,
+    "isDeleted": false,
+    "isEnabled": true,
+    "isEnterpriseManaged": false,
+    "revision": 2,
+    "settings": {
+     "buildDefinitionId": 2579,
+     "displayName": "pipeline-3",
+     "manualQueueOnly": false,
+     "queueOnSourceUpdateOnly": true,
+     "scope": [
+      {
+       "matchKind": "Exact",
+       "refName": "refs/heads/master",
+       "repositoryId": "00000000-0000-0000-0000-000000000003"
+      }
+     ],
+     "validDuration": 720.0
+    },
+    "type": {
+     "displayName": "Build",
+     "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+     "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/types/0609b952-1397-4640-95ec-e00a01b2c241"
+    },
+    "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/configurations/3788"
+   },
+   "context": {
+    "buildAfterMerge": false,
+    "buildDefinitionId": 2579,
+    "buildDefinitionName": "pipeline-3",
+    "buildId": 136382,
+    "buildIsNotCurrent": false,
+    "buildOutputPreview": null,
+    "buildStartedUtc": "2026-10-02T21:25:57.6104334Z",
+    "isExpired": false,
+    "lastMergeCommitId": "989b64ea5436e8bb57cabfe71b182634bfa6aea1",
+    "lastMergeSourceCommitId": "424f78d6ba2ade09098cb9a5272fde1b1aca1f44",
+    "lastMergeTargetCommitId": "a730a8341db1572e20485c9ac24fce99a098c2f1",
+    "wasAutoRequeued": false
+   },
+   "evaluationId": "00000000-0000-0000-0000-000000000024",
+   "startedDate": "2026-10-02T21:25:59.402822+00:00",
+   "status": "approved"
+  },
+  {
+   "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002%2f40236",
+   "completedDate": "2026-10-02T21:29:08.570151+00:00",
+   "configuration": {
+    "createdBy": {
+     "descriptor": "aad.REDACTED",
+     "directoryAlias": null,
+     "displayName": "Person 2",
+     "id": "00000000-0000-0000-0000-000000000005",
+     "imageUrl": "https://dev.azure.com/contoso/_api/_common/identityImage?id=00000000-0000-0000-0000-000000000005",
+     "inactive": null,
+     "isAadIdentity": null,
+     "isContainer": null,
+     "isDeletedInOrigin": null,
+     "profileUrl": null,
+     "uniqueName": "person2@example.com",
+     "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+    },
+    "createdDate": "2026-09-15T03:58:33.764905+00:00",
+    "id": 3789,
+    "isBlocking": true,
+    "isDeleted": false,
+    "isEnabled": true,
+    "isEnterpriseManaged": false,
+    "revision": 2,
+    "settings": {
+     "buildDefinitionId": 2580,
+     "displayName": "pipeline-7",
+     "manualQueueOnly": false,
+     "queueOnSourceUpdateOnly": true,
+     "scope": [
+      {
+       "matchKind": "Exact",
+       "refName": "refs/heads/master",
+       "repositoryId": "00000000-0000-0000-0000-000000000003"
+      }
+     ],
+     "validDuration": 720.0
+    },
+    "type": {
+     "displayName": "Build",
+     "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+     "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/types/0609b952-1397-4640-95ec-e00a01b2c241"
+    },
+    "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/configurations/3789"
+   },
+   "context": {
+    "buildAfterMerge": false,
+    "buildDefinitionId": 2580,
+    "buildDefinitionName": "pipeline-7",
+    "buildId": 136383,
+    "buildIsNotCurrent": false,
+    "buildOutputPreview": null,
+    "buildStartedUtc": "2026-10-02T21:25:58.1896242Z",
+    "isExpired": false,
+    "lastMergeCommitId": "989b64ea5436e8bb57cabfe71b182634bfa6aea1",
+    "lastMergeSourceCommitId": "424f78d6ba2ade09098cb9a5272fde1b1aca1f44",
+    "lastMergeTargetCommitId": "a730a8341db1572e20485c9ac24fce99a098c2f1",
+    "wasAutoRequeued": false
+   },
+   "evaluationId": "00000000-0000-0000-0000-000000000025",
+   "startedDate": "2026-10-02T21:25:59.402822+00:00",
+   "status": "approved"
+  },
+  {
+   "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002%2f40236",
+   "completedDate": "2026-10-02T21:32:30.107520+00:00",
+   "configuration": {
+    "createdBy": {
+     "descriptor": "aad.REDACTED",
+     "directoryAlias": null,
+     "displayName": "Person 2",
+     "id": "00000000-0000-0000-0000-000000000005",
+     "imageUrl": "https://dev.azure.com/contoso/_api/_common/identityImage?id=00000000-0000-0000-0000-000000000005",
+     "inactive": null,
+     "isAadIdentity": null,
+     "isContainer": null,
+     "isDeletedInOrigin": null,
+     "profileUrl": null,
+     "uniqueName": "person2@example.com",
+     "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+    },
+    "createdDate": "2026-09-15T03:58:34.834190+00:00",
+    "id": 3790,
+    "isBlocking": true,
+    "isDeleted": false,
+    "isEnabled": true,
+    "isEnterpriseManaged": false,
+    "revision": 2,
+    "settings": {
+     "buildDefinitionId": 2581,
+     "displayName": "pipeline-4",
+     "manualQueueOnly": false,
+     "queueOnSourceUpdateOnly": true,
+     "scope": [
+      {
+       "matchKind": "Exact",
+       "refName": "refs/heads/master",
+       "repositoryId": "00000000-0000-0000-0000-000000000003"
+      }
+     ],
+     "validDuration": 720.0
+    },
+    "type": {
+     "displayName": "Build",
+     "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+     "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/types/0609b952-1397-4640-95ec-e00a01b2c241"
+    },
+    "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/configurations/3790"
+   },
+   "context": {
+    "buildAfterMerge": false,
+    "buildDefinitionId": 2581,
+    "buildDefinitionName": "pipeline-4",
+    "buildId": 136384,
+    "buildIsNotCurrent": false,
+    "buildOutputPreview": null,
+    "buildStartedUtc": "2026-10-02T21:25:58.7812506Z",
+    "isExpired": false,
+    "lastMergeCommitId": "989b64ea5436e8bb57cabfe71b182634bfa6aea1",
+    "lastMergeSourceCommitId": "424f78d6ba2ade09098cb9a5272fde1b1aca1f44",
+    "lastMergeTargetCommitId": "a730a8341db1572e20485c9ac24fce99a098c2f1",
+    "wasAutoRequeued": false
+   },
+   "evaluationId": "00000000-0000-0000-0000-000000000026",
+   "startedDate": "2026-10-02T21:25:59.402822+00:00",
+   "status": "approved"
+  },
+  {
+   "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002%2f40236",
+   "completedDate": "2026-10-02T21:30:43.301813+00:00",
+   "configuration": {
+    "createdBy": {
+     "descriptor": "aad.REDACTED",
+     "directoryAlias": null,
+     "displayName": "Person 2",
+     "id": "00000000-0000-0000-0000-000000000005",
+     "imageUrl": "https://dev.azure.com/contoso/_api/_common/identityImage?id=00000000-0000-0000-0000-000000000005",
+     "inactive": null,
+     "isAadIdentity": null,
+     "isContainer": null,
+     "isDeletedInOrigin": null,
+     "profileUrl": null,
+     "uniqueName": "person2@example.com",
+     "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+    },
+    "createdDate": "2026-09-15T03:58:35.958313+00:00",
+    "id": 3791,
+    "isBlocking": true,
+    "isDeleted": false,
+    "isEnabled": true,
+    "isEnterpriseManaged": false,
+    "revision": 2,
+    "settings": {
+     "buildDefinitionId": 2582,
+     "displayName": "pipeline-8",
+     "manualQueueOnly": false,
+     "queueOnSourceUpdateOnly": true,
+     "scope": [
+      {
+       "matchKind": "Exact",
+       "refName": "refs/heads/master",
+       "repositoryId": "00000000-0000-0000-0000-000000000003"
+      }
+     ],
+     "validDuration": 720.0
+    },
+    "type": {
+     "displayName": "Build",
+     "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+     "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/types/0609b952-1397-4640-95ec-e00a01b2c241"
+    },
+    "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/configurations/3791"
+   },
+   "context": {
+    "buildAfterMerge": false,
+    "buildDefinitionId": 2582,
+    "buildDefinitionName": "pipeline-8",
+    "buildId": 136385,
+    "buildIsNotCurrent": false,
+    "buildOutputPreview": null,
+    "buildStartedUtc": "2026-10-02T21:25:59.3966071Z",
+    "isExpired": false,
+    "lastMergeCommitId": "989b64ea5436e8bb57cabfe71b182634bfa6aea1",
+    "lastMergeSourceCommitId": "424f78d6ba2ade09098cb9a5272fde1b1aca1f44",
+    "lastMergeTargetCommitId": "a730a8341db1572e20485c9ac24fce99a098c2f1",
+    "wasAutoRequeued": false
+   },
+   "evaluationId": "00000000-0000-0000-0000-000000000027",
+   "startedDate": "2026-10-02T21:25:59.402822+00:00",
+   "status": "approved"
+  },
+  {
+   "artifactId": "vstfs:///CodeReview/CodeReviewId/00000000-0000-0000-0000-000000000002%2f40236",
+   "completedDate": null,
+   "configuration": {
+    "createdBy": {
+     "descriptor": "aad.REDACTED",
+     "directoryAlias": null,
+     "displayName": "Person 2",
+     "id": "00000000-0000-0000-0000-000000000005",
+     "imageUrl": "https://dev.azure.com/contoso/_api/_common/identityImage?id=00000000-0000-0000-0000-000000000005",
+     "inactive": null,
+     "isAadIdentity": null,
+     "isContainer": null,
+     "isDeletedInOrigin": null,
+     "profileUrl": null,
+     "uniqueName": "person2@example.com",
+     "url": "https://spsprod.vssps.visualstudio.com/A00000000-0000-0000-0000-000000000000/_apis/Identities/00000000-0000-0000-0000-000000000005"
+    },
+    "createdDate": "2026-09-16T04:52:01.550784+00:00",
+    "id": 3793,
+    "isBlocking": true,
+    "isDeleted": false,
+    "isEnabled": true,
+    "isEnterpriseManaged": false,
+    "revision": 2,
+    "settings": {
+     "allowDownvotes": false,
+     "blockLastPusherVote": false,
+     "creatorVoteCounts": true,
+     "minimumApproverCount": 1,
+     "requireVoteOnEachIteration": false,
+     "requireVoteOnLastIteration": false,
+     "resetOnSourcePush": true,
+     "resetRejectionsOnSourcePush": false,
+     "scope": [
+      {
+       "matchKind": "Exact",
+       "refName": "refs/heads/master",
+       "repositoryId": "00000000-0000-0000-0000-000000000003"
+      }
+     ]
+    },
+    "type": {
+     "displayName": "Person 5",
+     "id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd",
+     "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/types/fa4e907d-c16b-4a4c-9dfa-4906e5d171dd"
+    },
+    "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/policy/configurations/3793"
+   },
+   "context": {},
+   "evaluationId": "00000000-0000-0000-0000-000000000028",
+   "startedDate": "2026-10-05T17:01:15.280135+00:00",
+   "status": "queued"
+  }
+ ]
+}
