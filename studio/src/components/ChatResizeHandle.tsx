@@ -64,7 +64,9 @@ export function ChatResizeHandle({
       onMouseDown={startDrag}
       onKeyDown={onKeyDown}
       onDoubleClick={onReset}
-      className="absolute inset-y-0 -left-1 z-10 hidden w-2 cursor-col-resize hover:bg-brand-100 focus-visible:bg-brand-100 focus-visible:outline-none sm:block"
+      // C5: no `focus-visible:outline-none` — the kit's ring (base.css `:focus-visible`) is the
+      // one focus treatment, and a handle that hid it was the one control without one.
+      className="absolute inset-y-0 -left-1 z-10 hidden w-2 cursor-col-resize hover:bg-brand-100 focus-visible:bg-brand-100 sm:block"
     />
   )
 }

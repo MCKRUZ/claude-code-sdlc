@@ -33,7 +33,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
        --state .sdlc/state.yaml --phase <phase-number>
      ```
    - Automatically open the report in the user's default browser (`start` on Windows, `open` on macOS, `xdg-open` on Linux)
-   - **Confirm the sign-off questions first.** Each phase's exit gate carries questions only a person can answer, and the human ticks each one (in this conversation or in SDLC Studio — one shared record). Read where they stand:
+   - **Confirm the sign-off questions first.** Each phase's exit gate carries questions only a person can answer, and the human ticks each one (in this conversation or in SDLC Studio, the desktop app — one shared record). Read where they stand:
      ```bash
      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sign_off_confirmations.py status --state .sdlc/state.yaml --json
      ```
@@ -42,6 +42,17 @@ Run exit gate checks for the current phase and advance to the next phase if all 
      uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sign_off_confirmations.py confirm        --state .sdlc/state.yaml --question-id <id from status> --actor "<the name the human gave>"
      ```
      Never confirm a question yourself, never treat a hint as a yes, and never record a name the human did not give. A question the human declines stays unconfirmed and the phase does not advance; tell them what remains.
+   - **Sprint slate outcome (advisory, Build only):** when the current phase is `build`, put one line
+     beside the feature-complete declaration so the human declares with the last sprint's outcome in
+     view. Read the most recently closed record in `.sdlc/sprints/SNN.md` (`state: closed`) and count
+     its `## Close` table — `slate S07: 5 of 6 merged, 1 carried, 0 dropped`. If a sprint is still open,
+     add its readiness from:
+     ```bash
+     uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/sprint.py status --state .sdlc/state.yaml --json
+     ```
+     (`open sprint S08: N slated · M ready`). Skip silently when `.sdlc/sprints/` is absent or the
+     JSON's `sprint` is `null`. This line informs the declaration; it never gates it — leaving Build
+     stays a human call, and a sprint is never a phase gate.
    - **HITL GATE — Ask for explicit sign-off before advancing:** Present the phase summary (what was produced, key decisions made) and ask: "Does this look correct? Shall I advance to Phase N?" Do NOT call `advance_phase.py` until the human explicitly confirms.
    - **Optional — capture discipline sign-off(s):** After the human confirms the advance, use
      `AskUserQuestion` to offer (optionally) recording per-discipline sign-off on this phase's work:
@@ -53,7 +64,9 @@ Run exit gate checks for the current phase and advance to the next phase if all 
      `--discipline-signoff "Discipline:Section:Name"` per sign-off (repeatable). No sign-offs → no
      flags → byte-identical state. The named human signs; the agent only records what it is told.
 
-5. **Generate Frozen Layer:** After HITL sign-off, before advancing state:
+5. **Generate (or regenerate) the Phase Layer:** After HITL sign-off, before advancing state. The
+   layer is a living summary — the same procedure regenerates it later whenever a source artifact
+   changes (see `references/frozen-layers.md`, "Living, not frozen"):
    1. Read ALL artifacts in `.sdlc/artifacts/{NN}-{phase-name}/`
    2. Read the frozen layer template from `${CLAUDE_PLUGIN_ROOT}/templates/frozen-layer.md`
    3. Condense all artifact content into the template structure, targeting 1500–2000 tokens:
@@ -61,7 +74,7 @@ Run exit gate checks for the current phase and advance to the next phase if all 
       - Summarize constraints, risks, and key outcomes
       - Fill the traceability footer mapping each source artifact to sections extracted
       - Fill YAML frontmatter with phase metadata and estimated token count (word_count × 1.3)
-   4. If a frozen layer already exists for this phase (from a prior completion), rename it to `{name}.superseded` before writing the new one
+   4. If a layer already exists for this phase (from a prior completion or a refinement refresh), rename it to `{name}.superseded-<YYYYMMDD>` before writing the new one — history is kept, the hook loads only the current file
    5. Write the frozen layer to `.sdlc/context/layers/phase{N}-{name}.md`
    6. Validate:
       ```bash

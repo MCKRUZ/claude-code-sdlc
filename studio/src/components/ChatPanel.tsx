@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { ArrowUp, MessageSquare, Square } from 'lucide-react'
 import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus } from '../../shared/types'
 import { connectingSteps } from '../chatConnectingSteps'
 import { computeWorkflowSteps } from '../workflowSteps'
+import { chatMessage, contextFrom, questionPills } from '../motion/choreo'
+import { enabled as motionEnabled, motion, reduced as motionReduced } from '../motion/motion'
+import { useStudioGSAP } from '../motion/useStudioGSAP'
+import { Button, Card, Chip, EYEBROW_CLASS, EmptyState, IconButton, Notice, Textarea, cn } from '../ui'
+import { useRegisterDirty } from '../stores/dirtyStore'
+import { chatTurnStore } from '../stores/chatTurnStore'
 import { AiProposalCard } from './AiProposalCard'
 import { ChatActivityLine } from './ChatActivityLine'
 import { ChatResizeHandle } from './ChatResizeHandle'
@@ -10,6 +17,23 @@ import { MarkdownView } from './MarkdownView'
 import { CHAT_MIN_WIDTH, useChatWidth } from '../chatWidth'
 import { registerChatSender, type ChatSendResult } from '../chatBridge'
 import { useStageReadiness } from './StageReadinessContext'
+import { useClaudeIssue } from './ClaudeIssueContext'
+
+/** The `<aside>` class string, spelled once and never animated: `ChatPanel.test.tsx` pins
+ * `max-h-[35vh]` / `sm:max-h-none`, chatLook pins the exact 380 px width on double-click (so no
+ * width transition), and Frame's assemble choreography (§4 #2) moves the INNER wrapper
+ * (`[data-chat-inner]`), never this element. */
+const ASIDE_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-line-1 bg-surface-1 sm:max-h-none sm:w-[var(--chat-width)]'
+
+/** The collapsed aside (owner's v12 item 1): the same element, now a 40 px rail holding ONE
+ * control that reopens it. The inner wrapper is `hidden`, never unmounted — the thread, its
+ * draft and its width survive — and the shell still has exactly two asides. `sm:!w-10` beats
+ * the inline `--chat-width` the aside still carries for the moment it reopens. */
+const ASIDE_COLLAPSED_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-line-1 bg-surface-1 sm:max-h-none sm:!w-10'
+
+/** Why Stop is greyed: there is no cancel verb for a chat turn yet, and a button that looked
+ * live would promise one. Said in the person's words, not the backlog's (C5). */
+const STOP_REASON = 'Stopping a reply is not available yet'
 
 /** Present on every screen (spec 0008's own requirement) — spec 0016 wires the actual
  * conversation up, and spec 0018 scopes it to the stage's current document and makes the wait
@@ -19,7 +43,7 @@ import { useStageReadiness } from './StageReadinessContext'
  * (never gating the box below), and every proposed write is a card the person accepts, edits, or
  * discards — never a silent write. */
 export function ChatPanel({
-  status, projectPath, actor, stageId,
+  status, projectPath, actor, stageId, hidden = false, collapsed = false, onExpand, onWidthChange,
 }: {
   status: ProjectStatus | null
   projectPath: string | null
@@ -27,6 +51,17 @@ export function ChatPanel({
   /** The stage this chat is scoped to — the viewed stage, or the project's current one. Null
    * when no project is open, or the project has no stages yet. */
   stageId: string | null
+  /** Frame's chat toggle. Adds `hidden` to the `<aside>` rather than unmounting it, so the
+   * conversation, its draft and its width survive being tucked away; the shell still has
+   * exactly two asides in the DOM either way. */
+  hidden?: boolean
+  /** Collapsed to its rail (chatStore, per area): the inner wrapper is hidden, the aside stays
+   * 40 px wide with one control that calls `onExpand`. Steering uses `hidden`, not this. */
+  collapsed?: boolean
+  onExpand?: () => void
+  /** Reports the applied width (px) whenever it changes, so the Frame root can carry
+   * `--chat-width` for the screens beside this panel. The aside still sets its own variable. */
+  onWidthChange?: (px: number) => void
 }) {
   const [state, setState] = useState<ChatState | null>(null)
   // The one shared getStageReadiness read for this stage (spec 0019's StageReadinessProvider,
@@ -49,6 +84,7 @@ export function ChatPanel({
   // the panel is full width regardless.
   const chatWidth = useChatWidth()
   const widthStyle = { '--chat-width': `${chatWidth.width}px` } as CSSProperties
+  useEffect(() => { onWidthChange?.(chatWidth.width) }, [onWidthChange, chatWidth.width])
   const [busy, setBusy] = useState(false)
   // True once the chat flow (including the model's own first turn, when one was needed) has
   // actually finished for THIS stage — reset to false at the top of the mount effect below on
@@ -66,6 +102,9 @@ export function ChatPanel({
   // session the person already navigated away from believing they're on a different one.
   const currentStageId = useRef(stageId)
   useEffect(() => { currentStageId.current = stageId }, [stageId])
+  // Bumped by the empty state's Retry after a failed start: the start effect below runs again
+  // for the same stage, exactly as a stage switch would, with the error cleared first.
+  const [startAttempt, setStartAttempt] = useState(0)
 
   useEffect(() => {
     if (!projectPath || !stageId) {
@@ -96,9 +135,11 @@ export function ChatPanel({
       setState(loaded)
       if (loaded.messages.length === 0) {
         setBusy(true)
+        chatTurnStore.publish(projectPath, stageId, 'running')
         const result = await window.studio.ensureChatStarted(projectPath, stageId)
         if (cancelled) return // a stale reply for a stage the person already navigated away from
         setBusy(false)
+        chatTurnStore.publish(projectPath, stageId, result.ok ? 'ended' : 'failed')
         if (!result.ok) setError(result.error ?? 'The assistant could not start.')
         setState(result.state)
       }
@@ -116,6 +157,7 @@ export function ChatPanel({
       // resetting it here too, `busy` stays stuck true forever for this stage: the composer
       // (bound to `disabled={busy}`) never re-enables, even once the error below is showing.
       setBusy(false)
+      chatTurnStore.publish(projectPath, stageId, 'failed')
       setError(err instanceof Error ? err.message : 'The assistant could not start.')
       // Finding #4 (PR #76 round 2): without this, `state` stays null forever once this half
       // settles below — ChatMessageList's `state === null` check keeps rendering "Starting the
@@ -131,7 +173,7 @@ export function ChatPanel({
 
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- actor changing mid-conversation should not re-greet
-  }, [projectPath, stageId])
+  }, [projectPath, stageId, startAttempt])
 
   // "Ready" only once BOTH halves have settled — the chat flow above (including the model's own
   // first turn, when one was needed) AND the shared readiness read — so the checklist can never
@@ -165,8 +207,17 @@ export function ChatPanel({
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight })
   }, [state?.messages.length])
 
+  // An open proposal is a decision waiting on a person; Esc-as-back must not navigate past it (§6.2).
+  // Rules of Hooks: this is the LAST hook and it sits ABOVE the placeholder return below. The
+  // same fiber goes stageId → null (every stage signed off, or a corrupt `current_phase`) and
+  // back without a remount (Frame renders `<MemoChatPanel>` with no key), so a hook called after
+  // that return changed the hook count between renders and threw React #310 with no boundary
+  // above App to catch it. With no messages the predicate is simply false.
+  const hasPendingProposal = state?.messages.some((m) => m.proposals.some((p) => !p.outcome)) ?? false
+  useRegisterDirty(() => hasPendingProposal)
+
   if (!projectPath || !stageId) {
-    return <ChatPlaceholder status={status} style={widthStyle} />
+    return <ChatPlaceholder status={status} style={widthStyle} hidden={hidden} collapsed={collapsed} onExpand={onExpand} />
   }
 
   // The current step's document, by the SAME rule the Workflow tab uses to pick it — null while
@@ -174,15 +225,18 @@ export function ChatPanel({
   const currentDocumentTitle = readiness?.ok
     ? computeWorkflowSteps(readiness).find((s) => s.status === 'current' && s.kind === 'document')?.title ?? null
     : null
-
-  const hasPendingProposal = state?.messages.some((m) => m.proposals.some((p) => !p.outcome)) ?? false
+  // What the empty state says about where it is (S9): the stage's display name, from the shared
+  // readiness read, or the project's current phase while that has not answered.
+  const stageDisplay = readiness?.ok ? readiness.display : status?.current_phase.display ?? null
 
   const sendText = async (text: string): Promise<ChatSendResult> => {
     if (busy) return { sent: false, reason: 'The chat is busy with another message. Try again in a moment.' }
     const forStage = stageId
     setBusy(true)
     setError(null)
+    chatTurnStore.publish(projectPath, stageId, 'running')
     const result = await window.studio.sendChatMessage(projectPath, stageId, text)
+    chatTurnStore.publish(projectPath, forStage, result.ok ? 'ended' : 'failed')
     if (currentStageId.current !== forStage) return { sent: true } // the person moved on; this reply is now stale
     setBusy(false)
     // Always render the result, success or failure: on failure, `result.state` still carries
@@ -212,7 +266,9 @@ export function ChatPanel({
     const forStage = stageId
     setBusy(true)
     setError(null)
+    chatTurnStore.publish(projectPath, stageId, 'running')
     const result = await window.studio.answerChatQuestion(projectPath, stageId, questionId, option)
+    chatTurnStore.publish(projectPath, forStage, result.ok ? 'ended' : 'failed')
     if (currentStageId.current !== forStage) return
     setBusy(false)
     setState(result.state)
@@ -223,7 +279,9 @@ export function ChatPanel({
     const forStage = stageId
     setBusy(true)
     setError(null)
+    chatTurnStore.publish(projectPath, stageId, 'running')
     const result = await window.studio.resolveChatProposal(projectPath, stageId, proposalId, outcome, finalValue, actor || 'unknown')
+    chatTurnStore.publish(projectPath, forStage, result.ok ? 'ended' : 'failed')
     if (currentStageId.current !== forStage) return
     setBusy(false)
     setState(result.state)
@@ -242,36 +300,42 @@ export function ChatPanel({
     // down to nothing. 35vh keeps the two capped siblings' combined worst case at 85vh, always
     // leaving the document panel real room, while still giving the conversation meaningfully
     // more than a token sliver.
-    <aside
-      style={widthStyle}
-      className="relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-[var(--chat-width)]"
-    >
-      <ChatResizeHandle
-        width={chatWidth.width}
-        min={CHAT_MIN_WIDTH}
-        max={chatWidth.max}
-        onResize={chatWidth.setWidth}
-        onCommit={chatWidth.commit}
-        onReset={chatWidth.reset}
-      />
-      <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
-      {initializing ? (
-        <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
-      ) : (
-        <>
-          <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} onAnswer={answer} onResolveProposal={resolveProposal} />
-          {/* A chat-turn failure takes priority when both are set — it's the more recent, more
-              actionable one; the shared readiness error is what proves this panel isn't silently
-              stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
-              now owned by StageReadinessContext.tsx — see its own error field). */}
-          {(error ?? readinessError) && (
-            <div className="border-t border-red-200 bg-red-50 px-3 py-2 text-xs text-[var(--color-command-error)]">
-              {error ?? readinessError}
-            </div>
-          )}
-          <ChatComposer inputRef={composerRef} draft={draft} setDraft={setDraft} busy={busy} hasPendingProposal={hasPendingProposal} onSubmit={submit} />
-        </>
+    <aside style={widthStyle} data-chat-collapsed={collapsed ? '' : undefined} className={cn(collapsed ? ASIDE_COLLAPSED_CLASS : ASIDE_CLASS, hidden && 'hidden')}>
+      {collapsed ? <ChatRail onExpand={onExpand} /> : (
+        <ChatResizeHandle
+          width={chatWidth.width}
+          min={CHAT_MIN_WIDTH}
+          max={chatWidth.max}
+          onResize={chatWidth.setWidth}
+          onCommit={chatWidth.commit}
+          onReset={chatWidth.reset}
+        />
       )}
+      <div data-chat-inner="" className={cn('flex min-h-0 flex-1 flex-col', collapsed && 'hidden')}>
+        <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
+        {initializing ? (
+          <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
+        ) : (
+          <>
+            <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} stageDisplay={stageDisplay} onAnswer={answer} onResolveProposal={resolveProposal} onRetryStart={() => setStartAttempt((n) => n + 1)} />
+            {/* A chat-turn failure takes priority when both are set — it's the more recent, more
+                actionable one; the shared readiness error is what proves this panel isn't silently
+                stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
+                now owned by StageReadinessContext.tsx — see its own error field). Inline, never a
+                toast (§6.6): the next turn is the retry.
+                While the thread is still EMPTY the chat error is stated once, in the empty-state
+                block above (a failed auto-start is a fact, not an alarm over an empty room), so the
+                strip only carries it once there is a conversation for a failed turn to sit under.
+                The readiness error is a different fact and keeps its line either way. */}
+            {(((state?.messages.length ?? 0) > 0 && error) || readinessError) && (
+              <Notice tone="error" className="rounded-none border-x-0 border-b-0">
+                {((state?.messages.length ?? 0) > 0 && error) || readinessError}
+              </Notice>
+            )}
+            <ChatComposer inputRef={composerRef} draft={draft} setDraft={setDraft} busy={busy} hasPendingProposal={hasPendingProposal} onSubmit={submit} />
+          </>
+        )}
+      </div>
     </aside>
   )
 }
@@ -297,38 +361,152 @@ function ChatHeader({
   projectOpen: boolean
   currentDocumentTitle?: string | null
 }) {
+  // S9: the document's name is a Chip (identifier casing), so the header reads "Helping with:"
+  // once and the filename sits as the one identifier it is, not as part of a sentence.
   const subtitle = !status
     ? (projectOpen ? 'Can see: loading…' : 'Can see: nothing yet — open a project first.')
     : currentDocumentTitle
-      ? `Helping with: ${currentDocumentTitle}`
+      ? <>Helping with: <Chip casing="identifier" size="xs" className="ml-0.5 max-w-full" data-testid="chat-helping-with">{currentDocumentTitle}</Chip></>
       : `Can see: ${status.project_name}, ${status.current_phase.display}.`
   return (
-    <div className="border-b border-slate-200 px-4 py-3">
-      <h2 className="text-sm font-semibold text-slate-900">Chat</h2>
-      <p className="mt-1 text-xs text-slate-500">{subtitle}</p>
+    // 11 px vertical padding lands the header on the same 44 px line as the sidebar's project
+    // row, so the two asides share one top edge.
+    <div className="border-b border-line-1 px-4 py-[11px]">
+      <h2 className="text-sm font-semibold text-ink-1">Chat</h2>
+      <p className="mt-0.5 flex min-w-0 items-center truncate text-xs text-ink-3">{subtitle}</p>
     </div>
   )
 }
 
-function ChatPlaceholder({ status, style }: { status: ProjectStatus | null; style: CSSProperties }) {
+/** The collapsed rail's one control: reopens the chat. Its accessible name says what it does and
+ * carries the key; `aria-expanded="false"` tells assistive tech the panel is there, folded. Not
+ * a heading — the steering pin counts `heading[name=Chat]` and a rail is not a chat. */
+export const CHAT_RAIL_LABEL = 'Open the chat'
+
+function ChatRail({ onExpand }: { onExpand?: () => void }) {
+  return (
+    <div data-chat-rail="" className="flex flex-1 flex-col items-center gap-2 py-2">
+      <IconButton
+        label={CHAT_RAIL_LABEL}
+        icon={MessageSquare}
+        aria-expanded={false}
+        aria-keyshortcuts="Meta+Backslash Control+Backslash"
+        title={`${CHAT_RAIL_LABEL} (⌘\\)`}
+        onClick={onExpand}
+        disabled={!onExpand}
+        disabledReason={onExpand ? undefined : 'the shell did not pass a chat toggle'}
+      />
+      <span aria-hidden="true" className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3 [writing-mode:vertical-rl]">Chat</span>
+    </div>
+  )
+}
+
+function ChatPlaceholder({ status, style, hidden, collapsed, onExpand }: { status: ProjectStatus | null; style: CSSProperties; hidden: boolean; collapsed: boolean; onExpand?: () => void }) {
   return (
     // Same cap as the main panel's own `<aside>` above (finding #5) — this renders in the exact
     // same Frame.tsx sibling slot whenever no project/stage is open, so it is just as capable of
-    // pushing the document panel off-screen at phone width if left uncapped.
-    <aside
-      style={style}
-      className="flex max-h-[35vh] w-full shrink-0 flex-col border-l border-slate-200 bg-white sm:max-h-none sm:w-[var(--chat-width)]"
-    >
-      <ChatHeader status={status} projectOpen={false} />
-      <div className="flex flex-1 items-center justify-center px-4 text-center text-xs text-slate-400">
-        Open a stage to start a conversation.
+    // pushing the document panel off-screen at phone width if left uncapped. `relative` is
+    // harmless here (no handle to position) and keeps the one class string.
+    <aside style={style} data-chat-collapsed={collapsed ? '' : undefined} className={cn(collapsed ? ASIDE_COLLAPSED_CLASS : ASIDE_CLASS, hidden && 'hidden')}>
+      {collapsed && <ChatRail onExpand={onExpand} />}
+      <div data-chat-inner="" className={cn('flex min-h-0 flex-1 flex-col', collapsed && 'hidden')}>
+        <ChatHeader status={status} projectOpen={false} />
+        {/* The kit's one "nothing here, and why" frame (G4-9); the sentence is unchanged. */}
+        <div className="flex flex-1 flex-col justify-end p-3">
+          <EmptyState title="Open a stage to start a conversation." />
+        </div>
       </div>
     </aside>
   )
 }
 
+/** The §4 #13 arrival, played on the LAST bubble only when the count grew — a re-render of an
+ * existing bubble (a question answered, a proposal resolved) is not an arrival. The sub-agent
+ * dashed border settles from the accent to `line-2`; the colours are read from the theme's custom
+ * properties here because a choreography never reads a CSS variable itself. */
+function useMessageArrival(listRef: React.RefObject<HTMLDivElement | null>, count: number) {
+  const previous = useRef<number | null>(null)
+  useStudioGSAP(() => {
+    const list = listRef.current
+    const grew = previous.current !== null && count > previous.current
+    previous.current = count
+    if (!list || !grew) return
+    const bubbles = list.querySelectorAll('[data-chat-bubble]')
+    const bubble = bubbles[bubbles.length - 1]
+    if (!bubble) return
+    const vars = getComputedStyle(document.documentElement)
+    const ctx = contextFrom(list, { enabled: motionEnabled(), reduced: motionReduced() }, motion)
+    chatMessage.play(ctx, {
+      bubble,
+      subAgent: bubble.getAttribute('data-chat-bubble') === 'subagent',
+      accentColor: vars.getPropertyValue('--color-accent-600').trim() || undefined,
+      lineColor: vars.getPropertyValue('--color-line-2').trim() || undefined,
+    })
+  }, { scope: listRef, dependencies: [count] })
+}
+
+/** S9: the empty and the failed conversation, as one `EmptyState` at the TOP of the list region
+ * (an empty room reads from its door, not its far wall). The sentence is unchanged; beneath it
+ * the retry hint, then where this chat is — the stage · "read-only until you accept a proposal"
+ * — as a quieter line. The document's name is NOT repeated here: the header's Chip is the one
+ * place the filename appears. The hint comes BEFORE the facts line on purpose: chatAuthoring
+ * matches `/already started\. Ask a question/` as one text run, and Playwright joins an element's
+ * text without separators, so the title ends in a trailing space and the hint must follow it
+ * directly. No `<li>` anywhere (chatLook counts exactly four in the aside). The failure message
+ * sits in its own span so a test (and a reader) can find the host's words on their own. */
+/** Does the host's own error already say that the assistant failed? The CLI's two default
+ * sentences do; a raw message ("claude: not signed in") does not and gets the title before it. */
+export function errorNamesTheFailure(error: string): boolean {
+  return /^The assistant could not (start|respond)\b/.test(error.trim())
+}
+
+export const RETRY_START = 'Retry'
+
+function ChatEmptyState({ startError, stageDisplay, onRetry }: {
+  startError: string | null
+  stageDisplay: string | null
+  onRetry?: () => void
+}) {
+  const facts = [stageDisplay, 'read-only until you accept a proposal'].filter((f): f is string => Boolean(f))
+  if (startError) {
+    // A failed start is a quiet fact, not a hero: one small block in `ink-3` with the host's words
+    // in their own span and the retry hint — the same sentences, no figure (fixer round, v11).
+    // ONE failure sentence (v13): when the host's words already name the failure ("The assistant
+    // could not respond.") they stand alone in `ink-2`; the fixed title precedes only a raw
+    // message. The Retry button re-runs the start — the hint is still true, the button is quicker.
+    const titled = !errorNamesTheFailure(startError)
+    return (
+      <div data-testid="chat-empty-state" className="px-1 py-2 text-xs leading-4 text-ink-3">
+        <p>
+          {titled && <><span className="font-medium text-ink-2">The assistant could not start.</span>{' '}</>}
+          <span className={titled ? undefined : 'font-medium text-ink-2'} data-testid="chat-start-error">{startError}</span>
+          {' '}Type a message to try again, or open a document to edit it directly.
+        </p>
+        <span className="mt-1.5 block" data-testid="chat-empty-facts">{facts.join(' · ')}</span>
+        {onRetry && <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry} data-testid="chat-retry-start">{RETRY_START}</Button>}
+      </div>
+    )
+  }
+  return (
+    <EmptyState
+      figure="conversation"
+      data-testid="chat-empty-state"
+      className="border-0 px-1 py-2"
+      title={<>{startError ? 'The assistant could not start.' : "This stage's documents are already started."}{' '}</>}
+      body={(
+        <>
+          {startError
+            ? <><span>{startError}</span> Type a message to try again, or open a document to edit it directly.</>
+            : 'Ask a question, or open a document to edit it directly.'}
+          <span className="mt-1.5 block text-ink-3" data-testid="chat-empty-facts">{facts.join(' · ')}</span>
+        </>
+      )}
+    />
+  )
+}
+
 function ChatMessageList({
-  listRef, state, busy, projectPath, stageId, startError, onAnswer, onResolveProposal,
+  listRef, state, busy, projectPath, stageId, startError, stageDisplay, onAnswer, onResolveProposal, onRetryStart,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>
   state: ChatState | null
@@ -339,19 +517,20 @@ function ChatMessageList({
    * the empty-session message below for one that admits the failure, rather than the "already
    * started" copy that branch normally shows for an ordinary, no-error empty session. */
   startError: string | null
+  /** The stage's display name for the empty state's facts line (S9). */
+  stageDisplay: string | null
   onAnswer: (questionId: string, option: string) => void
   onResolveProposal: (proposalId: string, outcome: 'accepted' | 'edited' | 'discarded', finalValue: string) => void
+  /** Re-run the start after a failure (the empty state's Retry). */
+  onRetryStart?: () => void
 }) {
+  useMessageArrival(listRef, state?.messages.length ?? 0)
   return (
     <div ref={listRef} className="flex-1 space-y-3 overflow-auto px-3 py-3">
       {state === null || (state.messages.length === 0 && busy) ? (
-        <p className="text-xs text-slate-400">Starting the conversation…</p>
+        <p className="text-xs text-ink-3">Starting the conversation…</p>
       ) : state.messages.length === 0 ? (
-        <p className="text-xs text-slate-400">
-          {startError
-            ? 'The assistant could not start automatically. Type a message below to try again, or open a document to edit it directly.'
-            : "This stage's documents are already started. Ask a question, or open a document to edit it directly."}
-        </p>
+        <ChatEmptyState startError={startError} stageDisplay={stageDisplay} onRetry={onRetryStart} />
       ) : (
         state.messages.map((message) => (
           <MessageBubble key={message.id} message={message} busy={busy} onAnswer={onAnswer} onResolveProposal={onResolveProposal} />
@@ -378,10 +557,23 @@ function ChatComposer({
   hasPendingProposal: boolean
   onSubmit: () => void
 }) {
+  // A turn is a model call; when the installed Claude Code lacks a flag Studio emits, the box
+  // says so where the person would type, instead of failing after Enter (F1).
+  const claudeIssue = useClaudeIssue()
+  // One line at rest, growing with the draft up to 160 px — then the field scrolls. Measured
+  // from scrollHeight after a reset to `auto`, because a textarea never shrinks on its own.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`
+  }, [draft, inputRef])
   return (
-    <div className="border-t border-slate-200 p-3">
-      <div className="flex gap-2">
-        <textarea
+    <div className="border-t border-line-1 p-3">
+      {/* One field, one glyph (G4-7): the frame carries the focus ring (`focus-within`), so the
+          textarea itself draws no border or shadow and the composer reads as a single control. */}
+      <div className="flex items-end gap-1.5 rounded-[12px] border border-line-2 bg-surface-1 p-1.5 pl-3 transition-[border-color,box-shadow] duration-[120ms] focus-within:border-focus focus-within:shadow-[0_0_0_3px_color-mix(in_srgb,var(--color-focus)_22%,transparent)]">
+        <Textarea
           ref={inputRef}
           data-testid="chat-composer-input"
           value={draft}
@@ -389,27 +581,34 @@ function ChatComposer({
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSubmit() }
           }}
-          disabled={busy}
-          placeholder="Type a message…"
-          rows={2}
-          className="min-w-0 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50 disabled:text-slate-400"
+          disabled={busy || claudeIssue !== null}
+          placeholder={claudeIssue ?? 'Type a message…'}
+          rows={1}
+          className="min-h-[24px] max-h-[160px] flex-1 resize-none border-0 bg-transparent px-0 py-1 shadow-none focus-visible:shadow-none"
         />
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={busy || !draft.trim()}
-          className="shrink-0 self-end rounded-lg bg-brand-600 px-3 py-2 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
-        >
-          Send
-        </button>
+        {busy ? (
+          <IconButton label="Stop" icon={Square} size="sm" disabled disabledReason={STOP_REASON} />
+        ) : (
+          <IconButton
+            label="Send"
+            icon={ArrowUp}
+            size="sm"
+            onClick={onSubmit}
+            disabled={!draft.trim() || claudeIssue !== null}
+            className="rounded-[8px] bg-brand-600 text-white hover:bg-brand-700 hover:text-white disabled:bg-surface-3 disabled:text-ink-4"
+          />
+        )}
       </div>
       {hasPendingProposal && (
-        <p className="mt-1 text-xs text-slate-400">A proposal above is waiting on you.</p>
+        <p className="mt-1 text-xs text-ink-3">A proposal above is waiting on you.</p>
       )}
     </div>
   )
 }
 
+/** The three bubble class strings are literal on purpose: chatAuthoring finds a reply by
+ * `.bg-slate-100, .border-dashed` and `ChatPanel.test.tsx` reads them too. Bubbles are `div`s,
+ * not `li`s — chatLook counts exactly four `li` in the aside, all of them markdown. */
 function MessageBubble({
   message, busy, onAnswer, onResolveProposal,
 }: {
@@ -423,12 +622,16 @@ function MessageBubble({
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div className={`max-w-[90%] rounded-lg px-3 py-2 text-sm ${
-        isUser ? 'bg-brand-600 text-white' : isSubagent ? 'border border-dashed border-slate-300 bg-slate-50 text-slate-700' : 'bg-slate-100 text-slate-800'
-      }`}
+      <div
+        data-chat-bubble={isUser ? 'user' : isSubagent ? 'subagent' : 'assistant'}
+        // The tight corner sits on the speaker's side (bottom-right for the person, bottom-left
+        // for the assistant and sub-agents), so who spoke reads from the shape, not from colour.
+        className={`max-w-[88%] rounded-[12px] px-3 py-2 text-sm leading-[1.45] ${
+          isUser ? 'rounded-br-[4px] bg-brand-600 text-white' : isSubagent ? 'rounded-bl-[4px] border border-dashed border-slate-300 bg-slate-50 text-slate-700' : 'rounded-bl-[4px] bg-slate-100 text-slate-800'
+        }`}
       >
         {isSubagent && (
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400">
             {message.subagentType ?? 'sub-agent'}
           </p>
         )}
@@ -459,6 +662,9 @@ function MessageBubble({
   )
 }
 
+/** Quick replies as `Chip as="button"` — the kit keeps `rounded-full`, which chatAuthoring locates
+ * the options by (`aside button.rounded-full`). The pills slide in once, when the question first
+ * renders (§4 #14); an answered question swaps to its "You picked" line with no motion. */
 function QuestionPrompt({
   question, busy, onAnswer,
 }: {
@@ -466,23 +672,34 @@ function QuestionPrompt({
   busy: boolean
   onAnswer: (option: string) => void
 }) {
+  const pillsRef = useRef<HTMLDivElement>(null)
+  useStudioGSAP(() => {
+    const row = pillsRef.current
+    if (!row) return
+    const ctx = contextFrom(row, { enabled: motionEnabled(), reduced: motionReduced() }, motion)
+    questionPills.play(ctx, { pills: Array.from(row.children) })
+  }, { scope: pillsRef, dependencies: [question.id] })
   return (
     <div className="mt-2 space-y-1">
       <p className="text-xs font-medium text-slate-500">{question.question}</p>
       {question.answeredWith ? (
-        <p className="text-xs text-slate-500">You picked: <span className="font-semibold">{question.answeredWith}</span></p>
+        <p className="text-xs text-slate-500">You picked: <span className="font-semibold text-accent-text">{question.answeredWith}</span></p>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
+        <div ref={pillsRef} className="flex flex-wrap gap-1.5">
+          {/* C1: the quick replies read in `accent-text` (legible on both themes) over the
+              surface, not a hard `bg-white` that sat as a white patch on the dark theme. */}
           {question.options.map((option) => (
-            <button
+            <Chip
               key={option}
-              type="button"
+              as="button"
+              tone="accent"
+              size="sm"
               disabled={busy}
               onClick={() => onAnswer(option)}
-              className="rounded-full border border-brand-300 bg-white px-3 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 disabled:opacity-40"
+              className="border border-brand-300 bg-surface-1 text-accent-text hover:bg-brand-50 hover:text-accent-text-hover"
             >
               {option}
-            </button>
+            </Chip>
           ))}
         </div>
       )}
@@ -503,12 +720,12 @@ function ProposalCard({
   if (proposal.outcome) {
     const label = proposal.outcome === 'discarded' ? 'Discarded' : proposal.outcome === 'edited' ? 'Accepted (edited)' : 'Accepted'
     return (
-      <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+      <Card padding="sm" className={`mt-2 rounded-lg ${proposal.outcome === 'discarded' ? 'opacity-60' : ''}`}>
+        <p className={EYEBROW_CLASS}>
           {proposal.document} — {proposal.section} — {proposal.field}
         </p>
-        <p className="mt-1 text-xs font-medium text-slate-600">{label}</p>
-      </div>
+        <p className="mt-1 text-xs font-medium text-ink-2">{label}</p>
+      </Card>
     )
   }
 
@@ -520,34 +737,25 @@ function ProposalCard({
         onAccept={() => onResolve(editing && value.trim() !== proposal.value.trim() ? 'edited' : 'accepted', value)}
         onDiscard={() => onResolve('discarded', '')}
         middleActions={!editing ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => setEditing(true)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
-          >
-            Edit
-          </button>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => setEditing(true)}>Edit</Button>
         ) : (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => { setEditing(false); setValue(proposal.value) }}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
-          >
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => { setEditing(false); setValue(proposal.value) }}>
             Cancel edit
-          </button>
+          </Button>
         )}
       >
         {editing ? (
-          <textarea
+          <Textarea
+            mono
+            size="sm"
+            aria-label="Proposed text"
             value={value}
             onChange={(e) => setValue(e.target.value)}
             rows={Math.min(10, Math.max(3, value.split('\n').length + 1))}
-            className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-1.5 font-mono text-xs"
+            className="mt-1"
           />
         ) : (
-          <pre className="mt-1 whitespace-pre-wrap font-sans text-xs text-slate-800">{proposal.value}</pre>
+          <pre className="mt-1 whitespace-pre-wrap font-sans text-xs text-ink-1">{proposal.value}</pre>
         )}
       </AiProposalCard>
     </div>

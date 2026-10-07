@@ -1,0 +1,2 @@
+1 spec(s)
+  0042  MEDIUM in-progress @priya-n     @sam-k       waiting for a non-author approval; requested from @priya-n

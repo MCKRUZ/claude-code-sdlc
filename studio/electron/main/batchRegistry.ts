@@ -3,6 +3,7 @@
 
 import { join } from 'node:path'
 import { hasSdlcProject, runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import type { RegistryResult } from '../../shared/types'
 
 const NOT_READ = 'The registry result could not be read.'
@@ -51,7 +52,7 @@ export async function writeRegistry(projectPath: string, scriptsDir: string): Pr
   ])
   if (entry.exitCode !== 0) return failed(pluginMessage(entry.stdout, entry.stderr) ?? 'The registry could not be written.')
   try {
-    const raw: unknown = JSON.parse(entry.stdout)
+    const raw: unknown = JSON.parse(rawStdout(entry))
     return (isRecord(raw) ? read(raw) : null) ?? failed(NOT_READ)
   } catch {
     return failed(NOT_READ)

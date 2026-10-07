@@ -7,6 +7,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeWorkingDirectory, CLAUDE_SHARED_SAFE_ARGS } from './claudeAssist'
 import { ASK_QUESTION_TOOL as ASK_QUESTION, PROPOSE_WRITE_TOOL as PROPOSE_WRITE } from './chatMcpServer'
+import { hostLabel, type HostName } from '../../shared/codeHostModel'
+
 
 // --- the fixed tool surface ---------------------------------------------------------------
 // An explicit ALLOW-list, not a block-list (spec's own acceptance check: provable by
@@ -18,8 +20,8 @@ import { ASK_QUESTION_TOOL as ASK_QUESTION, PROPOSE_WRITE_TOOL as PROPOSE_WRITE 
 
 /** The exact, complete tool list every chat session gets — nothing more, nothing less. A test
  * asserts buildChatArgs() output contains exactly this, comma-joined, as the value that
- * follows --tools (and again after --allowedTools, since --permission-prompts none denies an
- * MCP tool call outright without an explicit allow — measured live; Read/Grep/Glob/Task did
+ * follows --tools (and again after --allowedTools, since denying prompts (--permission-mode
+ * dontAsk) denies an MCP tool call outright without an explicit allow — measured live; Read/Grep/Glob/Task did
  * not need it, but granting it uniformly is simpler and strictly no wider than --tools already
  * allows). */
 export const CHAT_TOOLS = ['Read', 'Grep', 'Glob', 'Task', PROPOSE_WRITE, ASK_QUESTION] as const
@@ -50,6 +52,7 @@ export function buildSystemPrompt(opts: {
   pluginName: string
   stageId: string
   stageDisplay: string
+  host?: HostName
 }): string {
   return [
     'You are the SDLC assistant inside SDLC Studio\'s chat panel, authoring this project\'s '
@@ -87,10 +90,10 @@ export function buildSystemPrompt(opts: {
       + 'cannot find the field\'s exact declared label, read the shape file again rather than '
       + 'inventing one.',
     '',
-    'You cannot run commands, so you cannot read GitHub yourself. When the person needs evidence '
+    `You cannot run commands, so you cannot read ${hostLabel(opts.host)} yourself. When the person needs evidence `
       + 'about this repository\'s delivery pipeline (which CI rails have fired, whether branch '
       + 'protection is enforcing, which pull requests merged), tell them to use the "Gather '
-      + 'pipeline evidence" button on the Foundation stage, which reads GitHub and writes '
+      + `pipeline evidence" button on the Foundation stage, which reads ${hostLabel(opts.host)} and writes `
       + '.sdlc/artifacts/03-foundation/pipeline-proof.md — then read that file and help them with '
       + 'it. Do not write them a prompt to paste into another session; they should never have to '
       + 'leave this app for it.',
@@ -123,6 +126,9 @@ export interface ChatArgsOptions {
    * one with --session-id. */
   resume: boolean
   sessionId: string
+  /** The project's code host (ConnectionInfo.host), for the sentence about the pipeline-evidence
+   * button. Absent reads as GitHub — today's wording. */
+  host?: HostName
 }
 
 /** Pure: no I/O, no process spawn — every acceptance check about "the session's own launch

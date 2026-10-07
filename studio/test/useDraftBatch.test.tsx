@@ -182,6 +182,9 @@ describe('useDraftBatch: elapsed time', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
     expect(result.current.elapsedMs).toBeGreaterThanOrEqual(5000)
     act(() => pushBatchState('/p', { job: batchJob({ phase: 'finished', startedAt }), candidates: [] }))
+    // The interval is cleared in an effect cleanup of the commit above; under load (the Windows
+    // runner) that cleanup lands a few microtasks later — flush until it has, same assertion.
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await Promise.resolve() })
     expect(result.current.elapsedMs).toBe(0)
     unmount()
     expect(vi.getTimerCount()).toBe(0)

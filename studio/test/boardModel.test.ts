@@ -20,6 +20,7 @@ function row(over: Partial<BoardRow> = {}): BoardRow {
     spec: '0001', name: 'a-thing', path: 'specs/0001-a-thing.md', title: 'A thing',
     status: 'draft', risk: 'MEDIUM', team: 'core', channel: '',
     owner: '@matt', developer: '', checker: '', branch: 'spec/0001-a-thing',
+    sprint: '', nextOwner: '', engReview: '', dataReview: '', dependsOn: [],
     pullRequest: null,
     ...over,
   }
@@ -172,7 +173,7 @@ describe('groupBoard', () => {
   })
 
   it('keeps every row — grouping must never lose one', () => {
-    for (const by of ['none', 'team', 'person', 'epic'] as const) {
+    for (const by of ['none', 'team', 'person', 'sprint'] as const) {
       const total = groupBoard(rows, by).reduce((n, g) => n + g.rows.length, 0)
       expect(total, `grouping by ${by} lost a row`).toBe(rows.length)
     }
@@ -297,5 +298,43 @@ describe('gathering the specs that block a declaration', () => {
 
   it('an empty list gathers into nothing, not into an empty team', () => {
     expect(groupSpecsByTeam([])).toEqual([])
+  })
+})
+
+describe('the sprint layer on the board (studio-improvements F10)', () => {
+  it('"waiting on me" counts the person the sprint hand-off named — pull request or not', () => {
+    // `next_owner` is written by `sprint.py handoff`: an explicit "the next action is yours",
+    // more recent than whatever the pull request's review state says.
+    expect(needsMe(row({ nextOwner: '@sam', pullRequest: pr({ waitingOnHandle: '@priya' }) }), '@sam')).toBe(true)
+    expect(needsMe(row({ nextOwner: '@sam' }), '@sam')).toBe(true)
+    expect(needsMe(row({ nextOwner: '@Sam' }), 'sam')).toBe(true)
+  })
+
+  it('a merged spec waits on nobody, whatever its hand-off still says', () => {
+    expect(needsMe(row({ nextOwner: '@sam', status: 'merged' }), '@sam')).toBe(false)
+  })
+
+  it('a hand-off to someone else does not make it mine', () => {
+    expect(needsMe(row({ owner: '@priya', nextOwner: '@sam' }), '@priya')).toBe(true) // still the owner, no PR
+    expect(needsMe(row({ owner: '@matt', nextOwner: '@sam' }), '@priya')).toBe(false)
+  })
+
+  it('groups by sprint, with the unslated bucket last', () => {
+    const rows = [
+      row({ spec: '0001', sprint: 'S08' }), row({ spec: '0002', sprint: '' }), row({ spec: '0003', sprint: 'S07' }),
+    ]
+    expect(groupBoard(rows, 'sprint').map((g) => g.key)).toEqual(['S07', 'S08', 'no sprint'])
+    expect(groupBoard(rows, 'sprint').map((g) => g.rows.map((r) => r.spec))).toEqual([['0003'], ['0001'], ['0002']])
+  })
+
+  it('the status filter can ask for deferred specs', () => {
+    const rows = [row({ spec: '0001', status: 'deferred' }), row({ spec: '0002', status: 'ready' })]
+    expect(filterBoard(rows, { role: 'everything', status: 'deferred' }, null).map((r) => r.spec)).toEqual(['0001'])
+  })
+
+  it('search finds a sprint id and a next owner', () => {
+    const rows = [row({ spec: '0001', sprint: 'S07' }), row({ spec: '0002', nextOwner: '@sam-k' }), row({ spec: '0003' })]
+    expect(filterBoard(rows, { role: 'everything', search: 's07' }, null).map((r) => r.spec)).toEqual(['0001'])
+    expect(filterBoard(rows, { role: 'everything', search: 'sam-k' }, null).map((r) => r.spec)).toEqual(['0002'])
   })
 })

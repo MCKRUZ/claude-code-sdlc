@@ -7,6 +7,13 @@ only once the PR has actually merged, committed straight onto the default branch
 effort: a protected default branch may reject the push, which is reported, not fatal — the
 read side of this tool must still succeed regardless).
 
+Code host (code-host providers): the repository's `origin` decides whether the reads above go
+through `gh` or, for an Azure DevOps remote, `az` (`--host` overrides). Every read dispatches
+AT ITS CALL SITE through `_host_fn` to `ado_import.<same name>` when the host is Azure DevOps
+and to this module's own function otherwise, so the GitHub path — argv, text, tests — is
+byte-identical to what it was. The pure ladder (`compute_waiting_on`) never learns which host
+it is reading; `ado_map` hands it the same gh-shaped dict.
+
 Standalone or Workflow:
   - Standalone: --repo <path>
   - Workflow:   --state .sdlc/state.yaml
@@ -22,8 +29,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import cadence_plan
 import check_spec as cs
+import code_host
+import host_report
 from github_import import GitHubImportError, _hours_between, _is_security_pr, fetch_pr_events, gh_json, run_gh
 from handoff import HandoffError, run_git, branch_name_for, resolve_base_branch
+from new_spec import SPEC_FILE_RE
+from sprint_model import parse_depends_on
 
 VERDICT_HEADING = "Acceptance Check Verdicts"
 GRADER_CHECK_NAME = "grader"
@@ -34,6 +45,20 @@ NON_TERMINAL_CONCLUSIONS = (None, "SUCCESS", "NEUTRAL", "SKIPPED")
 class SpecStatusError(Exception):
     """The spec file itself is unreadable/malformed — distinct from no-code-host-access,
     which is reported, not raised."""
+
+
+ADO = "azure-devops"
+CHECKS_NOT_READ = "live checks not read for this row"
+
+
+def _host_fn(name: str, host: str | None):
+    """The function to call for a code-host read. `host is None` or anything but Azure DevOps is
+    the GitHub path — this module's OWN function, looked up by name at call time so the existing
+    monkeypatch seams (`ss.gh_json`, `ss.fetch_pr_events`, …) keep intercepting it."""
+    if host == ADO:
+        import ado_import
+        return getattr(ado_import, name)
+    return globals()[name]
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +121,10 @@ def parse_verdict_block(comment_body: str) -> list[dict] | None:
     ]
 
 
-def find_grader_verdicts(repo_root, pr_number: int) -> tuple[list[dict] | None, str | None]:
+def find_grader_verdicts(repo_root, pr_number: int, host: str | None = None) -> tuple[list[dict] | None, str | None]:
     """(verdicts, error). The latest comment carrying the block wins — the grader updates
     its own comment on re-runs rather than stacking new ones (grader.yml's own instruction)."""
-    for body in reversed(fetch_pr_comment_bodies(repo_root, pr_number)):
+    for body in reversed(_host_fn("fetch_pr_comment_bodies", host)(repo_root, pr_number)):
         verdicts = parse_verdict_block(body)
         if verdicts is not None:
             return verdicts, None
@@ -119,10 +144,15 @@ def _humanize_age(iso_timestamp: str) -> str:
 
 
 def _reviewer_handle(entry: dict) -> str:
+    # A roster `handle` (Azure DevOps rows carry one when .sdlc/team.yaml maps the UPN) names the
+    # person the way the team does; gh entries have no such key, so their login is still the name.
+    handle = entry.get("handle")
+    if isinstance(handle, str) and handle.strip("@"):
+        return handle.lstrip("@")
     return entry.get("login") or entry.get("name") or "someone"
 
 
-def _pending_reviewer_wait(repo_root, pr: dict) -> tuple[str, str | None]:
+def _pending_reviewer_wait(repo_root, pr: dict, host: str | None = None) -> tuple[str, str | None]:
     """The named reviewer a still-open PR is waiting on, and the ISO timestamp of when review
     was last (re-)requested (None if that couldn't be read). Only called when the PR actually
     has a pending reviewer.
@@ -135,7 +165,7 @@ def _pending_reviewer_wait(repo_root, pr: dict) -> tuple[str, str | None]:
     pending_reviewers = pr.get("reviewRequests") or []
     who = _reviewer_handle(pending_reviewers[0])
     try:
-        events = fetch_pr_events(str(repo_root), pr["number"])
+        events = _host_fn("fetch_pr_events", host)(str(repo_root), pr["number"])
         requested = sorted(e["created_at"] for e in events if e.get("event") == "review_requested")
     except GitHubImportError:
         return who, None
@@ -144,12 +174,12 @@ def _pending_reviewer_wait(repo_root, pr: dict) -> tuple[str, str | None]:
 
 def compute_waiting_on(
     repo_root, pr: dict, verdicts: list[dict] | None, verdict_error: str | None,
-    pending_wait: tuple[str, str | None] | None = None,
+    pending_wait: tuple[str, str | None] | None = None, host: str | None = None,
 ) -> str:
     """`pending_wait` lets a caller that already ran _pending_reviewer_wait (bulk mode, so it
     can also compare the hours to an alarm threshold) hand the result in rather than have this
     function fetch it again. report_status's single-spec path leaves it None, unchanged from
-    before this parameter existed."""
+    before this parameter existed. `host` only matters when this function has to fetch."""
     if pr["state"] == "MERGED":
         return "merged"
     if pr["state"] == "CLOSED":
@@ -185,7 +215,7 @@ def compute_waiting_on(
 
     pending_reviewers = pr.get("reviewRequests") or []
     if pending_reviewers:
-        who, requested_at = pending_wait if pending_wait is not None else _pending_reviewer_wait(repo_root, pr)
+        who, requested_at = pending_wait if pending_wait is not None else _pending_reviewer_wait(repo_root, pr, host)
         age = f" {_humanize_age(requested_at)}" if requested_at else ""
         return f"waiting for a non-author approval; requested from @{who}{age}"
     return "waiting for a non-author approval"
@@ -257,7 +287,7 @@ def finalize_merge(repo_root, base_branch: str, spec_rel_path: str, spec_id: str
 # Orchestration
 # ---------------------------------------------------------------------------
 
-def report_status(repo_root: Path, spec_path: Path) -> dict:
+def report_status(repo_root: Path, spec_path: Path, host: str | None = None) -> dict:
     if not spec_path.exists():
         raise SpecStatusError(f"Spec not found: {spec_path}")
     text = spec_path.read_text(encoding="utf-8")
@@ -268,28 +298,29 @@ def report_status(repo_root: Path, spec_path: Path) -> dict:
     spec_id, spec_name = fm.get("spec", "????"), fm.get("name", "unnamed")
     branch_name = branch_name_for(spec_id, spec_name)
     spec_rel_path = str(spec_path.resolve().relative_to(repo_root)).replace("\\", "/")
+    detection = host_report.detect(repo_root, host)
 
     try:
-        pr = find_pr_for_branch(repo_root, branch_name)
+        pr = _host_fn("find_pr_for_branch", detection.host)(repo_root, branch_name)
     except GitHubImportError as e:
         return {
             "spec": spec_id, "branch": branch_name, "code_host_available": False,
             "local_status": (fm.get("status") or "").strip(),
-            "error": str(e),
+            "error": str(e), "host": host_report.host_block(detection, str(e)),
         }
 
     if pr is None:
         return {
             "spec": spec_id, "branch": branch_name, "code_host_available": True,
-            "pull_request": None,
+            "pull_request": None, "host": host_report.host_block(detection),
         }
 
     verdicts, verdict_error = (None, None)
     checks = pr.get("statusCheckRollup") or []
     if any(c["name"] == GRADER_CHECK_NAME for c in checks):
-        verdicts, verdict_error = find_grader_verdicts(repo_root, pr["number"])
+        verdicts, verdict_error = find_grader_verdicts(repo_root, pr["number"], detection.host)
 
-    waiting_on = compute_waiting_on(repo_root, pr, verdicts, verdict_error)
+    waiting_on = compute_waiting_on(repo_root, pr, verdicts, verdict_error, host=detection.host)
 
     merge_committed = False
     merge_error = None
@@ -317,14 +348,18 @@ def report_status(repo_root: Path, spec_path: Path) -> dict:
                 ({"conclusion": c.get("conclusion")} for c in checks if c["name"] == SECURITY_CHECK_NAME),
                 None,
             ),
+            # `at` is null on Azure DevOps (a vote carries no time); `handle` rides along only when
+            # the roster resolved the UPN — gh rows have neither key and are unchanged.
             "approvals": [
-                {"by": r.get("author", {}).get("login"), "at": r.get("submittedAt")}
+                {"by": r.get("author", {}).get("login"), "at": r.get("submittedAt"),
+                 **({"handle": r["author"]["handle"]} if r.get("author", {}).get("handle") else {})}
                 for r in pr.get("reviews", []) if r.get("state") == "APPROVED"
             ],
             "waiting_on": waiting_on,
         },
         "status_committed_merged": merge_committed,
         "merge_commit_error": merge_error,
+        "host": host_report.host_block(detection),
     }
 
 
@@ -373,7 +408,7 @@ def fetch_all_pull_requests(repo_root, limit: int = 1000) -> dict[str, dict]:
 
 def _safe_spec_row(
     spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None,
-    limits: dict[str, dict] | None = None,
+    limits: dict[str, dict] | None = None, host: str | None = None,
 ) -> dict:
     """One row, and never more than one row's worth of damage.
 
@@ -382,14 +417,14 @@ def _safe_spec_row(
     any of the others.
     """
     try:
-        return _spec_row(spec_path, repo_root, by_branch, limits)
+        return _spec_row(spec_path, repo_root, by_branch, limits, host)
     except Exception as e:  # noqa: BLE001
         return {"path": spec_path.name, "error": f"could not be read: {type(e).__name__}: {e}"}
 
 
 def _spec_row(
     spec_path: Path, repo_root: Path, by_branch: dict[str, dict] | None,
-    limits: dict[str, dict] | None = None,
+    limits: dict[str, dict] | None = None, host: str | None = None,
 ) -> dict:
     """One board row. Everything except `pull_request` comes from the file itself, so a row
     is complete and useful before the code host has answered — or when it never does."""
@@ -421,6 +456,19 @@ def _spec_row(
         "owner": (fm.get("owner") or "").strip(),
         "developer": (fm.get("developer") or "").strip(),
         "checker": (fm.get("checker") or "").strip(),
+        # The sprint-layer fields (sprint.py writes them; sprint_model.SPEC_KEYS names them).
+        # Strings default to "" and depends_on to [] so a board can group by sprint and answer
+        # "is this waiting on ME" without a second read of the file. Additive: a repo that has
+        # never run a sprint gets empty values, not missing keys.
+        "sprint": (fm.get("sprint") or "").strip(),
+        "next_owner": (fm.get("next_owner") or "").strip(),
+        "eng_review": (fm.get("eng_review") or "").strip(),
+        "data_review": (fm.get("data_review") or "").strip(),
+        "depends_on": parse_depends_on(fm.get("depends_on")),
+        # Why a deferred spec was not built (spec_transition.py defer writes it; check_spec reads
+        # it). "" when absent — a board shows the reason beside the deferral or nothing, never a
+        # guess. Additive: every row has the key.
+        "deferred_reason": (fm.get("deferred_reason") or "").strip(),
         "branch": branch,
         "pull_request": None,
     }
@@ -436,16 +484,21 @@ def _spec_row(
     # every row with a pending reviewer.
     pending_reviewers = pr.get("reviewRequests") or []
     has_pending_reviewer = pr["state"] == "OPEN" and not pr.get("isDraft") and pending_reviewers
-    pending_wait = _pending_reviewer_wait(repo_root, pr) if has_pending_reviewer else None
+    pending_wait = _pending_reviewer_wait(repo_root, pr, host) if has_pending_reviewer else None
 
+    # An Azure DevOps bulk read fetches policy evaluations for at most ADO_CHECKS_MAX active rows;
+    # a row past the cap says its checks were not read, rather than "waiting for the grader to
+    # run" — which is what an EMPTY rollup would honestly mean, and would be a lie here.
+    waiting_on = (CHECKS_NOT_READ if pr.get("_checks_unavailable")
+                  else compute_waiting_on(repo_root, pr, None, None, pending_wait=pending_wait, host=host))
     row["pull_request"] = {
         "number": pr["number"],
         "url": pr["url"],
         "state": pr["state"],
         "merged_at": pr.get("mergedAt"),
-        "updated_at": pr.get("updatedAt"),
+        "updated_at": pr.get("updatedAt"),  # null on Azure DevOps: GitPullRequest has no last-moved field
         # verdicts/verdict_error are None here on purpose — see this section's header.
-        "waiting_on": compute_waiting_on(repo_root, pr, None, None, pending_wait=pending_wait),
+        "waiting_on": waiting_on,
         "waiting_on_handle": waiting_on_handle(pr),
     }
 
@@ -495,20 +548,24 @@ def _spec_title(text: str) -> str:
     return ""
 
 
-def report_all(repo_root: Path) -> dict:
+def report_all(repo_root: Path, host: str | None = None) -> dict:
     """Every spec in the repository, with live pull-request state where there is any.
 
     Read-only, and honest when the code host is unreachable: the rows are still returned,
     built from the spec files, with `code_host_available: false` saying why the live half is
     missing. An empty board would read as "there is no work", which is a different claim."""
+    # Only files named like a spec (new_spec.SPEC_FILE_RE, `NNNN-`) are rows — the same rule
+    # track_specs and sprint.py apply. The harness installs specs/spec-template.md beside the
+    # real specs, and a README may live there too; neither is work, so neither is a row.
     specs_dir = repo_root / "specs"
-    spec_paths = sorted(p for p in specs_dir.glob("*.md") if p.name != "README.md") \
+    spec_paths = sorted(p for p in specs_dir.glob("*.md") if SPEC_FILE_RE.match(p.name)) \
         if specs_dir.is_dir() else []
 
+    detection = host_report.detect(repo_root, host)
     by_branch: dict[str, dict] | None = None
     error = None
     try:
-        by_branch = fetch_all_pull_requests(repo_root)
+        by_branch = _host_fn("fetch_all_pull_requests", detection.host)(repo_root)
     except GitHubImportError as e:
         error = str(e)
 
@@ -519,8 +576,19 @@ def report_all(repo_root: Path) -> dict:
     return {
         "code_host_available": by_branch is not None,
         "error": error,
-        "specs": [_safe_spec_row(p, repo_root, by_branch, limits) for p in spec_paths],
+        "specs": [_safe_spec_row(p, repo_root, by_branch, limits, detection.host) for p in spec_paths],
+        "host": host_report.host_block(detection, error),
     }
+
+
+def _footer(result: dict) -> list[str]:
+    """One line naming the code host — ONLY when it is not GitHub (host_report.footer), so the
+    GitHub text stays byte-identical."""
+    h = result.get("host")
+    if not h:
+        return []
+    line = host_report.footer(code_host.Detection(h["name"], h["source"], None, h["detail"]))
+    return [line] if line else []
 
 
 def format_all_report(result: dict) -> str:
@@ -541,6 +609,7 @@ def format_all_report(result: dict) -> str:
             f"  {row['spec']}  {row['risk']:<6} {row['status']:<9} "
             f"{row['owner'] or '-':<12} {row['developer'] or '-':<12} {where}{alarm}"
         )
+    lines.extend(_footer(result))
     return "\n".join(lines)
 
 
@@ -550,11 +619,13 @@ def format_report(result: dict) -> str:
         lines.append(f"  Local status: {result.get('local_status') or '(unset)'}")
         lines.append(f"  Code-host data unavailable: {result['error']}")
         lines.append("  (Not the same as 'no PR yet' — this is what's known locally only.)")
+        lines.extend(_footer(result))
         return "\n".join(lines)
 
     pr = result.get("pull_request")
     if pr is None:
         lines.append("  No pull request found for this branch.")
+        lines.extend(_footer(result))
         return "\n".join(lines)
 
     lines.append(f"  PR #{pr['number']}: {pr['url']} [{pr['state']}]")
@@ -573,7 +644,9 @@ def format_report(result: dict) -> str:
         lines.append(f"  Security review: {pr['security_review']['conclusion']}")
     if pr["approvals"]:
         for a in pr["approvals"]:
-            lines.append(f"  Approved by: {a['by']}")
+            who = f"{a['handle']} ({a['by']})" if a.get("handle") else a["by"]
+            when = " (time not recorded by Azure DevOps)" if a.get("at") is None and _is_ado(result) else ""
+            lines.append(f"  Approved by: {who}{when}")
     else:
         lines.append("  Approvals: none yet")
     lines.append(f"  Waiting on: {pr['waiting_on']}")
@@ -581,7 +654,12 @@ def format_report(result: dict) -> str:
         lines.append("  Frontmatter status set to `merged` on the default branch.")
     if result.get("merge_commit_error"):
         lines.append(f"  Could not record the merge on the default branch: {result['merge_commit_error']}")
+    lines.extend(_footer(result))
     return "\n".join(lines)
+
+
+def _is_ado(result: dict) -> bool:
+    return (result.get("host") or {}).get("name") == ADO
 
 
 def resolve_repo_root(args) -> Path:
@@ -607,12 +685,15 @@ def main():
              "this never commits `status: merged`.",
     )
     parser.add_argument("--json", action="store_true", help="Emit the report as JSON")
+    parser.add_argument("--host", choices=code_host.HOSTS, default=None,
+                        help="Code host to read (default: detected from the origin remote; "
+                             "`none` falls through to gh as before)")
     args = parser.parse_args()
 
     repo_root = resolve_repo_root(args)
 
     if args.all:
-        result = report_all(repo_root)
+        result = report_all(repo_root, args.host)
         if args.json:
             import json
             print(json.dumps(result, indent=2))
@@ -623,7 +704,7 @@ def main():
     spec_path = Path(args.spec)
 
     try:
-        result = report_status(repo_root, spec_path)
+        result = report_status(repo_root, spec_path, args.host)
     except SpecStatusError as e:
         print(f"Error: {e}")
         sys.exit(1)

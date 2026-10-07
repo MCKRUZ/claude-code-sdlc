@@ -11,9 +11,11 @@
 // This renders the REAL `Frame` → `StageReadinessProvider` → (`DocumentView` | `StageHome`)
 // tree exactly as `App.tsx`'s `AppScreens` composes it (`openDoc` picks which of the two is
 // Frame's `children`), saves a field through `DocumentView`'s own "Save field" button, clicks
-// its real "← Back to the stage" button, and asserts the sidebar's doc-count line reflects the
-// NEW readiness — proving the fix fires at the real save/back flow's own moment, not merely that
-// `refresh()` exists and works when called directly.
+// its real "← Back to the stage" button, and asserts the stage home's own documents fact (the
+// summary strip's "N of M complete") reflects the NEW readiness — proving the fix fires at the
+// real save/back flow's own moment, not merely that `refresh()` exists and works when called
+// directly. (Recorded pin change, togo-command-center.md §8 #1: the sidebar and its doc-count
+// line retired with the LifecycleStrip; the summary strip is where the same fact lives now.)
 
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -166,7 +168,7 @@ describe('shared stage readiness refreshes after a document edit (PR #77 correct
 
     render(<Harness />)
 
-    await waitFor(() => expect(screen.getByText('1 of 2 documents complete')).toBeTruthy())
+    await waitFor(() => expect(screen.getByText('1 of 2 complete')).toBeTruthy())
     expect(getStageReadiness).toHaveBeenCalledTimes(1)
 
     const user = userEvent.setup()
@@ -187,8 +189,8 @@ describe('shared stage readiness refreshes after a document edit (PR #77 correct
 
     // The stage home / sidebar must now reflect the EDIT, not the pre-edit snapshot still held
     // by the shared context from before DocumentView was ever opened.
-    await waitFor(() => expect(screen.getByText('2 of 2 documents complete')).toBeTruthy())
-    expect(screen.queryByText('1 of 2 documents complete')).toBeNull()
+    await waitFor(() => expect(screen.getByText('2 of 2 complete')).toBeTruthy())
+    expect(screen.queryByText('1 of 2 complete')).toBeNull()
     expect(getStageReadiness).toHaveBeenCalledTimes(2)
   })
 })

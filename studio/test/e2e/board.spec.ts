@@ -103,7 +103,10 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     page = await app.firstWindow()
     await expect(page.getByText('Loading…')).toHaveCount(0, { timeout: 30_000 })
     await page.getByText('board project').click()
-    await expect(page.getByText('Documents').first()).toBeVisible({ timeout: 30_000 })
+    // Recorded pin change (togo-command-center.md §1, §8): the strip replaced the sidebar and the
+    // Build station expands only on click, so "Documents" is not visible at rest; the landing
+    // fact is `nav[aria-label=Project]`, as a11y.spec waits. Every other pin here is unchanged.
+    await expect(page.getByRole('navigation', { name: 'Project' })).toBeVisible({ timeout: 30_000 })
   })
 
   test.afterAll(async () => {
@@ -124,7 +127,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     await page.getByRole('button', { name: /^Build Loop/ }).click()
     await expect(page.getByRole('button', { name: 'Needs me' })).toBeVisible({ timeout: 60_000 })
     // It is the SELECTED view on arrival, not merely one of the options.
-    await expect(page.getByRole('button', { name: 'Needs me' })).toHaveClass(/bg-brand-600/)
+    await expect(page.getByRole('button', { name: 'Needs me' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   test(`shows all ${SPEC_COUNT} specs, and says so`, async () => {
@@ -145,7 +148,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     const started = Date.now()
     for (const view of ['I own', "I'm building", 'I check', 'Everything', 'Needs me']) {
       await page.getByRole('button', { name: view }).click()
-      await expect(page.getByRole('button', { name: view })).toHaveClass(/bg-brand-600/)
+      await expect(page.getByRole('button', { name: view })).toHaveAttribute('aria-pressed', 'true')
     }
     const elapsed = Date.now() - started
     expect(elapsed, `five role switches took ${elapsed}ms — that looks like re-reading`).toBeLessThan(2000)
@@ -212,7 +215,7 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     // Raising needs nothing — no name field appears, and it takes effect immediately.
     await highButton.click()
     await expect(page.getByLabel(/Who authorised lowering this tier/)).toHaveCount(0)
-    await expect(highButton).toHaveClass(/bg-slate-900/, { timeout: 10_000 })
+    await expect(highButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 })
 
     // Lowering (now from HIGH) without a name is refused, in the plugin's own words, and the
     // name field only appears BECAUSE of that specific refusal.
@@ -221,12 +224,12 @@ test.describe('[spec 0011] the Build board in the real window', () => {
     await expect(authorisedByInput).toBeVisible({ timeout: 10_000 })
     // The plugin's own refusal reason, not Studio's — the field only exists because of it.
     await expect(page.getByText(/needs a name/i)).toBeVisible()
-    await expect(lowButton).not.toHaveClass(/bg-slate-900/)
+    await expect(lowButton).not.toHaveAttribute('aria-pressed', 'true')
 
     // Naming someone lets it through, and the field disappears again once it has.
     await authorisedByInput.fill('Matt K')
     await lowButton.click()
-    await expect(lowButton).toHaveClass(/bg-slate-900/, { timeout: 10_000 })
+    await expect(lowButton).toHaveAttribute('aria-pressed', 'true', { timeout: 10_000 })
     await expect(page.getByLabel(/Who authorised lowering this tier/)).toHaveCount(0)
   })
 
@@ -341,8 +344,8 @@ test.describe('[spec 0011] the Build board in the real window', () => {
       const declare = page.getByRole('button', { name: /Declare Build complete/ })
       test.skip(
         !(await declare.isEnabled()),
-        'No code-host account is signed in, so Studio has nobody to attribute a declaration '
-        + 'to and correctly disables the control. Sign in with `gh auth login` to run this.',
+        'No code-host account is signed in — `gh auth login` (GitHub) or `az login` (Azure DevOps). '
+        + 'Studio has nobody to attribute a declaration to and correctly disables the control.',
       )
       await declare.click()
       await expect(page.getByText(/neither merged nor deferred/).first()).toBeVisible()

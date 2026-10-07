@@ -1,8 +1,19 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { groupSpecsByTeam } from '../../shared/boardModel'
-import type {
-  AdvanceResult, DeclarationStatus, HandoffReportResult, ProjectStage,
-} from '../../shared/types'
+import { formatDateTime, plural, pluralWord } from '../../shared/format'
+import { targetForBuildView, targetForStage, type NavTarget } from '../../shared/nav'
+import type { AdvanceResult, DeclarationStatus, HandoffReportResult, ProjectStage, ProjectStatus } from '../../shared/types'
+import { Button, Card, Chip, Disclosure, Eyebrow, Notice, PageHeader, SkeletonRows, toast } from '../ui'
+import { riskTone } from '../../shared/sprintModel'
+import { announce } from '../a11y/LiveAnnouncer'
+import { signOffCeremony } from '../motion/choreo'
+import { useCountUp } from '../motion/useCountUp'
+import { useEnter } from '../motion/useEnter'
+import { SceneSlot } from '../scenes/core/SceneSlot'
+import { buildSpineData } from '../scenes/spine/spineModel'
+import { AdvancePanel, AlreadyDeclared, DeferredList, HandoffPanel } from './FeatureCompletePanels'
+import { ConfirmControl, DeferControl } from './FeatureCompleteControls'
+import { choreoContext, useListReveal } from './screenMotion'
 
 /** Declaring Build finished (spec 0014).
  *
@@ -27,6 +38,9 @@ export function FeatureCompleteScreen({
   projectPath,
   actor,
   buildStage,
+  status: projectStatus,
+  onNavigate,
+  embedded = false,
 }: {
   projectPath: string
   actor: string
@@ -35,6 +49,16 @@ export function FeatureCompleteScreen({
    * happened while somebody was watching, so reopening a declared project offered to declare
    * it again. */
   buildStage: ProjectStage | null
+  /** The whole project record, for the Spine band above the screen. Optional because App hands
+   * this screen only `buildStage` today; without it the band simply does not render. */
+  status?: ProjectStatus
+  /** A station on the Spine opens that stage; absent, the band is display only. */
+  onNavigate?: (target: NavTarget) => void
+  /** Rendered beneath `SprintClose` (togo-command-center.md §3.5): the close screen above already
+   * draws the lifecycle and lists every open spec with Carry / Drop, so this screen draws no
+   * Spine band of its own and folds its per-spec rows (the Defer control — a different verb,
+   * `spec_transition.py defer`, so it stays reachable) behind a disclosure with a count line. */
+  embedded?: boolean
 }) {
   const [status, setStatus] = useState<DeclarationStatus | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,6 +79,10 @@ export function FeatureCompleteScreen({
    * permanent, so it deserves its own press and its own explanation of what happened. */
   const [advance, setAdvance] = useState<AdvanceResult | null>(null)
   const [advanceBusy, setAdvanceBusy] = useState(false)
+
+  const root = useRef<HTMLDivElement>(null)
+  useEnter(root, 'rise', { key: projectPath })
+  useListReveal(root, status ? `${projectPath}|${status.totals.specs}|${declared ? 'declared' : 'open'}` : null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -81,71 +109,101 @@ export function FeatureCompleteScreen({
    * reasons from the specs themselves. Studio composes none of it. */
   const produceHandoff = async (replaceExisting: boolean) => {
     setHandoffBusy(true)
-    setHandoff(await window.studio.generateHandoffReport(projectPath, {
-      actor,
-      replaceExisting,
-    }))
+    setHandoff(await window.studio.generateHandoffReport(projectPath, { actor, replaceExisting }))
     setHandoffBusy(false)
   }
 
   const moveToNextStage = async () => {
     setAdvanceBusy(true)
-    setAdvance(await window.studio.advanceAfterDeclaration(projectPath, actor))
+    const result = await window.studio.advanceAfterDeclaration(projectPath, actor)
+    setAdvance(result)
     setAdvanceBusy(false)
+    if (!result.ok) return
+    // The ceremony (§4.2 #10) plays only on the plugin's yes, naming the plugin's own value. The
+    // Spine's lit-length step waits for the refreshed ProjectStatus, which arrives through props.
+    const by = result.signedBy ?? actor
+    toast({ tone: 'ok', title: `Build signed off · by ${by}` })
+    announce(`Build signed off by ${by}`)
   }
+
+  // The success card mounts on the render after `advance.ok` flips; the ceremony needs it in the
+  // DOM, so it plays from an effect rather than from the handler above.
+  useEffect(() => {
+    const el = root.current
+    if (!advance?.ok || !el) return
+    signOffCeremony.play(choreoContext(el), { successCard: el.querySelector('[data-ceremony-card]') })
+  }, [advance])
+
+  // The scene's own model builds the band's data (one source of truth with StageHome). This
+  // screen holds no stage readiness, so `currentDocs` stays unset — an arc drawn from a guess would
+  // be the one fabricated number on it. Height 200: the closing band is the page's hero (§5.1).
+  // Round 2 (I4): `ledger: true` asks every plate for its ledger line, word for word from the
+  // plugin's row; no stage home is open here, so `viewedStageId` is null (no reticle).
+  const spine = useMemo(
+    () => (projectStatus
+      ? { ...buildSpineData({ stages: projectStatus.stages, currentPhaseId: projectStatus.current_phase?.id ?? null }), ledger: true, viewedStageId: null }
+      : null),
+    [projectStatus],
+  )
+  // Wrapped exactly as StageHome's SpineBand wraps its slot (a `<section>` with a body `<div>`), so
+  // the root's `space-y-6` lands on the wrapper and the eyebrow sits 24 px under the caption, as it
+  // does on every stage home. Tailwind 4 writes `space-y-*` as `:where(& > :not(:last-child))` —
+  // zero specificity — and SceneShell's `<figure>` carries `m-0`, so a bare figure as a direct
+  // child of the root cancelled the gap (observatory v9 closing: the caption sat on the eyebrow).
+  const band = spine && !embedded && (
+    <section aria-label="Lifecycle" className="space-y-1">
+      <div>
+        <SceneSlot id="spine" data={spine} height={200} onActivate={(id) => onNavigate?.(targetForStage(id))} />
+      </div>
+    </section>
+  )
 
   // Already declared, according to the PROJECT rather than this session. Checked before
   // anything else and before the backlog is even read: reopening Studio on a project whose
   // Build was declared months ago used to show the whole declare-it flow again, because the
   // screen only ever knew what had happened while somebody was watching it.
   if (buildStage && buildStage.stage_state === 'signed_off') {
-    return <AlreadyDeclared stage={buildStage} />
+    return <div ref={root} className="space-y-4">{band}<AlreadyDeclared stage={buildStage} /></div>
   }
 
-  if (loading && !status) return <p className="text-sm text-slate-400">Reading the backlog…</p>
+  if (loading && !status) {
+    return (
+      <div ref={root} className="space-y-4" aria-busy="true">
+        {band}
+        <p role="status" className="text-sm text-ink-3">Reading the backlog…</p>
+        <SkeletonRows rows={3} />
+      </div>
+    )
+  }
   if (!status) return null
 
   // After the declaration the screen states when and by whom, and offers nothing further —
   // spec 0014's last check. Reopening Build is not a thing this screen does.
   if (declared) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="text-base font-semibold text-slate-900">Build is declared complete</h2>
-          <p className="mt-1 text-sm text-slate-700">
+      <div ref={root} className="space-y-4">
+        {band}
+        <Card>
+          <h2 data-page-heading tabIndex={-1} className="text-xl text-ink-1">Build is declared complete</h2>
+          <p className="mt-1 text-sm text-ink-1">
             Declared by {advance?.signedBy ?? declared.by}
             {/* The time comes from the project's record, and only once there IS one. Until the
                 stage moves nothing has recorded when this happened, and printing the current
                 clock would invent the single fact this screen exists to protect. */}
-            {advance?.declaredAt
-              ? <> on {new Date(advance.declaredAt).toLocaleString()}.</>
-              : <>.</>}
+            {advance?.declaredAt ? <> on {formatDateTime(advance.declaredAt)}.</> : <>.</>}
           </p>
           {!advance?.ok && (
-            <p className="mt-1 text-xs text-amber-800">
+            <p className="mt-1 text-xs text-status-warn-ink">
               Not recorded in the project yet — until the stage moves below, this is true on
               this screen and nowhere else.
             </p>
           )}
-          {declared.nextStep && (
-            <p className="mt-2 text-xs text-slate-500">{declared.nextStep}</p>
-          )}
-        </div>
-        <HandoffPanel
-          result={handoff}
-          busy={handoffBusy}
-          onReplace={() => produceHandoff(true)}
-          onRetry={() => produceHandoff(false)}
-        />
-        <AdvancePanel
-          result={advance}
-          busy={advanceBusy}
-          onAdvance={moveToNextStage}
-        />
-        {status.deferred.length > 0 && (
-          <DeferredList deferred={status.deferred} />
-        )}
-        <p className="text-xs text-slate-400">
+          {declared.nextStep && <p className="mt-2 text-xs text-ink-3">{declared.nextStep}</p>}
+        </Card>
+        <HandoffPanel result={handoff} busy={handoffBusy} onReplace={() => produceHandoff(true)} onRetry={() => produceHandoff(false)} />
+        <AdvancePanel result={advance} busy={advanceBusy} onAdvance={moveToNextStage} />
+        {status.deferred.length > 0 && <DeferredList deferred={status.deferred} />}
+        <p className="text-xs text-ink-3">
           Late work rides the loop one spec at a time, as usual. Build does not reopen.
         </p>
       </div>
@@ -153,118 +211,121 @@ export function FeatureCompleteScreen({
   }
 
   return (
-    <div className="space-y-5">
+    <div ref={root} className="space-y-6">
+      {band}
       <div>
-        <h2 className="text-base font-semibold text-slate-900">Declaring Build finished</h2>
-        <p className="mt-0.5 text-sm text-slate-500">
-          {status.totals.specs} spec{status.totals.specs === 1 ? '' : 's'} in the backlog ·{' '}
-          {status.totals.unfinished} still undecided · {status.totals.deferred} deferred
-        </p>
+        {/* S1: the kit header — the heading text is byte-identical (board.spec finds it by name);
+            the lede says what this screen is for; the one action goes back to the Board, where
+            the undecided specs live. The declare control stays at the foot, beside its name. */}
+        <PageHeader
+          eyebrow="Build · Closing"
+          title="Declaring Build finished"
+          lede="Build ends by a named person declaring it complete, once every spec is decided and each team has confirmed its own list. The plugin refuses anything less."
+          actions={onNavigate && (
+            <Button size="sm" onClick={() => onNavigate(targetForBuildView('board'))}>Open the Board</Button>
+          )}
+        />
+        <Totals totals={status.totals} />
       </div>
 
       {status.can_declare ? (
-        <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-          <p className="text-[var(--color-command-ok)]">
-            Every spec is decided and every team has confirmed its own list.
-          </p>
-        </div>
+        <Card tone="ok" className="text-sm">
+          <p className="text-status-ok-ink">Every spec is decided and every team has confirmed its own list.</p>
+        </Card>
       ) : (
-        <div className="space-y-3">
+        // ONE warn notice for "blocked" (G4-10): the count is the headline, and each blocker is a
+        // section inside it under the plugin's own sentence. Three amber boxes in a row read as
+        // three alarms; one notice says what is true and its body says why.
+        <Notice
+          tone="warn"
+          title={`${plural(status.blockers.length, 'thing', 'things')} ${pluralWord(status.blockers.length, 'blocks', 'block')} the declaration`}
+          className="text-sm"
+        >
+          <div className="mt-1 divide-y divide-status-warn-line">
           {status.blockers.map((blocker) => (
-            <div key={blocker.kind} className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-              {/* The plugin's own words. It knows what is outstanding, and a refusal that
-                  names the items is a to-do list rather than a wall. */}
-              <p className="text-sm font-medium text-amber-900">{blocker.message}</p>
+            // The plugin's own words. It knows what is outstanding, and a refusal that names
+            // the items is a to-do list rather than a wall.
+            <section key={blocker.kind} aria-label={blocker.message} className="py-2 first:pt-0 last:pb-0">
+              <h3 className="text-sm font-medium text-status-warn-ink">{blocker.message}</h3>
               {blocker.specs && blocker.specs.length > 0 && (
                 // Gathered by team, because that is how the decisions get made: each lead
                 // confirms their OWN team's list, and a lead working down a flat list of
-                // everybody's specs has to keep re-finding which ones are theirs.
-                <div className="mt-2 space-y-3">
-                  {groupSpecsByTeam(blocker.specs).map((group) => (
+                // everybody's specs has to keep re-finding which ones are theirs. Amber marks the
+                // frame, the blocker's sentence and the "needs a decision" chip — the rows
+                // themselves are ink on a card, so five rows do not read as five alarms.
+                <BlockerSpecs
+                  embedded={embedded}
+                  count={blocker.specs.length}
+                  groups={groupSpecsByTeam(blocker.specs).map((group) => (
                     <div key={group.team}>
-                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">
+                      <Eyebrow className="text-status-warn-ink">
                         {group.hasLead
                           ? <>{group.team} · {group.specs.length}</>
                           : <>No team · {group.specs.length} · nobody can confirm these</>}
-                      </p>
-                      <ul className="mt-1 space-y-2">
+                      </Eyebrow>
+                      <ul className="mt-1 space-y-1">
                         {group.specs.map((spec) => (
-                          <li key={spec.spec} className="text-sm">
-                            <span className="font-mono text-xs text-amber-800">{spec.spec}</span>{' '}
-                            <span className="text-amber-900">{spec.name}</span>
-                            {/* The plugin's reading of what this spec's own state says about
-                                whether anybody has decided to finish it. Shown against the spec
-                                rather than only as a count, because the one that needs a person
-                                is the one they have to be able to pick out. */}
-                            {spec.intent === 'needs_a_call' && (
-                              <span className="ml-2 rounded bg-amber-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-900">
-                                needs a decision
+                          <li key={spec.spec} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3 rounded-[10px] bg-surface-1 px-3 py-2 text-sm" data-reveal="" data-blocker-spec={spec.spec}>
+                            <span className="font-mono text-ident text-ink-2">{spec.spec}</span>
+                            <span className="min-w-0">
+                              <span className="block truncate text-ink-1">{spec.name}</span>
+                              <span className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-3">
+                                <span>{spec.status}</span>
+                                {/* Risk is shown because spec 0014 asks for it, and because it is
+                                    what makes "finish it or defer it" a different question for
+                                    different specs — in the one risk map. */}
+                                {spec.risk ? <Chip tone={riskTone(spec.risk)} size="xs" casing="identifier">{spec.risk}</Chip> : null}
+                                <span>{spec.developer ? spec.developer : 'nobody assigned'}</span>
+                                {/* The plugin's reading of what this spec's own state says about
+                                    whether anybody has decided to finish it. */}
+                                {spec.intent === 'needs_a_call' && (
+                                  <Chip tone="warn" dot className="uppercase tracking-wide">needs a decision</Chip>
+                                )}
                               </span>
-                            )}
-                            <span className="ml-2 text-xs text-amber-800">
-                              {spec.status}
-                              {/* Risk is shown because spec 0014 asks for it, and because it is
-                                  what makes "finish it or defer it" a different question for
-                                  different specs. */}
-                              {spec.risk ? ` · ${spec.risk} risk` : ''}
-                              {spec.developer ? ` · ${spec.developer}` : ' · nobody assigned'}
                             </span>
-                            {blocker.kind === 'unfinished_specs' && (
-                              <DeferControl
-                                projectPath={projectPath}
-                                specName={spec.name}
-                                actor={actor}
-                                onDeferred={load}
-                                onRefused={setRefusal}
-                              />
-                            )}
+                            <span className="justify-self-end">
+                              {blocker.kind === 'unfinished_specs' && (
+                                <DeferControl projectPath={projectPath} specName={spec.name} actor={actor} onDeferred={load} onRefused={setRefusal} />
+                              )}
+                            </span>
                           </li>
                         ))}
                       </ul>
                     </div>
                   ))}
-                </div>
+                />
               )}
               {blocker.teams && blocker.teams.length > 0 && (
                 <ul className="mt-2 space-y-2">
                   {blocker.teams.map((team) => (
                     <li key={team}>
-                      <ConfirmControl
-                        team={team}
-                        onConfirm={(handle) =>
-                          setConfirmed((prev) => ({ ...prev, [team]: handle }))}
-                      />
+                      <ConfirmControl team={team} onConfirm={(handle) => setConfirmed((prev) => ({ ...prev, [team]: handle }))} />
                     </li>
                   ))}
                 </ul>
               )}
-            </div>
+            </section>
           ))}
-        </div>
+          </div>
+        </Notice>
       )}
 
       {status.deferred.length > 0 && <DeferredList deferred={status.deferred} />}
 
       {refusal && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="whitespace-pre-wrap">{refusal}</p>
-        </div>
+        // The plugin's own words — it refused before writing, so nothing needs undoing.
+        <Notice tone="warn" className="text-sm"><p className="whitespace-pre-wrap">{refusal}</p></Notice>
       )}
 
       <div className="flex items-center gap-2">
         {/* Visible even while it would be refused. A hidden button makes the rule invisible; a
             visible one that explains itself teaches it. */}
-        <button
-          type="button"
-          onClick={declare}
-          disabled={busy || !actor.trim()}
-          className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
-        >
-          {busy ? 'Declaring…' : 'Declare Build complete'}
-        </button>
+        <Button variant="primary" onClick={declare} disabled={busy || !actor.trim()} loading={busy} loadingLabel="Declaring…">
+          Declare Build complete
+        </Button>
         {actor.trim()
-          ? <span className="text-xs text-slate-500">Recorded against {actor}.</span>
-          : <span className="text-xs text-amber-800">
+          ? <span className="text-xs text-ink-3">Recorded against {actor}.</span>
+          : <span className="text-xs text-status-warn-ink">
               A declaration needs a name — an unnamed one is an announcement nobody made.
             </span>}
       </div>
@@ -272,319 +333,33 @@ export function FeatureCompleteScreen({
   )
 }
 
-/** Build was declared finished, and the project says so — not this session.
- *
- * Two things are said carefully rather than conveniently:
- *
- *   A date that was never recorded reads as "not recorded", never as today. Showing the
- *   current date beside "declared" would invent a fact, and this screen exists to stop exactly
- *   that kind of invention.
- *
- *   A missing NAME says so too. A stage advanced before sign-offs were recorded, or advanced
- *   without a name, is a real and different thing from one nobody signed — and rendering an
- *   empty name would put a blank signature line in front of somebody, which reads as signed.
- */
-function AlreadyDeclared({ stage }: { stage: ProjectStage }) {
-  const when = stage.completed_at
-    ? new Date(stage.completed_at).toLocaleString()
-    : null
+/** Under `SprintClose` the same open specs are listed above with Carry / Drop, so the rows fold
+ * behind a count line that points up; the Defer verb inside stays one click away. Standalone the
+ * rows are open. */
+export function blockerFoldLabel(count: number): string {
+  return `${plural(count, 'open spec', 'open specs')} — carry or drop them above, or defer one here`
+}
 
+function BlockerSpecs({ embedded, count, groups }: { embedded: boolean; count: number; groups: ReactNode }) {
+  if (!embedded) return <div className="mt-2 space-y-3">{groups}</div>
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="text-base font-semibold text-slate-900">Build is declared complete</h2>
-        <p className="mt-1 text-sm text-slate-700">
-          {stage.signed_off_by
-            ? <>Signed off by {stage.signed_off_by}</>
-            : <>No name was recorded against this declaration</>}
-          {when ? <> on {when}.</> : <>. The time was not recorded.</>}
-        </p>
-        <p className="mt-2 text-xs text-slate-500">
-          Read from the project's own record, so it says the same thing on everybody's machine.
-        </p>
-      </div>
-      <p className="text-xs text-slate-400">
-        Late work rides the loop one spec at a time, as usual. Build does not reopen.
-      </p>
-    </div>
+    <Disclosure className="mt-2" data-testid="blocker-specs-fold" summary={<span className="text-sm text-ink-2">{blockerFoldLabel(count)}</span>}>
+      <div className="mt-2 space-y-3">{groups}</div>
+    </Disclosure>
   )
 }
 
-/** Moving the project to the next stage — the act that makes the declaration permanent.
- *
- * Before this existed, the screen said who declared Build finished and forgot it the moment the
- * window closed: true of one session rather than of the project. The stage move is what writes
- * the name and the time into the project's own record, which is why the two are one piece of
- * work rather than two.
- *
- * Every rule belongs to the plugin. Its gate checks decide whether the stage may move, and when
- * they refuse, their own words are shown rather than a summary — a person who needs to fix a
- * gate needs to know which one.
- */
-function AdvancePanel({
-  result, busy, onAdvance,
-}: {
-  result: AdvanceResult | null
-  busy: boolean
-  onAdvance: () => void
-}) {
-  if (result?.ok) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-medium text-slate-900">
-          Moved on from {result.fromPhase} to {result.toPhase}
-        </h3>
-        <p className="mt-1 text-sm text-slate-700">
-          Signed off by {result.signedBy}. {result.note}
-        </p>
-      </div>
-    )
-  }
-
+/** The three backlog counts, each a counter (§4.2 #11): they tween only between two real values
+ * the plugin reported, and the first render is a plain number. */
+function Totals({ totals }: { totals: DeclarationStatus['totals'] }) {
+  const specs = useCountUp('closing.totals.specs', totals.specs)
+  const unfinished = useCountUp('closing.totals.unfinished', totals.unfinished)
+  const deferred = useCountUp('closing.totals.deferred', totals.deferred)
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="text-sm font-medium text-slate-900">Move to the next stage</h3>
-      <p className="mt-1 text-sm text-slate-600">
-        This is what records the declaration in the project itself, rather than only here. It
-        runs the stage's own gate checks first.
-      </p>
-      {result && !result.ok && (
-        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          {/* The plugin's gate output, whole. Somebody who has to fix a gate needs to know
-              which one, and a tidied summary is how that gets lost. */}
-          <pre className="max-h-64 overflow-auto whitespace-pre-wrap text-xs text-amber-900">
-            {result.error}
-          </pre>
-          {result.advancedLocally && (
-            <p className="mt-2 text-xs font-medium text-amber-900">
-              The stage moved on this machine only — for everybody else Build is still open.
-            </p>
-          )}
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={onAdvance}
-        disabled={busy}
-        className="mt-3 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700 disabled:opacity-40"
-      >
-        {busy ? 'Moving…' : result && !result.ok ? 'Try again' : 'Move to the next stage'}
-      </button>
-    </div>
-  )
-}
-
-/** What happened to the hand-over document, said plainly in every case.
- *
- * Three outcomes, and each needs a different thing from the person, so none of them is folded
- * into the others:
- *
- *   produced and saved  — the numbers are assembled; the judgement sections still need writing
- *   one already exists  — the generator refused rather than overwrite somebody's editing, and
- *                         replacing it is offered as a choice rather than taken as a default
- *   it failed           — including the half-and-half case, where it was written here but
- *                         never reached anybody
- */
-function HandoffPanel({
-  result, busy, onReplace, onRetry,
-}: {
-  result: HandoffReportResult | null
-  busy: boolean
-  onReplace: () => void
-  onRetry: () => void
-}) {
-  if (busy) {
-    return <p className="text-sm text-slate-400">Drafting the hand-over document…</p>
-  }
-  if (!result) return null
-
-  if (result.ok) {
-    return (
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-medium text-slate-900">Hand-over document</h3>
-        <p className="mt-1 font-mono text-xs text-slate-500">{result.path}</p>
-        <p className="mt-2 text-sm text-slate-700">{result.note}</p>
-        <p className="mt-2 text-xs text-slate-500">
-          The deferred items and their reasons are in it, taken from the specs themselves.
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-      <h3 className="text-sm font-medium text-amber-900">
-        {result.alreadyExists
-          ? 'A hand-over document is already there'
-          : 'The hand-over document was not produced'}
-      </h3>
-      <p className="mt-1 text-sm text-amber-900">{result.error}</p>
-      <div className="mt-2 flex items-center gap-3">
-        {result.alreadyExists ? (
-          <button
-            type="button"
-            onClick={onReplace}
-            className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white"
-          >
-            Replace it with a fresh draft
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white"
-          >
-            Try again
-          </button>
-        )}
-        {result.wroteLocally && (
-          <span className="text-xs text-amber-800">
-            The file exists on this machine only — saving it is what makes it a hand-over.
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-/** Deferring one spec. The suggestion is offered, never pre-filled — a default reason gets
- * accepted unread, which turns a record of why into a record of the tool's wording. */
-function DeferControl({
-  projectPath, specName, actor, onDeferred, onRefused,
-}: {
-  projectPath: string
-  specName: string
-  actor: string
-  onDeferred: () => void
-  onRefused: (message: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [reason, setReason] = useState('')
-  const [busy, setBusy] = useState(false)
-
-  const suggestion = 'not needed for this release — '
-
-  const submit = async () => {
-    setBusy(true)
-    const result = await window.studio.deferSpec(
-      projectPath, `specs/${specName}.md`, reason, actor,
-    )
-    setBusy(false)
-    if (!result.ok) {
-      onRefused(result.refusal?.message ?? 'The deferral was refused.')
-      return
-    }
-    setOpen(false)
-    setReason('')
-    onDeferred()
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="ml-2 rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800"
-      >
-        Defer
-      </button>
-    )
-  }
-
-  return (
-    <div className="mt-2 rounded-lg border border-amber-300 bg-white p-3">
-      <label className="block">
-        <span className="text-xs font-medium text-amber-900">
-          Why was this not built? In your own words — it outlives you being asked.
-        </span>
-        <input
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-amber-300 px-2 py-1 text-sm"
-        />
-      </label>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={submit}
-          disabled={busy}
-          className="rounded-lg bg-amber-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-40"
-        >
-          Defer this spec
-        </button>
-        <button
-          type="button"
-          onClick={() => setReason((r) => r || suggestion)}
-          className="text-xs text-amber-800 underline"
-        >
-          Start from a suggestion
-        </button>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-500">
-          Cancel
-        </button>
-      </div>
-    </div>
-  )
-}
-
-/** One team lead confirming their own list. The handle is required — the point of asking each
- * lead is whose assertion it is, and an anonymous yes is not one. */
-function ConfirmControl({
-  team, onConfirm,
-}: {
-  team: string
-  onConfirm: (handle: string) => void
-}) {
-  const [handle, setHandle] = useState('')
-
-  return (
-    <span className="flex items-center gap-2 text-sm">
-      <span className="w-24 shrink-0 text-amber-900">{team}</span>
-      <input
-        value={handle}
-        onChange={(e) => setHandle(e.target.value)}
-        placeholder="@lead"
-        className="w-32 rounded-lg border border-amber-300 px-2 py-1 text-xs"
-      />
-      <button
-        type="button"
-        onClick={() => onConfirm(handle.trim())}
-        disabled={!handle.trim()}
-        className="rounded-lg border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 disabled:opacity-40"
-      >
-        Confirm this team's list
-      </button>
-    </span>
-  )
-}
-
-function DeferredList({
-  deferred,
-}: {
-  deferred: DeclarationStatus['deferred']
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-        Deferred, and why
-      </h3>
-      <ul className="space-y-2">
-        {deferred.map((spec) => (
-          <li key={spec.spec} className="text-sm">
-            <span className="font-mono text-xs text-slate-400">{spec.spec}</span>{' '}
-            <span className="text-slate-900">{spec.name}</span>
-            <span className="mt-0.5 block text-xs text-slate-600">
-              {/* A deferral with no reason is reported as such rather than left blank, because
-                  blank reads as "nobody wrote one" when it may mean "it was lost". */}
-              {spec.reason || 'No reason recorded — this cannot be told apart from an oversight.'}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <p className="mt-2 text-xs text-slate-400">
-        These reasons go into the hand-over document, which is where somebody will look when
-        they ask why an expected thing is not there.
-      </p>
-    </div>
+    <p className="mt-0.5 text-sm text-ink-3 tabular-nums">
+      <span ref={specs.ref}>{specs.text}</span> {pluralWord(totals.specs, 'spec', 'specs')} in the backlog ·{' '}
+      <span ref={unfinished.ref}>{unfinished.text}</span> still undecided ·{' '}
+      <span ref={deferred.ref}>{deferred.text}</span> deferred
+    </p>
   )
 }

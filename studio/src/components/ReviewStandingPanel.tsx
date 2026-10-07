@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ReviewMode, ReviewStanding } from '../../shared/types'
 import {
-  messageOf, PANEL_BUTTON, PANEL_SECONDARY_BUTTON, PanelError, plural, useLoaded, useScopedState,
+  messageOf, PanelButton, PanelError, PanelLoading, PanelSecondaryButton, plural, useLoaded, useScopedState,
 } from './activityPanelBits'
 import { BusyReason, PanelCandidateView } from './CandidateView'
 import type { DraftJobApi } from './useDraftJob'
@@ -43,13 +43,13 @@ export function ReviewStandingPanel({
   // The standing's own failure is the one error line; the strict check's failure only shows when
   // the standing loaded, so the panel never carries two.
   return (
-    <div data-testid="review-standing-panel" className="mt-2 space-y-1 text-xs text-slate-600">
-      {loaded.kind === 'loading' && <p>Checking…</p>}
+    <div data-testid="review-standing-panel" className="mt-2 space-y-1 text-xs text-ink-2">
+      {loaded.kind === 'loading' && <PanelLoading lines={1}>Checking…</PanelLoading>}
       {loaded.kind === 'failed' && <PanelError message={loaded.message} />}
       {loaded.kind === 'ready' && <Standing standing={loaded.value} />}
-      <button type="button" disabled={strict.kind === 'running'} onClick={check} className={PANEL_SECONDARY_BUTTON}>
+      <PanelSecondaryButton disabled={strict.kind === 'running'} onClick={check}>
         {strict.kind === 'running' ? 'Checking…' : 'Strict check'}
-      </button>
+      </PanelSecondaryButton>
       {strict.kind === 'failed' && loaded.kind !== 'failed' && <PanelError message={strict.message} />}
       {strict.kind === 'done' && <StrictResult mismatches={strict.mismatches} />}
       {draft && stageId !== undefined && <ReviewRun stageId={stageId} draft={draft} actor={actor} />}
@@ -85,10 +85,12 @@ const MODES: Array<{ mode: ReviewMode; label: string; when: string }> = [
   { mode: 'all', label: 'All', when: 'Runs all three and writes one combined report.' },
 ]
 
+// Radios rather than a Segmented: each mode carries a sentence saying when to use it, and the
+// `ReviewDraftRun` test reads the modes through `getAllByRole('radio')` and their labels.
 function ReviewRun({ stageId, draft, actor }: { stageId: string; draft: DraftJobApi; actor: string }) {
   const [mode, setMode] = useState<ReviewMode>('council')
   return (
-    <div className="space-y-1.5 border-t border-slate-100 pt-2">
+    <div className="space-y-1.5 border-t border-line-1 pt-2">
       <div role="radiogroup" aria-label="Review mode" className="space-y-1">
         {MODES.map((option) => (
           <label key={option.mode} className="flex items-start gap-2">
@@ -100,18 +102,16 @@ function ReviewRun({ stageId, draft, actor }: { stageId: string; draft: DraftJob
               onChange={() => setMode(option.mode)}
               className="mt-0.5"
             />
-            <span><span className="font-medium text-slate-800">{option.label}</span> <span className="text-slate-500">{option.when}</span></span>
+            <span><span className="font-medium text-ink-1">{option.label}</span> <span className="text-ink-3">{option.when}</span></span>
           </label>
         ))}
       </div>
-      <button
-        type="button"
+      <PanelButton
         disabled={draft.busyLabel !== null}
         onClick={() => void draft.start({ kind: 'review', stageId, mode })}
-        className={PANEL_BUTTON}
       >
         Run the review
-      </button>
+      </PanelButton>
       <BusyReason label={draft.busyLabel} />
       <p>Uses Claude.</p>
       <PanelCandidateView draft={draft} actor={actor} kind="review" stageId={stageId} />

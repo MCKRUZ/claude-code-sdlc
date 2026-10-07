@@ -11,7 +11,7 @@
 // a script call, same as the rest of this file's siblings. Claude cannot read files in this
 // call (see claudeAssist.ts): every artifact's text is read here and pasted into the prompt.
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { advanceAfterDeclaration } from './board'
 import { CLAUDE_SAFE_ARGS, claudeWorkingDirectory } from './claudeAssist'
@@ -20,6 +20,7 @@ import { runPluginScript } from './project'
 import { resolveInProject } from './projectPaths'
 import { getStageReadiness } from './readiness'
 import { save } from './sync'
+import { BUILD_STAGE_ID } from '../../shared/nav'
 import type { DisciplineSignoff, GateCheckResult, SignOffResult } from '../../shared/types'
 
 const STATE_FILE = '.sdlc/state.yaml'
@@ -55,7 +56,17 @@ export async function checkStageGates(
   const entry = await runPluginScript(pluginScriptsDir, 'check_gates.py', [
     '--state', join(projectPath, STATE_FILE), '--phase', stageId,
   ])
-  return parseGateCheckOutput(entry.stdout || entry.stderr)
+  const parsed = parseGateCheckOutput(rawStdout(entry) || entry.stderr)
+  if (!entry.ok && !parsed.blocked) {
+    // Fail closed (studio-improvements F6). The script exits 1 for a MUST failure — which the
+    // parse above sees — and ALSO for a missing state file, a missing profile, or a Python
+    // error, which print no MUST line at all. That second case used to read as "nothing
+    // blocked": the gates were never checked, and the sign-off went on to draft a layer.
+    const detail = (entry.stderr || rawStdout(entry) || '').trim() || `exit code ${entry.exitCode}`
+    const reason = `check_gates.py did not complete, so the gates were not checked: ${detail}`
+    return { blocked: true, mustFailures: [reason], raw: reason }
+  }
+  return parsed
 }
 
 interface FrozenLayerOutcome {
@@ -75,6 +86,29 @@ const FROZEN_LAYER_PROMPT_HEADER = [
   'be replaced — none may remain in the output. Output ONLY the completed markdown file, in',
   'full, starting with the frontmatter --- — no preamble, no explanation, no code fence.',
 ].join('\n')
+
+/** Moves the current layer out of the way before a re-sign-off drafts its replacement, keeping
+ * it as `<layer>.superseded-<YYYYMMDD>` — the name `/sdlc-next` uses, and one the sync allowlist
+ * deliberately leaves on this machine. `restore()` puts it back and removes whatever draft was
+ * written in its place, so a sign-off that fails after this point leaves the layer byte-for-byte
+ * as it was. Before this the rename happened up front and a failed attempt left an invalid draft
+ * where the reviewed layer had been (studio-improvements F6). Pure file moves, no subprocess, so
+ * it is tested directly. */
+export function setAsideLayer(layerPath: string, today: Date = new Date()): { supersededPath: string | null; restore: () => void } {
+  if (!existsSync(layerPath)) return { supersededPath: null, restore: () => undefined }
+  const stamp = today.toISOString().slice(0, 10).replace(/-/g, '')
+  let supersededPath = `${layerPath}.superseded-${stamp}`
+  // A second sign-off on the same day must not overwrite the first one's history.
+  for (let n = 2; existsSync(supersededPath); n++) supersededPath = `${layerPath}.superseded-${stamp}-${n}`
+  renameSync(layerPath, supersededPath)
+  return {
+    supersededPath,
+    restore: () => {
+      rmSync(layerPath, { force: true })
+      renameSync(supersededPath, layerPath)
+    },
+  }
+}
 
 /** Reads every document the stage actually has, and drafts + validates the frozen layer that
  * summarizes them. One bounded retry: a validation failure re-prompts Claude with the
@@ -116,10 +150,6 @@ async function draftAndValidateFrozenLayer(
   const layerDir = join(projectPath, '.sdlc', 'context', 'layers')
   mkdirSync(layerDir, { recursive: true }) // usually already there (init_project.py makes it)
   const layerPath = join(layerDir, `phase${stageId}-${stageName}.md`)
-  const supersededPath = `${layerPath}.superseded`
-  if (existsSync(layerPath)) {
-    renameSync(layerPath, supersededPath) // matches /sdlc-next's own behaviour on re-sign-off
-  }
 
   const gateSummary = gateCheck.blocked
     ? `BLOCKED: ${gateCheck.mustFailures.join('; ')}`
@@ -146,32 +176,44 @@ async function draftAndValidateFrozenLayer(
     return { ok: entry.ok, output: entry.stdout || entry.stderr }
   }
 
-  for (const attempt of [0, 1] as const) {
-    const prompt = attempt === 0
-      ? basePrompt
-      : `${basePrompt}\n\n--- YOUR PREVIOUS DRAFT DID NOT PASS VALIDATION ---\n`
-        + `Fix these problems and output the full corrected document, same rules as before:\n`
-        + `${(await runValidate()).output}`
+  // The previous layer (a re-sign-off) is set aside, not thrown away: if no draft validates it
+  // goes back exactly as it was. The validator reads the canonical path, so the draft has to be
+  // written there to be checked — which is why the previous layer must be preserved first.
+  const previous = setAsideLayer(layerPath)
+  let produced = false
+  try {
+    for (const attempt of [0, 1] as const) {
+      const prompt = attempt === 0
+        ? basePrompt
+        : `${basePrompt}\n\n--- YOUR PREVIOUS DRAFT DID NOT PASS VALIDATION ---\n`
+          + `Fix these problems and output the full corrected document, same rules as before:\n`
+          + `${(await runValidate()).output}`
 
-    const entry = await runCommand(
-      claudePath, ['-p', ...CLAUDE_SAFE_ARGS], claudeWorkingDirectory(), { input: prompt },
-    )
-    if (!entry.ok) {
-      return { ok: false, error: entry.stderr || 'Claude could not draft the phase summary.' }
+      const entry = await runCommand(
+        claudePath, ['-p', ...CLAUDE_SAFE_ARGS], claudeWorkingDirectory(), { input: prompt },
+      )
+      if (!entry.ok) {
+        return { ok: false, error: entry.stderr || 'Claude could not draft the phase summary.' }
+      }
+      const draft = rawStdout(entry).trim()
+      if (!draft) {
+        return { ok: false, error: 'Claude returned nothing for the phase summary.' }
+      }
+
+      writeFileSync(layerPath, draft, 'utf-8')
+
+      const validated = await runValidate()
+      if (validated.ok) {
+        produced = true
+        return { ok: true, path: layerPath }
+      }
+      if (attempt === 1) return { ok: false, error: validated.output }
     }
-    const draft = rawStdout(entry).trim()
-    if (!draft) {
-      return { ok: false, error: 'Claude returned nothing for the phase summary.' }
-    }
-
-    writeFileSync(layerPath, draft, 'utf-8')
-
-    const validated = await runValidate()
-    if (validated.ok) return { ok: true, path: layerPath }
-    if (attempt === 1) return { ok: false, error: validated.output }
+    // Unreachable — the loop above always returns — but keeps the function's return type honest.
+    return { ok: false, error: 'The frozen layer could not be produced.' }
+  } finally {
+    if (!produced) previous.restore()
   }
-  // Unreachable — the loop above always returns — but keeps the function's return type honest.
-  return { ok: false, error: 'The frozen layer could not be produced.' }
 }
 
 /** Signs off a stage and advances the phase — the general version of `advanceAfterDeclaration`.
@@ -186,6 +228,16 @@ export async function signOffStage(
   signedBy: string,
   disciplineSignoffs: DisciplineSignoff[],
 ): Promise<SignOffResult> {
+  if (stageId === BUILD_STAGE_ID) {
+    // Build has its own ending (studio-improvements F3): declare_complete.py, reached from Build ›
+    // Closing, where every spec is decided and each team confirms its list. This generic path
+    // would advance the phase around all of that, so it refuses before reading anything.
+    return {
+      ok: false,
+      stage: 'build',
+      error: 'Build is not signed off here. It is declared complete from Build › Closing, once every spec is decided and each team has confirmed its list; the phase advances from there.',
+    }
+  }
   if (!signedBy.trim()) {
     return { ok: false, stage: 'name', error: 'Signing off needs the name of the person who signed it.' }
   }

@@ -36,7 +36,9 @@ const REPLY = [
 
 async function closeQuickly(app: ElectronApplication | undefined): Promise<void> {
   if (!app) return
-  await Promise.race([app.close().catch(() => {}), new Promise((r) => setTimeout(r, 15_000))])
+  // A close that does not return is killed rather than left for Playwright's worker teardown to wait on.
+  const closed = await Promise.race([app.close().then(() => true).catch(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 15_000))])
+  if (!closed) { try { app.process().kill('SIGKILL') } catch { /* already gone */ } }
 }
 
 test.describe('[chat look and width] a markdown reply, and a panel the person can widen', () => {

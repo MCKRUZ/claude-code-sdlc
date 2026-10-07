@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SpecReadiness } from '../../shared/types'
+import { WAITING_FOR_PLUGIN_ANSWER } from '../../shared/reasons'
+import { Button, Card, Disclosure, EYEBROW_CLASS, EYEBROW_TYPE_CLASS, Eyebrow, Field, Input, Notice, Segmented } from '../ui'
+
+type Tier = 'LOW' | 'MEDIUM' | 'HIGH'
+const TIERS: Tier[] = ['LOW', 'MEDIUM', 'HIGH']
 
 /** What a spec still needs before anyone can be handed it (spec 0011).
  *
@@ -11,7 +16,11 @@ import type { SpecReadiness } from '../../shared/types'
  * The blocking/advisory split is the checker's too. In particular the vague-acceptance-check
  * lint ADVISES and never blocks: it flags a check two people could build different things
  * from, and that judgement belongs to a person, not to a pattern match. Showing it as
- * blocking would be Studio promoting a hint into a rule. */
+ * blocking would be Studio promoting a hint into a rule.
+ *
+ * One warn Notice per fact-class (G4-10): "not ready" is ONE fact, so the headline, the
+ * checker's lines and a refusal all live inside the same amber frame rather than three boxes in
+ * a row that read as three alarms. */
 export function SpecReadinessPanel({
   projectPath,
   specPath,
@@ -53,163 +62,143 @@ export function SpecReadinessPanel({
     await load()
   }
 
-  if (loading && !readiness) return <p className="text-sm text-slate-400">Checking this spec…</p>
+  if (loading && !readiness) return <p className="text-sm text-ink-3" role="status" aria-busy="true">Checking this spec…</p>
   if (!readiness) return null
 
   if (!readiness.ok) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
-        {readiness.error ?? 'Could not check this spec.'}
-      </div>
-    )
+    return <Notice tone="error">{readiness.error ?? 'Could not check this spec.'}</Notice>
   }
 
-  return (
-    <div className="space-y-4">
-      <div
-        className={`rounded-xl border px-4 py-3 ${
-          readiness.ready
-            ? 'border-slate-200 bg-white'
-            : 'border-amber-200 bg-amber-50'
-        }`}
-      >
-        <div className="flex items-center justify-between gap-4">
-          <p className={`text-sm font-medium ${readiness.ready ? 'text-[var(--color-command-ok)]' : 'text-amber-900'}`}>
-            {readiness.ready
-              ? 'Ready to hand off.'
-              : `${readiness.blocking.length} thing${readiness.blocking.length === 1 ? '' : 's'} still needed before this can be handed off.`}
-          </p>
-          {/* Two buttons, two different rules, deliberately.
-              HAND OFF appears only when the spec is actually ready — offering an action
-              that is going to be refused teaches people to ignore the panel above it.
-              MARK READY appears even when it is not, because its refusal comes back from
-              the plugin WITH its reasons; hiding that button would make the rule invisible
-              instead of enforced, and the person would never learn what is missing. */}
-          <div className="flex shrink-0 gap-2">
-            {readiness.status === 'draft' && (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => act(() => window.studio.markSpecReady(projectPath, specPath))}
-                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 hover:border-slate-300 disabled:opacity-40"
-              >
-                Mark ready
-              </button>
-            )}
-            {readiness.ready && onHandOff && (
-              <button
-                type="button"
-                onClick={onHandOff}
-                className="rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700"
-              >
-                Hand off
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
+  // The plugin's tier is the value; a tier it does not know is shown as none selected rather
+  // than snapped to one Studio chose.
+  const currentTier = TIERS.includes(readiness.risk as Tier) ? (readiness.risk as Tier) : ('' as Tier)
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Risk tier</h3>
+  /* Two buttons, two different rules, deliberately.
+     HAND OFF appears only when the spec is actually ready — offering an action that is going to
+     be refused teaches people to ignore the panel above it.
+     MARK READY appears even when it is not, because its refusal comes back from the plugin WITH
+     its reasons; hiding that button would make the rule invisible instead of enforced, and the
+     person would never learn what is missing. */
+  const markReady = readiness.status === 'draft' && (
+    <Button
+      size="sm"
+      disabled={busy}
+      disabledReason={WAITING_FOR_PLUGIN_ANSWER}
+      onClick={() => act(() => window.studio.markSpecReady(projectPath, specPath))}
+    >
+      Mark ready
+    </Button>
+  )
+
+  return (
+    <div className="space-y-3">
+      {readiness.ready ? (
+        <Card tone="ok">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-medium text-status-ok-ink">Ready to hand off.</p>
+            <div className="flex shrink-0 gap-2">
+              {markReady}
+              {onHandOff && <Button variant="primary" size="sm" onClick={onHandOff}>Hand off</Button>}
+            </div>
+          </div>
+        </Card>
+      ) : (
+        // The ONE notice for "not ready": headline, the checker's own lines under a small
+        // eyebrow, and — when the plugin refused something — its words as the last paragraph.
+        // `aria-label` names the block for a reader; the kit's warn role (polite status) stays.
+        <Notice
+          tone="warn"
+          aria-label="Still needed"
+          title={`${readiness.blocking.length} thing${readiness.blocking.length === 1 ? '' : 's'} still needed before this can be handed off.`}
+          actions={markReady || undefined}
+        >
+          {/* The eyebrow TYPE by name: bare `text-eyebrow` compiles to the colour utility only. */}
+          <p className={`mt-1 ${EYEBROW_TYPE_CLASS} text-status-warn-ink`}>Still needed</p>
+          <ul className="mt-1 space-y-1.5">
+            {readiness.blocking.map((f, i) => (
+              <li key={`${f.check}-${i}`} className="text-sm">
+                <span className="text-status-warn-ink">•</span>{' '}
+                <span className="text-ink-1">{f.message}</span>
+              </li>
+            ))}
+          </ul>
+          {refusal && <p className="mt-2 whitespace-pre-wrap">{refusal}</p>}
+        </Notice>
+      )}
+
+      <Card>
+        <Eyebrow as="h3" className="mb-2">Risk tier</Eyebrow>
         <div className="flex flex-wrap items-center gap-2">
-          {['LOW', 'MEDIUM', 'HIGH'].map((tier) => (
-            <button
-              key={tier}
-              type="button"
-              disabled={busy || tier === readiness.risk}
-              onClick={() => act(() => window.studio.setSpecRisk(
-                projectPath, specPath, tier, authorisedBy?.trim() || undefined,
-              ))}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
-                tier === readiness.risk
-                  ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 text-slate-600 hover:border-slate-300'
-              }`}
-            >
-              {tier}
-            </button>
-          ))}
-          <span className="text-xs text-slate-400">
+          <Segmented<Tier>
+            label="Risk tier"
+            tone="inverse"
+            value={currentTier}
+            disabled={busy}
+            disabledReason={WAITING_FOR_PLUGIN_ANSWER}
+            options={TIERS.map((tier) => ({ value: tier, label: tier }))}
+            onChange={(tier) => act(() => window.studio.setSpecRisk(
+              projectPath, specPath, tier, authorisedBy?.trim() || undefined,
+            ))}
+          />
+          <span className="text-xs text-ink-3">
             Raising a tier is free. Lowering one is recorded against whoever decided it.
           </span>
         </div>
 
         {authorisedBy !== null && (
-          <label className="mt-3 block">
-            <span className="text-xs font-medium text-amber-900">
-              Who authorised lowering this tier? Written into the spec.
-            </span>
-            <input
+          <Field label="Who authorised lowering this tier? Written into the spec." className="mt-3">
+            <Input
               value={authorisedBy}
               onChange={(e) => setAuthorisedBy(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm"
+              className="border-status-warn-line"
             />
-          </label>
+          </Field>
         )}
-      </div>
+      </Card>
 
-      {refusal && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {/* The plugin's own words — it knows why it refused. */}
+      {/* A refusal on a READY spec (a tier change, say) has no "not ready" notice to live in, so
+          it gets its own — the plugin's own words, never a paraphrase. */}
+      {refusal && readiness.ready && (
+        <Notice tone="warn">
           <p className="whitespace-pre-wrap">{refusal}</p>
-        </div>
-      )}
-
-      {readiness.blocking.length > 0 && (
-        <Group title="Still needed" tone="blocking" findings={readiness.blocking} />
+        </Notice>
       )}
 
       {readiness.advisory.length > 0 && (
-        <Group
-          title="Worth a look"
-          tone="advisory"
-          findings={readiness.advisory}
-          note="These do not stop a hand-off. A flagged acceptance check is a hint that two people could build different things from it — whether that is true is a judgement, not a pattern match."
-        />
-      )}
-
-      {readiness.passed.length > 0 && (
-        <details className="rounded-xl border border-slate-200 bg-white p-4">
-          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-slate-400">
-            {readiness.passed.length} check{readiness.passed.length === 1 ? '' : 's'} already passing
-          </summary>
-          <ul className="mt-2 space-y-1">
-            {readiness.passed.map((f, i) => (
-              <li key={`${f.check}-${i}`} className="text-sm text-slate-500">
-                <span className="text-[var(--color-command-ok)]">✓</span> {f.message}
+        // Plain card, not a notice: nothing here stops a hand-off.
+        <Card as="div" role="region" aria-label="Worth a look" data-tone="advisory">
+          <Eyebrow as="h3" className="text-accent-text">Worth a look</Eyebrow>
+          <ul className="mt-2 space-y-1.5">
+            {readiness.advisory.map((f, i) => (
+              <li key={`${f.check}-${i}`} className="text-sm">
+                <span aria-hidden="true" className="text-ink-4">–</span>{' '}
+                <span className="text-ink-1">{f.message}</span>
               </li>
             ))}
           </ul>
-        </details>
+          <p className="mt-3 text-xs text-ink-3">
+            These do not stop a hand-off. A flagged acceptance check is a hint that two people could build
+            different things from it — whether that is true is a judgement, not a pattern match.
+          </p>
+        </Card>
       )}
-    </div>
-  )
-}
 
-function Group({
-  title, tone, findings, note,
-}: {
-  title: string
-  tone: 'blocking' | 'advisory'
-  findings: SpecReadiness['blocking']
-  note?: string
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">{title}</h3>
-      <ul className="space-y-2">
-        {findings.map((f, i) => (
-          <li key={`${f.check}-${i}`} className="text-sm">
-            <span className={tone === 'blocking' ? 'text-amber-700' : 'text-slate-400'}>
-              {tone === 'blocking' ? '•' : '–'}
-            </span>{' '}
-            {/* The checker's own words. It knows why it flagged this; a paraphrase would be
-                Studio guessing at a judgement it did not make. */}
-            <span className="text-slate-700">{f.message}</span>
-          </li>
-        ))}
-      </ul>
-      {note && <p className="mt-3 text-xs text-slate-400">{note}</p>}
+      {readiness.passed.length > 0 && (
+        <Card as="div" padding="md">
+          <Disclosure
+            summaryProps={{ className: `cursor-pointer ${EYEBROW_CLASS}` }}
+            summary={`${readiness.passed.length} check${readiness.passed.length === 1 ? '' : 's'} already passing`}
+          >
+            <ul className="mt-2 space-y-1">
+              {readiness.passed.map((f, i) => (
+                <li key={`${f.check}-${i}`} className="text-sm text-ink-3">
+                  <span className="text-status-ok-ink">✓</span> {f.message}
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
+        </Card>
+      )}
     </div>
   )
 }

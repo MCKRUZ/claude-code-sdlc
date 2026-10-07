@@ -13,6 +13,7 @@
 //                          cadence plan and are the plugin's to interpret, not Studio's.
 
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { resolveProjectDocument } from './projectPaths'
 import { isOnRemote, save } from './sync'
 import type {
@@ -45,7 +46,16 @@ interface RawRow {
   developer?: string
   checker?: string
   branch?: string
+  /** The sprint layer's keys, as spec_status.py --all reports them: "" / [] when never slated. */
+  sprint?: string
+  next_owner?: string
+  eng_review?: string
+  data_review?: string
+  depends_on?: string[]
   pull_request?: RawPullRequest | null
+  /** Arrives with `confirm-tier` (togo-command-center.md §2.5 row 5): present and "" when the
+   * tier has not been confirmed; absent on a plugin that predates the key. */
+  risk_confirmed_by?: string
   error?: string
 }
 
@@ -63,6 +73,11 @@ function toRow(raw: RawRow): BoardRow {
     developer: raw.developer ?? '',
     checker: raw.checker ?? '',
     branch: raw.branch ?? '',
+    sprint: raw.sprint ?? '',
+    nextOwner: raw.next_owner ?? '',
+    engReview: raw.eng_review ?? '',
+    dataReview: raw.data_review ?? '',
+    dependsOn: Array.isArray(raw.depends_on) ? raw.depends_on.map(String) : [],
     pullRequest: raw.pull_request
       ? {
           number: raw.pull_request.number,
@@ -82,40 +97,59 @@ function toRow(raw: RawRow): BoardRow {
 
 const EMPTY: Board = { rows: [], codeHostAvailable: false, error: null, teamLimits: null }
 
-/** Per-team limits, or null when the project has not adopted them.
- *
- * `track_specs.py` EXITS 1 when a team is over its limit — that is a finding about the
- * project, not a failure of the call, and treating it as an error would make the board go
- * blank exactly when a team is in trouble. So the output is read regardless of status. */
-async function fetchTeamLimits(
-  projectPath: string,
-  pluginScriptsDir: string,
-): Promise<Board['teamLimits']> {
-  const entry = await runPluginScript(pluginScriptsDir, 'track_specs.py', ['--repo', projectPath, '--json'])
-  try {
-    return (JSON.parse(entry.stdout).wip_by_team as Board['teamLimits']) ?? null
-  } catch {
-    return null
-  }
+export async function getBoard(projectPath: string, pluginScriptsDir: string): Promise<Board> {
+  const { board } = await getBoardBlock(projectPath, pluginScriptsDir)
+  return board
 }
 
-export async function getBoard(projectPath: string, pluginScriptsDir: string): Promise<Board> {
+/** The command center's `board` block (togo-command-center.md §2.3): the same two reads, plus
+ * `track_specs.py`'s `warnings[]` kept rather than dropped. `track_specs` exits 1 when a team is
+ * over its limit — a FINDING about the project, not a failure of the call — so `ok` stays true
+ * and the warnings ride along for the screen to show in the plugin's words. `ok` is false only
+ * when `spec_status.py --all` itself gave no readable document. */
+export async function getBoardBlock(
+  projectPath: string,
+  pluginScriptsDir: string,
+): Promise<{ ok: boolean; board: Board; warnings: string[]; error: string | null; unconfirmedTierSpecs: string[] }> {
   const entry = await runPluginScript(pluginScriptsDir, 'spec_status.py', [
     '--repo', projectPath, '--all', '--json',
   ])
 
   let parsed: { specs?: RawRow[]; code_host_available?: boolean; error?: string | null }
   try {
-    parsed = JSON.parse(entry.stdout)
+    parsed = JSON.parse(rawStdout(entry))
+    if (!Array.isArray(parsed?.specs)) throw new Error('not the --all document')
   } catch {
-    return { ...EMPTY, error: entry.stderr.trim() || 'Could not read the specs in this project.' }
+    const error = entry.stderr.trim() || 'Could not read the specs in this project.'
+    return { ok: false, board: { ...EMPTY, error }, warnings: [], error, unconfirmedTierSpecs: [] }
+  }
+
+  const limits = await runPluginScript(pluginScriptsDir, 'track_specs.py', ['--repo', projectPath, '--json'])
+  let teamLimits: Board['teamLimits'] = null
+  let warnings: string[] = []
+  try {
+    const summary = JSON.parse(rawStdout(limits)) as { wip_by_team?: Board['teamLimits']; warnings?: unknown }
+    teamLimits = summary.wip_by_team ?? null
+    warnings = Array.isArray(summary.warnings) ? summary.warnings.filter((w): w is string => typeof w === 'string') : []
+  } catch {
+    teamLimits = null
   }
 
   return {
-    rows: (parsed.specs ?? []).map(toRow),
-    codeHostAvailable: parsed.code_host_available === true,
-    error: parsed.error ?? null,
-    teamLimits: await fetchTeamLimits(projectPath, pluginScriptsDir),
+    ok: true,
+    board: {
+      rows: parsed.specs!.map(toRow),
+      codeHostAvailable: parsed.code_host_available === true,
+      error: parsed.error ?? null,
+      teamLimits,
+    },
+    warnings,
+    error: null,
+    // Only a row that CARRIES the key and leaves it empty is unconfirmed. A row without the key
+    // (an older plugin) says nothing either way, and no "unconfirmed" state is invented for it.
+    unconfirmedTierSpecs: parsed.specs!
+      .filter((r) => r.risk_confirmed_by === '' && typeof r.risk === 'string' && r.risk !== '' && typeof r.spec === 'string')
+      .map((r) => r.spec as string),
   }
 }
 
@@ -149,7 +183,7 @@ export async function getSpecStatus(
     '--repo', projectPath, '--spec', fullSpecPath, '--json',
   ])
   try {
-    return { ok: true, status: JSON.parse(entry.stdout) as SpecStatus }
+    return { ok: true, status: JSON.parse(rawStdout(entry)) as SpecStatus }
   } catch {
     return { ok: false, error: entry.stderr.trim() || 'Could not read this spec’s status.' }
   }
@@ -182,7 +216,7 @@ export async function getSpecReadiness(
     '--spec', fullSpecPath, '--state', `${projectPath}/.sdlc/state.yaml`, '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as SpecReadiness
+    return JSON.parse(rawStdout(entry)) as SpecReadiness
   } catch {
     // Never "ready" on a failure to read. A spec whose readiness is unknown is not ready.
     return notReady(entry.stderr.trim() || 'Could not read this spec’s readiness.')
@@ -222,7 +256,7 @@ export async function transitionSpec(
 
   const entry = await runPluginScript(pluginScriptsDir, 'spec_transition.py', args)
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     if (parsed.ok !== true) {
       return { ok: false, refusal: {
         kind: String(parsed.refusal?.kind ?? 'other'),
@@ -253,7 +287,7 @@ export async function getDeclarationStatus(
     '--repo', projectPath, '--json', 'check', ...confirmationArgs(confirmedTeams),
   ])
   try {
-    return JSON.parse(entry.stdout) as DeclarationStatus
+    return JSON.parse(rawStdout(entry)) as DeclarationStatus
   } catch {
     // can_declare: false on an unreadable answer. The one direction that must never fail open
     // — a declaration permitted because a check could not run is exactly the false statement
@@ -285,7 +319,7 @@ export async function declareComplete(
     '--declared-by', declaredBy, ...confirmationArgs(confirmedTeams),
   ])
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     if (parsed.ok !== true) {
       return { ok: false, refusal: {
         kind: String(parsed.refusal?.kind ?? 'other'),
@@ -322,7 +356,7 @@ export async function deferSpec(
 
   let parsed: { ok?: boolean; changed?: boolean; message?: string; refusal?: { kind?: string; message?: string } }
   try {
-    parsed = JSON.parse(entry.stdout)
+    parsed = JSON.parse(rawStdout(entry))
   } catch {
     return { ok: false, refusal: {
       kind: 'other',
@@ -489,7 +523,7 @@ async function readPhaseRecord(
     '--state', `${projectPath}/${STATE_FILE}`, '--json',
   ])
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     return {
       phaseId: String(parsed?.current_phase?.id ?? '') || null,
       stages: Array.isArray(parsed?.stages) ? (parsed.stages as StageRecord[]) : [],

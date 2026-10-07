@@ -44,6 +44,15 @@ properties:
         name:
           type: string
           description: Display name.
+        email:
+          type: string
+          pattern: "^[^\\s@]+@[^\\s@]+$"
+          description: >-
+            Optional. The sign-in identity on Azure DevOps (UPN or mail), used only to map a
+            pull-request reviewer or the signed-in account back to this handle. Needed only
+            when the repository is hosted on Azure DevOps; GitHub reads the handle itself.
+            Unique across the roster, compared case-insensitively. A provider never guesses a
+            handle from a display name or a UPN prefix — no email, no mapping.
         team:
           type: string
           description: The team this person belongs to (matches a `teams[].name`).

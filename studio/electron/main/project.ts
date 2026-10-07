@@ -5,7 +5,7 @@
 
 import { existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { runCommand, type ConsoleEntry } from './commandRunner'
+import { rawStdout, runCommand, type ConsoleEntry } from './commandRunner'
 import type { OpenProjectResult, PreviewSetupResult, ProjectStatus, RunSetupResult, SetupPlan } from '../../shared/types'
 
 export type { OpenProjectResult, ProjectStatus, SetupPlan }
@@ -86,7 +86,7 @@ export async function openProject(pluginScriptsDir: string, projectPath: string)
     return { hasProject: true, entry, error: entry.stderr || 'generate_status.py failed' }
   }
   try {
-    return { hasProject: true, status: JSON.parse(entry.stdout), entry }
+    return { hasProject: true, status: JSON.parse(rawStdout(entry)), entry }
   } catch {
     return { hasProject: true, entry, error: 'generate_status.py returned unparseable JSON' }
   }
@@ -118,7 +118,7 @@ export async function previewSetup(
   ])
   if (!entry.ok) return { entry, error: entry.stderr || 'init_project.py --dry-run failed' }
   try {
-    return { plan: JSON.parse(entry.stdout), entry }
+    return { plan: JSON.parse(rawStdout(entry)), entry }
   } catch {
     return { entry, error: 'init_project.py --dry-run returned unparseable JSON' }
   }

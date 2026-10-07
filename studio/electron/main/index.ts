@@ -1,15 +1,25 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { MIN_HEIGHT, MIN_WIDTH, firstOpenBounds, fitSavedBounds, readSavedBounds, writeSavedBounds, zoomFor } from './windowBounds'
+
+// A device scale forced for the production screenshot capture (`SHOT_SCALE=2` → the guide's
+// images render at two device pixels per CSS pixel). Chromium reads this switch before the app
+// is ready, so it is appended here, at load; macOS ignores the same switch on the command line.
+if (process.env.TOGO_DEVICE_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', process.env.TOGO_DEVICE_SCALE)
 import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
-import { detectAllTooling } from './tooling'
-import { getConsoleLog, onConsoleEntry } from './commandRunner'
+import { detectAllTooling, type DetectAllToolingResult } from './tooling'
+import { getConsoleLog, onConsoleEntry, rawStdout, killLiveChildren } from './commandRunner'
 import { setGhBinary, setGitBinary } from './git'
+import { setAzBinary } from './az'
+import { invalidateCodeHost, resolveCodeHost } from './codeHost'
+import { HOSTS } from '../../shared/codeHostModel'
+import { forgetTypedActor } from './typedActor'
 import { initSettingsPath, loadSettings, recordRecentProject, saveSettings, type Settings } from './settings'
-import { hasSdlcProject, listAvailableProfiles, openProject, previewSetup, runSetup } from './project'
+import { hasSdlcProject, listAvailableProfiles, openProject, previewSetup, runPluginScript, runSetup } from './project'
 import { combineWithClaude } from './claudeAssist'
-import { getConnectionInfo, getPendingClashes, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save } from './sync'
+import { getConnectionInfo, getPendingClashes, noteCliDetection, onSyncState, pollAndMergeOpenPullRequest, pull, resolveClash, save, setTypedActor } from './sync'
 import { addInstance, getDocumentChanges, nextNumber, openDocument, setField } from './documents'
 import { confirmRestore, diffVersions, getVersionText, listVersions, previewRestore } from './history'
 import { getStageReadiness, setJudgementConfirmation } from './readiness'
@@ -17,6 +27,7 @@ import { createProjectFolder } from './newProject'
 import { gatherPipelineEvidence } from './pipelineEvidence'
 import { registerActivityHandlers } from './activities'
 import { registerActivityRunHandlers } from './activityRuns'
+import { registerSprintHandlers } from './sprint'
 import { registerBriefHandlers } from './briefForm'
 import { signOffStage } from './signOff'
 import { draftField, recordDraftOutcome } from './drafts'
@@ -39,7 +50,14 @@ import {
   getDeclarationStatus,
   getSpecReadiness, getSpecStatus, transitionSpec,
 } from './board'
-import { handOff } from './handoff'
+import { checkHandOff, handOff } from './handoff'
+import { getCommandCenter, invalidateCommandCenter, prefetchCommandCenter } from './commandCenter'
+import { resolveActor } from './actor'
+import { runSprintVerb } from './sprintWrites'
+import { decideDecision, getDecisions, openDecision } from './decisions'
+import { assignRoles, confirmTier, getReadinessAll, getSpecCard } from './specCard'
+import { getSlateProposal } from './sprint'
+import type { SinceWindow, SprintVerbRequest } from '../../shared/types'
 import type { ChatActivity, ClashChoice, DraftOutcome } from '../../shared/types'
 
 /** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
@@ -100,8 +118,11 @@ const indexHtml = path.join(RENDERER_DIST, 'index.html')
  * .cmd-shim handling), so every later git/gh call in this session uses it too. */
 let resolvedPluginScriptsDir: string | null = null
 
-async function resolvePluginScriptsDir(): Promise<string | null> {
-  if (resolvedPluginScriptsDir) return resolvedPluginScriptsDir
+/** Runs detection with the person's overrides and primes every spawner with what it found —
+ * git.ts and az.ts with how to invoke their binaries (a Windows .cmd shim changes every later
+ * spawn), sync.ts with whether gh/az exist at all so resolving a project's code host does not
+ * re-probe `--version`. One place, because three call sites each used to repeat half of it. */
+async function detectTooling(): Promise<DetectAllToolingResult> {
   const settings = loadSettings()
   const report = await detectAllTooling({
     claudePath: settings.claudePathOverride,
@@ -109,12 +130,21 @@ async function resolvePluginScriptsDir(): Promise<string | null> {
     pluginScriptsPath: settings.pluginScriptsPathOverride,
     gitPath: settings.gitPathOverride,
     ghPath: settings.ghPathOverride,
+    azPath: settings.azPathOverride,
   })
+  if (report.gitResolved) setGitBinary(report.gitResolved)
+  if (report.ghResolved) setGhBinary(report.ghResolved)
+  if (report.azResolved) setAzBinary(report.azResolved)
+  noteCliDetection({ gh: report.gh.found, az: report.az.found })
+  return report
+}
+
+async function resolvePluginScriptsDir(): Promise<string | null> {
+  if (resolvedPluginScriptsDir) return resolvedPluginScriptsDir
+  const report = await detectTooling()
   if (report.pluginScripts.found && report.pluginScripts.path) {
     resolvedPluginScriptsDir = report.pluginScripts.path
   }
-  if (report.gitResolved) setGitBinary(report.gitResolved)
-  if (report.ghResolved) setGhBinary(report.ghResolved)
   return resolvedPluginScriptsDir
 }
 
@@ -136,31 +166,21 @@ function startPullTimer() {
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle('studio:detectTooling', async () => {
-    const settings = loadSettings()
-    const report = await detectAllTooling({
-      claudePath: settings.claudePathOverride,
-      uvPath: settings.uvPathOverride,
-      pluginScriptsPath: settings.pluginScriptsPathOverride,
-      gitPath: settings.gitPathOverride,
-      ghPath: settings.ghPathOverride,
-    })
-    if (report.gitResolved) setGitBinary(report.gitResolved)
-    if (report.ghResolved) setGhBinary(report.ghResolved)
-    return report
-  })
+  ipcMain.handle('studio:detectTooling', () => detectTooling())
 
   ipcMain.handle('studio:getSettings', () => loadSettings())
 
-  ipcMain.handle('studio:setToolOverride', (_event, kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', overridePath: string) => {
+  ipcMain.handle('studio:setToolOverride', (_event, kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh' | 'az', overridePath: string) => {
     const settings = loadSettings()
     const key = {
       claude: 'claudePathOverride', uv: 'uvPathOverride', pluginScripts: 'pluginScriptsPathOverride',
-      git: 'gitPathOverride', gh: 'ghPathOverride',
+      git: 'gitPathOverride', gh: 'ghPathOverride', az: 'azPathOverride',
     }[kind] as keyof Settings
     const updated: Settings = { ...settings, [key]: overridePath }
     saveSettings(updated)
     resolvedPluginScriptsDir = null // force re-resolve if any tool path changed
+    // What was probed about a code-host CLI (extension, sign-in) was probed on the OLD path.
+    invalidateCodeHost()
     return updated
   })
 
@@ -186,8 +206,20 @@ function registerIpcHandlers() {
     const result = await openProject(scriptsDir, projectPath)
     if (result.hasProject && result.status) {
       recordRecentProject(projectPath, result.status.project_name)
+      if (openProjectPath && openProjectPath !== projectPath) {
+        // Leaving a project: what was probed about its code host, and any name typed for it,
+        // belong to that project and must not be read as this one's.
+        invalidateCodeHost(openProjectPath)
+        forgetTypedActor(openProjectPath)
+        invalidateCommandCenter(openProjectPath, 'all')
+      }
       openProjectPath = projectPath
       startPullTimer()
+      // Q4 (P3 seam): warm the command-center fan-out the moment the project opens, so the home's
+      // first `getCommandCenter` is a cache hit (or joins the in-flight read) instead of eight
+      // cold spawns after the shell paints. Best-effort and silent: the renderer's own read still
+      // decides what shows, and a failure here only means that read does the work itself.
+      void prefetchCommandCenter(projectPath, scriptsDir)
     }
     return result
   })
@@ -213,7 +245,39 @@ function registerIpcHandlers() {
     return result
   })
 
-  ipcMain.handle('studio:getConnectionInfo', (_event, projectPath: string) => getConnectionInfo(projectPath))
+  // The plugin is needed only for the roster half (handle for the signed-in identity); without
+  // it the connection still reports, with the identity as the host gave it.
+  ipcMain.handle('studio:getConnectionInfo', async (_event, projectPath: string) =>
+    getConnectionInfo(projectPath, await resolvePluginScriptsDir()))
+
+  // D-OWNER-5. Validation and the "only while the host cannot identify you" rule live in
+  // sync.ts/typedActor.ts — main refuses, the renderer only asks. A refusal is a rejection.
+  ipcMain.handle('studio:setTypedActor', async (_event, projectPath: string, name: string) =>
+    setTypedActor(projectPath, await resolvePluginScriptsDir(), name))
+
+  // The repository file IS the code-host override (code-host-providers.md §7): the plugin's own
+  // `set_setting.py code-host` validates and writes `.sdlc/code-host.yaml`, so a person who
+  // edits it by hand is held to exactly the same rules. The host is checked against the three
+  // values HERE as well — the renderer is untrusted, and the argv is otherwise fixed. A refusal
+  // rejects with the plugin's sentence; nothing was written in that case.
+  ipcMain.handle('studio:setCodeHost', async (_event, projectPath: string, host: unknown) => {
+    if (typeof host !== 'string' || !(HOSTS as readonly string[]).includes(host)) {
+      throw new Error(`The code host must be one of ${HOSTS.join(', ')}.`)
+    }
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    const entry = await runPluginScript(scriptsDir, 'set_setting.py', ['--repo', projectPath, '--json', 'code-host', '--host', host])
+    let parsed: { ok?: unknown; refusal?: { message?: unknown } } = {}
+    try { parsed = JSON.parse(rawStdout(entry)) } catch { parsed = {} }
+    if (parsed.ok !== true) {
+      const message = parsed.refusal?.message
+      throw new Error(typeof message === 'string' && message ? message : entry.stderr.trim() || 'The code host was not changed.')
+    }
+    // What was probed about the OLD host (extension, sign-in, identity) is no longer this
+    // project's; the refreshed info re-resolves from the file that was just written.
+    invalidateCodeHost(projectPath)
+    return getConnectionInfo(projectPath, scriptsDir)
+  })
 
   ipcMain.handle('studio:pull', async (_event, projectPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
@@ -271,10 +335,14 @@ function registerIpcHandlers() {
     if (!scriptsDir) {
       return { ok: false, error: 'claude-code-sdlc plugin scripts not found', rails: [], proofsNeeded: [] }
     }
-    return gatherPipelineEvidence(projectPath, scriptsDir)
+    // The host decides which CLI's history is read and whose protection sentence is said
+    // (code-host-providers §6.2); resolveCodeHost is memoised, so this is a cache read.
+    const { host } = await resolveCodeHost(projectPath)
+    return gatherPipelineEvidence(projectPath, scriptsDir, host)
   })
   registerActivityHandlers(ipcMain, resolvePluginScriptsDir)
   registerActivityRunHandlers(ipcMain, resolvePluginScriptsDir)
+  registerSprintHandlers(ipcMain, resolvePluginScriptsDir)
   registerBriefHandlers(ipcMain, resolvePluginScriptsDir)
   registerDraftHandlers(ipcMain, resolvePluginScriptsDir, sendToWindow, () => loadSettings().claudePathOverride)
   registerBatchHandlers(ipcMain, resolvePluginScriptsDir, sendToWindow, () => loadSettings().claudePathOverride)
@@ -428,6 +496,7 @@ function registerIpcHandlers() {
     ) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
+      invalidateCommandCenter(projectPath)
       return setRosterPerson(projectPath, scriptsDir, handle, fields)
     },
   )
@@ -435,6 +504,7 @@ function registerIpcHandlers() {
   ipcMain.handle('studio:setTeamLimit', async (_event, projectPath: string, team: string, limit: number) => {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) return noPluginSetting
+    invalidateCommandCenter(projectPath)
     return setTeamLimit(projectPath, scriptsDir, team, limit)
   })
 
@@ -480,6 +550,7 @@ function registerIpcHandlers() {
     async (_event, projectPath: string, specPath: string, reason: string, actor?: string) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPluginSetting
+      invalidateCommandCenter(projectPath)
       return deferSpec(projectPath, scriptsDir, specPath, reason, actor)
     },
   )
@@ -533,6 +604,7 @@ function registerIpcHandlers() {
   ipcMain.handle('studio:markSpecReady', async (_event, projectPath: string, specPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
     if (!scriptsDir) return noPlugin
+    invalidateCommandCenter(projectPath)
     return transitionSpec(projectPath, scriptsDir, specPath, { kind: 'ready' })
   })
 
@@ -541,6 +613,7 @@ function registerIpcHandlers() {
     async (_event, projectPath: string, specPath: string, tier: string, authorisedBy?: string) => {
       const scriptsDir = await resolvePluginScriptsDir()
       if (!scriptsDir) return noPlugin
+      invalidateCommandCenter(projectPath)
       return transitionSpec(projectPath, scriptsDir, specPath, { kind: 'risk', tier, authorisedBy })
     },
   )
@@ -559,9 +632,102 @@ function registerIpcHandlers() {
         return { ok: false, refusal: { kind: 'other' as const,
                  message: 'claude-code-sdlc plugin scripts not found' } }
       }
+      // A hand-off moves a spec to in-flight on the code host: the host block goes too.
+      invalidateCommandCenter(projectPath, 'all')
       return handOff(projectPath, scriptsDir, specPath, developer, overLimitReason)
     },
   )
+
+  // --- the command center (togo-command-center.md §2.2, §2.4) --------------------------------
+  // Reads are P-class (never pull/sync); every write resolves the actor HERE and runs through
+  // the closed argv table. `track_decisions.py --json` rejecting is passed through as an IPC
+  // error rather than an all-zero view.
+
+  const noPluginBlock = (source: string) => ({ source, fetchedAt: new Date().toISOString(), ok: false, data: null, error: 'claude-code-sdlc plugin scripts not found' })
+
+  ipcMain.handle('studio:getCommandCenter', async (_event, projectPath: string, since?: SinceWindow, refresh?: boolean) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    const window: SinceWindow = since === 3 ? 3 : 1
+    if (!scriptsDir) {
+      const b = noPluginBlock
+      return {
+        projectPath, fetchedAt: new Date().toISOString(), actor: null, capabilities: [],
+        sprint: b('sprint.py status --json'), sprints: b('sprint.py list --json'), board: b('spec_status.py --all --json + track_specs.py --json'),
+        decisions: b('track_decisions.py --json'), findings: b('record_findings.py report --json'), scorecard: b('scorecard.py report --json'),
+        roster: b('project_settings.py --json'), log: b('sprint.py log --json'),
+        needsYou: [], needsYouReason: 'claude-code-sdlc plugin scripts not found', sinceYesterday: [], since: window,
+      }
+    }
+    return getCommandCenter(projectPath, scriptsDir, window, { refresh: refresh === true })
+  })
+
+  ipcMain.handle('studio:getSlateProposal', async (_event, projectPath: string, sprintId: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    const r = await getSlateProposal(projectPath, scriptsDir, sprintId)
+    if (!r.ok) throw new Error(r.error)
+    return r.data
+  })
+
+  ipcMain.handle('studio:getSpecCard', async (_event, projectPath: string, specPath: string, developer?: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    return getSpecCard(projectPath, scriptsDir, specPath, developer)
+  })
+
+  ipcMain.handle('studio:getReadinessAll', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, specs: [] }
+    return getReadinessAll(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle('studio:getDecisions', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) throw new Error('claude-code-sdlc plugin scripts not found')
+    return getDecisions(projectPath, scriptsDir)
+  })
+
+  ipcMain.handle('studio:runSprintVerb', async (_event, projectPath: string, request: SprintVerbRequest) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { ok: false, exitCode: null, refused: false, stdout: '', stderr: 'claude-code-sdlc plugin scripts not found', argv: [], verb: request?.verb ?? 'slate' }
+    }
+    const actor = await resolveActor(projectPath, scriptsDir)
+    return runSprintVerb(projectPath, scriptsDir, request, actor)
+  })
+
+  ipcMain.handle('studio:openDecision', async (_event, projectPath: string, decision: string, owner?: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, stderr: 'claude-code-sdlc plugin scripts not found' }
+    return openDecision(projectPath, scriptsDir, decision, owner, await resolveActor(projectPath, scriptsDir))
+  })
+
+  ipcMain.handle('studio:decideDecision', async (_event, projectPath: string, id: string, resolution: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, stderr: 'claude-code-sdlc plugin scripts not found' }
+    return decideDecision(projectPath, scriptsDir, id, resolution, await resolveActor(projectPath, scriptsDir))
+  })
+
+  ipcMain.handle('studio:confirmTier', async (_event, projectPath: string, specPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return noPlugin
+    return confirmTier(projectPath, scriptsDir, specPath, await resolveActor(projectPath, scriptsDir))
+  })
+
+  ipcMain.handle(
+    'studio:assignRoles',
+    async (_event, projectPath: string, specPath: string, roles: { developer?: string; checker?: string }) => {
+      const scriptsDir = await resolvePluginScriptsDir()
+      if (!scriptsDir) return noPlugin
+      return assignRoles(projectPath, scriptsDir, specPath, roles ?? {}, await resolveActor(projectPath, scriptsDir))
+    },
+  )
+
+  ipcMain.handle('studio:checkHandOff', async (_event, projectPath: string, specPath: string, developer: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return noPlugin
+    return checkHandOff(projectPath, scriptsDir, specPath, developer)
+  })
 
   ipcMain.handle('studio:openDocument', async (_event, projectPath: string, relPath: string) => {
     const scriptsDir = await resolvePluginScriptsDir()
@@ -696,6 +862,7 @@ function registerIpcHandlers() {
       stageDisplay,
       claudePath: settings.claudePathOverride ?? 'claude',
       execPath: process.execPath,
+      host: (await resolveCodeHost(projectPath)).host,
       onActivity: (label) => sendToWindow('studio:chatActivity', { projectPath, stageId, label } satisfies ChatActivity),
     }
   }
@@ -746,7 +913,16 @@ function registerIpcHandlers() {
     },
   )
 
+  let pulling = false
   onSyncState((state) => {
+    // A pull that completed may have brought other people's spec, sprint and decision edits:
+    // the command center's local blocks are stale the moment it lands. Saves are this machine's
+    // own writes and already invalidated at their IPC; nothing here reads on a timer.
+    if (state.kind === 'pulling') pulling = true
+    else if (pulling && state.kind !== 'saving') {
+      pulling = false
+      if (openProjectPath) invalidateCommandCenter(openProjectPath)
+    }
     sendToWindow('studio:syncState', state)
   })
 
@@ -760,10 +936,17 @@ function registerIpcHandlers() {
 }
 
 async function createWindow() {
+  // Size: what the person left last time if it still lands on a connected display, else a first
+  // open that fits the display's work area (up to 1680×1050, never under 1180×720, centred).
+  // A fixed 1280×800 was small on a desktop display and cramped the command center's lanes.
+  const userData = app.getPath('userData')
+  const areas = screen.getAllDisplays().map((d) => d.workArea)
+  const bounds = fitSavedBounds(readSavedBounds(userData), areas) ?? firstOpenBounds(screen.getPrimaryDisplay().workArea)
   win = new BrowserWindow({
     title: 'SDLC Studio',
-    width: 1280,
-    height: 800,
+    ...bounds,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     icon: path.join(process.env.VITE_PUBLIC!, 'favicon.ico'), // set unconditionally above, before createWindow() can run
     webPreferences: {
       preload,
@@ -772,6 +955,25 @@ async function createWindow() {
       sandbox: true,
     },
   })
+
+  // Remember the size and place (debounced) so the next open restores them.
+  let saveTimer: NodeJS.Timeout | null = null
+  const remember = () => {
+    if (!win || win.isMinimized() || win.isFullScreen()) return
+    const b = win.getNormalBounds()
+    writeSavedBounds(userData, b)
+  }
+  const scheduleRemember = () => { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(remember, 400) }
+  // Rendering scale follows the window width (windowBounds.zoomFor): the layout is drawn for
+  // ~1440 px and reads small on a wide display. Off under the tests and the capture, which set
+  // their own viewports and read CSS-pixel geometry.
+  const autoZoom = process.env.TOGO_AUTO_ZOOM !== '0'
+  const applyZoom = () => { if (win && autoZoom) win.webContents.setZoomFactor(zoomFor(win.getContentBounds().width)) }
+  win.webContents.on('did-finish-load', applyZoom)
+  win.on('resize', applyZoom)
+  win.on('resize', scheduleRemember)
+  win.on('move', scheduleRemember)
+  win.on('close', () => { if (saveTimer) clearTimeout(saveTimer); remember() })
 
   if (VITE_DEV_SERVER_URL) { // #298
     win.loadURL(VITE_DEV_SERVER_URL)
@@ -814,6 +1016,10 @@ app.whenReady().then(() => {
   registerIpcHandlers()
   createWindow()
 })
+
+// Quitting must not wait on a plugin script or a model run that outlived the window: end every
+// child this process started (the e2e worker teardown once timed out on exactly that).
+app.on('before-quit', () => { killLiveChildren() })
 
 app.on('window-all-closed', () => {
   win = null

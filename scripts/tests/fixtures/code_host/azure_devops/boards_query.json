@@ -1,0 +1,16 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "id": 1001,
+      "fields": {
+        "System.Id": 1001,
+        "System.CreatedDate": "2026-09-23T08:00:00Z",
+        "Microsoft.VSTS.Common.ClosedDate": "2026-09-23T12:00:00Z",
+        "System.State": "Closed",
+        "System.Tags": "incident"
+      }
+    }
+  ]
+}

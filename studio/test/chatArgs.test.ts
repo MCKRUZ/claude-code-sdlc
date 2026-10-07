@@ -92,7 +92,7 @@ describe('buildChatArgs', () => {
     expect(args[i + 1]).toBe(CHAT_TOOLS.join(','))
   })
 
-  it('--allowedTools carries the same fixed list — MCP tools are denied by --permission-prompts none without it', () => {
+  it('--allowedTools carries the same fixed list — MCP tools are denied by --permission-mode dontAsk without it', () => {
     const { args } = buildChatArgs(baseOpts())
     const i = args.indexOf('--allowedTools')
     expect(args[i + 1]).toBe(CHAT_TOOLS.join(','))
@@ -141,16 +141,16 @@ describe('buildChatArgs', () => {
 
   it('denies every permission prompt rather than escalating to a person who is not there', () => {
     const { args } = buildChatArgs(baseOpts())
-    const i = args.indexOf('--permission-prompts')
-    expect(args[i + 1]).toBe('none')
+    const i = args.indexOf('--permission-mode')
+    expect(args[i + 1]).toBe('dontAsk')
   })
 
-  // Regression: chat.ts used to hand-type '--strict-mcp-config' and '--permission-prompts',
-  // 'none' itself instead of reusing claudeAssist.ts's own CLAUDE_SHARED_SAFE_ARGS — a second,
+  // Regression: chat.ts used to hand-type '--strict-mcp-config' and '--permission-mode',
+  // 'dontAsk' itself instead of reusing claudeAssist.ts's own CLAUDE_SHARED_SAFE_ARGS — a second,
   // independently-maintained copy of flags that exist because of a real past security finding.
   it('reuses claudeAssist.ts\'s own CLAUDE_SHARED_SAFE_ARGS for the flags every claude invocation shares, rather than a hand-typed copy', () => {
     const { args } = buildChatArgs(baseOpts())
-    const i = args.indexOf('--permission-prompts')
+    const i = args.indexOf('--permission-mode')
     expect(args.slice(i, i + CLAUDE_SHARED_SAFE_ARGS.length)).toEqual(CLAUDE_SHARED_SAFE_ARGS)
   })
 })

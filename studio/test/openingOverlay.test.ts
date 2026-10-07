@@ -51,5 +51,16 @@ describe('OpeningOverlay', () => {
     expect(html).toContain('aria-busy="true"')
     expect(html).toContain('aria-modal="true"')
     expect(html).toContain('data-testid="opening-overlay"')
+    expect(html).toContain('role="alertdialog"')
+  })
+
+  it('draws its mark at 48 px in the Depth treatment: exactly one gradient, hooks for the draw-in', () => {
+    const html = render(Date.now())
+    expect(html.match(/<linearGradient/g)?.length).toBe(1)
+    expect(html).toContain('gradientUnits="userSpaceOnUse"')
+    expect(html).toContain('h-12 w-12')
+    expect(html).toContain('data-mark-bar')
+    expect(html).toContain('data-mark-disc')
+    expect(html).toContain('stroke-dashoffset="100"')
   })
 })

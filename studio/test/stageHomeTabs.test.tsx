@@ -123,3 +123,62 @@ describe('StageHome: Also in this stage on the Workflow tab', () => {
     await waitFor(() => expect(studio.getStageReadiness).toHaveBeenCalledTimes(2))
   })
 })
+
+describe('StageHome: the tab row is a real tablist (studio-observatory §7)', () => {
+  const tabEl = (name: string) => screen.getByRole('tab', { name })
+
+  it('wires each tab to its panel with aria-controls, and the shown panel back to its tab', async () => {
+    install((id) => stage(id ?? '1'))
+    render(home('1'))
+    await screen.findByRole('tablist')
+    for (const name of ['Workflow', 'Documents', 'Guide']) {
+      expect(tabEl(name).getAttribute('aria-controls')).toBeTruthy()
+    }
+    const panel = screen.getByRole('tabpanel')
+    expect(panel.id).toBe(tabEl('Workflow').getAttribute('aria-controls'))
+    expect(panel.getAttribute('aria-labelledby')).toBe(tabEl('Workflow').id)
+  })
+
+  it('moves the selection with → and ← (wrapping), and Home / End jump to the ends', async () => {
+    install((id) => stage(id ?? '1', { definition: 'phases/x.md' }))
+    render(home('1'))
+    const list = await screen.findByRole('tablist')
+    tabEl('Workflow').focus()
+
+    fireEvent.keyDown(list, { key: 'ArrowRight' })
+    expect(selected()).toBe('Documents')
+    expect(document.activeElement).toBe(tabEl('Documents'))
+
+    fireEvent.keyDown(list, { key: 'ArrowRight' })
+    expect(selected()).toBe('Guide')
+    fireEvent.keyDown(list, { key: 'ArrowRight' })
+    expect(selected()).toBe('Workflow') // wraps
+
+    fireEvent.keyDown(list, { key: 'ArrowLeft' })
+    expect(selected()).toBe('Guide') // wraps the other way
+
+    fireEvent.keyDown(list, { key: 'Home' })
+    expect(selected()).toBe('Workflow')
+    fireEvent.keyDown(list, { key: 'End' })
+    expect(selected()).toBe('Guide')
+  })
+
+  it('keeps only the selected tab in the tab order (roving tabindex)', async () => {
+    install((id) => stage(id ?? '1'))
+    render(home('1'))
+    await screen.findByRole('tablist')
+    expect(tabEl('Workflow').tabIndex).toBe(0)
+    expect(tabEl('Documents').tabIndex).toBe(-1)
+    expect(tabEl('Guide').tabIndex).toBe(-1)
+  })
+
+  it('puts the stage title in a focusable page heading above the tabs', async () => {
+    install((id) => stage(id ?? '1'))
+    render(home('1'))
+    await screen.findByRole('tablist')
+    const heading = screen.getByRole('heading', { level: 2, name: 'Phase 1: Stage 1' })
+    expect(heading.hasAttribute('data-page-heading')).toBe(true)
+    expect(heading.tabIndex).toBe(-1)
+    expect(heading.compareDocumentPosition(screen.getByRole('tablist')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})

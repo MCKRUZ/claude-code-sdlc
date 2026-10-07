@@ -22,6 +22,36 @@ export interface KnownIssue {
 
 export const KNOWN_ISSUES: KnownIssue[] = [
   {
+    kind: 'scrolls-sideways',
+    detail: /Findings touching this spec's scope path/,
+    problem: 'On the spec card (opened from the Build board) the "Findings touching this spec\'s scope path" section is wider than its column, even at the normal 1280 px window, so the card scrolls sideways.',
+    fix: 'Let that section wrap, or give the card a minimum width that holds it.',
+  },
+  {
+    kind: 'scrolls-sideways',
+    detail: /This project lives at|origin is not GitHub/,
+    problem: 'At 640 px, Settings\' folder path and the "This folder\'s origin is not GitHub or Azure DevOps" message do not wrap and run past the edge.',
+    fix: 'Let long paths and messages wrap, with the full text on hover.',
+  },
+  {
+    kind: 'scrolls-sideways',
+    detail: /<span> "(Artifacts|Signed off by|Entered|Completed|State)"/,
+    problem: 'On a narrower window (1024 px with the chat open, and 640 px) the Lifecycle table at the top of every stage is wider than the window: its Artifacts, Signed off by, Entered and Completed columns run past the edge.',
+    fix: 'Let the table scroll inside its own box, or drop the lesser columns below about 1100 px.',
+  },
+  {
+    kind: 'scrolls-sideways',
+    detail: /Widen the window to at least 640/,
+    problem: 'At 640 px the dependency Graph panel tells the person to widen the window to at least 640 px, and then overflows a 640 px window.',
+    fix: 'Show the Table twin below its minimum instead of a graph that does not fit.',
+  },
+  {
+    kind: 'scrolls-sideways',
+    detail: /<button> "(Guide|I check|Everything|Checks and gates)"|"core\u00b7 2 in flight/,
+    problem: 'At 640 px several rows do not wrap and run past the edge: the stage tabs and step list, the Build board\'s team chips and filter buttons, and the tabs on "How it is going".',
+    fix: 'Let those rows wrap, or stack the chat under the content at this width.',
+  },
+  {
     kind: 'error-showing',
     detail: /Talked to the code host — failed after [\d.]+s\.$|^EXIT 4$/,
     problem: 'When the code host (GitHub) is not signed in, the Console lists each attempt to reach it in red, with a bare "EXIT 4". The record is honest; what is missing is anything outside the Console telling the person to sign in.',
@@ -50,30 +80,6 @@ export const KNOWN_ISSUES: KnownIssue[] = [
     detail: /There are no .* documents to review yet/,
     problem: '"Run the review" can be pressed with nothing to review, and answers with a red error.',
     fix: 'Disable it with the reason beside it ("Nothing to review until a document exists"), the way Build is disabled in the brief form.',
-  },
-  {
-    kind: 'scrolls-sideways',
-    detail: /Back to Workflow|Previous/,
-    problem: 'At a 1024 px window (an ordinary laptop with the chat open), the step panel on every stage\'s Workflow tab is wider than the space it gets, so its Back / Previous / Next / Edit buttons run past the edge and the panel scrolls sideways.',
-    fix: 'Let the step list and the step panel stack (list above, detail below) once the middle column is narrower than about 640 px, instead of side by side.',
-  },
-  {
-    kind: 'scrolls-sideways',
-    detail: /the page is wider than the window/,
-    problem: 'At 1024 px the Build "Closing" screen is wider than the window.',
-    fix: 'Wrap the spec rows (id, title, risk, owner, Defer) onto a second line instead of keeping them on one.',
-  },
-  {
-    kind: 'scrolls-sideways',
-    detail: /This project lives at|Stored in /,
-    problem: 'On Settings, the folder path in the Repository card (and the "Stored in …" file paths at 1024 px) run past the card, so the whole Settings page scrolls sideways even at the normal 1280 px size.',
-    fix: 'Let long paths wrap or truncate in the middle with the full path on hover, rather than forcing the card wider.',
-  },
-  {
-    kind: 'scrolls-sideways',
-    detail: /<aside> "Chat/,
-    problem: 'At the narrowest window (640 px), the chat panel is wider than the space left, and the whole page scrolls sideways.',
-    fix: 'Stack the chat under the content from 640 px down, or give the window a minimum width that fits the three columns.',
   },
 ]
 

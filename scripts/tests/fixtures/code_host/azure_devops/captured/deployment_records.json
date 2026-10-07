@@ -1,0 +1,190 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "devops",
+  "invoke",
+  "--area",
+  "distributedtask",
+  "--resource",
+  "environmentdeploymentrecords",
+  "--route-parameters",
+  "project=repo-1",
+  "environmentId=288",
+  "--api-version",
+  "7.1-preview",
+  "--org",
+  "https://dev.azure.com/contoso"
+ ],
+ "_secs": 1.2,
+ "value": {
+  "continuation_token": "18111",
+  "count": 4,
+  "value": [
+   {
+    "definition": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Definitions/2625"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/definition?definitionId=2625"
+      }
+     },
+     "id": 2625,
+     "name": "pipeline-7"
+    },
+    "environmentId": 288,
+    "finishTime": "2026-10-05T19:12:06.7980861Z",
+    "id": 18282,
+    "jobAttempt": 1,
+    "jobName": "job",
+    "owner": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Builds/138007"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/results?buildId=138007"
+      }
+     },
+     "id": 138007,
+     "name": "20261005.1"
+    },
+    "planId": "00000000-0000-0000-0000-000000000040",
+    "planType": "Build",
+    "queueTime": "2026-10-05T19:11:13.9508649Z",
+    "requestIdentifier": "00000000-0000-0000-0000-000000000040.release.deploytodev",
+    "result": "succeeded",
+    "scopeId": "00000000-0000-0000-0000-000000000002",
+    "serviceOwner": "00000000-0000-0000-0000-000000000041",
+    "stageAttempt": 1,
+    "stageName": "stage",
+    "startTime": "2026-10-05T19:11:14.1642463Z"
+   },
+   {
+    "definition": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Definitions/2315"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/definition?definitionId=2315"
+      }
+     },
+     "id": 2315,
+     "name": "pipeline-5"
+    },
+    "environmentId": 288,
+    "finishTime": "2026-10-05T16:09:22.580156Z",
+    "id": 18274,
+    "jobAttempt": 1,
+    "jobName": "job",
+    "owner": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Builds/137883"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/results?buildId=137883"
+      }
+     },
+     "id": 137883,
+     "name": "20261005.1 environment-1"
+    },
+    "planId": "00000000-0000-0000-0000-000000000042",
+    "planType": "Build",
+    "queueTime": "2026-10-05T16:08:30.2492971Z",
+    "requestIdentifier": "00000000-0000-0000-0000-000000000042.release.deploytodev",
+    "result": "succeeded",
+    "scopeId": "00000000-0000-0000-0000-000000000002",
+    "serviceOwner": "00000000-0000-0000-0000-000000000041",
+    "stageAttempt": 1,
+    "stageName": "stage",
+    "startTime": "2026-10-05T16:08:30.4269118Z"
+   },
+   {
+    "definition": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Definitions/2624"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/definition?definitionId=2624"
+      }
+     },
+     "id": 2624,
+     "name": "pipeline-6"
+    },
+    "environmentId": 288,
+    "finishTime": "2026-10-05T19:11:48.5023715Z",
+    "id": 18281,
+    "jobAttempt": 1,
+    "jobName": "job",
+    "owner": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Builds/138006"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/results?buildId=138006"
+      }
+     },
+     "id": 138006,
+     "name": "20261005.1"
+    },
+    "planId": "00000000-0000-0000-0000-000000000043",
+    "planType": "Build",
+    "queueTime": "2026-10-05T19:11:08.2258918Z",
+    "requestIdentifier": "00000000-0000-0000-0000-000000000043.release.deploytodev",
+    "result": "failed",
+    "scopeId": "00000000-0000-0000-0000-000000000002",
+    "serviceOwner": "00000000-0000-0000-0000-000000000041",
+    "stageAttempt": 1,
+    "stageName": "stage",
+    "startTime": "2026-10-05T19:11:08.3889518Z"
+   },
+   {
+    "definition": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Definitions/2299"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/definition?definitionId=2299"
+      }
+     },
+     "id": 2299,
+     "name": "pipeline-3"
+    },
+    "environmentId": 288,
+    "finishTime": "2026-10-05T14:29:41.1863141Z",
+    "id": 18271,
+    "jobAttempt": 1,
+    "jobName": "job",
+    "owner": {
+     "_links": {
+      "self": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/build/Builds/137781"
+      },
+      "web": {
+       "href": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_build/results?buildId=137781"
+      }
+     },
+     "id": 137781,
+     "name": "20261005.8 environment-1"
+    },
+    "planId": "00000000-0000-0000-0000-000000000044",
+    "planType": "Build",
+    "queueTime": "2026-10-05T14:28:32.323951Z",
+    "requestIdentifier": "00000000-0000-0000-0000-000000000044.release.deploytodev",
+    "result": "failed",
+    "scopeId": "00000000-0000-0000-0000-000000000002",
+    "serviceOwner": "00000000-0000-0000-0000-000000000041",
+    "stageAttempt": 1,
+    "stageName": "stage",
+    "startTime": "2026-10-05T14:28:32.4890194Z"
+   }
+  ]
+ }
+}

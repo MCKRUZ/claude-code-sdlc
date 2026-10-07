@@ -55,7 +55,7 @@ describe.skipIf(!PLUGIN.available)('the analyse job', () => {
       '--plugin-dir', root, '--add-dir', project, root,
       '--agent', 'claude-code-sdlc:discovery-analyst',
       '--tools', 'Read,Grep,Glob', '--allowedTools', 'Read,Grep,Glob',
-      '--permission-prompts', 'none', '--strict-mcp-config',
+      '--permission-mode', 'dontAsk', '--strict-mcp-config',
       '--output-format', 'stream-json', '--verbose',
       '-p', '--',
       `Analyse the intake corpus of this project as your instructions describe, reading ${join(folder, 'index.md')}, ${join(folder, 'catalog.json')} and the summaries in ${folder}. `

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { collapse, describeDiff, diffLines, type DiffLine } from '../../shared/lineDiff'
+import { Notice } from '../ui'
 
 /** How two versions differ: one plain sentence, then only the lines that changed with a little
  * context, the identical stretches folded away, and inside a changed line only the words that
@@ -11,14 +12,14 @@ export function ClashDiff({ mine, theirs }: { mine: string; theirs: string }) {
 
   return (
     <div>
-      <p className="px-4 py-3 text-sm font-medium text-slate-900">{describeDiff(diff)}</p>
+      <p className="px-4 py-3 text-sm font-medium text-ink-1">{describeDiff(diff)}</p>
       {diff.tooLarge && (
-        <p className="px-4 pb-2 text-xs text-amber-800">
+        <Notice tone="warn" className="mx-4 mb-2">
           These are too different to line up, so each side&apos;s changed lines are shown whole.
-        </p>
+        </Notice>
       )}
       {diff.changedLines > 0 && (
-        <div className="border-t border-slate-200">
+        <div className="border-t border-line-1">
           {hunks.map((h, i) =>
             h.type === 'lines'
               ? h.lines.map((line, k) => <Row key={`${i}-${k}`} line={line} />)
@@ -30,16 +31,18 @@ export function ClashDiff({ mine, theirs }: { mine: string; theirs: string }) {
   )
 }
 
+// "Yours" takes the accent, "Theirs" the warn hue — the same pairing the version cards above
+// the diff use, so a glance at a row's colour says whose it is.
 const TONE = {
   same: { row: '', label: '', mark: '' },
-  mine: { row: 'bg-sky-50', label: 'text-sky-700', mark: 'bg-sky-200' },
-  theirs: { row: 'bg-amber-50', label: 'text-amber-700', mark: 'bg-amber-200' },
+  mine: { row: 'bg-accent-50', label: 'text-accent-text', mark: 'bg-accent-200' },
+  theirs: { row: 'bg-amber-50', label: 'text-status-warn-ink', mark: 'bg-amber-200' },
 } as const
 
 function Row({ line }: { line: DiffLine }) {
   const tone = TONE[line.kind]
   return (
-    <div className={`flex gap-3 px-4 py-0.5 font-mono text-[12.5px] leading-relaxed text-slate-800 ${tone.row}`}>
+    <div className={`flex gap-3 px-4 py-0.5 font-mono text-[12.5px] leading-relaxed text-ink-1 ${tone.row}`}>
       <span className={`w-12 shrink-0 select-none text-[10px] font-semibold uppercase tracking-wide ${tone.label}`}>
         {line.kind === 'mine' ? 'Yours' : line.kind === 'theirs' ? 'Theirs' : ''}
       </span>
@@ -61,12 +64,12 @@ function Row({ line }: { line: DiffLine }) {
 function Fold({ count, lines }: { count: number; lines: DiffLine[] }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border-y border-dashed border-slate-200 bg-slate-50">
+    <div className="border-y border-dashed border-line-1 bg-surface-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="w-full px-4 py-1 text-left text-xs text-slate-500 hover:text-slate-800"
+        className="w-full px-4 py-1 text-left text-xs text-ink-3 hover:text-ink-1"
       >
         {`${open ? '▾' : '▸'} ${count} identical ${count === 1 ? 'line' : 'lines'}`}
       </button>

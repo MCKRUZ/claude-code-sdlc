@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DocumentVersion, RestorePreview } from '../../shared/types'
+import { Button, Card, DataTable, Dialog, Eyebrow, Notice, SkeletonRows, cn, toast } from '../ui'
+import type { DataTableColumn } from '../ui'
+import { useEnter } from '../motion/useEnter'
+
+// The diff is code: the code type token (12/16, weight 450) on the code surface, 10 px corners.
+const DIFF_CLASS = 'max-h-64 overflow-auto rounded-[10px] bg-surface-code p-3 font-mono text-code leading-4 text-slate-100'
 
 /** Versions of one document: who saved each and why, what changed between two, and restoring
  * one.
@@ -28,6 +34,10 @@ export function HistoryPanel({
   const [ackSignOff, setAckSignOff] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const rootRef = useRef<HTMLDivElement>(null)
+  useEnter(rootRef, 'rise')
+
+  const fileName = relPath.split('/').pop()
 
   const load = useCallback(async () => {
     setVersions(await window.studio.listVersions(projectPath, relPath))
@@ -50,6 +60,10 @@ export function HistoryPanel({
     else setPreview({ ...result, ref })
   }
 
+  // Stable: the Dialog re-runs its focus effect whenever `onClose` changes identity, and an
+  // inline closure would re-run it on every keystroke in the acknowledgement.
+  const cancelRestore = useCallback(() => setPreview(null), [])
+
   const confirm = async () => {
     if (!preview) return
     setBusy(true)
@@ -62,130 +76,131 @@ export function HistoryPanel({
       return
     }
     setPreview(null)
+    toast({ tone: 'ok', title: 'Restored as a new version', detail: `${preview.ref} · ${fileName}` })
     await load()
     onRestored()
   }
 
+  const columns: DataTableColumn<DocumentVersion>[] = [
+    {
+      id: 'version',
+      header: 'Version',
+      mono: true,
+      width: '5rem',
+      cell: (v) => (
+        <>
+          <span className="font-medium text-ink-1">v{v.n}</span>
+          {v.restoredFrom !== undefined && <p className="mt-0.5 text-2xs text-ink-3">from v{v.restoredFrom}</p>}
+        </>
+      ),
+    },
+    { id: 'who', header: 'Who', cell: (v) => v.actor || 'unknown' },
+    { id: 'when', header: 'When', mono: true, cell: (v) => (v.when ? v.when.slice(0, 10) : <span className="text-ink-4">—</span>) },
+    {
+      id: 'why',
+      header: 'Why',
+      cell: (v) => (
+        <>
+          {v.reason || <span className="text-ink-3">No reason recorded.</span>}
+          {!v.present && (
+            // A real state, not an error: the content store is local, so a version saved on
+            // someone else's machine has metadata here but no bytes.
+            <p className="mt-0.5 text-status-warn-ink">Content not available on this machine.</p>
+          )}
+        </>
+      ),
+    },
+    {
+      id: 'actions',
+      header: <span className="sr-only">Actions</span>,
+      align: 'end',
+      cell: (v) => (
+        <span className="inline-flex gap-1.5">
+          <Button size="sm" disabled={!v.present} onClick={() => showDiff(`v${v.n}`)}>
+            Compare
+          </Button>
+          <Button size="sm" disabled={!v.present} onClick={() => startRestore(`v${v.n}`)}>
+            Restore
+          </Button>
+        </span>
+      ),
+    },
+  ]
+
+  const cannotConfirm = !actor.trim()
+    ? 'Set your name in settings first — a restore is recorded against a person.'
+    : preview?.needsSignOffAck && !ackSignOff
+      ? 'Acknowledge the signed-off content first.'
+      : undefined
+
   return (
-    <div className="space-y-4">
+    <div ref={rootRef} className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">History — {relPath.split('/').pop()}</h3>
-        <button type="button" onClick={onClose} className="text-xs text-slate-500 hover:text-slate-800">
-          Close
-        </button>
+        {/* Detail-screen rank (G4-1): the element stays an h3, the size is the detail title's. */}
+        <h3 data-page-heading tabIndex={-1} className="text-lg text-ink-1">History — {fileName}</h3>
+        <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-[var(--color-command-error)]">
-          {error}
-        </div>
-      )}
+      {error && <Notice tone="error">{error}</Notice>}
 
       {versions === null ? (
-        <p className="text-sm text-slate-400">Loading…</p>
-      ) : versions.length === 0 ? (
-        <p className="text-sm text-slate-400">
-          No versions recorded yet — a version is written each time this document is saved.
-        </p>
+        <div aria-busy="true" className="space-y-2">
+          <p role="status" className="text-sm text-ink-3">Loading…</p>
+          <SkeletonRows rows={3} />
+        </div>
       ) : (
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {[...versions].reverse().map((v) => (
-            <li key={v.n} className="px-4 py-3">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-slate-900">
-                    v{v.n}
-                    <span className="ml-2 font-normal text-slate-500">{v.actor || 'unknown'}</span>
-                    {v.when && <span className="ml-2 font-normal text-slate-400">{v.when.slice(0, 10)}</span>}
-                  </p>
-                  <p className="mt-0.5 text-sm text-slate-600">
-                    {v.reason || <span className="text-slate-400">No reason recorded.</span>}
-                  </p>
-                  {v.restoredFrom !== undefined && (
-                    <p className="mt-0.5 text-xs text-slate-400">Restored from v{v.restoredFrom}</p>
-                  )}
-                  {!v.present && (
-                    // A real state, not an error: the content store is local, so a version
-                    // saved on someone else's machine has metadata here but no bytes.
-                    <p className="mt-0.5 text-xs text-amber-700">
-                      Content not available on this machine.
-                    </p>
-                  )}
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    disabled={!v.present}
-                    onClick={() => showDiff(`v${v.n}`)}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:border-slate-300 disabled:opacity-40"
-                  >
-                    Compare
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!v.present}
-                    onClick={() => startRestore(`v${v.n}`)}
-                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:border-slate-300 disabled:opacity-40"
-                  >
-                    Restore
-                  </button>
-                </div>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <DataTable
+          label="Versions"
+          columns={columns}
+          rows={[...versions].reverse()}
+          rowKey={(v) => `v${v.n}`}
+          empty="No versions recorded yet — a version is written each time this document is saved."
+        />
       )}
 
       {diff !== null && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-slate-400">What changed</h4>
-            <button type="button" onClick={() => setDiff(null)} className="text-xs text-slate-500 hover:text-slate-800">
-              Hide
-            </button>
-          </div>
-          <pre className="mt-2 max-h-64 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{diff}</pre>
-        </div>
-      )}
-
-      {preview && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-          <h4 className="text-sm font-semibold text-amber-900">Restore {preview.ref}?</h4>
-          <p className="mt-1 text-xs text-amber-800">
-            This adds a new version with the older content. Nothing is removed — the current
-            version stays in the history.
-          </p>
-          <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100">{preview.diff}</pre>
-
-          {preview.needsSignOffAck && (
-            <label className="mt-2 flex items-start gap-2 text-xs text-amber-900">
-              <input type="checkbox" checked={ackSignOff} onChange={(e) => setAckSignOff(e.target.checked)} className="mt-0.5" />
-              <span>This document is signed off. I understand I am changing signed-off content, and that this override is recorded.</span>
-            </label>
+        <Card
+          header={(
+            <div className="flex items-center justify-between">
+              <Eyebrow as="h3">What changed</Eyebrow>
+              <Button variant="ghost" size="sm" onClick={() => setDiff(null)}>Hide</Button>
+            </div>
           )}
-
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={confirm}
-              disabled={busy || (preview.needsSignOffAck && !ackSignOff) || !actor.trim()}
-              className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 disabled:opacity-40"
-            >
-              Restore as a new version
-            </button>
-            <button
-              type="button"
-              onClick={() => setPreview(null)}
-              className="rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-800"
-            >
-              Cancel
-            </button>
-            {!actor.trim() && (
-              <span className="text-xs text-amber-800">Set your name in settings first — a restore is recorded against a person.</span>
-            )}
-          </div>
-        </div>
+        >
+          <pre className={DIFF_CLASS}>{diff}</pre>
+        </Card>
       )}
+
+      <Dialog
+        open={preview !== null}
+        onClose={cancelRestore}
+        title={`Restore ${preview?.ref ?? ''}?`}
+        description="This adds a new version with the older content. Nothing is removed — the current version stays in the history."
+        size="lg"
+        footer={(
+          <>
+            <Button onClick={cancelRestore}>Cancel</Button>
+            <Button variant="primary" onClick={confirm} loading={busy} disabled={cannotConfirm !== undefined} disabledReason={cannotConfirm}>
+              Restore as a new version
+            </Button>
+          </>
+        )}
+      >
+        {preview && (
+          <>
+            <pre className={cn(DIFF_CLASS, 'max-h-48')}>{preview.diff}</pre>
+            {preview.needsSignOffAck && (
+              <label className="mt-3 flex items-start gap-2 text-xs text-ink-1">
+                <input type="checkbox" checked={ackSignOff} onChange={(e) => setAckSignOff(e.target.checked)} className="mt-0.5" />
+                <span>This document is signed off. I understand I am changing signed-off content, and that this override is recorded.</span>
+              </label>
+            )}
+            {!actor.trim() && (
+              <p className="mt-3 text-xs text-status-warn-ink">Set your name in settings first — a restore is recorded against a person.</p>
+            )}
+          </>
+        )}
+      </Dialog>
     </div>
   )
 }

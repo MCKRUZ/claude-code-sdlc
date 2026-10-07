@@ -78,22 +78,33 @@ test.describe('[spec 0026] the run activities, in the real window', () => {
   })
 
   const row = (id: string) => page.locator(`[data-testid="activity-row"][data-activity-id="${id}"]`)
+  // F11 (Observatory): a panel activity's row offers "Open" and its panel renders in the main
+  // slot's FocusedActivityHost, so a test opens the activity first and reads the panel there.
+  // The panel's own testids are unchanged; only where it lives moved.
+  const panel = (id: string) => page.locator(`[data-testid="focused-activity-host"][data-activity-id="${id}"]`)
+  const open = async (id: string) => {
+    const button = row(id).getByRole('button', { name: 'Open' })
+    if (await button.count()) await button.click()
+    await expect(panel(id)).toBeVisible({ timeout: 30_000 })
+  }
 
   test('Discovery draws the four panel activities', async () => {
     for (const id of ['intake', 'enhance', 'review', 'phase-report']) await expect(row(id)).toHaveCount(1)
   })
 
   test('looking at the screen does not create the catalogue — only the button does', async () => {
-    await expect(row('intake').getByRole('button', { name: 'Catalogue the documents' })).toBeVisible()
+    await open('intake')
+    await expect(panel('intake').getByRole('button', { name: 'Catalogue the documents' })).toBeVisible()
     expect(existsSync(catalog())).toBe(false)
-    await row('intake').getByRole('button', { name: 'Catalogue the documents' }).click()
-    await expect(row('intake').getByTestId('intake-row')).toHaveCount(3, { timeout: 60_000 })
+    await panel('intake').getByRole('button', { name: 'Catalogue the documents' }).click()
+    await expect(panel('intake').getByTestId('intake-row')).toHaveCount(3, { timeout: 60_000 })
     expect(existsSync(catalog())).toBe(true)
-    await expect(row('intake').getByTestId('intake-row').first()).toContainText('DOC-001')
+    await expect(panel('intake').getByTestId('intake-row').first()).toContainText('DOC-001')
   })
 
   test('skipping a document is final here: its box is checked and disabled', async () => {
-    const third = row('intake').locator('[data-doc-id="DOC-003"]')
+    await open('intake')
+    const third = panel('intake').locator('[data-doc-id="DOC-003"]')
     // A click, not .check(): the box is controlled by the catalogue the script returns (no optimistic
     // state), so it only changes once the script has answered.
     await third.getByRole('checkbox', { name: 'Skip DOC-003' }).click()
@@ -102,33 +113,37 @@ test.describe('[spec 0026] the run activities, in the real window', () => {
   })
 
   test('locking asks first, then freezes the controls', async () => {
-    await row('intake').getByRole('button', { name: 'Lock these ids' }).click()
-    await expect(row('intake').getByTestId('intake-lock-confirm')).toContainText('permanent')
-    await row('intake').getByRole('button', { name: 'Yes, lock them' }).click()
-    await expect(row('intake')).toContainText('These ids are frozen.', { timeout: 60_000 })
-    await expect(row('intake').getByRole('button', { name: 'Lock these ids' })).toHaveCount(0)
+    await open('intake')
+    await panel('intake').getByRole('button', { name: 'Lock these ids' }).click()
+    await expect(panel('intake').getByTestId('intake-lock-confirm')).toContainText('permanent')
+    await panel('intake').getByRole('button', { name: 'Yes, lock them' }).click()
+    await expect(panel('intake')).toContainText('These ids are frozen.', { timeout: 60_000 })
+    await expect(panel('intake').getByRole('button', { name: 'Lock these ids' })).toHaveCount(0)
     expect(JSON.parse(readFileSync(catalog(), 'utf-8')).locked).toBe(true)
   })
 
   test('Export this stage\'s report writes the file and says how many documents it found', async () => {
+    await open('phase-report')
     const report = join(project, '.sdlc', 'reports', '00-discovery-report.html')
     expect(existsSync(report)).toBe(false)
-    await row('phase-report').getByRole('button', { name: "Export this stage's report" }).click()
-    const result = row('phase-report').getByTestId('phase-report-result')
+    await panel('phase-report').getByRole('button', { name: "Export this stage's report" }).click()
+    const result = panel('phase-report').getByTestId('phase-report-result')
     await expect(result).toContainText('Report written: 0 of 5 documents present', { timeout: 60_000 })
     await expect(result).toContainText('Missing:')
     await expect(result).not.toContainText(/complete/i)
     expect(existsSync(report)).toBe(true)
-    await expect(row('phase-report')).toContainText('not shared with the team')
+    await expect(panel('phase-report')).toContainText('not shared with the team')
   })
 
   test('with no documents yet, the summary panel says so instead of "0 of 0"', async () => {
-    const panel = row('enhance').getByTestId('narrative-panel')
-    await expect(panel).toContainText('No documents in this stage yet', { timeout: 30_000 })
-    await expect(panel).not.toContainText('0 of 0')
+    await open('enhance')
+    const summary = panel('enhance').getByTestId('narrative-panel')
+    await expect(summary).toContainText('No documents in this stage yet', { timeout: 30_000 })
+    await expect(summary).not.toContainText('0 of 0')
   })
 
   test('with nothing tracked, the review panel says so instead of a row of zeros', async () => {
-    await expect(row('review').getByTestId('review-standing-panel')).toContainText('No review findings recorded yet', { timeout: 30_000 })
+    await open('review')
+    await expect(panel('review').getByTestId('review-standing-panel')).toContainText('No review findings recorded yet', { timeout: 30_000 })
   })
 })

@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync 
 import { dirname, join } from 'node:path'
 import { recordDraftOutcome } from './drafts'
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { isKeepableTarget } from './draftTargets'
 import { resolveProjectDocument } from './projectPaths'
 import type { DraftKind, DraftOutcome, KeepDraftResult } from '../../shared/types'
@@ -60,7 +61,7 @@ async function isCaptured(projectPath: string, scriptsDir: string, target: strin
   const listed = await runPluginScript(scriptsDir, 'audit_artifacts.py', ['version', 'list', target, '--json', '--state', stateFile(projectPath)])
   if (!listed.ok) return false
   try {
-    const versions = (JSON.parse(listed.stdout) as { versions?: Array<{ hash?: string; present?: boolean }> }).versions ?? []
+    const versions = (JSON.parse(rawStdout(listed)) as { versions?: Array<{ hash?: string; present?: boolean }> }).versions ?? []
     const wanted = ledgerHash(current)
     return versions.some((v) => v.hash === wanted && v.present === true)
   } catch {

@@ -9,14 +9,14 @@ export function RegistryResultView({ result }: { result: RegistryResult }) {
   if (!result.ok) return <PanelError message={result.error || 'The registry could not be written.'} />
   const { documents, summarised, missingSummaries, trimmed, indexWithinBudget, warnings } = result
   return (
-    <div data-testid="registry-result" className="space-y-1 text-xs text-slate-700">
-      <p className="font-medium text-slate-800">
+    <div data-testid="registry-result" className="space-y-1 text-xs text-ink-2">
+      <p className="font-medium text-ink-1">
         {documents} {plural(documents, 'document', 'documents')}, {summarised} summarised
       </p>
       {missingSummaries.length > 0 && <p>Not yet summarised: {missingSummaries.join(', ')}</p>}
       {trimmed.length > 0 && <p>Shortened to fit the index: {trimmed.join(', ')}</p>}
       {!indexWithinBudget && <p>{OVER_BUDGET_NOTE}</p>}
-      {warnings.map((warning) => <p key={warning} className="text-slate-500">{warning}</p>)}
+      {warnings.map((warning) => <p key={warning} className="text-ink-3">{warning}</p>)}
     </div>
   )
 }

@@ -13,6 +13,7 @@
 
 import { join } from 'node:path'
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { matchesSection } from '../../shared/sections'
 import { openDocument } from './documents'
 import type {
@@ -135,7 +136,7 @@ async function readCapabilities(projectPath: string, pluginScriptsDir: string): 
     '--state', join(projectPath, '.sdlc', 'state.yaml'), '--json',
   ])
   if (!entry.ok) throw new Error('generate_status.py did not run')
-  const caps = (JSON.parse(entry.stdout) as { capabilities?: unknown }).capabilities
+  const caps = (JSON.parse(rawStdout(entry)) as { capabilities?: unknown }).capabilities
   return Array.isArray(caps) && caps.every((c) => typeof c === 'string') ? caps : undefined
 }
 
@@ -161,7 +162,7 @@ export async function getStageReadiness(
   const entry = await runPluginScript(pluginScriptsDir, 'stage_readiness.py', args)
   let raw: RawReadiness
   try {
-    raw = JSON.parse(entry.stdout) as RawReadiness
+    raw = JSON.parse(rawStdout(entry)) as RawReadiness
   } catch {
     return emptyReadiness(entry.stderr.trim() || 'Could not read this stage’s readiness.')
   }

@@ -19,7 +19,7 @@ describe('buildAgentArgs for the batch jobs', () => {
       '--agent', 'claude-code-sdlc:document-summarizer',
       '--tools', 'Read,Grep,Glob',
       '--allowedTools', 'Read,Grep,Glob',
-      '--permission-prompts', 'none',
+      '--permission-mode', 'dontAsk',
       '--strict-mcp-config',
       '--output-format', 'stream-json',
       '--verbose',
@@ -34,7 +34,7 @@ describe('buildAgentArgs for the batch jobs', () => {
       '--agent', 'claude-code-sdlc:discovery-analyst',
       '--tools', 'Read,Grep,Glob',
       '--allowedTools', 'Read,Grep,Glob',
-      '--permission-prompts', 'none',
+      '--permission-mode', 'dontAsk',
       '--strict-mcp-config',
       '--output-format', 'stream-json',
       '--verbose',
@@ -53,9 +53,13 @@ describe('buildAgentArgs for the batch jobs', () => {
     const forbidden = [
       'Bash', 'Edit', 'Write', 'WebFetch', 'WebSearch', 'Task', 'NotebookEdit',
       '--mcp-config', '--dangerously-skip-permissions', '--dangerously-load-development-channels',
-      '--permission-mode', '--disallowedTools', '--append-system-prompt', '--settings', '--resume', '--continue',
+      '--disallowedTools', '--append-system-prompt', '--settings', '--resume', '--continue',
     ]
     for (const word of forbidden) expect(args.some((a) => a.split(',').includes(word)), word).toBe(false)
+    // `--permission-mode` only as dontAsk — any other mode lets a prompt through or skips
+    // permissions outright (studio-improvements F1).
+    expect(args.filter((a) => a === '--permission-mode')).toHaveLength(1)
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('dontAsk')
     const listAfter = (flag: string) => args[args.indexOf(flag) + 1]
     expect(listAfter('--tools')).toBe(AGENT_TOOLS.join(','))
     expect(listAfter('--allowedTools')).toBe(AGENT_TOOLS.join(','))

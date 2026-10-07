@@ -38,6 +38,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import track_specs as ts
+from new_spec import SPEC_FILE_RE
 
 # A spec in one of these has been decided: built, or deliberately not built with a reason.
 DECIDED = ("merged", "deferred")
@@ -66,8 +67,13 @@ def _specs(repo_root: Path) -> tuple[list[dict], list[str], bool]:
     specs_dir = repo_root / "specs"
     if not specs_dir.is_dir():
         return [], [], False
-    files = sorted(p.name for p in specs_dir.glob("*.md") if p.name.lower() != "readme.md")
-    specs = ts.scan_specs(specs_dir)
+    # Only files named like a spec (new_spec.SPEC_FILE_RE, `NNNN-`) count — the rule track_specs
+    # and sprint.py already apply. The harness installs specs/spec-template.md beside the real
+    # specs; scan_specs skips it by its placeholder id, and without this filter the difference
+    # below would then report the template as an "unreadable spec" and refuse every declaration.
+    files = sorted(p.name for p in specs_dir.glob("*.md") if SPEC_FILE_RE.match(p.name))
+    specs = [s for s in ts.scan_specs(specs_dir)
+             if SPEC_FILE_RE.match(Path(str(s.get("path", ""))).name)]
     # scan_specs does not say WHICH files it dropped, so the difference is taken by name — each
     # record carries the path it was read from.
     seen = {Path(str(s.get("path", ""))).name for s in specs}

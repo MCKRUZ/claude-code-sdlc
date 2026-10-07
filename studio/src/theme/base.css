@@ -1,0 +1,301 @@
+/* Base styles (studio-observatory.md §2.1, §2.6). Everything here reads a token from tokens.css
+   or dark.css, never a literal colour, so both themes flow through one set of rules. */
+
+@layer base {
+  :root {
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss01";
+    /* Tabular numerals everywhere: counters, clocks and table columns line up without a
+       `.tabular-nums` sprinkled on each one. */
+    font-variant-numeric: tabular-nums;
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  /* The root never scrolls (owner's v12 item 6): the closing and review shots showed the whole
+     shell offset ~8 px because the DOCUMENT had scrolled — a toast, a focus ring or a 1 px
+     rounding past the viewport is enough to give `html` a scrollbar it then honours. Only
+     `<main>` scrolls (Frame.tsx), and a lane scrolls inside itself; the three root boxes are
+     the viewport's exact height and clip. `min-height` would let content re-grow them, so it
+     is `height`. The pre-project screens are `h-screen` and centre their content, so they
+     fit by construction. */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  html {
+    min-width: 320px;
+    background: var(--color-surface-0);
+  }
+
+  /* The ground is `html` (surface-0, painted to the canvas). `body` is transparent so the glow
+     layer below it shows through; an opaque body would paint over a negative z-index child. */
+  body {
+    min-width: 320px;
+    margin: 0;
+    background: transparent;
+    color: var(--color-ink-1);
+  }
+
+  #root {
+    background: transparent;
+  }
+
+  /* <main> is the ONLY scroller (Frame.tsx), so it is also POSITIONED: the containing block of
+     every absolutely positioned descendant. Unpositioned, an `absolute` box inside a screen
+     resolves against the viewport, escapes main's clip and grows the document — v13's overlap
+     probe measured the root at 1440×1608 on the review and closing screens, scrolled 7.5 px,
+     the whole shell offset (owner's v12 item 6, measured). The class list on <main> is a pin
+     (frame.memo.test), so the rule lives here beside the root-never-scrolls rule above. */
+  main#main {
+    position: relative;
+  }
+
+  /* The two radial glows live on a fixed, inert layer UNDER the app rather than on `body`
+     (C4/A1): a sticky header that paints opaque `surface-0` when stuck then composites over the
+     same flat ground it covers, instead of cutting a band out of a gradient that scrolls with
+     the document. `z-index: -1` keeps it beneath every in-flow box of the root stacking context. */
+  #root::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at top, var(--canvas-glow-1), transparent 34%),
+      radial-gradient(circle at bottom right, var(--canvas-glow-2), transparent 28%);
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+
+  code {
+    border-radius: var(--radius-1);
+    border: 1px solid var(--color-line-2);
+    background: var(--color-surface-2);
+    padding: 0.125rem 0.375rem;
+    color: var(--color-ink-1);
+  }
+
+  /* The universal focus ring. `outline` is kept transparent rather than `none` so forced-colours
+     mode (which ignores box-shadow) still draws it. */
+  :focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    box-shadow: var(--ring);
+  }
+
+  /* M8 focus-arrive: the ring grows from spread 0 over `dur-1`, ending on the static `--ring`
+     above (which stays the resting value: forced-colours and the a11y `box-shadow !== 'none'`
+     pin read the rule, not the keyframe). Fields are excluded — they wear the flush halo below,
+     and a ring animating in over it would flash. `[data-motion="off"]` and reduced motion zero
+     `animation-duration`, so the end state is simply the ring. */
+  @keyframes ring-in {
+    from {
+      box-shadow: 0 0 0 0 var(--color-surface-0), 0 0 0 0 var(--color-focus);
+    }
+    to {
+      box-shadow: var(--ring);
+    }
+  }
+
+  :focus-visible:where(:not(input, textarea, select, [role="combobox"])) {
+    animation: ring-in var(--dur-1) var(--ease-out);
+  }
+
+  /* M8 universal press: anything carrying `data-pressable` sinks 1.5 % while held. A transform
+     makes the element a containing block for fixed descendants, so this stays on controls, never
+     a layout region; disabled controls do not move. Selection text set to tokens so the brand
+     wash, not the OS blue, is what a person sees when they select a sentence. */
+  [data-pressable]:active:not(:disabled):not([aria-disabled="true"]) {
+    transform: scale(0.985);
+    transition: transform 80ms var(--ease-out);
+  }
+
+  ::selection {
+    background: var(--color-accent-200);
+    color: var(--color-ink-1);
+  }
+
+  mark {
+    background: var(--color-status-warn-bg);
+    color: var(--color-status-warn-ink);
+    border-radius: 2px;
+    padding-inline: 0.125em;
+  }
+
+  /* Thin, inset, trackless: the scrollbar stops being a grey column beside every list. The
+     transparent border + padding-box clip insets the thumb without a visible track. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-2) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    border-radius: var(--radius-pill);
+    background-color: var(--color-line-2);
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-line-3);
+  }
+}
+
+/* Fields focus differently from buttons: inside a white card a 2 px gap ring floats, so a field
+   gets the same focus colour as a flush border plus a 3 px tinted halo. Unlayered on purpose —
+   `border-line-2` is a utility (layer utilities beats layer base), so a base-layer rule would
+   lose the border colour. */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[role="combobox"]:focus-visible {
+  outline: 2px solid transparent;
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-focus) 22%, transparent);
+}
+
+/* Segmented: once the kit has measured the active option, the sliding thumb is the visible fill
+   and the pressed button goes transparent. The button KEEPS its pinned classes (`bg-brand-600
+   text-white` / `bg-slate-900 text-white`) in the attribute; jsdom and static markup never set
+   `data-segmented-measured`, so there the button paints itself. Unlayered to beat the utility. */
+[data-segmented-measured] > button[aria-pressed="true"] {
+  background-color: transparent;
+  box-shadow: none;
+}
+
+/* Tabs: until the list has measured the selected tab, the tab's own bottom border draws the
+   underline, so a no-layout render (SSR, jsdom, first paint) still shows a line. */
+[role="tablist"]:not([data-tab-measured]) [role="tab"][aria-selected="true"] {
+  border-bottom-color: var(--color-accent-600);
+}
+
+/* The canvas glow is the one decoration not in the token tables; it dims rather than flips. It
+   is the accent (teal) and quiet — a glow in a second hue read as a second brand. */
+:root {
+  --canvas-glow-1: rgb(26 153 163 / 0.10);
+  --canvas-glow-2: rgb(14 124 134 / 0.06);
+}
+[data-theme="dark"] {
+  --canvas-glow-1: rgb(26 153 163 / 0.09);
+  --canvas-glow-2: rgb(14 124 134 / 0.05);
+}
+
+/* §2.1 theme switch: theme.ts adds this class for 260 ms so colours cross-fade instead of
+   snapping. Widths are never in this list (the chat aside is pinned at exactly 380 px). */
+html.theme-switching * {
+  transition:
+    background-color 200ms,
+    border-color 200ms,
+    color 200ms;
+}
+
+/* M10 "dusk" reveal. When theme.ts flips the attribute inside `document.startViewTransition`
+   it sets `data-view-transition` on `<html>` for the duration and writes the origin into
+   `--theme-reveal-x` / `--theme-reveal-y` (lengths or percentages; the last pointerdown, or the
+   window centre for the shortcut). The new theme is revealed as a growing circle over the old
+   one, 420 ms `--ease-expo-out`; the per-element cross-fade is suppressed meanwhile, or the new
+   snapshot would be captured mid-fade. Only P2's theme.ts starts a transition, and only when
+   motion is enabled and not reduced, so the two zeroing rules below are a belt for the braces. */
+html.theme-switching[data-view-transition] * {
+  transition: none;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-expo-out);
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  animation-name: none;
+}
+
+::view-transition-new(root) {
+  animation-name: theme-reveal;
+}
+
+@keyframes theme-reveal {
+  from {
+    clip-path: circle(0 at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%));
+  }
+  to {
+    clip-path: circle(150% at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%));
+  }
+}
+
+html[data-motion="off"]::view-transition-new(root) {
+  animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion])::view-transition-new(root) {
+    animation: none;
+  }
+}
+
+/* M4 shared-element Flip: the element flying back to its row is lifted above its siblings for
+   the duration. `sharedElement.ts` toggles the class (`toggleClass: 'is-flipping'`). */
+.is-flipping {
+  position: relative;
+  z-index: 1;
+}
+
+/* §2.1 density. Compact tightens the rhythm vars and the body size; nothing here moves the
+   sidebar or the chat aside, which are sized in px for that reason. */
+[data-density="compact"] {
+  --pad-card: 12px;
+  --pad-row: 8px;
+  --gap-list: 4px;
+  --text-sm: 12.5px;
+}
+
+/* §2.1 motion off: every transition and animation ends at once. The media query duplicates the
+   attribute rule for the moment before React mounts, scoped to `html:not([data-motion])` so that
+   once motion.ts has set the attribute, a person's explicit `on` (which may override the OS's
+   reduced-motion setting) is what the CSS follows, not the OS. */
+[data-motion="off"] *,
+[data-motion="off"] *::before,
+[data-motion="off"] *::after {
+  transition-duration: 0ms !important;
+  animation-duration: 0ms !important;
+  animation-iteration-count: 1 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html:not([data-motion]) *,
+  html:not([data-motion]) *::before,
+  html:not([data-motion]) *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

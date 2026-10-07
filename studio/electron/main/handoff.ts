@@ -11,8 +11,10 @@
 // for a checker — and it reads the refusal's KIND for that, never its wording.
 
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { resolveProjectDocument } from './projectPaths'
-import type { HandoffRefusal, HandoffResult, RefusalKind } from '../../shared/types'
+import { readHandOffCheck } from './commandCenterReaders'
+import type { HandOffCheck, HandoffRefusal, HandoffResult, RefusalKind } from '../../shared/types'
 
 export type { HandoffRefusal, HandoffResult, RefusalKind }
 
@@ -58,7 +60,7 @@ export async function handOff(
   if (overLimitReason?.trim()) args.push('--over-limit', overLimitReason.trim())
 
   const entry = await runPluginScript(pluginScriptsDir, 'handoff.py', args)
-  return readHandoffOutput(entry.stdout, entry.stderr, developer)
+  return readHandoffOutput(rawStdout(entry), entry.stderr, developer)
 }
 
 /** Turning the command's answer into something the window can act on. Pure, and separate,
@@ -98,4 +100,44 @@ export function readHandoffOutput(stdout: string, stderr: string, developer: str
     assignmentError: (parsed.assignment_error as string | null) ?? null,
     alreadyInFlight: parsed.already_in_flight === true,
   }
+}
+
+/** The hand-off's dry run (togo-command-center.md §2.5 row 7): `handoff.py --check --json` runs
+ * the same refusal block the live command runs and stops BEFORE any git operation, so the spec
+ * card can say, in the plugin's own sentence, why "Hand off" is not yet allowed. Nothing is
+ * written, no branch is listed or created. The argv is fixed; the developer handle travels as a
+ * value, never interpolated. An unreadable answer is a refusal, never an "ok". */
+export async function checkHandOff(
+  projectPath: string,
+  pluginScriptsDir: string,
+  specPath: string,
+  developer: string,
+  overLimitReason?: string,
+): Promise<HandOffCheck> {
+  let fullSpecPath: string
+  try {
+    fullSpecPath = resolveProjectDocument(projectPath, specPath)
+  } catch (err) {
+    return { ok: false, refusal: { kind: 'other', message: (err as Error).message } }
+  }
+  if (!developer.trim()) return { ok: false, refusal: { kind: 'unknown_developer', message: 'A developer handle is needed to check a hand-off.' } }
+
+  const args = ['--repo', projectPath, '--spec', fullSpecPath, '--developer', developer.trim()]
+  if (overLimitReason?.trim()) args.push('--over-limit', overLimitReason.trim())
+  args.push('--check', '--json')
+
+  const entry = await runPluginScript(pluginScriptsDir, 'handoff.py', args)
+  return readHandOffCheckOutput(rawStdout(entry), entry.stderr)
+}
+
+/** Pure: the `--check` document, or a refusal carrying the plugin's stderr when the answer was
+ * not readable (a parser error on an older plugin reads as exactly that). */
+export function readHandOffCheckOutput(stdout: string, stderr: string): HandOffCheck {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(stdout)
+  } catch {
+    return { ok: false, refusal: { kind: 'other', message: stderr.trim() || stdout.trim() || 'The hand-off check gave no readable answer.' } }
+  }
+  return readHandOffCheck(parsed) ?? { ok: false, refusal: { kind: 'other', message: stderr.trim() || 'The hand-off check gave an answer Studio could not read.' } }
 }

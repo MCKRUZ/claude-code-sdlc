@@ -11,6 +11,12 @@ Usage:
   uv run scripts/validate_team.py .sdlc/team.yaml [<roster.yaml> ...]
 
 Underscore-prefixed files (_schema, _template) are skipped. Exit 1 on any validation error.
+
+Identity has two keys. `handle` is the roster key on every code host and is what spec
+frontmatter names. `email` is optional and is the sign-in identity on Azure DevOps, where a
+pull request names people by UPN rather than by handle; `people_by_email` / `email_for` are the
+only bridge between the two, and a provider that cannot find an email reports that rather than
+guessing. A roster without any `email` validates exactly as it did before the key existed.
 """
 
 import sys
@@ -40,6 +46,44 @@ def people_handles(roster: dict) -> set[str]:
     return {p["handle"] for p in people if isinstance(p, dict) and _nonempty_str(p.get("handle"))}
 
 
+def _people(roster) -> list[dict]:
+    """The well-formed entries of the people list; [] if the roster is malformed."""
+    people = roster.get("people") if isinstance(roster, dict) else None
+    if not isinstance(people, list):
+        return []
+    return [p for p in people if isinstance(p, dict)]
+
+
+def people_by_email(roster: dict) -> dict[str, str]:
+    """lower-cased email -> handle, for every person who has both.
+
+    This is the ONLY way a code-host identity becomes a roster handle. Azure DevOps names a
+    reviewer by sign-in identity (a UPN or mail), so a provider looks the identity up here,
+    lower-cased, and gets a handle or nothing — it never derives one from a display name or a
+    UPN prefix, because a wrong guess would put somebody else's name on an approval. On a
+    duplicate (which validate_team flags) the first entry wins, so the answer is at least
+    stable. Empty dict if the roster is malformed."""
+    out: dict[str, str] = {}
+    for p in _people(roster):
+        email, handle = p.get("email"), p.get("handle")
+        if _nonempty_str(email) and _nonempty_str(handle):
+            out.setdefault(email.strip().lower(), handle)
+    return out
+
+
+def email_for(roster: dict, handle: str) -> str | None:
+    """The email recorded for `handle`, or None when there is none to give.
+
+    None is an honest answer, not a failure: a caller that needs an email (adding a reviewer
+    on Azure DevOps) reports that the roster has none for this person rather than inventing
+    one. The handle is matched exactly — handles are case-sensitive on the roster."""
+    for p in _people(roster):
+        if p.get("handle") == handle:
+            email = p.get("email")
+            return email.strip() if _nonempty_str(email) else None
+    return None
+
+
 def team_names(roster: dict) -> set[str]:
     """Every team name in the roster. Empty set if the roster is malformed."""
     teams = roster.get("teams") if isinstance(roster, dict) else None
@@ -64,6 +108,7 @@ def validate_team(roster: dict, schema: dict) -> list[str]:
 
     # --- people: shape, valid roles, duplicate handles ---
     seen_handles: dict[str, int] = {}
+    seen_emails: dict[str, int] = {}
     if isinstance(people, list):
         for i, person in enumerate(people):
             ctx = f"people[{i}]"
@@ -88,6 +133,28 @@ def validate_team(roster: dict, schema: dict) -> list[str]:
 
             if not _nonempty_str(person.get("name")):
                 errors.append(f"{ctx}.name: missing or empty")
+
+            # `email` is optional — a roster with none validates exactly as before. When the
+            # key IS present it has to be usable, because its one job is to map a code-host
+            # identity back to this handle: a blank or duplicated email would map a reviewer
+            # to nobody, or to two people, and the approval it carries would be misattributed.
+            if "email" in person:
+                email = person.get("email")
+                if not _nonempty_str(email):
+                    errors.append(f"{ctx}.email: present but empty — omit the key when unknown")
+                elif any(c in email for c in "\r\n"):
+                    errors.append(f"{ctx}.email: contains a line break; an email is one line")
+                elif "@" not in email:
+                    errors.append(f"{ctx}.email: '{email}' does not contain '@'")
+                else:
+                    # Case-insensitive: sign-in identities are compared that way on the host,
+                    # so two entries differing only in case would both claim the same person.
+                    key = email.strip().lower()
+                    if key in seen_emails:
+                        errors.append(
+                            f"{ctx}: duplicate email '{email}' (first seen at people[{seen_emails[key]}])")
+                    else:
+                        seen_emails[key] = i
             if not _nonempty_str(person.get("team")):
                 errors.append(f"{ctx}.team: missing or empty")
 

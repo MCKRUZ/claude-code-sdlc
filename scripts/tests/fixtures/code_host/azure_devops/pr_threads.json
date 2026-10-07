@@ -1,0 +1,82 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "count": 3,
+  "value": [
+    {
+      "id": 1,
+      "status": "active",
+      "isDeleted": false,
+      "publishedDate": "2026-09-21T09:00:00Z",
+      "comments": [
+        {
+          "id": 1,
+          "parentCommentId": 0,
+          "commentType": "system",
+          "isDeleted": false,
+          "publishedDate": "2026-09-21T09:00:00Z",
+          "content": "Person 1 added Person 2 as a reviewer",
+          "author": {
+            "id": "00000000-0000-0000-0000-000000000001",
+            "displayName": "Person 1",
+            "uniqueName": "person1@example.com"
+          }
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "status": "active",
+      "isDeleted": false,
+      "publishedDate": "2026-09-21T10:30:00Z",
+      "comments": [
+        {
+          "id": 1,
+          "parentCommentId": 0,
+          "commentType": "text",
+          "isDeleted": false,
+          "publishedDate": "2026-09-21T10:30:00Z",
+          "author": {
+            "id": "00000000-0000-0000-0000-000000000007",
+            "displayName": "Person 7",
+            "uniqueName": "grader-bot@example.com"
+          },
+          "content": "<!-- rails-gate:grader -->\n## Acceptance Check Verdicts\n\n| check | covered | reason |\n|---|---|---|\n| AC-1 | covered | |\n| AC-2 | not-covered | no test |\n"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "status": "active",
+      "isDeleted": false,
+      "publishedDate": "2026-09-21T10:00:00Z",
+      "comments": [
+        {
+          "id": 1,
+          "parentCommentId": 0,
+          "commentType": "text",
+          "isDeleted": false,
+          "publishedDate": "2026-09-21T10:00:00Z",
+          "content": "Looks fine to me.",
+          "author": {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "displayName": "Person 3",
+            "uniqueName": "person3@example.com"
+          }
+        },
+        {
+          "id": 2,
+          "parentCommentId": 1,
+          "commentType": "text",
+          "isDeleted": true,
+          "publishedDate": "2026-09-21T10:05:00Z",
+          "content": "deleted",
+          "author": {
+            "id": "00000000-0000-0000-0000-000000000003",
+            "displayName": "Person 3",
+            "uniqueName": "person3@example.com"
+          }
+        }
+      ]
+    }
+  ]
+}

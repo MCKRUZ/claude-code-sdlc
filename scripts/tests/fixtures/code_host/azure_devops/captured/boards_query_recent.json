@@ -1,0 +1,18 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "boards",
+  "query",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1",
+  "--wiql",
+  "SELECT [System.Id],[System.WorkItemType],[System.State],[System.CreatedDate],[System.Tags],[Microsoft.VSTS.Common.ClosedDate] FROM WorkItems WHERE [System.TeamProject] = @project AND [System.ChangedDate] >= @Today - 30 ORDER BY [System.ChangedDate] DESC"
+ ],
+ "_secs": 1.4,
+ "value": null
+}

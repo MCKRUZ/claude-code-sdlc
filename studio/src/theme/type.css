@@ -1,0 +1,99 @@
+/* Studio's type scale, radii and font stacks (studio-observatory.md §2.5–2.6). Split from tokens.css
+   only to keep each theme file short; index.css imports both. */
+
+/* Type, radii and fonts are emitted as ordinary theme variables (not inline) so that
+   `[data-density="compact"]` can retune `--text-sm` and every `text-sm` follows. */
+@theme {
+  --font-sans: "Inter Variable", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans--font-feature-settings: "cv11", "ss01";
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* §2.5 type scale. `2xs`, `md`, `display` and `code` are new; `sm` is retuned from 14 to 13. */
+  /* `2xs` is a plain small size — meta lines, the Welcome path, plate meta, Console meta. Weight
+     450 keeps Inter legible at 10.5 px; there is NO tracking and NO semibold here: the shouting
+     voice (caps, 600, 0.08 em) is `--text-eyebrow` below, and a label that wants it says so. */
+  --text-2xs: 10.5px;
+  --text-2xs--line-height: 14px;
+  --text-2xs--font-weight: 450;
+  --text-xs: 12px;
+  --text-xs--line-height: 16px;
+  --text-sm: 13px;
+  --text-sm--line-height: 18px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  --text-md: 15px;
+  --text-md--line-height: 20px;
+  --text-md--letter-spacing: -0.005em;
+  --text-md--font-weight: 600;
+  --text-lg: 18px;
+  --text-lg--line-height: 24px;
+  --text-lg--letter-spacing: -0.01em;
+  --text-lg--font-weight: 600;
+  --text-xl: 22px;
+  --text-xl--line-height: 28px;
+  --text-xl--letter-spacing: -0.015em;
+  --text-xl--font-weight: 600;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 34px;
+  --text-2xl--letter-spacing: -0.02em;
+  --text-2xl--font-weight: 650;
+  --text-display: 40px;
+  --text-display--line-height: 44px;
+  --text-display--letter-spacing: -0.025em;
+  --text-display--font-weight: 650;
+  --text-code: 12px;
+  --text-code--line-height: 16px;
+  --text-code--font-weight: 450;
+  /* Eyebrow: the one token every section label, group label and table header shares (spec §6),
+     so LIFECYCLE / RECENT / READINESS stop shouting at 12 px. Not a `TypeToken` — CSS-only. */
+  --text-eyebrow: 11px;
+  --text-eyebrow--line-height: 16px;
+  --text-eyebrow--letter-spacing: 0.08em;
+  --text-eyebrow--font-weight: 600;
+
+  /* Command center type scale (togo-command-center-visual.md §3). None of these names has a
+     `--color-*` namesake (ccVisualSpec.test), so `text-sprint-title` resolves to the size. */
+  --text-sprint-title: 32px;
+  --text-sprint-title--line-height: 36px;
+  --text-sprint-title--letter-spacing: -0.02em;
+  --text-sprint-title--font-weight: 650;
+  --text-lane-count: 20px;
+  --text-lane-count--line-height: 24px;
+  --text-lane-count--letter-spacing: -0.01em;
+  --text-lane-count--font-weight: 600;
+  --text-metric: 26px;
+  --text-metric--line-height: 30px;
+  --text-metric--letter-spacing: -0.015em;
+  --text-metric--font-weight: 600;
+  /* `--text-ident` is set in JetBrains Mono by the caller (`font-mono`): ids, dates, paths. */
+  --text-ident: 13px;
+  --text-ident--line-height: 16px;
+  --text-ident--letter-spacing: 0.01em;
+  --text-ident--font-weight: 500;
+  --text-steer-number: 56px;
+  --text-steer-number--line-height: 60px;
+  --text-steer-number--letter-spacing: -0.025em;
+  --text-steer-number--font-weight: 650;
+  --text-steer-label: 24px;
+  --text-steer-label--line-height: 32px;
+  --text-steer-label--letter-spacing: 0;
+  --text-steer-label--font-weight: 500;
+
+  /* Skeleton shimmer: a highlight crossing a fixed shape says "coming" without pulsing the whole
+     block. `[data-motion="off"]` and reduced motion zero `animation-duration` in base.css. */
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* §2.6 radii. `lg`/`xl` remap Tailwind's own names so 207 `rounded-lg`/`rounded-xl` usages
+     in pinned markup upgrade without a class-name change. */
+  --radius-1: 6px;
+  --radius-2: 10px;
+  --radius-3: 14px;
+  --radius-4: 20px;
+  --radius-pill: 9999px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}

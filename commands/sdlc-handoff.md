@@ -22,6 +22,12 @@ This is the Delegate beat's tool — the moment the loop's roles change hands.
    ```
    In workflow mode pass `--state .sdlc/state.yaml` instead of `--repo`.
 
+   The assignment step speaks to whichever code host the repository's `origin` remote is on —
+   GitHub through `gh`, Azure DevOps through `az` (with the `azure-devops` extension). Detection
+   is automatic; pass `--host github|azure-devops|none` only when the user asks to override it
+   for this one run (`none` tries `gh`, as before). Do not add it to work around a CLI that is
+   missing or signed out — the script already reports that as the assignment failure.
+
    - **Refused** — the script prints exactly what blocked it (not ready, unknown developer,
      developer is also the checker, team at its WIP limit) and changes nothing. Fix the
      named issue and re-run; do not work around a refusal by editing the spec's frontmatter
@@ -32,6 +38,13 @@ This is the Delegate beat's tool — the moment the loop's roles change hands.
      the reason (it is written into the commit message).
    - **Already in flight** — the script reports the developer already on file and changes
      nothing. This is not an error; report it plainly.
+   - **On Azure DevOps, `assignment_error` with the PR still opened** — Azure DevOps names
+     reviewers by sign-in identity, not by handle, so the checker becomes a required reviewer
+     only when their roster entry in `.sdlc/team.yaml` carries an `email:`. Without one the
+     draft PR opens with the gap written into its description and the script reports an
+     `assignment_error`; the hand-off itself succeeded. Tell the user to add the checker's
+     `email:` (`set_setting.py person @handle --email …`) and request the review by hand this
+     once. The developer is named in the PR description — Azure DevOps has no assignee.
 
 4. **Starting the agent:** ask whether to start Claude Code on the branch now.
    - Yes → re-run with `--open` added. This starts a new Claude Code session in plan mode
@@ -54,6 +67,10 @@ This is the Delegate beat's tool — the moment the loop's roles change hands.
 - `--repo <path>`: standalone mode.
 - `--over-limit "<reason>"`: only on the user's explicit instruction (see step 3).
 - `--open`: start Claude Code on the branch immediately after a successful hand-off.
+- `--host github|azure-devops|none`: override code-host detection for this run only (the
+  default follows `origin`, then `SDLC_CODE_HOST`, then `.sdlc/code-host.yaml`).
+- `--json`: the outcome — including a refusal and its `kind`, and any `assignment_error` — as
+  one JSON document carrying the top-level `host` block.
 
 ## Important
 
@@ -65,6 +82,8 @@ This is the Delegate beat's tool — the moment the loop's roles change hands.
   check — that both defeats the check and desyncs from what the script itself would write).
 - A hand-off with no code-host access still completes its local half (branch pushed,
   frontmatter committed) — it reports the assignment failure, it does not fail outright.
-  Tell the user to assign the PR manually once access is available.
+  Tell the user to assign the PR manually once access is available. "No access" means the
+  repository's own CLI — `gh` on GitHub, `az` on Azure DevOps — is missing, lacks its extension,
+  or is signed out; the message names which, and never asks for the other host's CLI.
 - Owner and developer can be the same person on a small team — only owner-as-checker is
   refused. Do not second-guess a hand-off to the spec's own owner.

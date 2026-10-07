@@ -48,11 +48,21 @@ export async function settle(page: Page): Promise<void> {
 
 /** Resize the real window (Playwright cannot resize an Electron page itself), and report the size it got. */
 export async function resize(app: ElectronApplication, page: Page, width: number, height: number): Promise<string> {
-  await app.evaluate(({ BrowserWindow }, size) => {
+  // The callback returns the size it set: with nothing returned, Playwright can report "Resulting promise was
+  // garbage collected" when the window reacts to being resized (an auto-zoom, a layout pass). One retry covers
+  // that race; any other error is real and is thrown.
+  const set = () => app.evaluate(({ BrowserWindow }, size) => {
     const win = BrowserWindow.getAllWindows()[0]
     win.setMinimumSize(1, 1)
     win.setContentSize(size.width, size.height)
+    return win.getContentSize()
   }, { width, height })
+  try {
+    await set()
+  } catch (err) {
+    if (!/garbage collected/i.test(String(err))) throw err
+    await set()
+  }
   await page.waitForTimeout(300)
   const actual = await page.evaluate(() => `${window.innerWidth}x${window.innerHeight}`)
   return actual

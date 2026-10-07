@@ -1,6 +1,7 @@
 import type { PhaseReportResult } from '../../shared/types'
+import { Button } from '../ui'
 import {
-  messageOf, PANEL_BUTTON, PANEL_SECONDARY_BUTTON, PanelError, plural, useScopedState,
+  messageOf, PanelButton, PanelError, PanelSecondaryButton, plural, useScopedState,
 } from './activityPanelBits'
 
 type State =
@@ -46,14 +47,12 @@ export function PhaseReportPanel({ projectPath, stageId }: { projectPath: string
   return (
     <div data-testid="phase-report-panel" className="mt-2">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={running} onClick={() => run(false)} className={PANEL_BUTTON}>
+        <PanelButton disabled={running} onClick={() => run(false)}>
           {running ? 'Working…' : "Export this stage's report"}
-        </button>
-        <button type="button" disabled={running} onClick={() => run(true)} className={PANEL_SECONDARY_BUTTON}>
-          Export all stages
-        </button>
+        </PanelButton>
+        <PanelSecondaryButton disabled={running} onClick={() => run(true)}>Export all stages</PanelSecondaryButton>
       </div>
-      <p className="mt-1 text-xs text-slate-500">Reports stay on this computer; they are not shared with the team.</p>
+      <p className="mt-1 text-xs text-ink-3">Reports stay on this computer; they are not shared with the team.</p>
       {state.kind === 'failed' && <PanelError message={state.message} />}
       {state.kind === 'done' && <ReportResult done={state} onOpen={open} />}
     </div>
@@ -66,12 +65,10 @@ function ReportResult({
   const { all, result, openError } = done
   const target = all ? result.index : result.reports[0].output
   return (
-    <div data-testid="phase-report-result" className="mt-2 space-y-1 text-xs text-slate-600">
+    <div data-testid="phase-report-result" className="mt-2 space-y-1 text-xs text-ink-2">
       {all ? <AllWritten count={result.reports.length} /> : <OneWritten entry={result.reports[0]} />}
       {target && (
-        <button type="button" onClick={() => onOpen(done, target)} className="font-medium text-brand-700 hover:text-brand-800">
-          Open report
-        </button>
+        <Button variant="link" size="sm" onClick={() => onOpen(done, target)}>Open report</Button>
       )}
       {openError && <PanelError message={openError} />}
     </div>

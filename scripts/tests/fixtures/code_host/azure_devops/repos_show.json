@@ -1,0 +1,15 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "id": "00000000-0000-0000-0000-000000000001",
+  "name": "claims-api",
+  "defaultBranch": "refs/heads/main",
+  "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+  "project": {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "name": "Claims"
+  },
+  "isFork": false,
+  "remoteUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+  "sshUrl": "git@ssh.dev.azure.com:v3/contoso/Claims/claims-api",
+  "size": 1234
+}

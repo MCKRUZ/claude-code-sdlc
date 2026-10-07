@@ -19,21 +19,17 @@
 // judgement — and it compares handles the plugin supplies, never prose it wrote.
 
 import type { BoardRow, BoardRole, BoardGrouping, BoardFilters } from './types'
+import { samePerson } from './identity'
+
+/** Identity matching lives in `./identity.ts` (togo-command-center.md §2.1: one module for the
+ * "you" ring, the Mine filter and needs-you). Re-exported so every existing import keeps working. */
+export { samePerson }
 
 /** Two days is the spec's own threshold for "overdue". Business days are deliberately not
  * modelled: the plugin's decision log uses plain elapsed days too, and inventing a second,
  * subtly different clock here would make two parts of the same product disagree about
  * whether the same thing is late. */
 const OVERDUE_DAYS = 2
-
-function normalizeHandle(handle: string): string {
-  return handle.trim().replace(/^@/, '').toLowerCase()
-}
-
-export function samePerson(a: string | null | undefined, b: string | null | undefined): boolean {
-  if (!a || !b) return false
-  return normalizeHandle(a) === normalizeHandle(b)
-}
 
 /** Every role this person holds on this spec. A person can hold more than one — Matt's
  * resolved decision is that owner and developer may be the same person, so this returns a
@@ -57,12 +53,17 @@ export function rolesFor(row: BoardRow, account: string | null): BoardRole[] {
  *  2. It has no pull request yet and they own it. A spec that is still being written is
  *     waiting on the person writing it, and nothing else will say so.
  *
+ *  3. The sprint's hand-off names them. `next_owner` is written by `sprint.py handoff` — an
+ *     explicit "the next action is yours" from the sprint layer — and it holds whether or not a
+ *     pull request is open, because the hand-off is the more recent statement.
+ *
  * Being the checker of something that is still in CI is NOT waiting on you. That is the
- * distinction that makes the view worth opening. */
+ * distinction that makes the view worth opening. Merged work waits on nobody. */
 export function needsMe(row: BoardRow, account: string | null): boolean {
   if (!account) return false
-  if (row.pullRequest) return samePerson(row.pullRequest.waitingOnHandle, account)
   if (row.status === 'merged') return false
+  if (samePerson(row.nextOwner, account)) return true
+  if (row.pullRequest) return samePerson(row.pullRequest.waitingOnHandle, account)
   return samePerson(row.owner, account)
 }
 
@@ -88,7 +89,7 @@ export function isOverdue(row: BoardRow, now: Date): boolean {
 function matchesSearch(row: BoardRow, search: string): boolean {
   const needle = search.trim().toLowerCase()
   if (!needle) return true
-  return [row.spec, row.title, row.name, row.owner, row.developer, row.checker, row.team]
+  return [row.spec, row.title, row.name, row.owner, row.developer, row.checker, row.team, row.sprint, row.nextOwner]
     .some((field) => (field ?? '').toLowerCase().includes(needle))
 }
 
@@ -118,7 +119,9 @@ export function groupBoard(rows: BoardRow[], by: BoardGrouping): Array<{ key: st
   const keyOf = (row: BoardRow): string => {
     if (by === 'team') return row.team || 'no team'
     if (by === 'person') return row.developer || row.owner || 'unassigned'
-    return row.epic || 'no epic'
+    // `sprint` replaced `epic` (studio-improvements F10): no spec frontmatter carries an epic,
+    // so that grouping produced one bucket; every slated spec carries `sprint`.
+    return row.sprint || 'no sprint'
   }
 
   const groups = new Map<string, BoardRow[]>()
@@ -131,7 +134,7 @@ export function groupBoard(rows: BoardRow[], by: BoardGrouping): Array<{ key: st
 
   // Named groups alphabetically, with the catch-all bucket last wherever it appears —
   // "unassigned" sorting into the u's would hide it in the middle of real teams.
-  const catchAll = ['no team', 'unassigned', 'no epic']
+  const catchAll = ['no team', 'unassigned', 'no sprint']
   return [...groups.entries()]
     .map(([key, groupRows]) => ({ key, rows: groupRows }))
     .sort((a, b) => {

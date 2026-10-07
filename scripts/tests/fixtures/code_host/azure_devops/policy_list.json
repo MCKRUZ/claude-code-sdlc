@@ -1,0 +1,68 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "id": 1,
+      "isEnabled": true,
+      "isBlocking": true,
+      "isDeleted": false,
+      "type": {
+        "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+        "displayName": "Build"
+      },
+      "settings": {
+        "displayName": "build-and-test",
+        "buildDefinitionId": 12,
+        "scope": [
+          {
+            "repositoryId": "00000000-0000-0000-0000-000000000001",
+            "refName": "refs/heads/main",
+            "matchKind": "Exact"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "isEnabled": true,
+      "isBlocking": true,
+      "isDeleted": false,
+      "type": {
+        "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+        "displayName": "Build"
+      },
+      "settings": {
+        "displayName": "grader",
+        "buildDefinitionId": 13
+      }
+    },
+    {
+      "id": 3,
+      "isEnabled": false,
+      "isBlocking": true,
+      "isDeleted": false,
+      "type": {
+        "id": "0609b952-1397-4640-95ec-e00a01b2c241",
+        "displayName": "Build"
+      },
+      "settings": {
+        "displayName": "security-review",
+        "buildDefinitionId": 14
+      }
+    },
+    {
+      "id": 4,
+      "isEnabled": true,
+      "isBlocking": true,
+      "isDeleted": false,
+      "type": {
+        "id": "fa4e907d-c16b-4a4c-9dfa-4906e5d171dd",
+        "displayName": "Minimum number of reviewers"
+      },
+      "settings": {
+        "minimumApproverCount": 1
+      }
+    }
+  ]
+}

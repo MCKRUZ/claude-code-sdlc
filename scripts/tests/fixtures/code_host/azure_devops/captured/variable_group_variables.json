@@ -1,0 +1,117 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "pipelines",
+  "variable-group",
+  "variable",
+  "list",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1",
+  "--group-id",
+  "268"
+ ],
+ "_secs": 1.2,
+ "value": {
+  "VAR_1": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_2": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_3": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_4": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_5": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_6": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_7": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_8": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_9": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_10": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_11": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_12": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_13": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_14": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_15": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_16": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_17": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_18": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_19": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_20": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_21": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_22": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_23": {
+   "isSecret": null,
+   "value": "<value>"
+  },
+  "VAR_24": {
+   "isSecret": null,
+   "value": "<value>"
+  }
+ }
+}

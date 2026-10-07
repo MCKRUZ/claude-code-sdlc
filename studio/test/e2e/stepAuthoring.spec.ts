@@ -134,11 +134,11 @@ test.describe('[spec 0018] the step-authoring panel, in the real window', () => 
     await expect(page.getByText('epics.md').first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test('a document that does not exist offers Start this document, not Edit', async () => {
+  test('a document that does not exist offers Start this document, and Edit is switched off', async () => {
     // epics.md is the current step and is deliberately never written. Edit on it used to open an
     // editor onto a file that is not there ("does not exist"); it now offers to start it instead.
     await expect(page.getByRole('button', { name: 'Start this document' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled()
   })
 
   test('Edit opens the real structured editor for a document that exists', async () => {
@@ -164,7 +164,12 @@ test.describe('[spec 0018] the step-authoring panel, in the real window', () => 
       // Sidebar, the document panel, and the chat panel all genuinely stacked (Frame.tsx's
       // flex-col at this breakpoint) — not just narrowed side by side.
       const sidebarBox = await page.locator('aside').first().boundingBox()
-      const chatBox = await page.locator('aside').filter({ hasText: 'Chat' }).boundingBox()
+      // Re-recorded (round 3, togo-command-center.md §8 (6)): this read `aside` filtered by the text
+      // "Chat". The shell band — the FIRST aside — now carries the owner-required Chat toggle, a
+      // band button whose visually hidden label IS the word "Chat", so the text filter resolved to
+      // both asides (strict-mode violation). The chat is the SECOND aside by a11y.spec's own pin
+      // ("two asides, sidebar-then-chat"), so it is addressed by position; the assertion is unchanged.
+      const chatBox = await page.locator('aside').nth(1).boundingBox()
       if (sidebarBox && chatBox) {
         expect(chatBox.y).toBeGreaterThanOrEqual(sidebarBox.y + sidebarBox.height - 1)
       }

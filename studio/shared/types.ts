@@ -27,14 +27,32 @@ export interface ToolStatus {
   path?: string
   version?: string
   error?: string
+  /** Claude only: the flags Studio emits that this CLI's `--help` does not declare (probed once
+   * per detected version, shared/claudeContract.ts). Empty or absent means every model call can
+   * run; non-empty means they are off until `claude update`. */
+  missingFlags?: string[]
+  /** Plugin scripts only: the version `.claude-plugin/plugin.json` beside them declares, when
+   * readable — so Settings can say WHICH plugin is driving this session, not just where. */
+  pluginVersion?: string
+  /** Plugin scripts only: how the directory was chosen — the checkout Studio ships in, the
+   * marketplace cache, or a path the person typed. */
+  source?: 'sibling' | 'cache' | 'override'
+  /** az only: whether the azure-devops extension is installed. `null` when az itself was not
+   * found or the extension probe could not run — not knowing is never reported as "missing". */
+  extension?: boolean | null
 }
 
+/** What the machine has. claude, uv, pluginScripts and git are REQUIRED to open a project; gh and
+ * az are not (code-host providers, D4) — a project opens without either, and what a missing CLI
+ * costs is said per feature from `ConnectionInfo.cli`. The renderer owns that gate (Wave 7);
+ * nothing in the main process treats either code-host CLI as blocking. */
 export interface ToolingReport {
   claude: ToolStatus
   uv: ToolStatus
   pluginScripts: ToolStatus
   git: ToolStatus
   gh: ToolStatus
+  az: ToolStatus
 }
 
 export interface RecentProject {
@@ -83,6 +101,7 @@ export interface Settings {
   pluginScriptsPathOverride?: string
   gitPathOverride?: string
   ghPathOverride?: string
+  azPathOverride?: string
   /** Keyed by project path. */
   projectSyncState?: Record<string, ProjectSyncState>
   /** Keyed by `${projectPath}\u0000${stageId}` — spec 0016's chat transcripts. Local-only, by
@@ -140,15 +159,45 @@ export interface RunSetupResult {
 
 // --- Repository sync (spec 0009) ---------------------------------------------------------
 
+/** The code-host CLI a project needs, and what the main process actually established about it.
+ * Honesty rules (code-host-providers.md §8): `found` is a fact from tooling detection;
+ * `extension` is null until probed (gh has none — always null there); `signedIn` is 'unknown'
+ * until a probe ran and 'no' only when the CLI itself said so. `reason` is the exact §7.1
+ * sentence for whatever is wrong, when something is — the renderer's one reason helper
+ * (shared/codeHostModel.ts hostFeatureReason) matches on it. */
+export interface CodeHostCliStatus {
+  name: 'gh' | 'az' | null
+  found: boolean
+  extension: boolean | null
+  signedIn: 'yes' | 'no' | 'unknown'
+  reason?: string
+}
+
 export interface ConnectionInfo {
   repo: string
   branch: string
   localFolder: string
-  /** The signed-in code-host account (`gh api user`), or null when unknown/unauthenticated. */
+  /** Who is acting, in the roster's own form when the roster knows them: the `@handle`-style
+   * roster handle when `.sdlc/team.yaml` maps the signed-in identity to one, otherwise the
+   * host's identity as-is (a GitHub login, an Azure DevOps UPN), otherwise the name a person
+   * typed for this session (D-OWNER-5 — only when the host could not identify them). Null when
+   * nobody could be identified; `cli.signedIn` and `cli.reason` then say why. */
   account: string | null
+  /** Where `account` came from. 'typed' is held in the main process for this session only. */
+  accountSource: 'roster' | 'host' | 'typed' | null
+  /** The roster handle the signed-in identity resolved to, or null when the roster has no row
+   * for them (or there is no roster). Carried separately so a screen can show both halves:
+   * "signed in as sam@corp.com (roster: @sam-k)". */
+  rosterHandle: string | null
+  /** Which code host this project is on and how that was decided — the same precedence the
+   * plugin scripts use (env → .sdlc/code-host.yaml → origin remote → harness manifest → none). */
+  host: 'github' | 'azure-devops' | 'none'
+  hostSource: 'flag' | 'env' | 'file' | 'remote' | 'manifest' | 'default'
+  cli: CodeHostCliStatus
   lastPulledAt: string | null
-  /** Best-effort display only (a `gh api .../rulesets` probe) — the actual gate is always
-   * "did the direct push get rejected," never this value. See sync.ts. */
+  /** Best-effort display only (a rulesets / branch-policy probe) — the actual gate is always
+   * "did the direct push get rejected," never this value. Null means "couldn't read", which is
+   * not the same as "no". See sync.ts. */
   branchProtected: boolean | null
 }
 
@@ -209,6 +258,10 @@ export interface SaveResult {
   prUrl?: string
   entries: ConsoleEntry[]
   error?: string
+  /** Something the save did differently from what was asked, in words for the toast: the
+   * reviewer could not be resolved to an email on Azure DevOps, or the host will not complete
+   * the pull request itself (D-OWNER-8). Only ever present on an `ok: true` result. */
+  note?: string
 }
 
 // --- Documents (spec 0010) ---------------------------------------------------------------
@@ -1063,6 +1116,9 @@ export interface SettingsSection {
 
 export interface RosterPerson {
   handle: string
+  /** The sign-in identity on Azure DevOps (a UPN), where pull requests name people by email
+   * rather than handle. This is the only bridge between a host identity and a roster handle. */
+  email?: string
   name?: string
   team?: string
   roles?: string[]
@@ -1367,7 +1423,7 @@ export interface DisciplineSignoff {
  * `/sdlc-next` follows. `stage` names exactly where it stopped, so a refusal is never a mystery. */
 export type SignOffResult =
   | { ok: true; fromPhase?: string; toPhase?: string; note?: string }
-  | { ok: false; stage: 'plugin' | 'name' | 'not-current' | 'confirmations' | 'gates' | 'frozen-layer' | 'advance'; error: string }
+  | { ok: false; stage: 'plugin' | 'claude' | 'build' | 'name' | 'not-current' | 'confirmations' | 'gates' | 'frozen-layer' | 'advance'; error: string }
 
 export interface DeclarationResult {
   ok: boolean
@@ -1380,10 +1436,110 @@ export interface DeclarationResult {
   refusal?: { kind: string; message: string }
 }
 
+// --- Sprint view (proposal: studio-improvements, Batch 2) ---
+// Mirrors `sprint.py status --json` key for key, in camelCase. Studio computes none of it: every
+// count, verdict age and build-order position is the plugin's own. A value the plugin reports as
+// null (no ledger line to age from, no WIP cap stated) stays null here and reads "no data" on
+// screen — never a zero.
+
+/** One slated spec, as `sprint.py` reads it from the spec's frontmatter. */
+export interface SprintSlateRow {
+  id: string
+  name: string
+  risk: string
+  type: string
+  channel: string
+  status: string
+  sprint: string
+  nextOwner: string
+  engReview: string
+  dataReview: string
+  dependsOn: string[]
+  dor: 'READY' | 'NOT READY'
+  /** The Definition-of-Ready MUST lines that fail, in the checker's words. Empty when READY. */
+  dorBlocking: string[]
+  /** Absolute path, as the plugin prints it. */
+  path: string
+  /** Repo-relative POSIX path (e.g. "specs/0007-name.md") — what opens the spec view. */
+  relPath: string
+}
+
+export interface SprintRecord {
+  id: string
+  goal: string
+  start: string
+  end: string
+  /** planning | ready | closed (forward only). */
+  state: string
+  /** How many specs to slate — a count, never a size. Null when the record states none. */
+  target: number | null
+  /** The mix as written, e.g. "HIGH:1,MEDIUM:2,LOW:3". */
+  mix: string
+  boardRef: string
+  readiedBy: string
+  closedBy: string
+  created: string
+  path: string
+  relPath: string
+  /** Business days over the sprint window; all null when start or end is missing. */
+  days: { total: number | null; elapsed: number | null; remaining: number | null }
+}
+
+export interface SprintReadinessGap { spec: string; gaps: string[] }
+export interface SprintVerdictPending { spec: string; lane: string; sinceBusinessDays: number | null }
+export interface SprintHandoffOpen { spec: string; to: string; sinceBusinessDays: number | null }
+/** Per risk tier: how many are slated against how many the mix asked for (null: no target). */
+export interface SprintMixTier { target: number | null; actual: number }
+export interface SprintOverdueDecision { id: string; decision: string; owner: string; due: string }
+export interface SprintDecisions { open: number; overdue: SprintOverdueDecision[] }
+export interface SprintCarriedIn { spec: string; fromSprint: string; reason: string }
+
+export interface SprintView {
+  ok: true
+  /** Null when the project has no sprint record (or named one that does not exist). */
+  sprint: SprintRecord | null
+  slate: SprintSlateRow[]
+  readiness: { ready: number; total: number; gaps: SprintReadinessGap[] }
+  verdictsPending: SprintVerdictPending[]
+  handoffsOpen: SprintHandoffOpen[]
+  mix: Record<string, SprintMixTier>
+  mixWarnings: string[]
+  wip: { inFlight: number | null; cap: number | null }
+  buildOrder: string[]
+  nextUp: string | null
+  dependencyGaps: string[]
+  /** Null when the project keeps no decision log. */
+  decisions: SprintDecisions | null
+  carriedIn: SprintCarriedIn[]
+  /** False when nothing is slated: every count above is then an empty record, not a score. */
+  hasData: boolean
+  /** The plugin's own one-line reason when it answered with no data (e.g. an unknown sprint id). */
+  note: string | null
+}
+
+export type SprintStatusResult = SprintView | { ok: false; error: string }
+
+export type SprintReportKind = 'planning' | 'review'
+
+/** `relOutput` is repo-relative (".sdlc/reports/sprint-S07-planning.html") for `openReport`. */
+export type SprintReportResult = { ok: true; relOutput: string } | { ok: false; error: string }
+
 export interface StudioApi {
   detectTooling(): Promise<ToolingReport>
   getSettings(): Promise<Settings>
-  setToolOverride(kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh', path: string): Promise<Settings>
+  setToolOverride(kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh' | 'az', path: string): Promise<Settings>
+  /** D-OWNER-5: a name typed by the person, accepted ONLY while the code host cannot say who
+   * they are (PAT-only, signed out). Validated in the main process (trimmed, 2–80 characters,
+   * one line, not an AI-looking name) and held in memory for this process only — never written
+   * to settings. Resolves to the refreshed connection info; rejects with the reason when the
+   * name is refused or the host already identifies the person. */
+  setTypedActor(projectPath: string, name: string): Promise<ConnectionInfo>
+  /** Pin which code host this repository is on — writes `.sdlc/code-host.yaml` through
+   * `set_setting.py code-host` (the repository file IS the override; nothing is kept in
+   * Studio's own settings). The main process validates the host, forgets what it had probed
+   * about the old host, and resolves to the refreshed connection info. Rejects with the
+   * plugin's own refusal sentence when the write was refused — the file is then untouched. */
+  setCodeHost(projectPath: string, host: 'github' | 'azure-devops' | 'none'): Promise<ConnectionInfo>
 
   pickFolder(): Promise<string | null>
   /** Makes `<parent>/<name>` and starts version tracking in it, so a person with no folder yet
@@ -1443,6 +1599,12 @@ export interface StudioApi {
   getNarrativeCoverage(projectPath: string, stageId: string): Promise<NarrativeCoverage>
   getReviewStanding(projectPath: string): Promise<ReviewStanding>
   runStrictReviewCheck(projectPath: string): Promise<StrictCheckResult>
+  /** The sprint as `sprint.py status --json` reports it (the active sprint, or `sprintId`).
+   * Read-only; nothing is written. */
+  getSprintStatus(projectPath: string, sprintId?: string): Promise<SprintStatusResult>
+  /** Writes the sprint's planning or review page through the plugin and returns where it went,
+   * for `openReport`. The page stays on this computer. */
+  renderSprintReport(projectPath: string, sprintId: string, kind: SprintReportKind): Promise<SprintReportResult>
   /** Runs a model job (summary or review) and resolves with the candidate. Nothing is written. */
   startDraft(projectPath: string, request: DraftRequest): Promise<StartDraftResult>
   cancelDraft(): Promise<{ ok: boolean }>
@@ -1629,7 +1791,9 @@ export interface StudioApi {
  * whom. */
 export type BoardRole = 'needs-me' | 'owner' | 'developer' | 'checker' | 'everything'
 
-export type BoardGrouping = 'none' | 'epic' | 'team' | 'person'
+/** `sprint` replaced the dead `epic` grouping (studio-improvements F10): no spec frontmatter
+ * carries an epic, every sprint-slated one carries `sprint`. */
+export type BoardGrouping = 'none' | 'sprint' | 'team' | 'person'
 
 export interface BoardFilters {
   role: BoardRole
@@ -1677,6 +1841,14 @@ export interface BoardRow {
   checker: string
   branch: string
   epic?: string
+  /** The sprint-layer fields `spec_status.py --all` reports from the frontmatter (sprint.py
+   * writes them). Strings are "" and dependsOn [] when the spec has never been slated — present
+   * either way, so the board groups by sprint and answers "waiting on me" from one read. */
+  sprint: string
+  nextOwner: string
+  engReview: string
+  dataReview: string
+  dependsOn: string[]
   pullRequest: BoardPullRequest | null
   /** Set only when the spec file itself could not be read — the row is still shown, saying
    * so, rather than silently dropped. */
@@ -1691,4 +1863,329 @@ export interface Board {
   error: string | null
   /** Per-team work-in-progress limits, or null for a project that has not adopted them. */
   teamLimits: Record<string, { in_flight: number; wip_limit: number }> | null
+}
+
+// --- The command center (togo-command-center.md §2) ---------------------------------------
+//
+// One read model, every block sourced; one closed argv table for writes. Nothing below is a
+// number Studio computed: a `SourcedBlock` carries the plugin's own output and the literal
+// `<script> <verb> --json` it came from, and `data: null` renders "no data", never 0. There is
+// deliberately NO per-person key anywhere in these types (§2.3) — presence lists, never totals.
+
+/** One block of the read model. `source` is the literal spawn the element shows as provenance
+ * ("sprint.py status --json"); `fetchedAt` is for "as of 10:42", never for a metric. */
+export interface SourcedBlock<T> {
+  source: string
+  fetchedAt: string
+  ok: boolean
+  /** Null reads "no data" — the plugin's absence, not a zero. */
+  data: T | null
+  /** The plugin's stderr / the spawn error, verbatim, when `ok` is false. */
+  error: string | null
+}
+
+/** Who every write is recorded against, resolved ONCE in the main process (`actor.ts`) from
+ * `ConnectionInfo`: roster handle → host identity → the typed name. The renderer never
+ * assembles one. */
+export interface ActorInfo {
+  name: string
+  source: 'roster' | 'host' | 'typed'
+}
+
+/** The four lanes of the sprint home (§3.1), a PARTITION of the slate: a row sits in exactly one
+ * lane or is `unplaced` and listed with its raw fields. Drafts and NOT READY rows are not in a
+ * lane — they live in Refining. */
+export type LaneId = 'ready' | 'building' | 'checking' | 'merged'
+export type LanePlacement = LaneId | 'unplaced'
+
+/** `sprint.py list --json` (§2.5 row 1), camel-cased. `ordinal` is the plugin's 1-based id order;
+ * a malformed file reads `state: null`. */
+export interface SprintListEntry {
+  id: string
+  state: string | null
+  goal: string
+  start: string
+  end: string
+  ordinal: number
+}
+export interface SprintListView {
+  sprints: SprintListEntry[]
+  active: string | null
+  count: number
+}
+
+/** `sprint.py log --json` (§2.5 row 2): the ledger lines VERBATIM — no reshaping, no aggregate
+ * key. The known fields are typed for the stream; everything else rides along. */
+export interface SprintLogEvent {
+  timestamp?: string
+  event?: string
+  spec?: string
+  sprint?: string
+  by?: string
+  [key: string]: unknown
+}
+export interface SprintLogView {
+  events: SprintLogEvent[]
+  count: number
+  since: string | null
+  path: string
+  exists: boolean
+  /** Corrupt lines the plugin could not parse — counted, never silently dropped. */
+  skipped: number
+}
+
+/** `record_findings.py report --json` (§2.5 row 9): the three legacy counts plus one row per
+ * fingerprint and the recurrence map. Dispositions are the plugin's words (`findings_model`). */
+export interface FindingRow {
+  fingerprint: string
+  id: string
+  category: string
+  severity: string
+  target: string
+  disposition: string
+  detail: string
+  /** The plugin's own judgement (SPLIT without id+owner, an AI signing ACCEPTED_RISK, …). */
+  offBooks: boolean
+  firstSeen: string | null
+  lastSeen: string | null
+  rounds: number
+  [key: string]: unknown
+}
+export interface FindingsView {
+  tracked: number
+  openDebt: number
+  fixedClaimMismatches: number
+  findings: FindingRow[]
+  /** fingerprint → how many reports carried it ("seen N times across reports"). */
+  recurrence: Record<string, number>
+  /** Only with `--spec`: how many rows fall under the spec's `## Scope` In paths. */
+  attribution?: { method: 'scope-paths'; attributed: number; unattributed: number }
+}
+
+/** `track_decisions.py --json` (§2.2): one row per open decision with the plugin's clock. */
+export interface DecisionRow {
+  id: string
+  decision: string
+  owner: string
+  opened: string
+  due: string
+  status: string
+  businessDaysOpen: number | null
+  clockDue: string | null
+  /** The plugin's `overdue:true` is the ONLY thing that may tint a decision `today-late-*`. */
+  overdue: boolean
+}
+export interface DecisionsView {
+  total: number
+  open: number
+  overdue: number
+  clockBusinessDays: number
+  openDecisions: DecisionRow[]
+  overdueDecisions: DecisionRow[]
+  logPath: string
+  exists: boolean
+}
+
+/** One item addressed to the signed-in person, by EXACT handle match in the main process
+ * (§2.3): a hand-off whose `to` is me, a PR whose `waitingOnHandle` is me, an open decision
+ * whose `owner` is me (overdue first), a spec I own with `risk` set and no `risk_confirmed_by`
+ * — the last only when `confirm-tier` is a capability. `verdicts_pending` has a lane, not a
+ * person, and never appears here. */
+export interface NeedsYouItem {
+  kind: 'ack' | 'review' | 'decide' | 'confirm-tier'
+  spec?: string
+  id?: string
+  /** The one action the item offers, as a verb the dialog runs ("ack", "open PR", "decide", "confirm"). */
+  action: string
+  /** Where the fact came from — the block's `source`. */
+  source: string
+  /** The plugin's own words for the row (the hand-off's `to`, the decision text, the PR's `waitingOn`). */
+  text: string
+  overdue?: boolean
+}
+
+/** One row of "since yesterday" (§2.3): a ledger event verbatim, a PR merged in the window, or a
+ * decision closed in the window — each tagged by origin, ordered by the timestamp the source
+ * gave; undated rows last and labelled "undated". `key` = `timestamp+event+spec`, the identity
+ * a later arrival rises by (never a re-stagger). */
+export type StreamOrigin = 'log' | 'board' | 'decisions'
+export interface StreamRow {
+  origin: StreamOrigin
+  key: string
+  /** ISO timestamp from the source, or null for an undated row. */
+  at: string | null
+  event: string
+  spec?: string
+  sprint?: string
+  by?: string
+  id?: string
+  text: string
+  raw: Record<string, unknown>
+}
+
+/** The window the person picks for the stream — a FILTER main passes as `--since`, never a
+ * reported number. */
+export type SinceWindow = 1 | 3
+
+/** The one document the sprint home and the lifecycle home read (§2.3). Blocks are independent:
+ * one failing leaves the others `ok`. `track_specs` exit 1 is a WIP finding → `board.ok` stays
+ * true with `warnings[]`. */
+export interface CommandCenter {
+  projectPath: string
+  fetchedAt: string
+  actor: ActorInfo | null
+  /** `generate_status.py --json` capabilities, so a control can be disabled with `reasons.newerPlugin`. */
+  capabilities: string[]
+  sprint: SourcedBlock<SprintView>
+  sprints: SourcedBlock<SprintListView>
+  board: SourcedBlock<Board & { warnings: string[] }>
+  decisions: SourcedBlock<DecisionsView>
+  findings: SourcedBlock<FindingsView>
+  scorecard: SourcedBlock<Scorecard>
+  roster: SourcedBlock<ProjectSettings['roster']>
+  log: SourcedBlock<SprintLogView>
+  needsYou: NeedsYouItem[]
+  /** Why `needsYou` is empty when it is for a reason other than "nothing": `reasons.NO_ACTOR`. */
+  needsYouReason: string | null
+  sinceYesterday: StreamRow[]
+  since: SinceWindow
+}
+
+/** `sprint.py slate --sprint SNN --json` with no `--spec` (§2.2): the plugin's deterministic,
+ * read-only proposal. NOTE the plugin reports `candidates` as a COUNT; the candidate rows are
+ * the Board rows with a `SLATEABLE_STATUSES` status and no `sprint` — the same rule
+ * `_proposal` applies — so a screen lists them from the `board` block, not from here. */
+export interface SlateProposal {
+  sprint: string | null
+  target: number | null
+  mix: string
+  alreadySlated: string[]
+  candidates: number
+  /** `spec_row` shaped, in the plugin's id-order fill. */
+  proposal: SprintSlateRow[]
+  mixAfter: Record<string, SprintMixTier>
+  mixWarnings: string[]
+  dependencyWarnings: string[]
+  hasData: boolean
+  note: string | null
+}
+
+/** `spec_readiness.py --spec --json` `ladder{}` (§2.5 row 8) = `risk_model.required_rungs()`.
+ * `touchesGatedPath` is true only when the frontmatter says `gated_path: true`; nothing detects
+ * gated paths today, so an absent value reads "gated path: not declared". */
+export interface SpecLadder {
+  tier: string
+  touchesGatedPath: boolean | null
+  rungs: string[]
+}
+export type SpecReadinessFull = SpecReadiness & { ladder?: SpecLadder }
+
+/** `check_channel.py --json` (advisory, exit 0). `bound:false` reads "no channel bound" — never
+ * an empty list styled as zero. */
+export interface ChannelCheckView {
+  spec: string
+  channel: string | null
+  bound: boolean
+  source: string
+  dimensions: Array<{ id: string; covered: boolean }>
+  uncovered: string[]
+  advisory: boolean
+  notes: string[]
+}
+
+/** `handoff.py --check --json` (§2.5 row 7): the refusal block without the git op. */
+export type HandOffCheck =
+  | {
+    ok: true
+    would: { branch: string; developer: string; checker: string | null; team: string | null; inFlightAfter: number | null }
+    alreadyInFlight: boolean
+    host: string
+  }
+  | { ok: false; refusal: HandoffRefusal; host?: string }
+
+/** The spec card's read (§2.2 `getSpecCard`). Each block is sourced; `channel` is null when the
+ * spec binds no channel, `handoffCheck` null when no developer was named. */
+export interface SpecCard {
+  spec: string
+  path: string
+  readiness: SourcedBlock<SpecReadinessFull>
+  ladder: SourcedBlock<SpecLadder>
+  status: SourcedBlock<SpecStatus>
+  findings: SourcedBlock<FindingsView>
+  channel: SourcedBlock<ChannelCheckView> | null
+  handoffCheck: SourcedBlock<HandOffCheck> | null
+}
+
+/** `spec_readiness.py --all --json` (§2.5 row 8) — one spawn for every Refining / backlog row. */
+export interface ReadinessAll {
+  ok: boolean
+  specs: SpecReadinessFull[]
+}
+
+// --- writes: the closed argv table (§2.4) ---------------------------------------------------
+
+export type SprintVerb = 'slate' | 'unslate' | 'handoff' | 'ack' | 'verdict' | 'ready' | 'close' | 'new' | 'carry' | 'edit'
+export type VerdictLane = 'eng' | 'data'
+export type VerdictValue = 'accepted' | 'returned' | 'pending' | 'n-a'
+
+/** A write request, validated in main against `shared/sprintVerbArgv.ts` (sprint ids `^S\d{2,}$`,
+ * spec ids `^\d{4}$` and present on the board). `--field` is never exposed. The actor is NOT a
+ * field: main fills `--by` from `actor.ts`. */
+export type SprintVerbRequest =
+  | { verb: 'slate'; sprint: string; specs: string[]; override?: boolean; reason?: string }
+  | { verb: 'unslate'; spec: string; reason: string }
+  | { verb: 'handoff'; spec: string; to: string; note?: string }
+  | { verb: 'ack'; spec: string }
+  | { verb: 'verdict'; spec: string; lane: VerdictLane; verdict: VerdictValue; reason?: string }
+  | { verb: 'ready'; sprint: string }
+  | { verb: 'close'; sprint: string; carryTo?: string; carry: Record<string, string>; drop: Record<string, string> }
+  | { verb: 'new'; sprint: string; goal: string; start: string; end?: string; days?: number; target: number; mix?: string; boardRef?: string }
+  | { verb: 'carry'; spec: string; to: string; reason: string }
+  | { verb: 'edit'; sprint: string; goal: string }
+
+/** The exit code is the truth: 0 "Done", 1 "Not done", 2 "Refused by the plugin". No JSON is
+ * parsed — write verbs print prose — and the dialog shows `stdout`/`stderr` verbatim. */
+export interface SprintVerbResult {
+  ok: boolean
+  exitCode: number | null
+  refused: boolean
+  stdout: string
+  stderr: string
+  /** The exact argv that ran (without the interpreter), for the console and the dialog. */
+  argv: string[]
+  verb: SprintVerb
+}
+
+/** `track_decisions.py open|decide … --json`; a refusal is exit 1 with the message on stderr. */
+export type OpenDecisionResult =
+  | { ok: true; id: string; opened: string; due: string; owner: string; path?: string }
+  | { ok: false; stderr: string }
+export type DecideDecisionResult =
+  | { ok: true; id: string; status: string; decided: string; by: string; path?: string }
+  | { ok: false; stderr: string }
+
+/** `spec_transition.py confirm-tier | assign` (§2.5 rows 5–6). Same envelope as the existing
+ * transitions; the extra keys are the plugin's. This script never exits 2. */
+export type TransitionResult = SpecTransitionResult
+export type ConfirmTierResult = SpecTransitionResult & { risk?: string; confirmedBy?: string; confirmationCleared?: boolean }
+export type AssignRolesResult = SpecTransitionResult & { developer?: string; checker?: string }
+
+/** The bridge the command center adds (§2.2, §2.4). Kept as its own interface so the preload
+ * (`const studio: StudioApi`) keeps compiling until P3 implements it; `window.studio` is typed
+ * `StudioApi & CommandCenterApi` in `src/vite-env.d.ts`. */
+export interface CommandCenterApi {
+  // reads — P-class only, never pull/sync
+  /** `refresh: true` is "Refresh this screen": main drops its cache for the project and re-reads every block. */
+  getCommandCenter(projectPath: string, since?: SinceWindow, refresh?: boolean): Promise<CommandCenter>
+  getSlateProposal(projectPath: string, sprintId: string): Promise<SlateProposal>
+  getSpecCard(projectPath: string, specPath: string, developer?: string): Promise<SpecCard>
+  getReadinessAll(projectPath: string): Promise<ReadinessAll>
+  getDecisions(projectPath: string): Promise<DecisionsView>
+  // writes — every one through the closed argv table with the resolved actor as --by
+  runSprintVerb(projectPath: string, request: SprintVerbRequest): Promise<SprintVerbResult>
+  openDecision(projectPath: string, decision: string, owner?: string): Promise<OpenDecisionResult>
+  decideDecision(projectPath: string, id: string, resolution: string): Promise<DecideDecisionResult>
+  confirmTier(projectPath: string, specPath: string): Promise<ConfirmTierResult>
+  assignRoles(projectPath: string, specPath: string, roles: { developer?: string; checker?: string }): Promise<AssignRolesResult>
+  checkHandOff(projectPath: string, specPath: string, developer: string): Promise<HandOffCheck>
 }

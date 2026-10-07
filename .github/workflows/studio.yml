@@ -40,6 +40,12 @@ concurrency:
   group: studio-${{ github.ref }}
   cancel-in-progress: true
 
+# Python on Windows encodes a piped stdout in cp1252 and the plugin prints '→'/'·' — every
+# step that reaches a plugin script speaks UTF-8 (the app and the vitest setup set the same).
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
+
 jobs:
   studio:
     # Spec 0008's own acceptance check ("runs on Windows and macOS from the same source") had
@@ -163,6 +169,8 @@ jobs:
           # No Claude login here, and one test needs a genuine model call. It declines
           # explicitly rather than spending two minutes timing out into the same answer.
           STUDIO_SKIP_LIVE_MODEL: '1'
+          # Names what Playwright is waiting on if a browser close ever stalls again (worker teardown).
+          DEBUG: 'pw:browser'
         run: xvfb-run -a npx playwright test
 
       # Playwright writes a snapshot of the page it was looking at when an assertion failed,

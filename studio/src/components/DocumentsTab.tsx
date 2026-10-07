@@ -1,4 +1,6 @@
-import type { DocumentFocus, ReadinessFinding, SignOffQuestion, StageReadiness } from '../../shared/types'
+import type { DocumentFocus, ReadinessFinding, SignOffQuestion, StageDocument, StageReadiness } from '../../shared/types'
+import type { ChipTone } from '../ui/contract'
+import { Button, Card, Chip, Eyebrow } from '../ui'
 import { SignOffQuestions } from './SignOffQuestions'
 
 /** One readiness item, in the words a person would use. The plugin reports a path, a section
@@ -16,11 +18,25 @@ function describe(finding: ReadinessFinding): string {
   return `${where} — ${doc}`
 }
 
+/** How a document stands, as one word a theme can colour and a test can read (`data-tone`).
+ * The three states are the three labels the row has always shown — this names them. */
+function toneOf(doc: StageDocument): Extract<ChipTone, 'neutral' | 'warn' | 'ok'> {
+  if (!doc.exists) return 'neutral'
+  return doc.findingCount > 0 ? 'warn' : 'ok'
+}
+
+/** A full-width row that is a button. The kit Button centres and bolds by default (it is a
+ * control, not a list row), so the row shape is restored here once rather than per call. */
+const ROW_BUTTON =
+  'items-start justify-between rounded-none px-4 py-3 text-left text-sm font-normal whitespace-normal ' +
+  'disabled:cursor-default disabled:opacity-100 disabled:hover:bg-transparent'
+
 /** The flat list spec 0010 shipped: what each document is for, what needs attention, the
  * sign-off questions, and the readiness banner. Extracted out of StageHome verbatim for spec
- * 0017 — this tab's JSX is unchanged from before the Workflow tab existed, which is what makes
- * its acceptance check ("byte-for-byte what exists today") true by construction rather than by
- * promise. Read-only by construction — there is nothing here that changes a document. */
+ * 0017, then moved onto the kit in the Observatory's Wave 3 (studio-observatory.md §7, D-B) —
+ * the behaviour suite in `test/documentsTab.test.ts` pins every sentence, label, disabled state
+ * and callback the pre-kit markup had, so the migration changed looks, not meaning. Read-only by
+ * construction — there is nothing here that changes a document. */
 export function DocumentsTab({
   readiness,
   actor,
@@ -37,43 +53,44 @@ export function DocumentsTab({
   onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
   onToggle: (question: SignOffQuestion, confirmed: boolean) => void
 }) {
+  const needWork = readiness.documents.filter((d) => !d.ready).length
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">Documents</h3>
-        <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
-          {readiness.documents.map((doc) => (
-            <li key={doc.path}>
-              <button
-                type="button"
-                // A folder is listed, and its state reported, but there is no one document in it
-                // to open — the row must not offer to.
-                disabled={!doc.exists || doc.folder}
-                onClick={() => onOpenDocument(doc.path)}
-                className="flex w-full items-start justify-between gap-4 px-4 py-3 text-left hover:bg-slate-50 disabled:cursor-default disabled:hover:bg-white"
-              >
-                <span className="min-w-0">
-                  <span className="block text-sm font-medium text-slate-900">
-                    {doc.name}
-                    {doc.folder && <span className="ml-2 text-xs font-normal text-slate-400">folder</span>}
-                  </span>
-                  {doc.description && <span className="mt-0.5 block text-xs text-slate-500">{doc.description}</span>}
-                </span>
-                <span className="shrink-0 text-xs font-medium">
-                  {!doc.exists ? (
-                    <span className="text-slate-400">Not started</span>
-                  ) : doc.findingCount > 0 ? (
-                    <span className="text-amber-700">
-                      {doc.findingCount} to fill
+        {/* An h3, not a p: the documents e2e waits on `heading "Documents"` by role. */}
+        <Eyebrow as="h3" className="mb-2">Documents</Eyebrow>
+        <Card padding="none" className="overflow-hidden">
+          <ul className="divide-y divide-line-1">
+            {readiness.documents.map((doc) => {
+              const tone = toneOf(doc)
+              return (
+                <li key={doc.path} data-tone={tone} data-reveal="">
+                  <Button
+                    variant="ghost"
+                    block
+                    // A folder is listed, and its state reported, but there is no one document
+                    // in it to open — the row must not offer to.
+                    disabled={!doc.exists || doc.folder}
+                    onClick={() => onOpenDocument(doc.path)}
+                    className={ROW_BUTTON}
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-medium text-ink-1">
+                        {doc.name}
+                        {doc.folder && <span className="ml-2 text-xs font-normal text-ink-3">folder</span>}
+                      </span>
+                      {doc.description && <span className="mt-0.5 block text-xs text-ink-3">{doc.description}</span>}
                     </span>
-                  ) : (
-                    <span className="text-[var(--color-command-ok)]">Complete</span>
-                  )}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                    {/* Colour is never the only signal: the words say the state, the dot echoes it. */}
+                    <Chip tone={tone} dot className="shrink-0">
+                      {!doc.exists ? 'Not started' : doc.findingCount > 0 ? `${doc.findingCount} to fill` : 'Complete'}
+                    </Chip>
+                  </Button>
+                </li>
+              )
+            })}
+          </ul>
+        </Card>
       </div>
 
       {/* WHAT IS MISSING, ITEM BY ITEM. Spec 0010's acceptance check asks for exactly this —
@@ -84,23 +101,24 @@ export function DocumentsTab({
           tell them where, which is the whole job of a readiness check. */}
       {readiness.findings.length > 0 && (
         <div>
-          <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-400">
-            What is missing
-          </h3>
-          <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
-            {readiness.findings.map((f) => (
-              <li key={`${f.path}#${f.section}#${f.field ?? ''}`}>
-                <button
-                  type="button"
-                  onClick={() => onOpenDocument(f.path, { section: f.section, field: f.field })}
-                  className="flex w-full flex-col items-start gap-0.5 px-4 py-3 text-left hover:bg-slate-50"
-                >
-                  <span className="text-sm font-medium text-slate-900">{describe(f)}</span>
-                  <span className="text-xs text-slate-500">{f.reason}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          <Eyebrow as="h3" className="mb-2">What is missing</Eyebrow>
+          <Card padding="none" className="overflow-hidden">
+            <ul className="divide-y divide-line-1">
+              {readiness.findings.map((f) => (
+                <li key={`${f.path}#${f.section}#${f.field ?? ''}`} data-reveal="">
+                  <Button
+                    variant="ghost"
+                    block
+                    onClick={() => onOpenDocument(f.path, { section: f.section, field: f.field })}
+                    className={`${ROW_BUTTON} flex-col gap-0.5`}
+                  >
+                    <span className="font-medium text-ink-1">{describe(f)}</span>
+                    <span className="text-xs text-ink-3">{f.reason}</span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </Card>
         </div>
       )}
 
@@ -114,20 +132,18 @@ export function DocumentsTab({
         />
       )}
 
-      <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
+      <Card tone={readiness.ready ? 'ok' : 'warn'} className="text-sm">
         {readiness.ready ? (
-          <span className="text-[var(--color-command-ok)]">
-            Every required document is present and complete.
-          </span>
+          <span className="text-status-ok-ink">Every required document is present and complete.</span>
         ) : (
-          <span className="text-amber-700">
-            {readiness.documents.filter((d) => !d.ready).length} document(s) still need work before this stage can be signed off.
+          <span className="text-status-warn-ink">
+            {needWork} document(s) still need work before this stage can be signed off.
           </span>
         )}
         {readiness.signOff.signedOffBy && (
-          <span className="ml-2 text-slate-500">Signed off by {readiness.signOff.signedOffBy}.</span>
+          <span className="ml-2 text-ink-3">Signed off by {readiness.signOff.signedOffBy}.</span>
         )}
-      </div>
+      </Card>
     </div>
   )
 }

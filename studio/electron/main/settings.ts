@@ -5,6 +5,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { dirname, join } from 'node:path'
 import type {
   ChatState, GateAuthResult, GateAuthStatus,
@@ -166,7 +167,7 @@ export async function getProjectSettings(
     '--repo', projectPath, '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as ProjectSettings
+    return JSON.parse(rawStdout(entry)) as ProjectSettings
   } catch {
     return empty(entry.stderr.trim() || 'Could not read this project’s settings.')
   }
@@ -192,7 +193,7 @@ async function runSetSetting(
     '--repo', projectPath, '--json', ...args,
   ])
   try {
-    const parsed = JSON.parse(entry.stdout)
+    const parsed = JSON.parse(rawStdout(entry))
     if (parsed.ok !== true) {
       return {
         ok: false,
@@ -263,7 +264,7 @@ export async function getConnectionReport(
     '--repo', projectPath, '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as ConnectionReport
+    return JSON.parse(rawStdout(entry)) as ConnectionReport
   } catch {
     // An unreadable answer is reported as one unknown check rather than an empty list: an
     // empty list would read as "nothing to check here", which is a different claim.
@@ -296,7 +297,7 @@ export async function getScorecard(
     'report', '--repo', projectPath, '--window-days', String(windowDays), '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as Scorecard
+    return JSON.parse(rawStdout(entry)) as Scorecard
   } catch {
     return null
   }
@@ -312,7 +313,7 @@ export async function getGateInventory(
     '--repo', projectPath, '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as GateInventory
+    return JSON.parse(rawStdout(entry)) as GateInventory
   } catch {
     return {
       ok: false,
@@ -336,7 +337,7 @@ export async function getFoundationSummary(
     '--repo', projectPath, '--json',
   ])
   try {
-    return JSON.parse(entry.stdout) as FoundationSummary
+    return JSON.parse(rawStdout(entry)) as FoundationSummary
   } catch {
     // Never an empty document list — that would read as "Foundation delivered nothing", which
     // is a claim about the project rather than about this failing to read.
@@ -370,7 +371,7 @@ export async function getGateAuth(
     '--repo', projectPath, '--json', 'status',
   ])
   try {
-    return JSON.parse(entry.stdout) as GateAuthStatus
+    return JSON.parse(rawStdout(entry)) as GateAuthStatus
   } catch {
     // Never "configured" on an unreadable answer. Reporting a gate as able to sign in when
     // that could not be determined is the direction that gets somebody hurt: they merge
@@ -396,7 +397,7 @@ export async function setGateAuth(
     ['--repo', projectPath, '--json', 'set', mode],
     credential,
   )
-  return parseGateAuthResult(entry.stdout, entry.stderr, 'The credential was not set.')
+  return parseGateAuthResult(rawStdout(entry), entry.stderr, 'The credential was not set.')
 }
 
 export async function clearGateAuth(
@@ -407,7 +408,7 @@ export async function clearGateAuth(
   const entry = await runPluginScript(pluginScriptsDir, 'gate_auth.py', [
     '--repo', projectPath, '--json', 'clear', mode,
   ])
-  return parseGateAuthResult(entry.stdout, entry.stderr, 'The credential was not removed.')
+  return parseGateAuthResult(rawStdout(entry), entry.stderr, 'The credential was not removed.')
 }
 
 function parseGateAuthResult(stdout: string, stderr: string, fallback: string): GateAuthResult {

@@ -1,0 +1,23 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "pipelines",
+  "runs",
+  "list",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1",
+  "--pipeline-ids",
+  "2266",
+  "--top",
+  "10",
+  "--query-order",
+  "QueueTimeDesc"
+ ],
+ "_secs": 1.0,
+ "value": []
+}

@@ -5,8 +5,8 @@
 // SECURITY — this file previously claimed the call "can never read, write, or run anything as
 // a side effect." That was wrong, and it was measured to be wrong (spec 0010's security pass,
 // 2026-09-24). `claude --help` states that `-p` SKIPS the workspace trust dialog, and that
-// `--permission-prompts none` only denies "anything that would prompt" — the permission mode
-// still decides everything else, and hooks are not permission-gated at all. So a project
+// denying prompts (then `--permission-prompts none`, now `--permission-mode dontAsk`) only
+// denies "anything that would prompt" — hooks are not permission-gated at all. So a project
 // directory carrying its own `.claude/settings.json` got that file loaded, and a hook in it
 // ran, the moment someone clicked a button here. Proven on this machine: a marker hook
 // planted in a scratch repo executed under the old invocation, and did not execute after the
@@ -20,6 +20,7 @@ import { mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { rawStdout, runCommand } from './commandRunner'
+import { CLAUDE_PERMISSION_MODE } from '../../shared/claudeContract'
 
 /** An empty, Studio-owned directory to run the `claude` CLI in.
  *
@@ -43,9 +44,16 @@ export function claudeWorkingDirectory(): string {
  * pins its tool surface with a deny-list (below) or an explicit `--tools` allow-list
  * (chat.ts's chatArgs.ts, spec 0016's own acceptance check — see its header for why an
  * allow-list is used there instead of spreading the deny-list this constant also carries).
- * `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all. */
+ * `--strict-mcp-config` with no `--mcp-config` loads no MCP servers at all.
+ *
+ * `--permission-mode dontAsk` replaced `--permission-prompts none` (studio-improvements F1):
+ * the same intent — auto-deny anything not pre-approved on the command line — but a flag that
+ * Claude Code 2.1.239 and 2.1.289 both accept, where the old one exists only in the newer CLI
+ * and failed every model call on the older one with `unknown option`. One argv shape for every
+ * version; shared/claudeContract.ts names the flags and tooling.ts checks the installed CLI
+ * declares them. */
 export const CLAUDE_SHARED_SAFE_ARGS = [
-  '--permission-prompts', 'none',
+  '--permission-mode', CLAUDE_PERMISSION_MODE,
   '--strict-mcp-config',
 ]
 

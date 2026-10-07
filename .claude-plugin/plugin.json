@@ -1,7 +1,7 @@
 {
   "name": "claude-code-sdlc",
-  "version": "1.6.2",
-  "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters).",
+  "version": "1.7.0",
+  "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters), on GitHub or Azure DevOps.",
   "author": {
     "name": "Matt Kruczek",
     "url": "https://github.com/MCKRUZ"
@@ -21,6 +21,8 @@
     "enterprise",
     "azure",
     "dotnet",
-    "angular"
+    "angular",
+    "azure-devops",
+    "github"
   ]
 }

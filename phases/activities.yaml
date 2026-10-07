@@ -1,7 +1,7 @@
 # What a person can do in each phase, beyond the documents it requires (spec 0023).
 #
-# This is the plugin's own declaration; SDLC Studio draws it instead of keeping a second list of
-# its own, so adding a command here needs no Studio change. It lives in a file of its own, not in
+# This is the plugin's own declaration; SDLC Studio (the desktop app) draws it instead of keeping a second
+# list of its own, so adding a command here needs no app change. It lives in a file of its own, not in
 # phase-registry.yaml, because the registry and phase_model.py are protected core.
 #
 # Each activity:
@@ -188,6 +188,32 @@
     label: "Write plain-language summaries for stakeholders"
     command: sdlc-enhance
     kind: draft
+
+  - id: phase-report
+    label: "Export this stage's report"
+    command: sdlc-phase-report
+    kind: run
+
+  - id: coach
+    label: "Talk it through"
+    command: sdlc-coach
+    kind: talk
+
+  - id: refine
+    label: "Refine the next sprint's specs"
+    command: sdlc-refine
+    kind: talk
+
+"build":
+  - id: sprint
+    label: "Plan, ready and close the sprint"
+    command: sdlc-sprint
+    kind: run
+
+  - id: refine
+    label: "Refine the next sprint's specs"
+    command: sdlc-refine
+    kind: talk
 
   - id: phase-report
     label: "Export this stage's report"

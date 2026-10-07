@@ -1,7 +1,9 @@
 import type { BatchKind, RegistryResult } from '../../shared/types'
-import { messageOf, PANEL_BUTTON, PANEL_SECONDARY_BUTTON, PanelError, useScopedState } from './activityPanelBits'
+import { Notice } from '../ui'
+import { messageOf, PanelButton, PanelError, PanelSecondaryButton, useScopedState } from './activityPanelBits'
 import { RegistryResultView } from './RegistryResultView'
 import type { DraftBatchApi } from './useDraftBatch'
+import { useClaudeIssue } from './ClaudeIssueContext'
 
 export const LOCK_FIRST_NOTE = 'Lock the document ids to summarise them.'
 export const WAITING_REASON = 'Keep or discard the waiting results first'
@@ -27,10 +29,11 @@ export function BatchActions({ projectPath, locked, batch }: { projectPath: stri
   const [error, setError] = useScopedState<string | null>(projectPath, null)
   const [registry, setRegistry] = useScopedState<RegistryResult | null>(projectPath, null)
   const [working, setWorking] = useScopedState<Working>(projectPath, null)
+  const claudeIssue = useClaudeIssue()
 
-  if (!locked) return <p className="text-xs text-slate-500">{LOCK_FIRST_NOTE}</p>
+  if (!locked) return <p className="text-xs text-ink-3">{LOCK_FIRST_NOTE}</p>
 
-  const reason = batch.state.job?.phase === 'running' ? RUNNING_REASON : batch.state.candidates.length > 0 ? WAITING_REASON : null
+  const reason = claudeIssue ?? (batch.state.job?.phase === 'running' ? RUNNING_REASON : batch.state.candidates.length > 0 ? WAITING_REASON : null)
   const blocked = reason !== null || working !== null
 
   const ask = async (kind: BatchKind) => {
@@ -66,18 +69,18 @@ export function BatchActions({ projectPath, locked, batch }: { projectPath: stri
   }
 
   return (
-    <div data-testid="batch-actions" className="space-y-2 border-t border-slate-100 pt-2">
+    <div data-testid="batch-actions" className="space-y-2 border-t border-line-1 pt-2">
       <div className="flex flex-wrap items-start gap-4">
         <ModelButton label="Summarise the documents" disabled={blocked} onClick={() => void ask('summarise')} />
         <ModelButton label="Analyse the documents" disabled={blocked} onClick={() => void ask('analyse')} />
         <div className="flex flex-col gap-0.5">
-          <button type="button" disabled={working !== null} onClick={() => void writeRegistry()} className={PANEL_SECONDARY_BUTTON}>
+          <PanelSecondaryButton disabled={working !== null} onClick={() => void writeRegistry()}>
             Write the registry and index
-          </button>
-          <span className="text-xs text-slate-500">Does not use Claude.</span>
+          </PanelSecondaryButton>
+          <span className="text-xs text-ink-3">Does not use Claude.</span>
         </div>
       </div>
-      {reason && <p data-testid="batch-busy-reason" className="text-xs text-slate-500">{reason}</p>}
+      {reason && <p data-testid="batch-busy-reason" className="text-xs text-ink-3">{reason}</p>}
       {pending && <Confirm pending={pending} onStart={() => void start(pending.kind)} onCancel={() => setPending(null)} />}
       {error && <PanelError message={error} />}
       {registry && <RegistryResultView result={registry} />}
@@ -85,26 +88,28 @@ export function BatchActions({ projectPath, locked, batch }: { projectPath: stri
   )
 }
 
+/** The reason the button is off is already printed once under the row (`batch-busy-reason`), so it
+ * is not repeated inside the button. */
 function ModelButton({ label, disabled, onClick }: { label: string; disabled: boolean; onClick: () => void }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <button type="button" disabled={disabled} onClick={onClick} className={PANEL_SECONDARY_BUTTON}>{label}</button>
-      <span className="text-xs text-slate-500">Uses Claude.</span>
+      <PanelSecondaryButton disabled={disabled} onClick={onClick}>{label}</PanelSecondaryButton>
+      <span className="text-xs text-ink-3">Uses Claude.</span>
     </div>
   )
 }
 
 function Confirm({ pending, onStart, onCancel }: { pending: Pending; onStart: () => void; onCancel: () => void }) {
   return (
-    <div data-testid="batch-confirm" className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-slate-700">
+    <Notice tone="warn" role="none" data-testid="batch-confirm">
       <p>{confirmation(pending)}</p>
-      <ul className="space-y-0.5">
+      <ul className="mt-1 space-y-0.5">
         {pending.documents.map((d) => <li key={d.id}>{d.id} · {d.filename}</li>)}
       </ul>
-      <div className="flex gap-2">
-        <button type="button" onClick={onStart} className={PANEL_BUTTON}>Start</button>
-        <button type="button" onClick={onCancel} className={PANEL_SECONDARY_BUTTON}>Cancel</button>
+      <div className="mt-2 flex gap-2">
+        <PanelButton onClick={onStart}>Start</PanelButton>
+        <PanelSecondaryButton onClick={onCancel}>Cancel</PanelSecondaryButton>
       </div>
-    </div>
+    </Notice>
   )
 }

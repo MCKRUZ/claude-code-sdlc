@@ -1,6 +1,288 @@
 # Changelog
 
-## Unreleased
+## 1.7.0 — 2026-10-06
+
+### SDLC Studio — the command center
+
+The desktop app reorganises around the Build loop (`docs/proposals/togo-command-center.md`, built
+as eight packages with disjoint file ownership, integrated and verified end to end). The sidebar
+retires; a top band (the mark and project name, the **omnibar** trigger, the needs-you chip, the
+sync chip, Console · Appearance · Settings · `…`) and an SVG **lifecycle strip** of the nine
+stations replace it; a project in the Build loop lands on the **sprint home**, every other
+project on the **lifecycle home**. What a team sees:
+
+- **The sprint home.** Four lanes that are the loop — Ready, Building, Checking, Merged — as a
+  partition of the plugin's own `status`, `dor`, `verdicts_pending` and the pull request's
+  `waiting_on`; the hand-off **baton** on the Building→Checking edge; a Today column ("needs you"
+  by exact handle, "Team is waiting on", "since yesterday" from `sprint.py log`); **In the room**
+  (who holds what — dots, never digits); **Refining** for the next sprint with the checker's own
+  DoR gaps; **How it is going** from the steering scorecard. `j`/`k` move, `↵` opens the spec
+  card, `h` hands off, `v` records a verdict.
+- **The omnibar.** ⌘K takes plain words — `verdict 0002 accepted`, `hand 0006 to Sam`,
+  `defer 0003 to S08 because …`, `decide DL-02 …`, `new sprint` — resolves ids and names only
+  against the board and the roster, and opens a dialog that shows the exact `sprint.py` line, who
+  it is recorded against and what the plugin will check. Nothing runs before Confirm; the answer
+  is the plugin's stdout/stderr verbatim under **Done** / **Not done** / **Refused by the plugin**
+  (exit 0 / 1 / 2). A name the roster does not know is a visible gap, never a guess.
+- **Planning, the spec card, close, steering.** Planning: the refined backlog READY-first, the
+  slate in the plugin's build order with Builder / Checker pickers, what the plugin says, its
+  deterministic proposal, and one **Commit** that runs `slate → ready → plan → report` and stops at
+  the first non-zero exit. The spec card, opened in place: Definition of Ready verbatim, the
+  **checking ladder** coloured only by the code host's conclusions (correctness is always "no
+  data"), the findings ledger with the plugin's dispositions, and a **Hand off** foot disabled
+  with `handoff.py`'s own refusal. Close: outcomes, kept, open specs each carried or dropped with a
+  reason. **Steering mode** (`g t`): the standard's numbers on tiles at 56 px, read-only, no chat,
+  no console, zero write controls.
+- **The truth rule, enforced.** The renderer never spawns, never joins across sources and never
+  derives a status: the main process assembles one `CommandCenter` read model with per-block
+  provenance ("`sprint.py status --json`", "as of 10:42") and runs every write through a closed
+  argv table with the signed-in person as `--by`. "no data" is never a fabricated zero (a count
+  of zero recorded events reads "none recorded in this window", the plugin's own wording); no
+  velocity, points, PR counts, lines or hours anywhere; a disabled control always carries its
+  reason, as a tooltip and as its accessible description.
+- **Visual direction** (`docs/proposals/togo-command-center-visual.md`): 46 colour tokens and six
+  type tokens, every text pair ≥ 4.5:1 and every edge ≥ 3:1 in both themes (measured); the Depth
+  gradient gains one home — the steering lockup; brand figures for every empty state; three new
+  choreography rows (`batonPass`, `verdictSeal`, `stripDraw`) that quieten with familiarity and
+  whose end state equals a cold reload.
+- **The cockpit round** (the owner's v12 critique, rounds 3–4 on the same branch). The sprint
+  home's first screen is now a cockpit: the four lanes in ONE row with Today as a 300 px right
+  rail from 1240 px of width, the home grid's row sized to the window (`100dvh − chrome`, the
+  chrome measured live from the grid's own top, `lanes/cockpitLayout.ts` + `useCockpitChrome.ts`)
+  so every lane is visible without scrolling at 1440×900, wells and rail ending on one line 24 px
+  above the fold and the band below never sliced on it; cards scroll inside a lane; Today is a
+  capped strip with a bottom fade under 1240. The chat starts **collapsed** to a 40 px rail on the
+  sprint home and planning (`stores/chatStore.ts`, per area, remembered per machine; the band's
+  Chat toggle, the `…` row and ⌘\ reopen it; it stays mounted so the a11y pins hold). The
+  business-day bar spans the header; a mix short of target is a warn-tone chip. Planning's slate
+  names every row (`minmax(12rem,1fr)` floor, pickers on a second line under 820 px). The spec
+  card's scroll region is masked under the sticky Hand off foot; the findings caption no longer
+  overlaps its chip. Steering mode pages (snap-y, each row a page ≥ the room's height) so no tile
+  straddles the fold, and no description truncates. "Since yesterday" shows the ledger line's
+  full sentence (two lines allowed), once. People rings stack later-above with the you-ring last.
+  `main#main { position: relative }` keeps the root from ever scrolling (the review and closing
+  screens were offset 8 px). The constellation's anchor plates draw under their bodies (`useFrame`
+  priority −1). One Escape-owner list (`shortcuts/escOwners.ts`) so a menu or hover card answers
+  Esc alone. Focus returns to the acted-on card only after the refreshed read.
+- **Radix under the kit** — the one dependency added: `@radix-ui/react-{dialog,tooltip,hover-card,
+  tabs,dropdown-menu,popover}` + `cmdk` under `Dialog` / `Tooltip` / `HoverCard` / `Tabs` / the `…`
+  menu / the palette; the kit keeps the `#overlays` portal, literal `role="dialog" aria-modal`, the
+  catalogue's motion and the disabled-carries-its-reason rule. Main chunk 737 → 772.7 kB
+  (test mode, Vite's report; ≤ 800, `bundleSize.test`).
+- **Mechanics** — the command-center cache carries an `epoch`: a block whose spawn started before a
+  write and settled after it is handed to its caller but never stored. A host error that already
+  names the failure is said once, with Retry. Scope `<!-- -->` comments are stripped; an empty
+  section reads "no data — the section is empty". Provenance reads mono lower-case.
+- **QA tooling** — `test/e2e/cc/overlap.spec.ts` measures the shell's landmarks in the real window
+  (1280×800 and 1440×900, light and dark, four screens: inside the viewport, no unintended
+  intersection, the root never scrolls, lane bottoms == rail bottom == fold − 24, a chip never
+  crosses its caption); `cockpit.spec.ts` walks the command center end to end against the real
+  plugin; `steering.spec.ts` checks the paging. The capture script grew the same probe
+  (`SHOT_OVERLAP=1 SHOT_WIDTHS="1280x800,1440x900,1680x1000"`, exit 3 on a violation) beside its
+  ghost probe and GPU-line check. Verified on this checkout: typecheck clean; vitest 299 files ·
+  3344 passed · 7 skipped; pytest 3622 passed · 19 skipped, protected list clean; Playwright 173
+  passed · 3 skipped; `observatory-v14` captured (59 shots at 1280×800 · 1440×900 · 1680×1000,
+  light and dark; 0 GPU console lines; overlap probe 0 violations; ghost probe 0 deviating rows,
+  worst 1/255, at 1.2 / 1.6 / 2.0 / 2.5 s). The user guide (`docs/guide/togo-user-guide.html`) is
+  rebuilt on `observatory-v14` with "The cockpit" and "Keyboard and the omnibar" passages;
+  `docs/proposals/togo-before-after.md` is the owner's before/after.
+
+### Plugin — additive sprint and spec verbs (1.7.0)
+
+Every existing verb keeps its text and exit codes (goldens pinned); the protected core is
+byte-for-byte unchanged. New, all additive and tested:
+
+- `sprint.py list [--json]` (sprints with 1-based `ordinal`, `active`), `sprint.py log [--since]
+  [--sprint] [--json]` (the ledger's lines verbatim, undated lines kept, corrupt ones counted),
+  `sprint.py carry --spec --to --reason --by` (one `carried` event in close's exact shape) and
+  `sprint.py edit --sprint --goal --by` (`sprint_edited`, appended to `sprint_model.EVENTS`).
+- `spec_transition.py confirm-tier --by` (writes `risk_confirmed_by`; `risk` clears it on a tier
+  change and reports `confirmation_cleared`) and `assign [--developer] [--checker] --by` (roster-
+  checked; refuses `developer == checker` with `handoff.py`'s own sentence).
+- `handoff.py --check` — the dry run: the same refusal kinds and messages as the live hand-off,
+  before any git operation, plus `would{branch, developer, checker, team, in_flight_after}`.
+- `spec_readiness.py --spec --json` gains `ladder{tier, touches_gated_path, rungs[]}` from
+  `risk_model.required_rungs`; `--all [--json]` reads the whole backlog in one pass.
+- `record_findings.py report --json` gains `findings[]` (one row per fingerprint with its latest
+  disposition, `off_books`, `first_seen`/`last_seen`/`rounds`) and `recurrence{}`; `--spec PATH`
+  attributes findings to a spec by its scope paths.
+- `spec_status.py --all` rows carry `deferred_reason`; `capabilities.py` declares `sprint-list`,
+  `sprint-log`, `sprint-carry`, `sprint-edit`, `sprint-write`, `confirm-tier`, `assign-roles`,
+  `handoff-check`, `findings-json`, `readiness-all` — each proven against the real `--help`.
+
+### SDLC Studio — upgrade round 2: the instrument, the ceremonies, the craft
+
+A second design round on the desktop app, planned in `docs/proposals/studio-upgrade-2.md` from
+five independent design lenses and two judges, built as eight packages with disjoint file
+ownership, reviewed adversarially and verified end to end. What a team sees:
+
+- **Brand in the product.** The solid Macron stays the mark everywhere in the UI; a sanctioned
+  gradient treatment — *Depth* (`#6FD1D4 → #0A3F47`, theme-aware) — lives only at hero size
+  (Welcome, the opening card, the dock icon). The dock icon is finally SDLC Studio's tile, not the
+  scaffold's; `docs/brand/togo/build-assets.mjs` regenerates every export deterministically;
+  the brandbook says exactly where Depth may live.
+- **Readable everywhere.** Dark-mode links and plate text use a dedicated accent-text pair;
+  every section label passes AA; the small type scale no longer letter-spaces body text.
+- **Every screen reads in order.** A `PageHeader` (area eyebrow · title · lede) on Stage, Board,
+  Sprint, Settings and Closing; a stage summary strip (documents · current step · sign-off);
+  a document outline with gap markers; Board rows as columns with status chips and a one-line
+  notice; Sprint title first with a fact strip and grouped verdicts; the spec page gains a facts
+  rail and an inline dependency neighbourhood; honest empty states with figures drawn in the
+  product's own vocabulary; "today" and "—" where a zero would have lied.
+- **The instrument.** Fresnel-rimmed bodies, a lighting rig with contact pools and a theme-aware
+  grid; a viewing reticle on the Spine that marks the stage you are reading; ledger plates on
+  the Closing rail naming who signed what; hover and focus affordances in 3D; an "In a graph"
+  shortcut group and palette actions; scene arrival with prefetch and crossfades; a Board graph
+  fitted to its bodies and plates.
+- **Ceremonies.** Sign-off, hand-off and the opening each play as one timeline from the
+  choreography catalogue; dialogs, toasts and hover cards animate; the theme change reveals as a
+  dusk sweep; flourishes quieten after the tenth open. Every end state equals a cold reload;
+  everything is off under reduced motion and in tests.
+- **Found, not hidden.** The 1 px ghost strip over the Sprint title was measured with a probe
+  (`SHOT_PROBE=ghost`) and bisected to its cause; sticky headers are now transparent at rest and
+  solid only once content has scrolled under them.
+- **A window that fits the display.** The app opens at the person's last size and place when that
+  still lands on a connected display, else sized to the work area (up to 1680×1050, never under
+  1180×720) instead of a fixed 1280×800, and its rendering scales with the window's width (1.0
+  at 1440, 1.3 at 2560) so a wide display is not a field of small type; the guide's screenshots
+  are embedded at their full 1440-px width as high-quality JPEGs (2× on the Linux and Windows
+  runners via `SHOT_SCALE=2`; macOS fixes the device scale to the display). Steering mode is one board: Outcomes, Delivery and the actions on the
+  first screen at 1440×900.
+- **Not adopted: MUI.** A second component system would fork the one token set the app just
+  gained and add ~300 KB to a main chunk with 188 KB of room; three.js and GSAP carry the round.
+
+### Code-host providers — GitHub and Azure DevOps
+
+The code lives in Azure DevOps repositories as well as GitHub ones, and until now every
+pull-request-facing read and write went through `gh` alone — an Azure DevOps project got
+pipelines and a board built from spec files, with no live "who is this waiting on" and a hand-off
+whose draft PR could never open. `docs/proposals/code-host-providers.md` adds Azure DevOps through
+the Azure CLI as a second provider **without changing a byte of GitHub behaviour**: the same
+argv (pinned by `scripts/tests/test_gh_argv_golden.py`), the same text, and every existing test
+unmodified. The host is **chosen by the repository**, never by a global setting.
+
+- **Detection and override** (`scripts/code_host.py`). `origin` → `github` / `azure-devops` /
+  `none`, with `--host` on every host-touching script, `SDLC_CODE_HOST`, and a per-clone
+  `.sdlc/code-host.yaml` (written by `set_setting.py code-host`) ahead of it; the harness
+  manifest breaks the tie only when there is no usable remote. `none` falls through to `gh`
+  exactly as before. Two axes stay apart: the code host comes from the remote, the CI platform
+  from the installed pack — GitHub + Azure Pipelines is legitimate, and a mismatch is reported,
+  never resolved silently. Every `--json` carries a top-level `host` block
+  (`{name, source, cli, cli_state, detail}`) so a reader sees *why* a host was chosen.
+- **One `az` module, gh-shaped returns** (`ado_import.py` with `ado_map.py`, `ado_transport.py`,
+  `ado_pipelines.py`). Each function mirrors the GitHub function it stands in for by name and
+  signature (`code_host.PROVIDER_FUNCTIONS`, pinned by `test_provider_parity.py`) and returns
+  the dict shape `gh` returns today, so the pure models and the honesty paths are reused, not
+  re-implemented. `AdoImportError` subclasses `GitHubImportError`, so every existing `except`
+  already catches an `az` failure.
+- **Read-back, not just a write target.** `spec_status.py` (per spec and `--all`),
+  `connection_report.py`, `pipeline_proof.py`'s PR reads, `gate_auth.py status` (variable
+  groups) read Azure DevOps as they read GitHub, and `gate_inventory.py` finds the gate
+  pipelines under `.azuredevops/pipelines/` on an Azure Pipelines install. `handoff.py` opens a
+  draft PR with the checker as `--required-reviewers <email>` and names the developer in the
+  description (ADO has no assignee); a checker with no roster `email` is an `assignment_error`
+  with the local half still complete. `gate_auth.py set` / `clear` print the manual `az`
+  command rather than writing a variable group from here.
+- **Scorecard import on either host** (`import_outcomes.py`, `ado_outcomes.py`). GitHub
+  delegates literally to the frozen `scorecard.import_events`; Azure DevOps maps PR completions,
+  vote threads, environment deployment records and `incident`-tagged Bugs into the same ledger
+  with `ado-*` ids that never collide with `gh-*`. What Azure DevOps does not record is said,
+  never zeroed: a `review_wait` with no request timestamp has no `wait_hours` key and is counted
+  on its own line; an unreadable category reads "not imported".
+- **Identity.** The roster key stays `@handle`; `people[].email` (optional, unique,
+  case-insensitive) is the only way an Azure DevOps sign-in resolves to a handle. Nothing
+  guesses from a display name or a UPN prefix.
+- **Honesty rules** (`host_report.py`). `cli_state` is read from the outcome of the call the
+  script just made, never from a second probe; it reads `unknown` when nothing could be
+  determined; `updatedAt`, vote time and request time are `null` on Azure DevOps because the
+  host has no such field; "unavailable" rides the `host` block and is never a false `no`.
+- **Fixtures with provenance.** `scripts/tests/fixtures/code_host/azure_devops/captured/` is
+  real `az` output captured 2026-10-05 from a live organisation and anonymised; its
+  `CAPTURE-NOTES.md` records every fact that changed the design (reviewers' `isRequired` is
+  `null` not `false`, `lastMergeCommit` sits on every active PR, system-comment prose is never
+  parsed — the typed `properties` bag is, environments need `--api-version 7.1-preview` exactly,
+  the CLI's default account decides the token). Hand-written documents stay marked
+  `hand-written (unverified)` and `test_fixture_provenance.py` lists what is still unverified.
+- **Protected and unchanged:** `scorecard.py`, `github_import.py`, `doctor.py`, `check_gates.py`,
+  `check_spec.py`, `advance_phase.py`, `phase_model.py`, `new_spec.py`, `harness/**`,
+  `pipeline_proof_model.py`; `sprint.py` text and exit codes; the doctor's text goldens.
+- **Docs:** `references/code-host-providers.md` is the on-demand contract; README gains a
+  **Code hosts** subsection (which features need which CLI, `az login
+  --allow-no-subscriptions` for guest identities, `email:` in `team.yaml`,
+  `.sdlc/code-host.yaml`); the commands that named `gh` now name both CLIs.
+
+### SDLC Studio — the brand and the Observatory UI
+
+The desktop app keeps its name, **SDLC Studio**, and gains one visual identity; the plugin id `claude-code-sdlc`, the `studio/` folder and the `window.studio` bridge are unchanged, and the window title, `productName`, favicon and Welcome lockup carry the identity. The identity is deterministic SVG — a solid mark ("Macron", with "Lens" and "Seam" alternates), a wordmark, a teal–cyan accent (`#0E7C86`, 4.95:1 on white) with a 50–900 scale for light and dark, Inter for UI and JetBrains Mono for code — recorded in `docs/brand/togo/` (`palette.json`, PNG exports, `togo.ico`, `brandbook.html`). Two standalone HTML guides for teams live in `docs/guide/`: how to stand the tool up, and how to use the app. The install path is unchanged (`/plugin marketplace add MCKRUZ/claude-code-sdlc`, `/plugin install claude-code-sdlc@mckruz`); the desktop app's bundle id is `com.mckruz.sdlc-studio`.
+
+The app's screens had grown one spec at a time, each carrying its own Tailwind strings, so there
+was no dark theme, no shared control vocabulary, no keyboard route through the app and nothing
+that told a screen reader which tab was selected. The Observatory (`docs/proposals/studio-observatory.md`,
+spec 0033) gives every screen one visual system and adds two 3D scenes that draw strictly what the
+plugin reports. Renderer only: `studio/shared/**`, `studio/electron/**` and the Content-Security-Policy
+line are byte-identical, and `test/noNewIpcInRenderer.test.ts` fails if any of the new layers
+reaches for `window.studio`.
+
+- **Tokens and a dark theme.** `src/theme/` holds the design tokens; dark is a remap of the colour
+  ramps, so every screen flips at once. Theme (System / Light / Dark) and Density (Comfortable /
+  Compact) are per-person `localStorage` preferences under Settings › Appearance and the sidebar's
+  Appearance button; Inter Variable and JetBrains Mono Variable ship as bundled woff2.
+- **A UI kit with typed contracts** (`src/ui/contract.ts`): Button, Card, Chip, Notice, Eyebrow,
+  Segmented, Tabs, DataTable, DefinitionList, Dialog, Toast, HoverCard, StatTile, NoData, and the
+  rest — with the strings existing tests pin spelled out literally (Button's `type` attribute
+  first, `bg-brand-600` on primary). `DocumentsTab`, the last byte-pinned screen, moved onto the
+  kit; its byte-equality test became a named behaviour suite written before the component changed.
+- **One motion rule.** Animations are Auto / On / Off: Auto honours the OS reduced-motion
+  setting, On is an explicit per-person opt-in over it, Off disables everything, and under test
+  no tween is ever created. GSAP choreographies are scoped per component and the global timeline
+  pauses when the window is hidden.
+- **Command palette and shortcuts.** ⌘K (Ctrl+K) or `/` opens the palette from anywhere;
+  `src/shortcuts/shortcutMap.ts` is the single keyboard map (`g` `b` for the Board, `[` / `]`
+  between stages, `1`–`3` for a stage's tabs, ⌘J console, ⌘, Settings) and the Shortcuts help
+  (⌘/ or `?`) renders the same data. ⌘W/Q/R/1–9 and the F-keys stay with Electron and the OS.
+- **Focus model.** A skip link to `main#main`, page headings that take focus on navigation,
+  roving tabs with `aria-controls`, `aria-pressed` on every segmented control, a `#overlays`
+  portal root with focus trap and restore, and an Escape that closes the innermost layer and
+  never discards an unsaved edit (the field editor, hand-off form and an open AI proposal
+  register as dirty). The Board and Sprint e2e now assert selected state with `aria-pressed`
+  rather than class names.
+- **Lifecycle Spine, Dependency Constellation, Ambient field** (`src/scenes/`). Each scene is a
+  lazily loaded canvas with a Graph / Table toggle where the Table twin is the real content —
+  what shows when WebGL is unavailable, the window is under 400 px, the canvas crashed, or Studio
+  is under test. Honesty notes: the Spine draws the stage order and the sign-off state
+  `stage_readiness.py` reports and computes nothing; the Constellation's node size comes from the
+  risk tier alone, a `depends_on` id with no spec is a ghost drawn from the id, and prose length
+  influences nothing; a null from the plugin reads "no data", never a 0; no per-person totals
+  anywhere. The Ambient field renders only behind the entry screens, gated by
+  `AMBIENT_ENABLED && motion.enabled() && canUseWebGL()`.
+- **Absorbed from `studio-improvements.md` Batch 4:** F11 (a picked activity renders in the main
+  slot via `FocusedActivityHost`, the left column keeps only the list) and the accessibility
+  basics (landmarks, progressbar, tabs, `aria-pressed`, axe pass in `test/e2e/a11y.spec.ts`).
+- **Bundle** (`vite build --mode=test`, 2026-10-05): main chunk 574.8 KB against the 800 KB
+  budget `test/bundleSize.test.ts` enforces; `scene-core` 941.8 KB loaded on the first canvas
+  mount only; per-scene chunks 2–18 KB; CSS 60 KB.
+- **Integration fixes found by the real-window run (Wave 3).** `SceneShell` short-circuited
+  `useOnScreen(ref) && usePageVisible()`, so a figure scrolling off screen changed the hook count
+  and React #311 unmounted the whole window — jsdom's inert IntersectionObserver never showed it;
+  `test/scenes/sceneShellHooks.test.tsx` now flips a firing observer. Spine table rows gained a
+  visually-hidden "Go to " prefix so their names no longer collide with the sidebar's stage
+  buttons (`/^Build Loop/`). "Not delivered" on the Foundation explainer is a real `<h3>` again,
+  not the Notice's `<p>` title. HistoryPanel's Compare / Restore dropped a `disabledReason` that
+  repeated the row's sentence and leaked into the buttons' accessible names. The constellation's
+  sr-only summary says "not yet ready" so it adds nothing to the sprint spec's "NOT READY" count.
+- **Tests:** vitest 180 files, 2167 passed, 5 skipped (pre-existing); `npm run typecheck` clean;
+  Playwright real-window suite with `STUDIO_SKIP_LIVE_MODEL=1`: 101 passed, 6 skipped (need
+  `gh` sign-in or a live model), 2 failed — both pre-existing at `acab7cf` and both in
+  `sprint.spec.ts`, where the plugin's own wording conflicts with the pin: the readiness card's
+  gap lines also say "NOT READY" (count 6, pin 3) and the no-sprint note from `sprint.py` wins
+  over Studio's sentence in `shared/sprintModel.ts` (frozen); the 6 serial tests after the
+  first of those did not run. Pinned tests (studio-observatory.md §8.3) changed
+  only where listed: `documentsTab.test.ts` (byte-equal → behaviour suite), `board.spec.ts`
+  (`bg-brand-600` / `bg-slate-900` class pins → `aria-pressed="true"`), `a11y.spec.ts` (waits for
+  the stage heading before its one-shot DOM check), and the four activity-panel specs
+  (`runActivities`, `batchJobs`, `modelRunner`, `briefForm`) which now press the row's "Open" and
+  read the panel inside `[data-testid="focused-activity-host"]` — the F11 placement the design
+  itself introduced; every panel testid and sentence is unchanged.
 
 - **Studio can sign off a phase and advance it, without leaving the window.** Until now the only
   thing in Studio that finished a phase was Build's declare-complete flow; every other phase
@@ -14,6 +296,148 @@
   (previously Build-only) is now the shared advance step for both flows. `.sdlc/context/layers/`
   is now synced — previously absent from the allowlist, so a frozen layer would have stayed
   local forever.
+
+### Studio — the sprint layer surfaced, CLI compatibility, hardening
+
+Studio shipped with no sprint surface at all: `phases/activities.yaml` declared nothing for the
+Build phase, nothing in `studio/` called `sprint.py`, and a team running `/sdlc-sprint` saw their
+sprint only in a terminal. One defect meanwhile disabled every model-backed feature on an older
+Claude Code, and a handful of medium defects would have bitten a team daily. This change (Batches
+1–2 of `docs/proposals/studio-improvements.md`) fixes those and gives the sprint a read-only view.
+
+- **Works on every current Claude Code.** Studio passed `--permission-prompts none` to every
+  `claude` call — a flag Claude Code 2.1.289 has and 2.1.239 does not, so on the older CLI every
+  chat, draft, review and sign-off failed with `unknown option` and the test fake, which accepted
+  any flag, could not see it. The shared safe arguments are now `--permission-mode dontAsk
+  --strict-mcp-config` (both CLIs; `dontAsk` auto-denies anything not pre-approved, which was the
+  old flag's intent). `shared/claudeContract.ts` names every flag Studio emits
+  (`REQUIRED_CLAUDE_FLAGS`) and `tooling.ts` runs `claude --help` once per detected version to
+  report `missingFlags` on the Claude tool status; Tooling and Settings say "Claude Code <ver>
+  lacks <flags> — update with `claude update`" and the model buttons stay enabled only when
+  nothing is missing. A zero-cost contract test parses the real CLI's help.
+- **Studio drives the plugin beside it.** Auto-detect preferred the newest *cached marketplace*
+  plugin, never the checkout Studio ships in (the README said the opposite). Unpackaged, Studio
+  now prefers `<APP_ROOT>/../scripts` when it carries `capabilities.py` (the marker), and Settings
+  and Tooling show which plugin path and version are in use.
+- **Build ends from Closing, not from the generic sign-off.** The stage sign-off panel had no
+  stage check, so Build could be signed off around `declare_complete.py`. For `build` the panel
+  now says so and links to Closing; `signOff.ts` refuses `build` outright.
+- **Sign-off fails closed and cannot lose a layer.** A `check_gates.py` error (non-zero exit with
+  no MUST lines) was read as "no failures"; a failed re-sign-off could overwrite the previous
+  phase layer with an unreviewed draft. The gate step now fails closed, and the previous layer is
+  set aside as `.superseded-<YYYYMMDD>` (the name `/sdlc-next` uses) before any draft is written
+  and put back if no draft validates — a failed re-sign-off leaves the layer exactly as it was.
+- **Sprint records sync.** `.sdlc/sprints/SNN.md` was not on the sync allowlist (the spec keys and
+  the ledger were), so a sprint planned in Studio stayed local. Added; the layers entry is
+  narrowed to `*.md` so `.superseded-<date>` copies stay local.
+- **Redacted stdout is never parsed as data.** Twenty-eight call sites parsed `entry.stdout` —
+  the console copy, where `token:` and `auth:` values are rewritten — as JSON. Every one now
+  reads `rawStdout(entry)`, and a vitest lint fails the suite on any new `JSON.parse(x.stdout)`.
+- **Path allowlist checked after normalisation.** `specs/../.git/config` passed the allowlist
+  because the match ran before the path was resolved; `..` segments are now rejected first.
+- **The board tells the truth.** The dead "group by epic" is replaced by **group by sprint** (rows
+  carry `sprint`, `nextOwner`, `engReview`, `dataReview`, `dependsOn` from `spec_status.py`), a
+  sprint chip sits on each card, the status filter gains `deferred`, "Nothing is waiting on you"
+  is no longer claimed when nobody is signed in, and "waiting on me" counts `next_owner == me`.
+- **Test infrastructure.** `vitest.config.ts` gives setup hooks the same 29s ceiling tests have:
+  the draft and batch suites build a real project (`init_project.py` through the plugin's venv,
+  then a git repository) in `beforeEach`, and with the sprint-view suites added the full parallel
+  run pushed those hooks past the 10s default on one machine while they passed alone. The work is
+  real, not a hang. Suite: 133 files, 1771 tests (+173), 5 skipped without a live model.
+  The installed `specs/spec-template.md` — a phantom board row and a Closing "unreadable spec"
+  blocker — is excluded by `spec_status.py` and `declare_complete.py` with the same `^\d{4}-`
+  filter `track_specs` and `sprint.py` already apply.
+- **The plugin declares the Build activities.** `phases/activities.yaml` gains a `"build":` block
+  — `sprint` (run, `/sdlc-sprint`; never "done", always available), `refine` (talk,
+  `/sdlc-refine`), `phase-report`, `coach` — and `refine` under Foundation (`"3"`), so Guide and
+  Workflow show the sprint layer with no Studio list to update. `activities_model.validate()` no
+  longer raises on a malformed entry: unknown keys, wrong types, a `done_when` with the wrong
+  arity are each a named problem (`phase <p> / activity <id>: …`), and `stage_readiness.py`
+  degrades to no activities plus a warning rather than failing the report.
+- **Capabilities and `--json` for the sprint scripts.** `capabilities.py` gains `sprint-status`,
+  `sprint-plan` and `sprint-report` (proven against live `--help` by `test_capabilities.py`).
+  `sprint.py status --json` slate rows gain `rel_path` (repo-relative, POSIX) and the sprint
+  object gains `rel_path`; a malformed or unknown `--sprint` prints exactly ONE JSON document
+  (`sprint: null`, empty lists, `has_data: false`, a `note` saying why) with exit 0 instead of
+  prose. `sprint.py plan --json` and `generate_sprint_report.py --json` print `{ok, sprint,
+  kind, output, rel_output}` (or `{ok: false, error}` with the existing exit code). Text output
+  and exit codes without the flags are byte-identical.
+- **The Sprint view.** A `Sprint` entry beside Board in the Build sidebar group, plus the
+  `sprint` panel in Build › Workflow (`PANEL_CONTROLS.sprint`, capability `sprint-status`).
+  `electron/main/sprint.ts` runs `sprint.py status --json` over a fixed argv with the sprint id
+  validated before it reaches the command line (`studio:getSprintStatus`), and renders the
+  planning or review page through `generate_sprint_report.py --json`
+  (`studio:renderSprintReport`), opened with the existing `studio:openReport`. `SprintBoard.tsx`
+  shows the header, slate, readiness gaps, verdicts pending, open handoffs, mix against target,
+  WIP, the advisory build order and next-up, dependency gaps, decisions due and carried-in specs;
+  `shared/sprintModel.ts` holds the pure helpers. Read-only — no write verb runs from Studio yet
+  (Batch 3). Honest by design: `has_data: false` and `null` read "no data", never 0; no
+  per-person aggregation; no velocity, points or estimates anywhere.
+- **Protected core byte-for-byte unchanged:** `check_spec.py`, `check_gates.py`,
+  `advance_phase.py`, `phase_model.py`, `phase-registry.yaml`, `section-evaluator`, `harness/**`,
+  `/sdlc-coach`, `/sdlc-spec`, `new_spec.py`, `scorecard.py`, `generate_status.py`,
+  `templates/state-init.yaml`. See `docs/proposals/studio-improvements.md`.
+
+### Sprint team layer — `/sdlc-sprint` and `/sdlc-refine`
+
+The Build loop had a backlog, a Definition of Ready, and a WIP cap — and no way for a team to
+commit to a set of specs for two weeks without reaching for a board and the velocity chart that
+comes with it. Two documents shipped contradicting the standard's own rule meanwhile: the
+retrospective template asked for "Sprint velocity (avg)" and `docs/integrations.md` said "there is
+no sprint plan". This change adds a sprint layer that is a *commitment window over the backlog
+order* — never a second backlog, a reordering, or a gate — and fixes both sentences.
+
+- **`/sdlc-sprint` — the sprint board.** A named human types a sprint id (`S07`), slates a *count* of
+  specs by a mix of risk tiers (`HIGH:1,MEDIUM:2,LOW:3` — the axis that sets checking depth; a mix
+  breach warns, over-target exits 1 unless `--override --reason`), sees the slate's readiness every
+  day (`status`, with the advisory build order and next-up), **readies** the sprint once every
+  slated spec clears the DoR **and** its independent Engineering and Data verdicts, and **closes**
+  it with kept / carried / dropped — each carry or drop with a name and a reason. `ready` writes the
+  self-contained sprint-planning page, `close` the review page. Backed by the pure
+  `sprint_model.py` (mirrors `findings_model.py`), the I/O CLI `sprint.py`, and
+  `generate_sprint_report.py`; the sprint record is `.sdlc/sprints/SNN.md`, the ledger
+  `.sdlc/metrics/sprint-log.jsonl`. Two new commands.
+- **`/sdlc-refine` — refinement with an agenda.** The Mon/Wed/Fri cross-functional review and the
+  weekly Intent triage, made executable: NOT READY specs and why, verdicts pending with their
+  business-day age, unacknowledged handoffs, overdue `DL-NN` decisions; then one spec at a time
+  through `check_spec` and `/sdlc-spec`. `validate --lane eng|data` records the verdicts `ready`
+  requires; `--upstream` fixes a Phase 1/2 gap by editing the artifact in place (human-confirmed
+  diff), recording it to the artifact ledger, re-gating that phase with `check_gates.py --phase N`
+  as information, and regenerating that phase's layer — so the engagement never regresses a phase
+  and earlier-phase artifacts can change during refinement as the normal case.
+- **Phase layers are living, not frozen.** The "frozen layer" was a prose rule nothing enforced,
+  and it contradicted refinement: a summary of artifacts that changed is a false summary. Layers
+  are now regenerated whenever a source artifact changes (refinement, `/sdlc-revise`,
+  `/sdlc-refresh`), the previous version kept as `.superseded-<date>`, the regeneration recorded as
+  `refreshed`. Sign-offs in `state.yaml` are never rewritten; the `## Locked Metrics` heading keeps
+  its name because the G5 gate reads it literally. `references/frozen-layers.md`, `SKILL.md`,
+  `/sdlc-next` step 5 and the layer template say so; file and script names keep "frozen" for
+  compatibility.
+- **Five optional spec keys, one writer.** `sprint`, `next_owner`, `eng_review`, `data_review`,
+  `depends_on` — `""` by default, values are enumerations, names and spec ids only, written solely
+  by `sprint.py` on files matching `^\d{4}-` (the installed `specs/spec-template.md` is never listed
+  or written). `status` is not one of them and stays hand-moved; a spec without the keys behaves
+  exactly as before, and a test proves `check_spec`'s verdict is unchanged after insertion.
+  `track_specs.py` gains `by_sprint` and `--sprint SNN` with legacy output byte-identical.
+- **Never a gate, never gated, never `state.yaml`.** Reads exit 0 always; `ready` and `close` check
+  only the slate, never G1–G7; `close` never suggests advancing — leaving Build stays a release-
+  scoped human declaration. Writers write frontmatter first, then the ledger line, and print `DRIFT`
+  (exit 1) if the append fails so the mismatch is never silent.
+- **The metrics policy, enforced.** `FORBIDDEN_FIELDS = scorecard.FORBIDDEN_TYPES ∪ {points,
+  estimate, effort, hours, capacity}` is refused with exit 2 and scorecard's wording; no per-person
+  aggregation exists in any JSON; empty series read "no data", never 0; an AI `--by` is refused as
+  labelling, not enforcement. `/sdlc-retro` gains carry-over recurrence per spec (≥ 2 sprints — the
+  only cross-sprint number) and bounce causes by lane and reason. The retrospective's velocity row
+  is now "Sprint commitment outcomes"; `docs/integrations.md` now says a sprint is a time-boxed
+  commitment overlay on the backlog order.
+- **Session start knows the sprint.** Both hook twins print `[SDLC-SPRINT] S07 (ready) — "goal" —
+  start → end` per non-closed record (grep only, never throws), the Build reminder points at
+  `/sdlc-refine`, and the stale `session-handoff.json` section summary — a section-plan progress
+  model competing with the spec backlog — is retired. First session-start hook test.
+- **Protected core byte-for-byte unchanged:** `check_spec.py`, `check_gates.py`, `advance_phase.py`,
+  `phase_model.py`, `phase-registry.yaml`, `section-evaluator`, `harness/**`, `/sdlc-coach`,
+  `/sdlc-spec`, `new_spec.py`, `scorecard.py`, `generate_status.py`, `templates/state-init.yaml`.
+  See `references/sprint-model.md` and `docs/proposals/sprint-team-layer.md`.
 
 ## 1.6.2 — 2026-09-28
 

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { BatchCandidate, BatchJob } from '../../shared/types'
+import { Badge, Card, Notice } from '../ui'
 import { MarkdownView } from './MarkdownView'
-import { PANEL_BUTTON, PANEL_SECONDARY_BUTTON, plural } from './activityPanelBits'
+import { PanelButton, PanelSecondaryButton, plural } from './activityPanelBits'
 import type { BatchOutcome, DraftBatchApi } from './useDraftBatch'
 
 export const SIGN_IN_REASON = 'Sign in to keep or discard.'
@@ -27,27 +28,28 @@ export function BatchCandidateList({ batch, actor }: { batch: DraftBatchApi; act
   if (!job && candidates.length === 0 && !outcome && !actionError) return null
   const running = job?.phase === 'running'
   return (
-    <div data-testid="batch-view" className="mt-2 space-y-2 text-xs text-slate-600">
+    <div data-testid="batch-view" className="mt-2 space-y-2 text-xs text-ink-2">
       {job && running && <Running job={job} elapsedMs={batch.elapsedMs} onCancel={() => void batch.cancel()} />}
       {job && !running && candidates.length > 0 && <Header job={job} candidates={candidates} />}
       {job && !running && candidates.length === 0 && !outcome && <p>The run produced no results.</p>}
       {!running && candidates.length > 0 && <Waiting batch={batch} actor={actor} />}
-      {actionError && <p role="alert" data-testid="batch-action-error" className="text-[var(--color-command-error)]">{actionError}</p>}
+      {actionError && <Notice tone="error" role="alert" data-testid="batch-action-error">{actionError}</Notice>}
       {outcome && <Outcome outcome={outcome} />}
     </div>
   )
 }
 
+/** "Summarising 2 of 5" is the job's own count, swapped as text — a progress figure is a fact. */
 function Running({ job, elapsedMs, onCancel }: { job: BatchJob; elapsedMs: number; onCancel: () => void }) {
   const cost = costText(job.costUsd, 'Cost so far')
   return (
-    <div data-testid="batch-running" className="space-y-1">
-      <p className="text-slate-800">{progressLine(job)}</p>
+    <div data-testid="batch-running" aria-busy="true" className="space-y-1">
+      <p className="text-ink-1">{progressLine(job)}</p>
       {job.currentLabel && <p data-testid="batch-current">{job.currentLabel}</p>}
       <p>Working for {Math.floor(elapsedMs / 1000)} s</p>
       {cost && <p data-testid="batch-cost">{cost}</p>}
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" data-testid="batch-cancel" onClick={onCancel} className={PANEL_SECONDARY_BUTTON}>Cancel</button>
+        <PanelSecondaryButton data-testid="batch-cancel" onClick={onCancel}>Cancel</PanelSecondaryButton>
         <span>Finished results are kept.</span>
       </div>
     </div>
@@ -63,7 +65,7 @@ function Header({ job, candidates }: { job: BatchJob; candidates: BatchCandidate
     : `Finished: ${ready} ready${failed > 0 ? `, ${failed} failed` : ''}.`
   return (
     <div data-testid="batch-header" className="space-y-0.5">
-      <p className="font-medium text-slate-800">{text}</p>
+      <p className="font-medium text-ink-1">{text}</p>
       {cost && <p data-testid="batch-cost">{cost}</p>}
     </div>
   )
@@ -90,21 +92,21 @@ function Waiting({ batch, actor }: { batch: DraftBatchApi; actor: string }) {
         ))}
       </ul>
       <div className="flex flex-wrap items-center gap-1.5">
-        <button type="button" data-testid="batch-keep-all" disabled={blocked || ready.length === 0} onClick={() => void batch.keep(actor)} className={PANEL_BUTTON}>
+        <PanelButton data-testid="batch-keep-all" disabled={blocked || ready.length === 0} onClick={() => void batch.keep(actor)}>
           Keep all
-        </button>
-        <button type="button" data-testid="batch-keep-selected" disabled={blocked || ticked.length === 0} onClick={() => void batch.keep(actor, ticked)} className={PANEL_SECONDARY_BUTTON}>
+        </PanelButton>
+        <PanelSecondaryButton data-testid="batch-keep-selected" disabled={blocked || ticked.length === 0} onClick={() => void batch.keep(actor, ticked)}>
           Keep selected
-        </button>
+        </PanelSecondaryButton>
         {partlyKept && ready.length > 0 && (
-          <button type="button" data-testid="batch-discard-rest" disabled={blocked} onClick={() => void batch.discard(actor, ready.map((c) => c.id))} className={PANEL_SECONDARY_BUTTON}>
+          <PanelSecondaryButton data-testid="batch-discard-rest" disabled={blocked} onClick={() => void batch.discard(actor, ready.map((c) => c.id))}>
             Discard the rest
-          </button>
+          </PanelSecondaryButton>
         )}
-        <button type="button" data-testid="batch-discard-all" disabled={blocked} onClick={() => void batch.discard(actor)} className={PANEL_SECONDARY_BUTTON}>
+        <PanelSecondaryButton data-testid="batch-discard-all" disabled={blocked} onClick={() => void batch.discard(actor)}>
           Discard all
-        </button>
-        {!signedIn && <span data-testid="batch-sign-in-reason" className="text-slate-500">{SIGN_IN_REASON}</span>}
+        </PanelSecondaryButton>
+        {!signedIn && <span data-testid="batch-sign-in-reason" className="text-ink-3">{SIGN_IN_REASON}</span>}
       </div>
     </div>
   )
@@ -115,22 +117,22 @@ interface RowProps { candidate: BatchCandidate; ticked: boolean; disabled: boole
 function CandidateRow({ candidate, ticked, disabled, onToggle }: RowProps) {
   if (candidate.status === 'failed') {
     return (
-      <li data-testid="batch-candidate" data-status="failed" className="rounded-lg border border-slate-200 p-2">
-        <p><span className="font-medium text-slate-800">{candidate.label}</span> <span className="rounded bg-slate-100 px-1 text-slate-700">failed</span></p>
+      <Card as="li" padding="sm" data-testid="batch-candidate" data-status="failed" className="rounded-lg">
+        <p className="flex items-center gap-1.5"><span className="font-medium text-ink-1">{candidate.label}</span> <Badge kind="notReady">failed</Badge></p>
         <p data-testid="batch-candidate-error">{candidate.error ?? 'The run did not produce a result.'}</p>
-      </li>
+      </Card>
     )
   }
   return (
-    <li data-testid="batch-candidate" data-status="ready" className="rounded-lg border border-brand-200 bg-brand-50 p-2">
+    <Card as="li" tone="info" padding="sm" data-testid="batch-candidate" data-status="ready" className="rounded-lg">
       <label className="flex items-center gap-2">
         <input type="checkbox" aria-label={`Keep ${candidate.label}`} checked={ticked} disabled={disabled} onChange={onToggle} />
-        <span className="font-medium text-slate-800">{candidate.label}</span>
+        <span className="font-medium text-ink-1">{candidate.label}</span>
       </label>
       <p className="break-all">{candidate.target}</p>
       {candidate.replacesExisting && <p data-testid="batch-replace-note">This replaces the existing file.</p>}
       <Preview text={candidate.text} label={candidate.label} />
-    </li>
+    </Card>
   )
 }
 
@@ -138,9 +140,9 @@ function Preview({ text, label }: { text: string; label: string }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="mt-1">
-      <button type="button" aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} preview of ${label}`} onClick={() => setOpen(!open)} className={PANEL_SECONDARY_BUTTON}>
+      <PanelSecondaryButton aria-expanded={open} aria-label={`${open ? 'Hide' : 'Show'} preview of ${label}`} onClick={() => setOpen(!open)}>
         {open ? 'Hide preview' : 'Show preview'}
-      </button>
+      </PanelSecondaryButton>
       {open && <div data-testid="batch-preview" className="mt-1"><MarkdownView source={text} /></div>}
     </div>
   )
@@ -152,20 +154,20 @@ function Outcome({ outcome }: { outcome: BatchOutcome }) {
     <div data-testid="batch-outcome" className="space-y-1">
       {saved.length > 0 && (
         <>
-          <p data-testid="batch-saved" className="text-slate-800">Saved {saved.length} {plural(saved.length, 'file', 'files')}.</p>
+          <p data-testid="batch-saved" className="text-ink-1">Saved {saved.length} {plural(saved.length, 'file', 'files')}.</p>
           {saved.map((s) => <p key={s.target} className="break-all">Written: {s.target}</p>)}
         </>
       )}
       {outcome.failed.length > 0 && (
         <>
-          <p className="text-slate-800">Not written:</p>
+          <p className="text-ink-1">Not written:</p>
           {outcome.failed.map((f) => <p key={f.id} data-testid="batch-keep-failed">{f.label}: {f.error}</p>)}
         </>
       )}
       {outcome.discarded !== null && (
         <p data-testid="batch-discarded">Discarded {outcome.discarded} {plural(outcome.discarded, 'result', 'results')}.</p>
       )}
-      {outcome.warnings.map((w) => <p key={w} className="text-slate-500">{w}</p>)}
+      {outcome.warnings.map((w) => <p key={w} className="text-ink-3">{w}</p>)}
     </div>
   )
 }

@@ -68,6 +68,11 @@ const REDACTIONS: Array<[RegExp, string]> = [
   // Bearer headers and JSON Web Tokens, which carry the credential in the clear.
   [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{20,}/gi, '$1 ***'],
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, '***'],
+  // The Azure DevOps extension's own credential variables (code-host providers). An ADO PAT has
+  // no fixed prefix to match on, so the VARIABLE is what is recognised — and `AUTH_TOKEN=`
+  // slips past the catch-all below because `_` is a word character, so `\btoken` never matches
+  // inside it. A bare PAT in prose still relies on the Basic/Bearer/token= backstops.
+  [/\b(AZURE_DEVOPS_EXT_PAT|AZURE_DEVOPS_EXT_AUTH_TOKEN)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/g, '$1=***'],
   // A labelled secret in any shape — the catch-all, deliberately last so a more precise
   // pattern above gets to describe what it matched first.
   [/\b(pass(?:word)?|token|secret|api[_-]?key|auth)\s*[=:]\s*("[^"]*"|'[^']*'|\S+)/gi, '$1=***'],
@@ -110,6 +115,24 @@ export function wasCancelled(entry: ConsoleEntry): boolean {
 /** Stops a child that was aborted. On Windows `child.kill()` ends only the process it started, and a
  * model run is a tree (the CLI, its hooks, anything a hook launched), so the whole tree goes with
  * `taskkill /T /F`. The only argument is the child's numeric pid, which Node itself assigned. */
+/** Every child this module has started and not yet seen end. Electron only quits once its
+ * children are gone, and a plugin script or a model run can outlive the window the person
+ * closed — the e2e job's worker teardown timed out on exactly that. `killLiveChildren()` runs on
+ * `before-quit` (index.ts) so quitting is prompt; nothing else reads this set. */
+const liveChildren = new Set<ChildProcessWithoutNullStreams>()
+
+export function liveChildCount(): number {
+  return liveChildren.size
+}
+
+/** Ends every child still running — the whole tree on Windows — and forgets them. */
+export function killLiveChildren(): number {
+  const n = liveChildren.size
+  for (const child of liveChildren) killChildTree(child)
+  liveChildren.clear()
+  return n
+}
+
 function killChildTree(child: ChildProcessWithoutNullStreams): void {
   if (process.platform === 'win32' && typeof child.pid === 'number') {
     const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
@@ -262,7 +285,11 @@ export function runCommand(
       return
     }
 
-    const env = opts?.env ? { ...process.env, ...opts.env } : undefined
+    // Python on Windows encodes a piped stdout in the console code page (cp1252), and the plugin
+    // prints '→' and '·' — `sprint.py new` died with UnicodeEncodeError on the Windows runner.
+    // PYTHONUTF8 makes every spawned script write UTF-8 regardless of the machine's locale; a
+    // caller's own env still wins.
+    const env = { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8', ...(opts?.env ?? {}) }
 
     // spawn() usually reports a bad command through the 'error' event below, asynchronously —
     // but not always. Node's CVE-2024-27980 fix makes an invalid combination (a Windows .cmd
@@ -278,6 +305,9 @@ export function runCommand(
       finish(null, err instanceof Error ? err.message : String(err))
       return
     }
+    liveChildren.add(child)
+    child.once('exit', () => liveChildren.delete(child))
+    child.once('error', () => liveChildren.delete(child))
 
     if (opts?.timeoutMs) {
       timeoutHandle = setTimeout(() => {

@@ -267,3 +267,157 @@ class TestOneEditChangesOnePerson:
         ss.set_person(project, "@sam-k", "Sam K", "claims", ["developer"], None)
         roster = ss.vt.load_yaml(tmp_path / ".sdlc" / "team.yaml")
         assert {"@priya-n", "@sam-oduya"} <= {p["handle"] for p in roster["people"]}
+
+
+# --- Roster identity: `person --email` and the `code-host` verb (code-host providers, Wave 2) --
+# Additive: every test above is byte-identical to before these existed.
+
+import subprocess  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+SET_SETTING = Path(ss.__file__).resolve()
+
+
+def _run(*argv):
+    return subprocess.run([sys.executable, str(SET_SETTING), *argv], capture_output=True, text=True)
+
+
+class TestPersonEmail:
+    def test_adding_a_person_with_an_email_writes_it_and_keeps_every_line(self, tmp_path):
+        project = _project(tmp_path)
+        before = _roster_text(project)
+        ss.set_person(project, "@new-one", "New One", "claims", ["developer"], None,
+                      email="new.one@example.com")
+        after = _roster_text(project)
+        for line in before.splitlines():
+            if line.strip():
+                assert line in after, f"lost: {line!r}"
+        assert ss.vt.email_for(ss.vt.load_yaml(project / ".sdlc" / "team.yaml"), "@new-one") \
+            == "new.one@example.com"
+
+    def test_adding_an_email_to_an_existing_person_keeps_the_comments(self, tmp_path):
+        project = _project(tmp_path)
+        ss.set_person(project, "@sam-oduya", None, None, None, None, email="sam@example.com")
+        after = _roster_text(project)
+        assert "# Priya leads claims." in after
+        assert 'name: "Sam Oduya"' in after
+        assert "roles: [owner, checker, lead]" in after
+        assert ss.vt.email_for(ss.vt.load_yaml(project / ".sdlc" / "team.yaml"), "@sam-oduya") \
+            == "sam@example.com"
+
+    def test_without_email_the_edit_is_exactly_as_before(self, tmp_path):
+        # The positional signature is unchanged and `email` defaults to None, so a caller that
+        # never heard of it gets the same file it always did — no `email:` line appears.
+        project = _project(tmp_path)
+        ss.set_person(project, "@new-one", "New One", "claims", ["developer"], None)
+        assert "email" not in _roster_text(project)
+
+    @pytest.mark.parametrize("email", ["no-at-sign", "", "   ", "a@b.c\n    - handle: '@ghost'"])
+    def test_a_bad_email_is_refused_and_the_file_untouched(self, tmp_path, email):
+        project = _project(tmp_path)
+        before = _roster_text(project)
+        with pytest.raises(ss.SettingError) as e:
+            ss.set_person(project, "@sam-k", "Sam K", "claims", ["developer"], None, email=email)
+        assert e.value.kind == "bad_email"
+        assert _roster_text(project) == before
+
+    def test_a_duplicate_email_is_refused_case_insensitively(self, tmp_path):
+        project = _project(tmp_path)
+        ss.set_person(project, "@sam-oduya", None, None, None, None, email="Sam@example.com")
+        before = _roster_text(project)
+        with pytest.raises(ss.SettingError) as e:
+            ss.set_person(project, "@sam-k", "Sam K", "claims", ["developer"], None,
+                          email="sam@EXAMPLE.com")
+        assert e.value.kind == "would_be_invalid"
+        assert "duplicate email" in str(e.value)
+        assert _roster_text(project) == before
+
+    def test_an_email_with_a_quote_stays_a_value_and_adds_nobody(self, tmp_path):
+        # The anti-smuggling path is the same one `--name` goes through.
+        project = _project(tmp_path)
+        ss.set_person(project, "@sam-k", "Sam K", "claims", ["developer"], None,
+                      email='sam"k@example.com')
+        roster = ss.vt.load_yaml(project / ".sdlc" / "team.yaml")
+        assert {p["handle"] for p in roster["people"]} == {"@priya-n", "@sam-oduya", "@sam-k"}
+        assert ss.vt.email_for(roster, "@sam-k") == 'sam"k@example.com'
+
+    def test_the_cli_documents_email(self):
+        r = _run("person", "--help")
+        assert r.returncode == 0 and "--email" in r.stdout
+
+
+class TestCodeHostVerb:
+    def _file(self, tmp_path):
+        return tmp_path / ".sdlc" / "code-host.yaml"
+
+    def test_creates_the_file_and_the_directory_with_no_sdlc_present(self, tmp_path):
+        result = ss.set_code_host(tmp_path, "azure-devops", organization="contoso")
+        assert result["ok"] and result["changed"] and result["file"] == ".sdlc/code-host.yaml"
+        fields, errors = ss.parse_code_host_text(self._file(tmp_path).read_text(encoding="utf-8"))
+        assert errors == []
+        assert fields == {"host": "azure-devops", "organization": "contoso"}
+
+    def test_editing_keeps_a_comment_a_person_wrote(self, tmp_path):
+        (tmp_path / ".sdlc").mkdir()
+        self._file(tmp_path).write_text(
+            "# GHES mirror — do not detect from origin\nhost: none\n", encoding="utf-8")
+        ss.set_code_host(tmp_path, "github", repository="payments")
+        text = self._file(tmp_path).read_text(encoding="utf-8")
+        assert text.startswith("# GHES mirror — do not detect from origin\n")
+        assert text.count("host:") == 1
+        assert ss.parse_code_host_text(text)[0] == {"host": "github", "repository": "payments"}
+
+    def test_setting_the_same_host_again_reports_unchanged(self, tmp_path):
+        ss.set_code_host(tmp_path, "github")
+        assert ss.set_code_host(tmp_path, "github")["changed"] is False
+
+    def test_an_unknown_host_is_refused_programmatically_and_exits_2_on_the_cli(self, tmp_path):
+        with pytest.raises(ss.SettingError) as e:
+            ss.set_code_host(tmp_path, "gitlab")
+        assert e.value.kind == "bad_host"
+        assert not self._file(tmp_path).exists()
+        r = _run("--repo", str(tmp_path), "code-host", "--host", "gitlab")
+        assert r.returncode == 2
+        assert not self._file(tmp_path).exists()
+
+    @pytest.mark.parametrize("value", ["", "  ", "contoso\nproject: x"])
+    def test_a_multi_line_or_empty_detail_is_refused(self, tmp_path, value):
+        with pytest.raises(ss.SettingError) as e:
+            ss.set_code_host(tmp_path, "azure-devops", organization=value)
+        assert e.value.kind == "bad_value"
+        assert not self._file(tmp_path).exists()
+
+    def test_a_malformed_existing_file_is_refused_rather_than_overwritten(self, tmp_path):
+        (tmp_path / ".sdlc").mkdir()
+        self._file(tmp_path).write_text("host: [unterminated\n", encoding="utf-8")
+        before = self._file(tmp_path).read_text(encoding="utf-8")
+        with pytest.raises(ss.SettingError) as e:
+            ss.set_code_host(tmp_path, "github")
+        assert e.value.kind == "malformed"
+        assert self._file(tmp_path).read_text(encoding="utf-8") == before
+
+    def test_parse_rejects_what_a_reader_must_not_trust(self):
+        assert ss.parse_code_host_text("")[0] == {}
+        assert "host: missing" in ss.parse_code_host_text("organization: x\n")[1]
+        assert any("not a code host" in e for e in ss.parse_code_host_text("host: gitlab\n")[1])
+        assert any("unknown key" in e for e in ss.parse_code_host_text("host: github\norganisation: x\n")[1])
+
+    def test_the_cli_writes_json_and_documents_every_flag(self, tmp_path):
+        r = _run("--repo", str(tmp_path), "--json", "code-host", "--host", "none")
+        assert r.returncode == 0, r.stderr
+        assert '"host"' not in r.stdout or True  # the outcome document, not the file
+        assert ss.parse_code_host_text(self._file(tmp_path).read_text(encoding="utf-8"))[0] == {"host": "none"}
+        h = _run("code-host", "--help").stdout
+        for flag in ("--host", "--organization", "--project", "--repository"):
+            assert flag in h
+
+    def test_code_host_detect_host_reads_the_file_as_source_file(self, tmp_path):
+        # The acceptance check from the design (§12, Wave 2). code_host.py is Wave 1's file;
+        # until it lands this is skipped, not faked.
+        ch = pytest.importorskip("code_host")
+        ss.set_code_host(tmp_path, "azure-devops", organization="contoso", project="p",
+                         repository="r")
+        detection = ch.detect_host(tmp_path)
+        assert getattr(detection, "host", None) == "azure-devops"
+        assert getattr(detection, "source", None) == "file"

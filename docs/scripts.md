@@ -24,7 +24,13 @@ Detailed documentation for all Python automation scripts in the `scripts/` direc
   - [track_specs.py](#track_specspy)
   - [scorecard.py](#scorecardpy)
   - [generate_handoff_report.py](#generate_handoff_reportpy)
+  - [sprint.py](#sprintpy)
+  - [generate_sprint_report.py](#generate_sprint_reportpy)
+  - [retro_report.py](#retro_reportpy)
   - [doctor.py](#doctorpy)
+  - [code_host.py](#code_hostpy)
+  - [ado_import.py](#ado_importpy)
+  - [import_outcomes.py](#import_outcomespy)
 - [4. Dependencies](#4-dependencies)
 - [5. Error Handling](#5-error-handling)
 - [6. Cross-References](#6-cross-references)
@@ -935,6 +941,9 @@ uv run scripts/track_specs.py --state .sdlc/state.yaml [--wip-cap 3] [--json]
 
 # Standalone
 uv run scripts/track_specs.py --repo <path>
+
+# One sprint's slate only (the frontmatter `sprint:` written by sprint.py)
+uv run scripts/track_specs.py --state .sdlc/state.yaml --sprint S07 [--json]
 ```
 
 **Arguments:**
@@ -943,14 +952,17 @@ uv run scripts/track_specs.py --repo <path>
 |----------|----------|-------------|
 | `--state` | One of `--state`/`--repo` | Path to `.sdlc/state.yaml` (workflow mode) |
 | `--repo` | One of `--state`/`--repo` | Target repo root (standalone; default cwd) |
-| `--wip-cap` | No | Flag when more than N specs are in-flight (the cap itself lives in `cadence-plan.md`) |
+| `--wip-cap` | No | Flag when more than N specs are in-flight (the cap itself lives in `cadence-plan.md`; the cap is global — a sprint's slate is never a second WIP budget) |
+| `--sprint` | No | Only the specs whose frontmatter `sprint:` equals `SNN` exactly (applied before summarizing, so every count is for that slate); the text title becomes "Spec Backlog — sprint SNN" and the JSON gains `sprint_filter` |
 | `--json` | No | Emit the summary as JSON |
 
 **Output:** Total specs; breakdown by status (`draft`/`ready`/`in-flight`/`merged`, plus `deferred` on its own line once any spec uses it — never pre-seeded at zero, so a project that has never deferred a spec sees unchanged output) and by risk tier; the in-flight list (one spec = one branch = one PR; deferred specs are never in it); WIP-cap warnings. Invoked by `check_gates.py` to print the Build gate's INFO spec-backlog summary (that line stays the original four statuses — see above), and by `generate_handoff_report.py` for the handoff report's spec-backlog and deferred-items sections.
 
-**Key functions:** `scan_specs` (parses every `specs/*.md` frontmatter), `summarize`, `wip_warnings` — all importable.
+**Sprint layer (1.6.0, additive):** each scanned row carries `sprint` and `next_owner` (default `""`), and the summary gains `by_sprint` — a bucket → count map that *partitions* the specs (the counts sum to `total`): one bucket per `SNN` found, `unassigned` (no sprint, not merged), and `pre-sprint` (no sprint **and** merged — delivered before the sprint layer existed). The text report's "By sprint:" block renders only when at least one spec carries a non-empty sprint, so the legacy output is byte-identical for backlogs that never used sprints. Files whose frontmatter `spec:` id is not numeric (the installed `specs/spec-template.md` carries `spec: "NNNN"`) are skipped, so the template is no longer counted as a phantom draft here, in the Build gate's backlog line, or in the handoff report.
 
-**Exit codes:** `0` (no warnings), `1` (a WIP-cap breach was flagged)
+**Key functions:** `scan_specs` (parses every `specs/*.md` frontmatter), `summarize`, `wip_warnings`, `filter_by_sprint`, `sprint_bucket`, `sprint_ids`, `is_spec_id` — all importable; constants `UNASSIGNED_BUCKET`, `PRE_SPRINT_BUCKET`.
+
+**Exit codes:** `0` (no warnings), `1` (a WIP-cap breach was flagged) — unchanged by the sprint additions
 
 ---
 
@@ -1031,6 +1043,162 @@ uv run scripts/generate_handoff_report.py --state .sdlc/state.yaml --output hand
 
 ---
 
+### sprint.py
+
+**Purpose:** The I/O CLI of the sprint team layer (`/sdlc-sprint`, `/sdlc-refine`; users never call it by hand). A sprint is a *commitment window over the backlog order* — never a second backlog, a reordering, or a gate. A named human types a sprint id (`S07`), slates a *count* of specs by a mix of risk tiers, readies the sprint once every slated spec clears the Definition of Ready and its Engineering and Data verdicts, and closes it with kept / carried / dropped, each with a name and a reason. Every rule lives in the pure `sprint_model.py` (mirrors `findings_model.py`: sprint states, `parse_mix`, `propose_slate`, `ready_gaps`, `build_order` / `next_up` reusing `check_dependencies.detect_cycles` / `topological_sort`, `outcomes`, `set_frontmatter`, `FORBIDDEN_FIELDS`, the business-day adapters over `track_decisions`); this file only reads and writes files.
+
+**CLI:**
+
+```bash
+# Create the record (planning); end defaults to the last business day of a 10-business-day window (start is day 1: Mon 2026-09-28 -> Fri 2026-10-09)
+uv run scripts/sprint.py new --repo <path> --sprint S07 --goal "Ship the duplicate-claim rail" --start 2026-09-28 [--end D | --days 10] --target 6 [--mix "HIGH:1,MEDIUM:2,LOW:3"] [--board-ref "ADO Iteration 6"] --by "Pod Lead"
+
+# Propose a slate (writes nothing), then confirm it
+uv run scripts/sprint.py slate --state .sdlc/state.yaml --sprint S07 [--json]
+uv run scripts/sprint.py slate --state .sdlc/state.yaml --sprint S07 --by "Pod Lead" --spec 0007 --spec 0009 [--override --reason R]
+uv run scripts/sprint.py unslate --state .sdlc/state.yaml --sprint S07 --spec 0009 --by "Pod Lead" --reason "pulled into S08"
+
+# The daily view (text, or the JSON /sdlc-status and /sdlc-refine read)
+uv run scripts/sprint.py status --state .sdlc/state.yaml [--sprint S07] [--wip-cap N] [--json]
+
+# Handoffs and verdicts
+uv run scripts/sprint.py handoff --state .sdlc/state.yaml --spec 0007 --to "Eng Lead" --by "Pod Lead" [--note "..."]
+uv run scripts/sprint.py ack --state .sdlc/state.yaml --spec 0007 --by "Eng Lead"
+uv run scripts/sprint.py verdict --state .sdlc/state.yaml --spec 0007 --lane eng --verdict accepted --by "Eng Lead"
+uv run scripts/sprint.py verdict --state .sdlc/state.yaml --spec 0007 --lane data --verdict n-a --by "Data Lead" --reason "UI copy only — no data impact"
+
+# Ready (writes the planning page), re-render it on demand, close (writes the review page)
+uv run scripts/sprint.py ready --state .sdlc/state.yaml --sprint S07 --by "Pod Lead"
+uv run scripts/sprint.py plan --state .sdlc/state.yaml --sprint S07 [--output PATH]
+uv run scripts/sprint.py close --state .sdlc/state.yaml --sprint S07 --by "Pod Lead" --carry-to S08 --carry "0009=blocked on DL-04" --drop "0011=descoped after workshop"
+```
+
+**Verbs (flat argparse subparsers; every verb takes `--state | --repo`, `--today YYYY-MM-DD`, and — on writes — repeatable `--field KEY=VALUE`):**
+
+| Verb | Kind | Does |
+|------|------|------|
+| `new` | write | Renders `templates/phases/build/sprint.md` into `.sdlc/sprints/SNN.md` in `planning`. Id must match `^S\d{2,}$`, one record per id, `--target` ≥ 1, mix validated by `sprint_model.parse_mix` (sum ≤ target), `--end` not before `--start` (default: the last business day of a `--days`-long window, start counted as day 1), `--by` required like every write. Ledger `sprint_new` (`sprint, by`) |
+| `slate` (no `--spec`) | read | **Proposal only, writes nothing:** candidates are specs with `status: ready \| draft` and empty `sprint:`; `propose_slate` fills the *remaining* mix slots in spec-id order. Prints a copy-paste confirm line; `--json` for the machine form. An unknown or malformed sprint id prints `Slate proposal: no data — …` and exits 0 (reads never fail) |
+| `slate --spec …` | write | Each spec must exist, not be merged, not sit in another sprint (already in this one → skipped). Over target → exit 1 unless `--override --reason`; mix breach and a `depends_on` pointing outside the slate at an unmerged spec → WARNING only. Writes `sprint: "SNN"`, re-renders the record's `## Slate` table, ledger `slated` |
+| `unslate` | write | Sets `sprint: ""` with a non-empty `--reason`; ledger `unslated` |
+| `status` *(default)* | read | Header, slate table (spec, name, risk, type, status, DoR, eng, data, next owner), readiness (N of M ready + per-spec gaps), pending verdicts and unacknowledged handoffs with business-day age, mix actual vs target ("no target" when a tier is not in the mix), WIP vs cap, open/overdue `DL-NN` decisions, dependency-gap warnings, the advisory **build order** and **next up**. `--sprint` defaults to the active sprint (the highest-numbered sprint not yet closed; when every sprint is closed, the highest-numbered one). On a **closed** sprint the slate is replayed from the ledger (`slated` − `unslated` + `carried`/`dropped`), the header omits "remaining" and names `closed by`, and an empty slate reads `no data — closed; see .sdlc/reports/sprint-SNN-review.html` |
+| `handoff` / `ack` | write | Sets / clears `next_owner`; `ack` by someone other than `next_owner` warns, never fails; ledger `handoff` / `ack` |
+| `verdict` | write | Writes `eng_review` / `data_review` (`pending \| accepted \| returned \| n-a`). `n-a` is legal for `--lane data` only and only with `--reason`; `returned` without a reason records but warns. Ledger `verdict` |
+| `ready` | write | Sprint must be in `planning` (forward only). `sprint_model.ready_gaps` → exit 1 listing `<spec>: <gap>` lines and the ready-when rule, nothing written; else `state: ready`, `readied_by`, ledger `ready`, then the planning page (render failure is a WARNING; the verb still exits 0) |
+| `plan` | render | Renders (or re-renders) the planning page on demand, before or after `ready`. Exit 1 if the sprint does not exist |
+| `close` | write | kept = slated specs with `status: merged`; every other slated spec must appear in exactly one `--carry SPEC=REASON` or `--drop SPEC=REASON`, else exit 1 naming the undecided. `--carry` requires `--carry-to SNN` (a carry-to sprint with no record yet is a warning). Carried specs get `sprint: "<carry-to>"`, dropped `sprint: ""`; writes the `## Close` table, `state: closed`, `closed_by`, ledger `carried` / `dropped` then `closed`, then the review page — rendered from the view computed **before** the writes (patched to `state: closed`), so the page shows the slate that was reviewed, not the frontmatter after carries moved on |
+
+**The ready rule (D3):** every slated spec `check_spec` READY **and** `status: ready` **and** `eng_review: accepted` **and** `data_review: accepted \| n-a`, plus a dependency graph with no cycle, no unknown id, and no `depends_on` pointing outside the slate at an unmerged spec. An empty slate is itself a gap. G1–G7 are never consulted.
+
+**Build order (D7, advisory):** topological by `depends_on`, then the spec that unblocks the most others, then HIGH → MEDIUM → LOW (the longest checking ladder starts first), then spec id. **Next up** is the first spec in that order that is READY, `status: ready`, with every dependency merged, and under the WIP cap (`--wip-cap`, else the first `**N**` on a "WIP cap" line in `.sdlc/artifacts/*/cadence-plan.md`; `null` / "cap not set" otherwise).
+
+**Reads / writes:**
+
+| Path | Role |
+|------|------|
+| `specs/*.md` matching `new_spec.SPEC_FILE_RE` (`^\d{4}-`) | Read for frontmatter (`check_spec.parse_frontmatter`) and the DoR verdict (`check_spec.check_spec_text`: READY iff no failed MUST). **Written** only for the five keys `sprint`, `next_owner`, `eng_review`, `data_review`, `depends_on` (inserted after `status:` on first touch, else right after the opening `---`; values are enumerations, names and spec ids — `#`, quotes, newlines and placeholder tokens are refused). `status` cannot be written: `sprint_model.set_frontmatter` rejects any key outside the five. The installed `specs/spec-template.md` is never listed or written. Files are read and written as bytes, so untouched bytes stay identical |
+| `.sdlc/sprints/SNN.md` | The sprint record (frontmatter, `## Slate` rendered from spec frontmatter, `## Close` written at close) |
+| `.sdlc/metrics/sprint-log.jsonl` | Append-only ledger; `ts` is `datetime.now(timezone.utc).isoformat()`; events `sprint_new`, `slated`, `unslated`, `handoff`, `ack`, `verdict`, `ready`, `closed`, `carried`, `dropped`. **Frontmatter first, then the ledger line** — if the append fails the script prints `DRIFT: N file(s) were written but the ledger append failed` and exits 1 |
+| `.sdlc/decision-log.md` (else `<repo>/decision-log.md`) | Read through `track_decisions` for the open / overdue decisions; absent → `decisions: null` |
+| `.sdlc/reports/sprint-SNN-planning.html` / `-review.html` | Written via a **lazy** import of `generate_sprint_report` inside `ready` / `plan` / `close` (that module imports `sprint.build_view` at top level) |
+| `.sdlc/state.yaml` | **Never written** — tested byte-for-byte across the whole lifecycle in `--state` mode |
+
+**`status --json` / `build_view(repo_root, sprint_id, today=None, wip_cap=None)`** — the exact JSON `/sdlc-status` and `/sdlc-refine` read: `sprint` (`null` when none; else id, goal, start, end, state, target, mix, board_ref, readied_by, closed_by, created, path, `days: {total, elapsed, remaining}` in business days), `slate` (rows: id, name, risk, type, channel, status, sprint, next_owner, eng_review, data_review, `depends_on: []`, `dor`, `dor_blocking: []`, path), `readiness {ready, total, gaps}`, `verdicts_pending` / `handoffs_open` (with `since_business_days` or `null`), `mix`, `mix_warnings`, `wip {in_flight, cap}`, `build_order`, `next_up`, `dependency_gaps`, `decisions`, `carried_in`, `has_data`. Ages come from the ledger (verdict: since the spec's latest `slated` event; handoff: since the latest `handoff`) — a spec slated by hand with no ledger line reads "no data", never 0. **No per-person aggregation key exists.**
+
+**Refused by design (exit 2, same wording as `scorecard.py`):** any `--field` whose key is in `sprint_model.FORBIDDEN_FIELDS` (`scorecard.FORBIDDEN_TYPES` ∪ `points`, `estimate`, `effort`, `hours`, `capacity`; case-insensitive, `-`/space → `_`) — "Refused: '<key>' is an activity metric the standard never tracks (velocity, story points, PR count, lines of code). Steering is on outcomes."; a `--by` / `--to` that `findings_model.is_ai_actor` flags (the message says this is labelling, not enforcement); a malformed frontmatter value.
+
+**Standalone or Workflow:** `--repo <path>` creates `.sdlc/sprints/` and the ledger under `<repo>/.sdlc/` and the text header notes "(standalone mode — no .sdlc/state.yaml; engagement context not shown)"; `--state .sdlc/state.yaml` sets the repo root to the directory containing `.sdlc/`. Workflow mode is detected by the presence of `state.yaml`, never by a bare `.sdlc/`. `--help` for the script and every verb does no filesystem work and exits 0 from any cwd.
+
+**Exit codes:** reads (`status`, `slate` proposal) `0` always — even for an unknown or malformed sprint id ("no data"); writes `0` ok, `1` illegal / missing precondition / unknown spec / ready gap / DRIFT, `2` refused; `plan` `0` rendered, `1` sprint does not exist. Argparse usage errors exit `2` as argparse does.
+
+---
+
+### generate_sprint_report.py
+
+**Purpose:** Render a sprint's **planning page** (default) or **review page** as one self-contained HTML file — the artifact the team runs the sprint-planning meeting from, and the record it reviews the sprint against (D8). Mirrors `generate_phase_report.py`: inline CSS copied from its palette, no `<script>`, no external URL anywhere; markdown snippets go through `generate_phase_report.md_to_html` so the page shares the phase reports' visual language. Normally written by `sprint.py ready` (planning), re-rendered by `sprint.py plan`, and by `sprint.py close` (review); also a standalone CLI.
+
+**CLI:**
+
+```bash
+# Standalone
+uv run scripts/generate_sprint_report.py --repo <path> --sprint S07
+
+# Workflow (repo root = parent of .sdlc/)
+uv run scripts/generate_sprint_report.py --state .sdlc/state.yaml --sprint S07 [--kind planning|review] [--output PATH]
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` | One of `--state`/`--repo` | Path to `.sdlc/state.yaml` (workflow mode) |
+| `--repo` | One of `--state`/`--repo` | Target repo root (standalone; default cwd) |
+| `--sprint` | Yes | Sprint id, e.g. `S07` (must match `^S\d{2,}$`) |
+| `--kind` | No | `planning` (default) or `review` |
+| `--output` | No | Output path (default `.sdlc/reports/sprint-SNN-<kind>.html`; a relative path resolves against the repo root) |
+
+**Python API:** `generate(repo_root, sprint_id, kind="planning", output=None, today=None, view=None) -> Path`. Raises `SprintNotFound` (a `ValueError`) for a missing sprint record, `ValueError` for a bad id or kind. The view is `sprint.build_view` (the exact JSON of `sprint.py status --json`), resolved **lazily** at call time via `resolve_build_view()` so `sprint.py` can import this module inside its `ready` / `plan` / `close` functions without a circular import; tests inject `view=` directly. The sprint record is checked before `build_view` is called.
+
+**Sections (proposal §4), in order:**
+
+| Section | Content | Source |
+|---------|---------|--------|
+| Header | sprint id + Planning/Review; Generated / Project / mode chips; goal, window start → end, state badge, business days total · elapsed · remaining, target, `board_ref` (or "— (manual mapping only)"), readied by `<name> on <date>` (review adds closed by) | sprint record + the ledger's latest `ready` / `closed` event |
+| Commitment | the slate: spec, name, risk, type, channel, DoR, eng, data, next owner; "N of M slated specs ready"; per-spec gaps against the ready rule; verdicts pending and handoffs awaiting acknowledgement with business-day age | `build_view` (spec frontmatter + `check_spec`) |
+| Mix and capacity | mix string + target ("a count, never a size"); tier target/actual ("no target" when a tier is not in the mix); advisory mix warnings; WIP in flight / WIP cap (`view.wip.cap`, else the bold value on the cadence plan's "WIP cap" line, else "no cap set") / review-turnaround target (only from a cadence-plan line containing "review-turnaround"; bracketed template values read as unset → "no target set") | sprint record, `cadence-plan.md` |
+| Build order and next up | the D7 heuristic sentence, the arrow chain, a numbered list with risk/DoR badges, "← depends on …", "· unblocks N"; "Next up: `<id>` `<name>`" with the why, or "no data — no slated spec is READY with merged dependencies inside the WIP cap" | `sprint_model.build_order` / `next_up` |
+| Dependencies | spec \| depends on (ids outside the slate badged) \| unblocks; `dependency_gaps` or the all-clear line | `depends_on` |
+| Spec cards | one `<article class="card" id="spec-NNNN">` per slated spec from the body at `row.path`: acceptance-check count (`check_spec.list_items`), harness context, source, status, eng/data; Goal, Why, Risk tier, Decision list via `check_spec.extract_section` → `md_to_html` (absent section → "no data — section absent"); DoR blocking findings | spec bodies |
+| Open decisions | "Open: n · overdue (2-business-day clock): n"; id \| decision \| owner \| due \| touches slated spec (a spec id appearing in the decision text — advisory substring match); `decisions: null` → "no data — no decision-log found" | `track_decisions` |
+| Carried in | spec \| from sprint \| reason | the ledger's `carried` events whose `to_sprint` is this sprint |
+| Outcomes (review only, first) | "Kept (merged): n · open at close: n"; the record's `## Close` table as-is; this sprint's `carried` / `dropped` ledger rows (spec, outcome, by, reason, date); "Carry-over recurrence (per spec, 2+ sprints)" — the only cross-sprint number, keyed by spec, never by person | `sprint_model.outcomes`, sprint record, ledger |
+| Footer | "Never tracked: velocity, story points, PR count, lines of code." (constant `GUARDRAIL`) | the standard's guardrail |
+
+**Honesty rules:** every empty section, table or series renders "no data" (`None` counts too), never a fabricated zero; no per-person aggregation exists anywhere (names appear only as the recorded by / owner / next-owner strings); the ledger is read tolerantly (malformed lines skipped). Standalone mode's header chip reads "standalone mode — no state.yaml, so the engagement context (phase, profile, gates) is not shown"; the project name is `state.yaml`'s `project_name` in workflow mode, else the repo directory name.
+
+**Output / side effects:** `<repo>/.sdlc/reports/sprint-SNN-planning.html` or `sprint-SNN-review.html` (parent dirs created). **Only if `<repo>/.sdlc/reports/index.html` already exists**, an idempotent block between `<!-- sprints:start -->` and `<!-- sprints:end -->` (inserted before `</body>`, replaced in place on rerun; everything outside the markers byte-identical) listing every `sprint-*-{planning,review}.html` in the reports dir. It never creates `index.html`, never edits `generate_phase_report.py`, and writes nothing else — no `state.yaml`, no ledger, no spec files.
+
+**Key functions:** `generate`, `render_page`, the per-section `render_*`, `splice_sprints_block`, `sprints_block`, `sprint_pages`, `update_index`, `read_ledger`, `latest_event_date`, `cadence_targets`, `is_workflow`, `resolve_repo_root`; constants `KINDS`, `NO_DATA`, `GUARDRAIL`, `SPRINTS_START` / `SPRINTS_END`.
+
+**Exit codes:** `0` (rendered — prints "Sprint S07 planning page written to: <path> (workflow|standalone mode)"), `1` (sprint record missing, invalid sprint id, invalid kind, or `--state` file not found; errors to stderr as `Error: ...`)
+
+---
+
+### retro_report.py
+
+**Purpose:** The read-only cross-ledger retro roll-up behind `/sdlc-retro` — what keeps happening, not what is open right now. Four legacy sections read the findings and artifact ledgers (recurring findings as permanent-check candidates, repeat-stale artifacts, the refresh funnel, the combined disposition-debt rollup); two more read `.sdlc/metrics/sprint-log.jsonl` when it exists. Advisory: writes nothing, exit 0 on every path.
+
+**CLI:**
+
+```bash
+uv run scripts/retro_report.py --state .sdlc/state.yaml [--window-days 30] [--json]
+uv run scripts/retro_report.py --repo <path>
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` | One of `--state`/`--repo` | Path to `.sdlc/state.yaml` (workflow mode) |
+| `--repo` | One of `--state`/`--repo` | Repo root containing `.sdlc/` (standalone; default cwd) |
+| `--window-days` | No | Only count time-stamped ledger events from the last N days (default: all history; an unparseable `ts` is kept) |
+| `--json` | No | Emit JSON with per-section `has_data` flags |
+
+**Sprint sections (1.6.0, additive):**
+
+| Section | Content |
+|---------|---------|
+| **Carry-over recurrence** | `carried` events grouped **by spec**: the number of *distinct* source sprints, which ones, and each carry's `from → to: reason` ("(no reason recorded)" when absent); flagged `RECURRING` at ≥ 2 (`RECURRENCE_THRESHOLD`). This is the only cross-sprint number the standard allows — no kept/carried trend is computed (that would be velocity with the points removed). With a ledger but no carries the block reads "no data", never 0 |
+| **Bounce causes** | `verdict: returned` events grouped by `(lane, reason category)` where the category is the lower-cased, whitespace-normalised, trailing-punctuation-stripped reason; rows `{lane, reason, times, specs}` ordered eng then data, then times desc. Rendered in text only when at least one return exists |
+
+Both sections appear in the text report only when the sprint ledger holds at least one event, slotted between the debt block and the footer, so the four legacy sections and the footer are byte-identical with or without a ledger. The ledger's `by` field is never read or emitted; a forbidden activity-metric field smuggled into a ledger line is never aggregated. JSON keys: `has_data`, `recurring_findings`, `repeat_stale`, `refresh_funnel`, `debt`, `window_days`, `carry_over_recurrence`, `bounce_causes`, `sprint_ledger_present`.
+
+**Imports:** `sprint_model` (`LANES`, `normalize_review`) — the retro now depends on `scripts/sprint_model.py` existing.
+
+**Exit codes:** `0` always (advisory — a retro never blocks and never mutates)
+
+---
+
 ### doctor.py
 
 **Purpose:** Backs `/sdlc-doctor` — a day-1 check that the installed harness will actually run in a repo, not just that it was copied into one. Checks the things that fail quietly: a hook registered with a missing interpreter, a rails script installed without its executable bit, a repo secret the gates need that nobody set.
@@ -1067,6 +1235,77 @@ uv run scripts/doctor.py --offline       # skip the checks that need gh/az
 **Platform-aware, not platform-agnostic:** nothing here asks a GitHub repo to authenticate `az`, or an Azure DevOps repo to install `gh`. A repo that `installed_platform()` cannot recognize as Azure DevOps gets the GitHub checks — the same behavior every install had before the CI/CD packs existed.
 
 **Exit codes:** `0` (no failures; warnings may be present), `1` (at least one failure — the harness is not fully working)
+
+---
+
+### code_host.py
+
+**Purpose:** Answer one question every pull-request-facing script asks first: which code host is this repository on, and which CLI talks to it? GitHub (`gh`) and Azure DevOps (`az` with the `azure-devops` extension) are both first-class, and **the repository chooses** — detection keys off the `origin` remote, never a global setting or a profile field (the profile describes the CI pack; the host is a property of the clone). The module is also the documented provider contract: `PROVIDER_FUNCTIONS` names every GitHub function `ado_import.py` mirrors, with its signature and return shape, pinned by `scripts/tests/test_provider_parity.py`.
+
+**Usage:**
+```bash
+uv run scripts/code_host.py --repo <path> [--json] [--no-probe]
+uv run scripts/code_host.py --state .sdlc/state.yaml --json
+uv run scripts/code_host.py --repo <path> --host azure-devops --json   # override for this run
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` / `--repo` | No | Workflow mode / standalone mode (default: cwd); works with no `.sdlc/` present |
+| `--host` | No | `github`, `azure-devops` or `none` — override detection for this invocation |
+| `--json` | No | Exactly one JSON document |
+| `--no-probe` | No | Skip the local CLI probes (`gh auth status` / `az account show`); `cli_state` reads `unknown` |
+
+**Override precedence** (`detect_host()` reports which one won as `source`): `--host` flag → `SDLC_CODE_HOST` env → `.sdlc/code-host.yaml` (written by `set_setting.py code-host --host …`; travels with the clone) → the parsed `origin` remote (`code_host_remote.parse_remote`, shared fixture `scripts/tests/fixtures/code_host/remote-urls.json`) → the harness manifest's CI pack as a tie-breaker only when there is no usable remote → `none`. `none` falls through to `gh` (`cli_for("none") == "gh"`), so every repository that existed before this layer behaves exactly as it did.
+
+**Two axes, never merged:** `detect_host()` owns the code host (PRs, identity, policies); `installed_ci_platform()` owns the CI platform (pipeline dirs, runs, secrets) — a ten-line twin of `doctor.installed_platform()` pinned to agree with it, so `doctor.py` is never imported. A GitHub repository on Azure Pipelines is legitimate; nothing resolves the mismatch silently.
+
+**Output:** the `host` block `{name, source, cli, cli_state, detail}` that every host-touching `--json` carries (`host_report.py` renders it from the outcome of the call a script just made, never from a second probe). `cli_state` ∈ `available` / `not_installed` / `extension_missing` / `signed_out` / `unknown`; `detail` names the fix (`run az extension add --name azure-devops`, `run az login`, …) and, on Azure DevOps, the rule that the CLI's **default account decides the token** (a guest identity signs in with `az login --allow-no-subscriptions`; an identity that never opened the organisation in a browser gets HTTP 403 "has not been materialized"). `unknown` is never read as "no".
+
+**Identity:** `resolve_person(roster, identity)` — GitHub: `@` + login when that handle is in the roster; Azure DevOps: the handle whose `people[].email` equals the UPN case-insensitively; otherwise `None`. A provider never guesses a handle from a display name or a UPN prefix.
+
+**Exit codes:** `0` always; `2` on a usage error.
+
+**Consumers:** `spec_status.py`, `handoff.py`, `connection_report.py`, `gate_auth.py`, `pipeline_proof.py` (PR reads), `gate_inventory.py` (CI axis), `import_outcomes.py`, and SDLC Studio (the desktop app), which reads the block before enabling a PR feature and shows the `detail` as the reason a control is off.
+
+---
+
+### ado_import.py
+
+**Purpose:** The Azure DevOps provider — the `az` twin of every `gh` read and write the plugin makes, returning **the same dict shapes `gh` returns today** so the pure models (`spec_status`'s verdict parser, `pipeline_proof_model`, `github_import.map_*`) are reused verbatim rather than re-implemented. A library module with no CLI; the consuming scripts dispatch to it at their own call sites when `code_host.detect_host()` says `azure-devops`, which is why the existing GitHub monkeypatch seams and every existing test are untouched.
+
+**Shape:** `ado_import.py` holds the PR-side fetchers (`whoami`, `repo_view`, `find_pr_for_branch`, `fetch_pr_comment_bodies`, `fetch_pr_events`, `fetch_all_pull_requests`, `fetch_pr_checks`, `fetch_branch_policies`, `create_draft_pr`, `complete_pr`); `ado_pipelines.py` the pipeline side (`fetch_runs`, `run_jobs`, `secret_names` from variable groups); `ado_map.py` the **pure** translators (`map_pr`, `map_checks`, `map_reviews`, `map_runs`, `map_jobs`, `map_policies`, `map_threads` — az document in, gh-shaped dict out, no subprocess); `ado_transport.py` the one impure seam (`run_az` / `az_json`: UTF-8 forced, 60 s timeout, `AZURE_EXTENSION_USE_DYNAMIC_INSTALL=no` and `AZURE_CORE_COLLECT_TELEMETRY=no` on every spawn, always `--only-show-errors --detect false --org --project [--repository]` from the parsed remote). `AZ_CONTRACT` lists every argv prefix; `test_az_contract.py` checks each against local `az … --help` and skips cleanly when the extension is absent.
+
+**Errors:** `AdoImportError` **is a subclass of** `github_import.GitHubImportError`, so every existing `except GitHubImportError` — including the frozen `scorecard.py` — already catches an `az` failure. A normaliser that meets an az document missing a key it needs raises rather than defaulting, because a default is how "nothing here" gets fabricated from a field rename.
+
+**Honesty inside the shapes:** `updatedAt = None` and `reviews[].submittedAt = None` (Azure DevOps has no such fields); `author.login` is the UPN and `handle` is set only when the roster resolves it; an unknown enum maps to the conservative reading and leaves a `_notes[]` entry; bulk rows past the checks cap carry `_checks_unavailable: True`; `files = None` when iterations were not fetched. On hand-off the checker is `--required-reviewers <roster email>` and the developer is named in the description (no assignee on Azure DevOps); a missing email is the caller's `assignment_error`, never a failed local half.
+
+**Fixtures:** `scripts/tests/fixtures/code_host/azure_devops/captured/*.json` is real `az` output captured 2026-10-05 and anonymised (wrapped `{_provenance, _command, _secs, value}`; `CAPTURE-NOTES.md` records every fact it settled — `isRequired` is `null` not `false`, `lastMergeCommit` sits on every active PR, system-comment prose is never parsed, environments need `--api-version 7.1-preview` exactly). The hand-written documents one directory up stay marked `hand-written (unverified)`; `tests/ado_fixtures.load(name)` prefers the captured file and `test_fixture_provenance.py` lists what is still unverified.
+
+---
+
+### import_outcomes.py
+
+**Purpose:** The host-neutral `scorecard.py import`. `scorecard.py` is protected and knows only GitHub, so this verb sits beside it: on GitHub (and `none`) it calls the frozen `scorecard.import_events` literally — no second GitHub import exists; on Azure DevOps it runs `ado_outcomes.collect_report` (PR completions, vote threads, environment deployment records, `incident`-tagged Bugs → the same event shapes through `github_import.map_*`), deduplicates on `gh_id` against the existing ledger and appends with `scorecard.append_events`. `ado-*` ids (`ado-pr-merge:<id>`, `ado-pr-review:<id>`, `ado-deploy:<env>:<rec>`, `ado-wi:<id>`) never collide with `gh-*`, so one ledger carries both hosts' history.
+
+**Usage:**
+```bash
+uv run scripts/import_outcomes.py --repo <path> --since 2026-09-01 [--json]
+uv run scripts/import_outcomes.py --state .sdlc/state.yaml --since 2026-09-01 --host azure-devops
+```
+
+**Arguments:**
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `--state` / `--repo` | No | Workflow / standalone (default: cwd; the ledger is created if absent) |
+| `--since` | Yes | Only activity on/after this date (`YYYY-MM-DD`) |
+| `--host` | No | Override code-host detection for this run (flag > env > `.sdlc/code-host.yaml` > origin) |
+| `--json` | No | One JSON document carrying the top-level `host` block |
+
+**Honest by design:** output phrasing matches `scorecard.py import` ("Imported: no data" / "Imported N event(s): …" / "Error: …" exit 1). What Azure DevOps cannot record is **said, never zeroed**: a vote with no thread leaves `accepted_as_is` unknown rather than `true`; a `review_wait` with no request timestamp has no `wait_hours` key (omitted, never `None`) and is counted on its own line; a category that could not be read reports "not imported (…)" and contributes nothing. Nothing is written until every category has been read, so a failure leaves the ledger exactly as it was. `scorecard.py`, `github_import.py` and hand-recording with `record` are unchanged.
 
 ---
 
@@ -1123,6 +1362,7 @@ All scripts follow consistent error handling conventions:
   - `synthesize_spec.py` treats Phase 0 artifacts as optional
   - `map_deep_plan_artifacts.py` warns on missing section files and skips them
   - `generate_phase_report.py` shows placeholder sections for missing artifacts
+  - `sprint.py ready` / `close` warn (and still exit 0) when the sprint page fails to render — `sprint.py plan` re-renders it; a failed *ledger* append, by contrast, is loud (`DRIFT`, exit 1) because it means the frontmatter and the ledger disagree
 - **YAML round-trip safety:** State updates use `yaml.dump()` with `default_flow_style=False` and `allow_unicode=True` to preserve human readability
 
 ---
@@ -1140,3 +1380,6 @@ All scripts follow consistent error handling conventions:
 | `profiles/_schema.yaml` | Schema consumed by `validate_profile.py` |
 | `templates/state-init.yaml` | State template consumed by `init_project.py` |
 | `templates/phases/03-foundation/section-plans/SECTION-template-deep-plan.md` | Converged template consumed by `map_deep_plan_artifacts.py` |
+| `templates/phases/build/sprint.md` | Sprint-record template rendered by `sprint.py new` into `.sdlc/sprints/SNN.md` |
+| `scripts/sprint_model.py` | Pure rules of the sprint layer (mix, slate proposal, ready rule, build order, frontmatter writer, `FORBIDDEN_FIELDS`) consumed by `sprint.py`, `generate_sprint_report.py`, `retro_report.py` |
+| [references/sprint-model.md](../references/sprint-model.md) | The sprint lifecycle, the ready rule, the mix, the ledger, and the metrics policy behind `sprint.py` |

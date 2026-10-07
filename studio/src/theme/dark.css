@@ -1,0 +1,246 @@
+/* Dark theme (studio-observatory.md §2.2–2.4). Three parts, all under `[data-theme="dark"]`:
+   1. the semantic tokens' dark values (what owned code reads);
+   2. a remap of the legacy palette variables, so the 771 slate / 169 amber / 41 red usages in
+      byte-pinned and not-yet-migrated markup flip without a class-name change — Tailwind 4
+      compiles `bg-slate-900` to `var(--color-slate-900)`, so overriding the variable is enough.
+      The remap favours TEXT usage of each step; the exceptions in part 3 fix the few background
+      usages. `--color-white` is deliberately NOT remapped: `text-white` must stay white on accent
+      fills, and `bg-white` is handled by an exception instead;
+   3. the eight unlayered exception selectors, listed in full so the sweep is finite.
+   Every rule here is unlayered on purpose: it must beat Tailwind's layered theme and utilities. */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-surface-0: #0b1120;
+  --color-surface-1: #111a2b;
+  --color-surface-2: #172236;
+  --color-surface-3: #1e2a42;
+  --color-surface-raised: #1d2838;
+  --color-surface-code: #05080f;
+  --color-surface-code-error: #1a0b0b;
+  /* `surface-0` dark at .6; the blur comes from `--scrim-filter` on :root. */
+  --scrim: rgb(11 17 32 / 0.6);
+  --color-scrim: var(--scrim);
+
+  --color-ink-1: #e6edf7;
+  --color-ink-2: #b7c3d6;
+  --color-ink-3: #8392aa;
+  /* Decoration only — placeholders, dividers, aria-hidden glyphs; never a word. Lifted from
+     #5b6a84 so a hairline glyph is visible on `surface-2` without becoming a text colour. */
+  --color-ink-4: #6b7a94;
+  --color-ink-inverse: #0b1120;
+  --color-eyebrow: var(--color-ink-3);
+
+  --color-line-1: #1e2a40;
+  --color-line-2: #2b3a56;
+  --color-line-3: #44515f;
+  --color-focus: #6fd1d4;
+
+  /* The dark accent ramp is not a mirror image: 500 is the brightest text accent, 600 stays a
+     vivid fill with white ink (`bg-brand-600` is an e2e pin), 800/900 are pale for text on fills. */
+  --color-accent-50: #0a2a2e;
+  --color-accent-100: #0c363b;
+  --color-accent-200: #0f4a50;
+  --color-accent-300: #136a72;
+  --color-accent-400: #1a99a3;
+  --color-accent-500: #22a3ad;
+  --color-accent-600: #0e7c86;
+  --color-accent-700: #0b6470;
+  --color-accent-800: #6fd1d4;
+  --color-accent-900: #a7e6e7;
+  /* Accent as text: the pale end of the inverted ramp (10.5:1 / 13.6:1 on `surface-0`). */
+  --color-accent-text: #6fd1d4;
+  --color-accent-text-hover: #a7e6e7;
+
+  /* Mark A — Depth in dark: the far stop is `accent-600`, not `accent-900`, so the disc never
+     sinks into `surface-0` (#0a3f47 on #0b1120 would read as a hole). The light pair is a
+     token-ramp pair; the dark ramp is inverted, so a ramp gradient is wrong by construction. */
+  --mark-depth-a: #6fd1d4;
+  --mark-depth-b: #0e7c86;
+
+  --color-stage-signed-fill: #34d399;
+  --color-stage-signed-bg: #0b2a1e;
+  --color-stage-signed-ink: #86efac;
+  --color-stage-signed-line: #14532d;
+  /* "Now" is the accent (tokens.css says why); these are the dark accent 500/100/800/300. */
+  --color-stage-current-fill: #22a3ad;
+  --color-stage-current-bg: #0c363b;
+  --color-stage-current-ink: #6fd1d4;
+  --color-stage-current-line: #136a72;
+  --color-stage-later-fill: #5b6a84;
+  --color-stage-later-bg: #111a2b;
+  --color-stage-later-ink: #7c8a9a;
+  --color-stage-later-line: #2e3947;
+
+  --color-status-ok-fill: #4ade80;
+  --color-status-ok-bg: #0b2a1e;
+  --color-status-ok-ink: #86efac;
+  --color-status-ok-line: #14532d;
+  --color-status-warn-fill: #fbbf24;
+  --color-status-warn-bg: #2a1f06;
+  --color-status-warn-ink: #fcd34d;
+  --color-status-warn-line: #78350f;
+  --color-status-error-fill: #f87171;
+  --color-status-error-bg: #2d0f0f;
+  --color-status-error-ink: #fca5a5;
+  --color-status-error-line: #7f1d1d;
+  --color-status-running-fill: #38bdf8;
+  --color-status-running-bg: #082f49;
+  --color-status-running-ink: #7dd3fc;
+  --color-status-running-line: #0c4a6e;
+
+  --color-spec-ready: #22a3ad;
+  --color-spec-inflight: #38bdf8;
+  --color-spec-merged: #4ade80;
+  --color-spec-deferred: #5b6a84;
+  --color-spec-notready: #fbbf24;
+
+  /* §2.6 dark elevation: depth by rim light, not blur. */
+  --shadow-1: 0 0 0 1px rgb(255 255 255 / 0.07);
+  --shadow-2: 0 0 0 1px rgb(255 255 255 / 0.07), 0 8px 24px -8px rgb(0 0 0 / 0.5);
+  --shadow-3: 0 0 0 1px rgb(255 255 255 / 0.07), 0 24px 64px -16px rgb(0 0 0 / 0.7);
+
+  /* §2.4 legacy palette remap — only the steps actually used in src/ (grep 2026-10-05). */
+  --color-slate-50: #0f172a;
+  --color-slate-100: #172236;
+  --color-slate-200: #22304a;
+  --color-slate-300: #2d3d5c;
+  --color-slate-400: #5b6a84;
+  --color-slate-500: #8392aa;
+  --color-slate-600: #a9b6cb;
+  --color-slate-700: #c3cde0;
+  --color-slate-800: #dbe3f0;
+  --color-slate-900: #e6edf7;
+
+  --color-amber-50: #2a1f06;
+  --color-amber-100: #3a2a08;
+  --color-amber-200: #5a3a08;
+  --color-amber-300: #6b4609;
+  /* amber-500 is unchanged (solid chip with white text). 600/700 are text 22 times and
+     background 7; the remap follows the text rule, so `#fcd34d` on `#2a1f06` reads 10.5:1. */
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fbbf24;
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fde68a;
+
+  --color-red-50: #2a0f0f;
+  --color-red-100: #3a1414;
+  --color-red-200: #5a1c1c;
+  --color-red-300: #6b2222;
+  /* red-500 is unchanged (solid dot); red-950 is a background, fixed by an exception below. */
+  --color-red-700: #f87171;
+  --color-red-800: #fca5a5;
+  --color-red-900: #fecaca;
+
+  --color-green-100: #0b2a1e;
+  --color-green-500: #22c55e;
+  --color-green-800: #86efac;
+  --color-emerald-50: #0b2a1e;
+  --color-emerald-700: #34d399;
+  --color-sky-50: #082f49;
+  --color-sky-200: #0c4a6e;
+  --color-sky-700: #7dd3fc;
+
+  /* Command center (togo-command-center-visual.md §2). Inside the FIRST block on purpose:
+     tokenContrast.test reads only this block. Alias rows restate the alias so a retune follows. */
+  --color-lane: #0e1727;
+  --color-lane-header: #121c2f;
+  --color-lane-line: #1b2639;
+  --color-card-lit: #22a3ad;
+  --color-baton: #22a3ad;
+  --color-baton-bg: #0c363b;
+  --color-baton-ink: #6fd1d4;
+  --color-you-ring: #6fd1d4;
+  --color-strip-lit: var(--color-stage-signed-fill);
+  --color-strip-unlit: var(--color-line-2);
+  --color-strip-viewing: var(--color-stage-current-fill);
+  --color-today-act-bg: var(--color-stage-current-bg);
+  --color-today-act-ink: var(--color-stage-current-ink);
+  --color-today-act-line: var(--color-stage-current-line);
+  --color-today-wait-bg: var(--color-status-warn-bg);
+  --color-today-wait-ink: var(--color-status-warn-ink);
+  --color-today-wait-line: var(--color-status-warn-line);
+  --color-today-late-bg: var(--color-status-error-bg);
+  --color-today-late-ink: var(--color-status-error-ink);
+  --color-today-late-line: var(--color-status-error-line);
+  --color-plan-backlog: var(--color-lane);
+  --color-plan-slate: var(--color-surface-1);
+  --color-plan-says: #0a2a2e;
+  --color-plan-says-line: #0f4a50;
+  --color-rung-pass: var(--color-status-ok-fill);
+  --color-rung-fail: var(--color-status-error-fill);
+  --color-rung-pending: #38bdf8;
+  --color-rung-none: var(--color-ink-4);
+  --color-rung-rail: var(--color-line-2);
+  --color-ledger-open-bg: var(--color-status-warn-bg);
+  --color-ledger-open-ink: var(--color-status-warn-ink);
+  --color-ledger-fixed-bg: var(--color-status-ok-bg);
+  --color-ledger-fixed-ink: var(--color-status-ok-ink);
+  --color-ledger-split-bg: var(--color-stage-current-bg);
+  --color-ledger-split-ink: var(--color-stage-current-ink);
+  --color-ledger-accepted-bg: var(--color-stage-signed-bg);
+  --color-ledger-accepted-ink: var(--color-stage-signed-ink);
+  --color-ledger-postponed-bg: var(--color-stage-later-bg);
+  --color-ledger-postponed-ink: var(--color-stage-later-ink);
+  --color-ledger-offbooks: var(--color-status-error-fill);
+  --color-steer-bg: #070c16;
+  --color-steer-tile: #111a2b;
+  --color-steer-tile-line: var(--color-line-1);
+  --color-steer-number-ink: var(--color-ink-1);
+  --color-steer-label-ink: var(--color-ink-2);
+  --color-steer-nodata-ink: var(--color-ink-3);
+}
+
+/* The eight exceptions. Each fixes a BACKGROUND usage the text-favouring remap would get wrong. */
+
+/* 78 card and list backgrounds flip without remapping `--color-white`. */
+[data-theme=dark] .bg-white {
+  background-color: var(--color-surface-1);
+}
+
+/* Console and HistoryPanel `<pre>` blocks stay dark with their `text-slate-100` (now #dbe3f0). */
+[data-theme=dark] .bg-slate-900 {
+  background-color: #05080f;
+}
+
+/* Inverse pills invert to a light pill with dark ink; the class stays for the board e2e pin. */
+[data-theme=dark] .bg-slate-900.text-white {
+  background-color: #e6edf7;
+  color: #0b1120;
+}
+
+/* The OpeningOverlay scrim stays a dark wash. */
+[data-theme=dark] .bg-slate-900\/40 {
+  background-color: var(--color-scrim);
+}
+
+/* Console stderr. `text-red-100` remaps to a tint, so the ink is set here too. */
+[data-theme=dark] .bg-red-950 {
+  background-color: #1a0b0b;
+  color: #fecaca;
+}
+
+/* The app canvas (Frame, Sidebar aside). Same as the remap; stated because it is the canvas. */
+[data-theme=dark] .bg-slate-50 {
+  background-color: var(--color-surface-0);
+}
+
+/* Three progress tracks. */
+[data-theme=dark] .bg-slate-200\/50 {
+  background-color: rgb(45 61 92 / 0.5);
+}
+
+/* The sub-agent bubble border stays visible on the remapped `bg-slate-50`. */
+[data-theme=dark] .border-dashed.border-slate-300 {
+  border-color: #3b4d70;
+}
+
+/* Solid amber chips (7 usages) carry white text; the text-favouring remap of amber-600/700 to
+   #fbbf24 would make them unreadable, so the fills keep their light values here. */
+[data-theme=dark] .bg-amber-600 {
+  background-color: #d97706;
+}
+[data-theme=dark] .bg-amber-700 {
+  background-color: #b45309;
+}

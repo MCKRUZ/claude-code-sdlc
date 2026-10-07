@@ -1,0 +1,201 @@
+{
+  "_provenance": "hand-written (unverified)",
+  "_command": null,
+  "value": [
+    {
+      "pullRequestId": 42,
+      "status": "active",
+      "isDraft": false,
+      "sourceRefName": "refs/heads/spec/0042-duplicate-claim",
+      "targetRefName": "refs/heads/main",
+      "creationDate": "2026-09-20T09:00:00.000Z",
+      "closedDate": null,
+      "createdBy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "displayName": "Person 1",
+        "uniqueName": "person1@example.com"
+      },
+      "reviewers": [
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "displayName": "Person 2",
+          "uniqueName": "person2@example.com",
+          "vote": 0,
+          "isRequired": true,
+          "isContainer": false,
+          "hasDeclined": false,
+          "isFlagged": false
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000003",
+          "displayName": "Person 3",
+          "uniqueName": "person3@example.com",
+          "vote": 10,
+          "isRequired": false,
+          "isContainer": false,
+          "hasDeclined": false,
+          "isFlagged": false
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000001",
+          "displayName": "Person 1",
+          "uniqueName": "person1@example.com",
+          "vote": 10,
+          "isRequired": false,
+          "isContainer": false,
+          "hasDeclined": false,
+          "isFlagged": false
+        }
+      ],
+      "labels": [],
+      "lastMergeCommit": null,
+      "repository": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "claims-api",
+        "defaultBranch": "refs/heads/main",
+        "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+        "project": {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "name": "Claims"
+        }
+      },
+      "url": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000001/pullRequests/42",
+      "title": "Spec 42"
+    },
+    {
+      "pullRequestId": 41,
+      "status": "completed",
+      "isDraft": false,
+      "sourceRefName": "refs/heads/spec/0041-eligibility",
+      "targetRefName": "refs/heads/main",
+      "creationDate": "2026-09-20T09:00:00.000Z",
+      "closedDate": "2026-09-22T15:00:00Z",
+      "createdBy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "displayName": "Person 1",
+        "uniqueName": "person1@example.com"
+      },
+      "reviewers": [
+        {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "displayName": "Person 2",
+          "uniqueName": "person2@example.com",
+          "vote": 10,
+          "isRequired": false,
+          "isContainer": false,
+          "hasDeclined": false,
+          "isFlagged": false
+        }
+      ],
+      "labels": [
+        {
+          "name": "risk:high"
+        }
+      ],
+      "lastMergeCommit": {
+        "commitId": "abc123def456"
+      },
+      "repository": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "claims-api",
+        "defaultBranch": "refs/heads/main",
+        "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+        "project": {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "name": "Claims"
+        }
+      },
+      "url": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000001/pullRequests/41",
+      "title": "Spec 41"
+    },
+    {
+      "pullRequestId": 40,
+      "status": "abandoned",
+      "isDraft": false,
+      "sourceRefName": "refs/heads/spec/0040-dropped",
+      "targetRefName": "refs/heads/main",
+      "creationDate": "2026-09-20T09:00:00.000Z",
+      "closedDate": "2026-09-19T15:00:00Z",
+      "createdBy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "displayName": "Person 1",
+        "uniqueName": "person1@example.com"
+      },
+      "reviewers": [],
+      "labels": [],
+      "lastMergeCommit": {
+        "commitId": "stalecafe"
+      },
+      "repository": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "claims-api",
+        "defaultBranch": "refs/heads/main",
+        "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+        "project": {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "name": "Claims"
+        }
+      },
+      "url": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000001/pullRequests/40",
+      "title": "Spec 40"
+    },
+    {
+      "pullRequestId": 39,
+      "status": "active",
+      "isDraft": true,
+      "sourceRefName": "refs/heads/spec/0039-draft",
+      "targetRefName": "refs/heads/main",
+      "creationDate": "2026-09-20T09:00:00.000Z",
+      "closedDate": null,
+      "createdBy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "displayName": "Person 1",
+        "uniqueName": "person1@example.com"
+      },
+      "reviewers": [],
+      "labels": [],
+      "lastMergeCommit": null,
+      "repository": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "claims-api",
+        "defaultBranch": "refs/heads/main",
+        "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+        "project": {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "name": "Claims"
+        }
+      },
+      "url": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000001/pullRequests/39",
+      "title": "Spec 39"
+    },
+    {
+      "pullRequestId": 38,
+      "status": "notSet",
+      "isDraft": false,
+      "sourceRefName": "refs/heads/spec/0038-odd",
+      "targetRefName": "refs/heads/main",
+      "creationDate": "2026-09-20T09:00:00.000Z",
+      "closedDate": null,
+      "createdBy": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "displayName": "Person 1",
+        "uniqueName": "person1@example.com"
+      },
+      "reviewers": [],
+      "labels": [],
+      "lastMergeCommit": null,
+      "repository": {
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "claims-api",
+        "defaultBranch": "refs/heads/main",
+        "webUrl": "https://dev.azure.com/contoso/Claims/_git/claims-api",
+        "project": {
+          "id": "00000000-0000-0000-0000-000000000002",
+          "name": "Claims"
+        }
+      },
+      "url": "https://dev.azure.com/contoso/_apis/git/repositories/00000000-0000-0000-0000-000000000001/pullRequests/38",
+      "title": "Spec 38"
+    }
+  ]
+}

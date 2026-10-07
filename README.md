@@ -40,6 +40,7 @@ No existing tool combines specification-driven development + quality enforcement
 - **Phase-scoped evaluation criteria** — Quality rubrics that apply to non-code artifacts (requirements, design, foundation) in addition to code
 - **Empirical metrics logging** — JSONL instrumentation in gates, frozen layer validation, and section evaluation for evidence-based harness optimization
 - **Discipline seats** — Conditional, interview-driven drafting seats that stop at a human confirmation: `/sdlc-feature` (epic → channel-aware feature brief, one channel per spec), `/sdlc-rules` (business rules as a BR-NN decision table with a named approver, plus golden scenarios), `/sdlc-data` (PII-classified data contract that drives the risk tier, readiness, lineage), `/sdlc-experience` (journey, surface layout, per-channel interaction contract), `/sdlc-channel` (binds a spec to its channel and injects the acceptance dimensions). Sign-offs recorded at the phase advance.
+- **Sprint team layer** — Additive, advisory sprints over the spec backlog: `/sdlc-sprint` slates a *count* of specs by risk-tier mix into a two-week commitment window (`.sdlc/sprints/SNN.md`), readies the sprint only when every slated spec clears the Definition of Ready **and** its independent Engineering and Data verdicts, shows the advisory build order and next-up, and closes with kept / carried / dropped — each carry or drop with a named human and a reason. `/sdlc-refine` renders the refinement agenda (NOT READY specs and why, verdicts pending with business-day age, unacknowledged handoffs, overdue `DL-NN` decisions) and refines one spec or the whole slate. Self-contained planning and review pages (`sprint-SNN-planning.html` / `-review.html`), an `[SDLC-SPRINT]` session-start line, carry-over recurrence in `/sdlc-retro`. Never a gate, never gated, never writes `state.yaml`; velocity, story points, estimates, effort and hours are refused (exit 2); no per-person aggregation exists.
 - **Document intake** — Opt-in Phase 0 corpus analysis for external reference materials (RFPs, API specs, vendor docs, compliance handbooks) with per-document summaries, DOC-NNN traceability IDs, token-budgeted session-start index (Tier 1.5), and Phase 1 requirement-to-source linking
 
 ## Installation
@@ -89,6 +90,42 @@ cd claude-code-sdlc/scripts
 uv sync
 ```
 
+### Code hosts
+
+The plugin talks to the repository's code host for the pull-request-facing work — a spec's
+live status, the hand-off's draft PR, the connection report, branch policies, pipeline evidence,
+the gates' credentials, and the scorecard import. Two hosts are supported, and **the repository
+chooses**, by its `origin` remote: a GitHub remote uses the GitHub CLI (`gh`), an Azure DevOps
+remote (`dev.azure.com`, `*.visualstudio.com`, `ssh.dev.azure.com`) uses the Azure CLI (`az`)
+with the `azure-devops` extension. Neither CLI is required to open a project, run the gates, or
+read a board built from the spec files; it is required only for the features that read or write
+pull requests, and each of those says which CLI it is missing instead of failing.
+
+| Feature | GitHub | Azure DevOps |
+|---|---|---|
+| `/sdlc-spec-status`, `/sdlc-handoff` (the draft PR and reviewer request), `connection_report.py`, `pipeline_proof.py`'s PR reads, `gate_auth.py status` | `gh`, signed in | `az` + `azure-devops` extension, signed in |
+| Scorecard import | `scorecard.py import` or `import_outcomes.py` | `import_outcomes.py` |
+| `gate_auth.py set` / `clear` | `gh` | prints the manual `az` command (variable groups are not written from here) |
+| Pipelines, secrets, `/sdlc-doctor` | follow the **installed CI pack** (`.claude/harness-manifest.json`), not the remote — a GitHub repository on Azure Pipelines is a legitimate mix and is reported, never resolved silently |
+
+Setting up `az`: `az extension add --name azure-devops`, then sign in. The CLI's **default account
+decides the token**, so a guest or contractor identity in the organisation's tenant must sign in
+as that identity with `az login --allow-no-subscriptions`; and an identity that has never opened
+the organisation in a browser gets HTTP 403 "identity … has not been materialized" until it has
+signed in once there interactively. `code_host.py --repo <path>` says which host was detected,
+why, and whether its CLI answered.
+
+Two optional files complete the Azure DevOps side. Azure DevOps names people by sign-in identity
+(UPN), not by handle, so a roster entry in `.sdlc/team.yaml` gains an optional `email:` — the only
+way a PR's reviewer is resolved to an `@handle`; nothing guesses it from a display name, and a
+checker without one is reported as an `assignment_error` on hand-off, not invented. When the
+remote cannot be recognised (GitHub Enterprise Server, an unusual proxy), `.sdlc/code-host.yaml`
+pins the host for that clone — written with
+`uv run scripts/set_setting.py --repo <path> code-host --host azure-devops` (plus
+`--organization`, `--project`, `--repository` when the remote cannot be parsed at all). A one-off
+override is `--host` on any host-touching script, or the `SDLC_CODE_HOST` environment variable.
+Full rules: `references/code-host-providers.md`.
+
 ## Quick Start
 
 ```
@@ -110,13 +147,13 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | [Phase Lifecycle](docs/phase-lifecycle.md) | All 9 phases in depth — workflows, artifacts, HITL gates, skills, agents, handoff protocol, project type adaptations |
 | [Gate System](docs/gate-system.md) | 7-gate validation — integrity, completeness, metrics, compliance, consistency, quality, exit criteria — severity levels, override protocol |
 | [Profiles](docs/profiles.md) | Schema reference (every field), built-in profiles, custom profile creation, compliance framework integration, evaluation criteria |
-| [Commands](docs/commands.md) | All 23 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
+| [Commands](docs/commands.md) | All 30 slash commands — internal flow, state changes, Python scripts called, error scenarios, examples |
 | [Agents](docs/agents.md) | 13 custom agents + built-in subagent orchestration, phase-to-agent mapping, parallel execution rules, mandatory spawns |
-| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, session-handoff.json, the spec backlog |
+| [State Machine](docs/state-machine.md) | state.yaml format, transition rules, history tracking, the spec backlog, sprint records (`.sdlc/sprints/`) |
 | [Templates & Artifacts](docs/templates-artifacts.md) | Template directory structure, per-phase artifact details, handoff document protocol, artifact lifecycle |
 | [Scripts](docs/scripts.md) | All Python scripts (incl. `phase_model.py`, the phase-identity source of truth) — CLI args, inputs/outputs, exit codes, gate implementation details, uv runtime |
 | [Integrations](docs/integrations.md) | How /deep-plan, /deep-implement, /tdd, /code-review map into SDLC phases, artifact transformation pipeline |
-| [Hooks](docs/hooks.md) | Session-start and phase-inject hooks — what they read, what they inject, session continuity, convention reminders |
+| [Hooks](docs/hooks.md) | Session-start and phase-inject hooks — what they read, what they inject, the active-sprint line, convention reminders |
 
 ## Commands
 
@@ -132,6 +169,8 @@ For in-depth technical documentation, see the guides in [`docs/`](docs/):
 | `/sdlc-intake` | Catalog and summarize an external document corpus (Phase 0, opt-in) |
 | `/sdlc-brief` | Prep a stakeholder workshop brief from the document corpus |
 | `/sdlc-spec` | Author a ready Build-loop spec (`specs/NNNN-name.md`) and enforce the Definition of Ready |
+| `/sdlc-sprint` | Sprint board — slate N specs by risk-tier mix, ready the sprint (DoR + Eng/Data verdicts), close with kept / carried / dropped; advisory, never a gate |
+| `/sdlc-refine` | Refinement agenda for the sprint's specs — DoR gaps, pending verdicts, overdue decisions; refine one spec or the slate; record Eng/Data verdicts |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases |
@@ -167,6 +206,11 @@ microsoft-enterprise's stack, hosted on Azure DevOps:
   branch policies) and never asks it to authenticate `gh`. PR-flow rails (the review-gate
   hook, `pr-writer`) recognize `az repos pr create` the same way they recognize `gh pr
   create`.
+- **The code host is read through `az` too:** `/sdlc-spec-status` (checks, grader verdict,
+  approvals, who it is waiting on), `/sdlc-handoff`'s draft PR with the checker as a required
+  reviewer, the connection report, branch policies, pipeline evidence and the scorecard import
+  (`import_outcomes.py`) all read and write Azure Repos pull requests. The repository's
+  `origin` remote decides the host; see **Code hosts** under Installation.
 
 ### ado-enterprise-python
 ado-enterprise's Python sibling — same rails, FastAPI + React stack:
@@ -252,7 +296,7 @@ Gates have severity levels:
 claude-code-sdlc/
 ├── plugin.json              # Plugin manifest
 ├── SKILL.md                 # Main skill entry point
-├── commands/                # 23 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-phase-report, /sdlc-audit, /sdlc-feature, /sdlc-experience, /sdlc-data, /sdlc-rules, /sdlc-channel, /sdlc-evals, /sdlc-harness, /sdlc-upgrade, /sdlc-revise, /sdlc-audit-artifacts)
+├── commands/                # 32 slash commands (/sdlc, /sdlc-setup, /sdlc-status, /sdlc-next, /sdlc-gate, /sdlc-enhance, /sdlc-coach, /sdlc-review, /sdlc-intake, /sdlc-brief, /sdlc-spec, /sdlc-spike, /sdlc-sprint, /sdlc-refine, /sdlc-handoff, /sdlc-spec-status, /sdlc-audit, /sdlc-audit-artifacts, /sdlc-channel, /sdlc-data, /sdlc-doctor, /sdlc-evals, /sdlc-experience, /sdlc-feature, /sdlc-harness, /sdlc-phase-report, /sdlc-refresh, /sdlc-retro, /sdlc-revise, /sdlc-rules, /sdlc-upgrade, /sdlc-version)
 ├── agents/                  # 14 agents (orchestrator, requirements-analyst, compliance-checker, section-evaluator, narrative-enhancer, gate-repair, multi-reviewer, discovery-analyst, document-summarizer, feature-architect, visual-designer, conversation-designer, data-analyst, bizreq-analyst)
 ├── profiles/                # Company/stack YAML profiles
 ├── channels/                # Channel descriptor library (ag-ui, voice, chat) + schema

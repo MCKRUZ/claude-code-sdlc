@@ -255,3 +255,64 @@ class TestBothWorkflowSpellings:
         guide = GUIDE.replace("`grader.yml`", "`grader.yaml`")
         result = gi.inventory(_project(tmp_path, guide=guide, workflows=("ci.yml", "grader.yaml")))
         assert not any(u["file"] == "grader.yaml" for u in result["unexpected"])
+
+
+class TestOnAzurePipelines:
+    """Additive (code-host providers, Wave 3): the pipeline directory follows the CI platform the
+    harness manifest records. Everything above is untouched: with no manifest the directory is
+    .github/workflows, exactly as before."""
+
+    @staticmethod
+    def _ado_project(tmp_path, pipelines=("ci.yml",), github_workflows=(), ledgers=()):
+        import json
+        (tmp_path / ".claude").mkdir(exist_ok=True)
+        (tmp_path / ".claude" / "harness-manifest.json").write_text(
+            json.dumps({"packs": ["stacks/dotnet", "cicd/azure-devops"]}), encoding="utf-8")
+        (tmp_path / ".github").mkdir(exist_ok=True)
+        (tmp_path / ".github" / "RAILS.md").write_text(GUIDE, encoding="utf-8")  # the guide keeps its home on both platforms
+        folder = tmp_path / ".azuredevops" / "pipelines"
+        folder.mkdir(parents=True, exist_ok=True)
+        for name in pipelines:
+            (folder / name).write_text("trigger: none\n", encoding="utf-8")
+        gh_wf = tmp_path / ".github" / "workflows"
+        for name in github_workflows:
+            gh_wf.mkdir(exist_ok=True)
+            (gh_wf / name).write_text("name: x\n", encoding="utf-8")
+        for rel in ledgers:
+            path = tmp_path / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("# a ledger\n", encoding="utf-8")
+        return tmp_path
+
+    def test_the_pipelines_dir_follows_the_manifest(self, tmp_path):
+        assert gi.installed_pipelines_dir(tmp_path) == ".github/workflows"  # no manifest: as before
+        self._ado_project(tmp_path)
+        assert gi.installed_pipelines_dir(tmp_path) == ".azuredevops/pipelines"
+
+    def test_a_gate_is_installed_from_azure_pipelines_and_a_missing_one_names_that_dir(self, tmp_path):
+        result = gi.inventory(self._ado_project(tmp_path, pipelines=("ci.yml",)))
+        gates = {g["gate"]: g for g in result["gates"]}
+        assert gates["build-and-test"]["state"] == "installed"
+        assert gates["grader"]["state"] == "missing"
+        assert gates["grader"]["detail"] == "grader.yml is not in .azuredevops/pipelines"
+        assert result["pipelines_dir"] == ".azuredevops/pipelines"
+
+    def test_github_workflows_are_never_read_as_installed_on_an_azure_install(self, tmp_path):
+        # A leftover .github/workflows/grader.yml is not a gate on Azure Pipelines; counting it would
+        # tell this project it is protected by a pipeline that never runs.
+        result = gi.inventory(self._ado_project(tmp_path, pipelines=("ci.yml",), github_workflows=("grader.yml",)))
+        gates = {g["gate"]: g for g in result["gates"]}
+        assert gates["grader"]["state"] == "missing"
+        assert result["unexpected"] == []
+
+    def test_a_pipeline_the_project_added_itself_is_shown_from_the_azure_dir(self, tmp_path):
+        result = gi.inventory(self._ado_project(tmp_path, pipelines=("ci.yml", "nightly.yml")))
+        assert [u["file"] for u in result["unexpected"]] == ["nightly.yml"]
+
+    def test_bypass_ledgers_follow_the_rails_home(self, tmp_path):
+        self._ado_project(tmp_path, ledgers=(".azuredevops/rails/eval-bypasses.md",))
+        ledgers = {l["file"]: l for l in gi.inventory(tmp_path)["bypass_ledgers"]}
+        assert set(ledgers) == {".azuredevops/rails/eval-bypasses.md", ".azuredevops/rails/dependency-exceptions.md"}
+        assert ledgers[".azuredevops/rails/eval-bypasses.md"]["present"] is True
+        assert ledgers[".azuredevops/rails/dependency-exceptions.md"]["present"] is False
+        assert gi.bypass_ledgers_for(tmp_path / "elsewhere") == gi.BYPASS_LEDGERS  # no manifest: GitHub's, as before

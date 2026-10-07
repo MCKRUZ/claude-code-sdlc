@@ -1,0 +1,292 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "pipelines",
+  "variable-group",
+  "list",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1"
+ ],
+ "_secs": 1.1,
+ "value": [
+  {
+   "createdBy": {
+    "descriptor": null,
+    "directoryAlias": null,
+    "displayName": "Person 9",
+    "id": "00000000-0000-0000-0000-000000000035",
+    "imageUrl": null,
+    "inactive": null,
+    "isAadIdentity": null,
+    "isContainer": null,
+    "isDeletedInOrigin": null,
+    "profileUrl": null,
+    "uniqueName": "person9@example.com",
+    "url": null
+   },
+   "createdOn": "2026-10-01T14:10:53.886666+00:00",
+   "description": null,
+   "id": 268,
+   "isShared": false,
+   "modifiedBy": {
+    "descriptor": null,
+    "directoryAlias": null,
+    "displayName": "Person 3",
+    "id": "00000000-0000-0000-0000-000000000007",
+    "imageUrl": null,
+    "inactive": null,
+    "isAadIdentity": null,
+    "isContainer": null,
+    "isDeletedInOrigin": null,
+    "profileUrl": null,
+    "uniqueName": "person3@example.com",
+    "url": null
+   },
+   "modifiedOn": "2026-10-02T19:49:32.410000+00:00",
+   "name": "variable-group-1",
+   "providerData": null,
+   "type": "Vsts",
+   "variableGroupProjectReferences": null,
+   "variables": {
+    "VAR_1": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_2": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_3": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_4": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_5": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_6": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_7": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_8": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_9": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_10": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_11": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_12": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_13": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_14": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_15": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_16": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_17": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_18": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_19": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_20": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_21": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_22": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_23": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_24": {
+     "isSecret": null,
+     "value": "<value>"
+    }
+   }
+  },
+  {
+   "createdBy": {
+    "descriptor": null,
+    "directoryAlias": null,
+    "displayName": "Person 9",
+    "id": "00000000-0000-0000-0000-000000000035",
+    "imageUrl": null,
+    "inactive": null,
+    "isAadIdentity": null,
+    "isContainer": null,
+    "isDeletedInOrigin": null,
+    "profileUrl": null,
+    "uniqueName": "person9@example.com",
+    "url": null
+   },
+   "createdOn": "2026-10-01T14:04:35.660000+00:00",
+   "description": null,
+   "id": 267,
+   "isShared": false,
+   "modifiedBy": {
+    "descriptor": null,
+    "directoryAlias": null,
+    "displayName": "Person 3",
+    "id": "00000000-0000-0000-0000-000000000007",
+    "imageUrl": null,
+    "inactive": null,
+    "isAadIdentity": null,
+    "isContainer": null,
+    "isDeletedInOrigin": null,
+    "profileUrl": null,
+    "uniqueName": "person3@example.com",
+    "url": null
+   },
+   "modifiedOn": "2026-10-02T19:57:07.590000+00:00",
+   "name": "variable-group-2",
+   "providerData": null,
+   "type": "Vsts",
+   "variableGroupProjectReferences": null,
+   "variables": {
+    "VAR_1": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_2": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_3": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_4": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_5": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_6": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_7": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_8": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_9": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_10": {
+     "isSecret": true,
+     "value": null
+    },
+    "VAR_11": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_12": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_13": {
+     "isSecret": true,
+     "value": null
+    },
+    "VAR_14": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_15": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_16": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_17": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_18": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_19": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_20": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_21": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_22": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_23": {
+     "isSecret": null,
+     "value": "<value>"
+    },
+    "VAR_24": {
+     "isSecret": null,
+     "value": "<value>"
+    }
+   }
+  }
+ ]
+}

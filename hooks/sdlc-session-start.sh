@@ -74,13 +74,35 @@ case "$phase_id" in
     1) phase_reminder="Ensure changes trace back to documented requirements." ;;
     2) phase_reminder="Document architectural decisions as ADRs." ;;
     3) phase_reminder="Build the factory (harness, rails, dev infra) and a thin walking skeleton." ;;
-    build) phase_reminder="One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work." ;;
+    build) phase_reminder="One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work. Refinement for the next sprint runs alongside — /sdlc-refine; the board is /sdlc-sprint." ;;
     7) phase_reminder="Prove docs by cold use. Finalize ADRs." ;;
     8) phase_reminder="Promote the proven artifact. Document the rollback plan." ;;
     9) phase_reminder="Configure alerts from measured baselines. Run the drill." ;;
     close) phase_reminder="Prove the client can run it without us. Audit the harness, revoke access, harvest." ;;
 esac
 [ -n "$phase_reminder" ] && echo "[SDLC-PHASE] $phase_reminder"
+
+# --- Active sprints (Sprint Team Layer): one line per .sdlc/sprints/*.md whose state is not closed ---
+# grep/sed only — no date arithmetic, no JSON, no uv. Silent when the directory is absent.
+sprint_field() {
+    # $1 = file, $2 = key. First "key:" line wins; a quoted value is taken verbatim, else a trailing "# comment" is stripped.
+    grep -a -m1 -E "^$2:" "$1" 2>/dev/null | tr -d '\r' | sed -E "s/^$2:[[:space:]]*//" \
+        | sed -E -e 's/^"([^"]*)".*$/\1/' -e 't' -e 's/[[:space:]]*#.*$//' -e 's/[[:space:]]+$//'
+}
+sprints_dir="$sdlc_dir/sprints"
+if [ -d "$sprints_dir" ]; then
+    for f in "$sprints_dir"/*.md; do
+        [ -f "$f" ] || continue
+        sprint_state=$(sprint_field "$f" "state")
+        [ -n "$sprint_state" ] || continue            # no state line — not a sprint record we understand
+        [ "$sprint_state" = "closed" ] && continue
+        sprint_id=$(sprint_field "$f" "sprint"); [ -n "$sprint_id" ] || sprint_id=$(basename "$f" .md)
+        sprint_goal=$(sprint_field "$f" "goal")
+        sprint_start=$(sprint_field "$f" "start")
+        sprint_end=$(sprint_field "$f" "end")
+        echo "[SDLC-SPRINT] $sprint_id ($sprint_state) — \"$sprint_goal\" — $sprint_start → $sprint_end"
+    done
+fi
 
 # Take the first N whitespace-separated words of stdin, joined by single spaces
 first_words() {
@@ -162,64 +184,6 @@ if [ -f "$profile_file" ]; then
 
     if [ "$health_enabled" = "true" ] && [ "$cur_order" -ge "$min_order" ]; then
         echo "[SDLC-HEALTH] Health check is enabled. Run the configured smoke test before starting new work (Build loop pre-flight check)."
-    fi
-fi
-
-# --- Session handoff file (Build loop continuity) ---
-if [ "$phase_id" = "build" ]; then
-    handoff_file="$sdlc_dir/artifacts/build/session-handoff.json"
-    if [ -f "$handoff_file" ]; then
-        json_reader=""
-        if command -v jq >/dev/null 2>&1; then
-            json_reader="jq"
-        elif command -v python3 >/dev/null 2>&1; then
-            json_reader="python3"
-        elif command -v python >/dev/null 2>&1; then
-            json_reader="python"
-        fi
-
-        if [ -z "$json_reader" ]; then
-            echo "[SDLC] WARNING: no JSON parser available (jq/python) - skipping handoff summary"
-        elif [ "$json_reader" = "jq" ]; then
-            if summary=$(jq -r '
-                (.sections // []) as $s
-                | ([$s[] | select(.status=="complete")] | length) as $done
-                | ([$s[] | select(.status=="in_progress")] | length) as $prog
-                | ([$s[] | select(.status=="blocked")] | length) as $blk
-                | ([(.blockers // [])[] | select(.resolved != true)] | length) as $ab
-                | "[SDLC] Session Handoff: \($done)/\($s | length) sections complete, \($prog) in progress, \($blk) blocked (session #\(.session_number))",
-                  (if .context_for_next_session then "[SDLC] Context: \(.context_for_next_session)" else empty end),
-                  (if ((.next_actions // []) | length) > 0 and (.next_actions[0].action != null) then "[SDLC] Next action: \(.next_actions[0].action) (\(.next_actions[0].section))" else empty end),
-                  (if $ab > 0 then "[SDLC] WARNING: \($ab) active blocker(s)" else empty end)
-            ' "$handoff_file" 2>/dev/null); then
-                printf '%s\n' "$summary"
-            else
-                echo "[SDLC] WARNING: session-handoff.json is malformed - skipping handoff summary"
-            fi
-        else
-            "$json_reader" - "$handoff_file" <<'PYEOF'
-import json, sys
-try:
-    with open(sys.argv[1], encoding="utf-8") as f:
-        h = json.load(f)
-except Exception:
-    print("[SDLC] WARNING: session-handoff.json is malformed - skipping handoff summary")
-    sys.exit(0)
-sections = h.get("sections") or []
-done = sum(1 for s in sections if s.get("status") == "complete")
-prog = sum(1 for s in sections if s.get("status") == "in_progress")
-blk = sum(1 for s in sections if s.get("status") == "blocked")
-print(f"[SDLC] Session Handoff: {done}/{len(sections)} sections complete, {prog} in progress, {blk} blocked (session #{h.get('session_number')})")
-if h.get("context_for_next_session"):
-    print(f"[SDLC] Context: {h['context_for_next_session']}")
-actions = h.get("next_actions") or []
-if actions and actions[0].get("action"):
-    print(f"[SDLC] Next action: {actions[0]['action']} ({actions[0].get('section')})")
-active = sum(1 for b in (h.get("blockers") or []) if not b.get("resolved"))
-if active > 0:
-    print(f"[SDLC] WARNING: {active} active blocker(s)")
-PYEOF
-        fi
     fi
 fi
 

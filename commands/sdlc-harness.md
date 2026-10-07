@@ -21,10 +21,13 @@ Summarize what was written vs skipped, then remind the user:
 - Fill any remaining `{{PLACEHOLDER}}` tokens in `CLAUDE.md` and the workflows/pipelines.
 - **Prove the rails** before trusting them — the shakedown drills in `.github/RAILS.md`
   (the same path holds the ADO guide on azure-devops installs — the pack deliberately overlays it).
-- Apply branch protection if on GitHub: `bash scripts/rails/apply-branch-protection.sh`.
+- Apply branch protection if on GitHub (needs `gh`, signed in):
+  `bash scripts/rails/apply-branch-protection.sh`.
   On Azure DevOps, configure branch policies instead — needs `az` + the `azure-devops` extension:
   `bash scripts/rails/configure-branch-policies.sh --dry-run` to preview, then re-run without the
-  flag to apply.
+  flag to apply. Which host the repository is on is read from its `origin` remote
+  (`uv run --project ${CLAUDE_PLUGIN_ROOT}/scripts ${CLAUDE_PLUGIN_ROOT}/scripts/code_host.py --repo .`
+  says which, and whether that CLI is usable); neither CLI is needed for the install itself.
 
 ## What it installs
 `CLAUDE.md` (governance), `specs/spec-template.md`, `.claude/{settings.json,hooks,agents,skills}`,

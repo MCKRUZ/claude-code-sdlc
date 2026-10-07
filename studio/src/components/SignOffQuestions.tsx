@@ -1,14 +1,29 @@
 import type { HintStatus, SignOffQuestion } from '../../shared/types'
+import { Eyebrow, Notice } from '../ui'
+import { useCountUp } from '../motion/useCountUp'
 
+// C1: "Not yet" is the status-warn ink token (legible on both themes), not a raw amber.
 const HINT: Record<HintStatus, { label: string; tone: string }> = {
   looks_met: { label: 'Looks done', tone: 'text-[var(--color-command-ok)]' },
-  not_yet: { label: 'Not yet', tone: 'text-amber-700' },
+  not_yet: { label: 'Not yet', tone: 'text-status-warn-ink' },
   judgement: { label: 'Needs your judgement', tone: 'text-slate-500' },
 }
 
 function formatWhen(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+}
+
+/** "N of M confirmed". The count moves through `useCountUp` (§4.2 #11) — only between two real
+ * values, keyed on THIS stage's questions so a different stage's count is never the "previous"
+ * value a tween starts from. The rendered text is identical to the plain string. */
+function ConfirmedCount({ confirmed, total, memoryKey }: { confirmed: number; total: number; memoryKey: string }) {
+  const count = useCountUp(`sign-off-confirmed:${memoryKey}`, confirmed)
+  return (
+    <span className="text-xs text-slate-500">
+      <span ref={count.ref}>{count.text}</span>{` of ${total} confirmed`}
+    </span>
+  )
 }
 
 /** The questions for whoever signs a stage off: a box for each, and beside it what Studio could
@@ -34,16 +49,19 @@ export function SignOffQuestions({
   return (
     <div>
       <div className="mb-2 flex items-baseline justify-between">
-        <h3 className="text-xs font-medium uppercase tracking-wide text-slate-400">Questions for whoever signs this off</h3>
-        <span className="text-xs text-slate-500">{`${confirmed} of ${questions.length} confirmed`}</span>
+        <Eyebrow as="h3">Questions for whoever signs this off</Eyebrow>
+        <ConfirmedCount confirmed={confirmed} total={questions.length} memoryKey={questions.map((q) => q.id || q.text).join('|')} />
       </div>
-      <ul className="divide-y divide-slate-200 overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <ul className="divide-y divide-line-1 overflow-hidden rounded-xl border border-line-1 bg-surface-1">
         {questions.map((q) => {
           const hint = HINT[q.hint.status]
           const canTick = Boolean(actor.trim()) && Boolean(q.id) && busyId !== q.id
           return (
-            <li key={q.id || q.text} className="flex items-start justify-between gap-6 px-4 py-3">
+            <li key={q.id || q.text} data-reveal="" className="flex items-start justify-between gap-6 px-4 py-3">
               <label className="flex min-w-0 flex-1 items-start gap-3 text-sm text-slate-800">
+                {/* A native checkbox, not a kit control: the aria-label IS the question (pinned),
+                    and the sign-off questions test reads `type="checkbox"` then `disabled` in
+                    this attribute order. */}
                 <input
                   type="checkbox"
                   aria-label={q.text}
@@ -69,16 +87,16 @@ export function SignOffQuestions({
           )
         })}
       </ul>
-      <p className="mt-2 text-xs text-slate-400">
+      <p className="mt-2 text-xs text-ink-3">
         The notes on the right are pre-checks: they show what Studio could see, and you still confirm.
       </p>
       {!actor.trim() && (
-        <p className="mt-1 text-xs text-amber-700">Studio records who confirmed, and you need to sign in before you can confirm.</p>
+        <Notice tone="warn" className="mt-2">Studio records who confirmed, and you need to sign in before you can confirm.</Notice>
       )}
       {tooOld && (
-        <p className="mt-1 text-xs text-amber-700">This plugin is too old to keep confirmations. To tick these, update the plugin.</p>
+        <Notice tone="warn" className="mt-2">This plugin is too old to keep confirmations. To tick these, update the plugin.</Notice>
       )}
-      {error && <p className="mt-1 text-xs text-[var(--color-command-error)]">{error}</p>}
+      {error && <Notice tone="error" className="mt-2">{error}</Notice>}
     </div>
   )
 }

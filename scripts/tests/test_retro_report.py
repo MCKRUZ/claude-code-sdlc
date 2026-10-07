@@ -6,6 +6,11 @@ math (per-spec + by-stem aggregation, refreshed-via-source_spec attribution), ho
 empty repo, exit 0 on every path (parametrized), dual-mode --repo / --state, the stable --json
 shape, --window-days filtering, and that output/JSON never carries an actor-keyed ranking.
 
+Sprint-layer sections (1.6): carry-over recurrence from sprint-log.jsonl `carried` events (>= 2
+sprints flags RECURRING), bounce causes from `verdict: returned` grouped by lane + reason category,
+has_data flags, the `by` field never surfacing, and — load-bearing — the four legacy sections staying
+byte-identical whether or not a sprint ledger exists.
+
 House conventions (run_cli via sys.argv + SystemExit + capsys, _write, tmp_path) are adapted from
 test_version_refresh.py.
 """
@@ -304,7 +309,9 @@ def test_no_data_on_empty_repo(tmp_path, capsys):
     assert text.count("no data") == 4  # all four sections
     data = _json_out(["--repo", str(tmp_path)], capsys)
     assert data["has_data"] == {"recurring_findings": False, "repeat_stale": False,
-                                "refresh_funnel": False, "debt": False}
+                                "refresh_funnel": False, "debt": False,
+                                "carry_over_recurrence": False, "bounce_causes": False}
+    assert data["sprint_ledger_present"] is False
 
 
 # --- window filtering --------------------------------------------------------------------------
@@ -349,9 +356,12 @@ def test_json_shape_is_stable(tmp_path, capsys):
     (tmp_path / ".sdlc").mkdir(parents=True, exist_ok=True)
     data = _json_out(["--repo", str(tmp_path)], capsys)
     assert set(data.keys()) == {"has_data", "recurring_findings", "repeat_stale",
-                                "refresh_funnel", "debt", "window_days"}
+                                "refresh_funnel", "debt", "window_days",
+                                "carry_over_recurrence", "bounce_causes", "sprint_ledger_present"}
     assert set(data["has_data"].keys()) == {"recurring_findings", "repeat_stale",
-                                            "refresh_funnel", "debt"}
+                                            "refresh_funnel", "debt",
+                                            "carry_over_recurrence", "bounce_causes"}
+    assert data["carry_over_recurrence"] == [] and data["bounce_causes"] == []
     assert set(data["refresh_funnel"].keys()) == {"by_spec", "by_stem"}
     assert set(data["debt"].keys()) == {"findings", "artifact_staleness", "refresh_open", "total"}
     assert data["window_days"] is None
@@ -404,3 +414,190 @@ def test_no_actor_ranking_anywhere(tmp_path, capsys):
     assert "actor" not in blob            # no actor key anywhere in the JSON
     assert "by_actor" not in blob
     assert "ranking" not in blob
+
+
+# --- sprint layer: carry-over recurrence + bounce causes (patterns, not people) ------------------
+
+SPRINT_LEDGER = ".sdlc/metrics/sprint-log.jsonl"
+
+
+def _carried(spec, sprint, to_sprint, reason, ts=None, by=ACTOR_SENTINEL) -> dict:
+    """A sprint-log `carried` event in the sprint.py shape (sprint_model.event_entry)."""
+    return {"ts": ts or _iso(1), "event": "carried", "sprint": sprint, "spec": spec,
+            "to_sprint": to_sprint, "by": by, "reason": reason}
+
+
+def _verdict(spec, lane, verdict, reason="", ts=None, by=ACTOR_SENTINEL) -> dict:
+    return {"ts": ts or _iso(1), "event": "verdict", "spec": spec, "lane": lane,
+            "verdict": verdict, "by": by, "reason": reason}
+
+
+def _seed_sprint_ledger(tmp_path) -> None:
+    _append_jsonl(tmp_path / SPRINT_LEDGER, [
+        _carried("0007", "S06", "S07", "blocked on ADR-04", ts=_iso(30)),
+        _carried("0007", "S07", "S08", "data contract still open", ts=_iso(15)),
+        _carried("0009", "S07", "S08", "", ts=_iso(15)),           # once, no reason
+        _verdict("0007", "eng", "returned", "Harness context missing.", ts=_iso(20)),
+        _verdict("0007", "eng", "returned", "harness context missing", ts=_iso(10)),
+        _verdict("0009", "eng", "accepted", ts=_iso(9)),             # not a bounce
+        _verdict("0009", "data", "returned", "PII class unconfirmed", ts=_iso(8)),
+    ])
+
+
+def test_carry_over_recurrence_flags_at_two_sprints(tmp_path, capsys):
+    _seed_sprint_ledger(tmp_path)
+    data = _json_out(["--repo", str(tmp_path)], capsys)
+    assert data["sprint_ledger_present"] is True
+    assert data["has_data"]["carry_over_recurrence"] is True
+    rows = {r["spec"]: r for r in data["carry_over_recurrence"]}
+    assert rows["0007"]["carried"] == 2 and rows["0007"]["flagged"] is True
+    assert rows["0007"]["sprints"] == ["S06", "S07"]
+    assert rows["0007"]["carries"] == [
+        {"from": "S06", "to": "S07", "reason": "blocked on ADR-04"},
+        {"from": "S07", "to": "S08", "reason": "data contract still open"},
+    ]
+    assert rows["0009"]["carried"] == 1 and rows["0009"]["flagged"] is False
+    assert rows["0009"]["reasons"] == [rr.NO_REASON]   # the missing reason is itself the pattern
+    # flagged first, then by carry count, then id
+    assert [r["spec"] for r in data["carry_over_recurrence"]] == ["0007", "0009"]
+
+    _, text = run_cli(["--repo", str(tmp_path)], capsys)
+    assert "Carry-over recurrence" in text
+    assert "spec 0007: carried out of 2 sprints (S06, S07) — RECURRING" in text
+    assert "S07 " in text and "S08: data contract still open" in text
+    assert "spec 0009: carried out of 1 sprint (S07)" in text
+    assert text.count("RECURRING") == 1
+
+
+def test_carry_over_same_sprint_twice_counts_one_sprint(tmp_path, capsys):
+    """Two carried lines out of the same sprint (a re-run) are one sprint, not recurrence."""
+    _append_jsonl(tmp_path / SPRINT_LEDGER, [
+        _carried("0007", "S06", "S07", "a"), _carried("0007", "S06", "S07", "a"),
+    ])
+    data = _json_out(["--repo", str(tmp_path)], capsys)
+    row = data["carry_over_recurrence"][0]
+    assert row["carried"] == 1 and row["flagged"] is False and len(row["carries"]) == 2
+
+
+def test_bounce_causes_grouped_by_lane_and_reason_category(tmp_path, capsys):
+    _seed_sprint_ledger(tmp_path)
+    data = _json_out(["--repo", str(tmp_path)], capsys)
+    assert data["has_data"]["bounce_causes"] is True
+    bounces = data["bounce_causes"]
+    # eng before data (sprint_model.LANES order); the two eng returns collapse into one category
+    assert [(b["lane"], b["reason"], b["times"]) for b in bounces] == [
+        ("eng", "harness context missing", 2),
+        ("data", "pii class unconfirmed", 1),
+    ]
+    assert bounces[0]["specs"] == ["0007"]
+    # an accepted verdict is never a bounce
+    assert all(b["times"] >= 1 for b in bounces) and sum(b["times"] for b in bounces) == 3
+
+    _, text = run_cli(["--repo", str(tmp_path)], capsys)
+    assert "Bounce causes" in text
+    assert "  eng:\n    • harness context missing (2 times; specs 0007)" in text
+    assert "  data:\n    • pii class unconfirmed (1 time; specs 0009)" in text
+
+
+def test_reason_category_normalises_case_space_and_punctuation():
+    assert rr._reason_category("  Harness   context missing. ") == "harness context missing"
+    assert rr._reason_category("") == rr.NO_REASON
+    assert rr._reason_category(None) == rr.NO_REASON
+
+
+def test_bounce_section_absent_without_returns_but_carry_over_says_no_data(tmp_path, capsys):
+    """Ledger present, no carries, only accepted verdicts: carry-over reads 'no data' (never 0) and
+    the bounce block is not rendered at all."""
+    _append_jsonl(tmp_path / SPRINT_LEDGER, [_verdict("0001", "eng", "accepted"),
+                                             {"ts": _iso(1), "event": "slated", "sprint": "S07",
+                                              "spec": "0001", "by": ACTOR_SENTINEL}])
+    data = _json_out(["--repo", str(tmp_path)], capsys)
+    assert data["sprint_ledger_present"] is True
+    assert data["has_data"]["carry_over_recurrence"] is False
+    assert data["has_data"]["bounce_causes"] is False
+    _, text = run_cli(["--repo", str(tmp_path)], capsys)
+    assert "Carry-over recurrence" in text
+    assert "Bounce causes" not in text
+    assert text.count("no data") == 5   # four legacy sections + carry-over
+    assert " 0 sprint" not in text
+
+
+def test_sprint_sections_respect_window_days(tmp_path, capsys):
+    _append_jsonl(tmp_path / SPRINT_LEDGER, [
+        _carried("0007", "S01", "S02", "old", ts=_iso(400)),
+        _carried("0007", "S06", "S07", "recent", ts=_iso(2)),
+        _verdict("0007", "eng", "returned", "old reason", ts=_iso(400)),
+    ])
+    full = _json_out(["--repo", str(tmp_path)], capsys)
+    assert full["carry_over_recurrence"][0]["carried"] == 2
+    assert full["has_data"]["bounce_causes"] is True
+    win = _json_out(["--repo", str(tmp_path), "--window-days", "30"], capsys)
+    assert win["carry_over_recurrence"][0]["carried"] == 1
+    assert win["carry_over_recurrence"][0]["flagged"] is False
+    assert win["has_data"]["bounce_causes"] is False
+
+
+def test_legacy_sections_byte_identical_with_and_without_sprint_ledger(tmp_path, capsys):
+    """The four pre-1.6 sections and the footer must not change by a byte when the sprint ledger
+    appears; the new sections slot in between them."""
+    _append_jsonl(tmp_path / FINDINGS, [_finding("null-check", "auth.py:10", _iso(2)),
+                                        _finding("null-check", "auth.py:10", _iso(1))])
+    _, before = run_cli(["--repo", str(tmp_path)], capsys)
+    assert "Carry-over recurrence" not in before and "Bounce causes" not in before
+
+    _seed_sprint_ledger(tmp_path)
+    _, after = run_cli(["--repo", str(tmp_path)], capsys)
+
+    footer_marker = "=" * 60 + "\nADVISORY"
+    legacy_before, footer_before = before.split(footer_marker)
+    legacy_after, footer_after = after.split(footer_marker)
+    assert footer_before == footer_after
+    # everything up to (and including) the debt block is identical …
+    assert legacy_after.startswith(legacy_before)
+    # … and only the two sprint sections were appended after it
+    added = legacy_after[len(legacy_before):]
+    assert added.startswith("Carry-over recurrence")
+    assert "Bounce causes" in added
+
+
+def test_no_sprint_ledger_means_no_sprint_sections_in_text(tmp_path, capsys):
+    (tmp_path / ".sdlc/metrics").mkdir(parents=True)
+    _, text = run_cli(["--repo", str(tmp_path)], capsys)
+    assert "Carry-over recurrence" not in text and "Bounce causes" not in text
+    assert text.count("no data") == 4
+
+
+def test_sprint_sections_never_name_a_person(tmp_path, capsys):
+    """Every sprint event carries `by`; neither the text nor the JSON may surface it or key on it."""
+    _seed_sprint_ledger(tmp_path)
+    code, text = run_cli(["--repo", str(tmp_path)], capsys)
+    assert code == 0 and ACTOR_SENTINEL not in text
+    _, jtext = run_cli(["--repo", str(tmp_path), "--json"], capsys)
+    assert ACTOR_SENTINEL not in jtext
+    blob = jtext.lower()
+    assert '"by"' not in blob and "actor" not in blob and "by_actor" not in blob
+
+
+def test_exit_zero_on_garbage_sprint_ledger(tmp_path, capsys):
+    _write(tmp_path / SPRINT_LEDGER,
+           'nope\n{"event": "carried"}\n{"event": "carried", "spec": "0001", "ts": "not-a-time"}\n'
+           '{"event": "verdict", "verdict": "returned", "lane": 7}\n[1,2]\n')
+    code, text = run_cli(["--repo", str(tmp_path)], capsys)
+    assert code == 0
+    assert "Carry-over recurrence" in text   # the ledger exists, so the section renders …
+    assert "spec 0001: carried out of 1 sprint (?)" in text  # … honestly, with unknown sprint as '?'
+    code, jtext = run_cli(["--repo", str(tmp_path), "--json"], capsys)
+    assert code == 0
+    data = json.loads(jtext)
+    assert data["bounce_causes"] == [{"lane": "7", "reason": rr.NO_REASON, "times": 1, "specs": []}]
+
+
+@pytest.mark.parametrize("field", ["velocity", "story_points", "points", "estimate", "effort", "hours",
+                                   "pr_count", "loc", "lines_of_code"])
+def test_forbidden_activity_metrics_never_appear_as_keys(tmp_path, capsys, field):
+    """Even if a ledger line smuggles in an activity metric, the retro never aggregates or emits it."""
+    _append_jsonl(tmp_path / SPRINT_LEDGER, [_carried("0007", "S06", "S07", "x") | {field: 13},
+                                             _carried("0007", "S07", "S08", "y") | {field: 21}])
+    _, jtext = run_cli(["--repo", str(tmp_path), "--json"], capsys)
+    assert f'"{field}"' not in jtext
+    assert "13" not in jtext and "21" not in jtext and "34" not in jtext

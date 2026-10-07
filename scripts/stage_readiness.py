@@ -211,6 +211,8 @@ def declared_activities(repo_root: Path, stage_id: str) -> tuple[list[dict], lis
         return activities_model.evaluate(repo_root, stage_id, data), []
     except activities_model.ActivitiesError as e:
         return [], [f"activities declaration unavailable: {e}"]
+    except Exception as e:  # noqa: BLE001 — a fault in the declaration must not take the report down
+        return [], [f"activities declaration could not be evaluated: {type(e).__name__}: {e}"]
 
 
 def format_report(result: dict) -> str:

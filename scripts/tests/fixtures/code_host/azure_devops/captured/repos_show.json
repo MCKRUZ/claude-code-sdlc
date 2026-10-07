@@ -1,0 +1,44 @@
+{
+ "_provenance": "captured 2026-10-05 (org anonymised)",
+ "_command": [
+  "az",
+  "repos",
+  "show",
+  "--detect",
+  "false",
+  "--org",
+  "https://dev.azure.com/contoso",
+  "--project",
+  "repo-1",
+  "--repository",
+  "repo-6"
+ ],
+ "_secs": 1.0,
+ "value": {
+  "defaultBranch": "refs/heads/master",
+  "id": "00000000-0000-0000-0000-000000000003",
+  "isDisabled": false,
+  "isFork": true,
+  "isInMaintenance": false,
+  "name": "repo-6",
+  "parentRepository": null,
+  "project": {
+   "abbreviation": null,
+   "defaultTeamImageUrl": null,
+   "description": "Pull request description.",
+   "id": "00000000-0000-0000-0000-000000000002",
+   "lastUpdateTime": "2026-07-13T18:46:49.4Z",
+   "name": "repo-1",
+   "revision": 1533,
+   "state": "wellFormed",
+   "url": "https://dev.azure.com/contoso/_apis/projects/00000000-0000-0000-0000-000000000002",
+   "visibility": "private"
+  },
+  "remoteUrl": "https://person6@example.com/contoso/repo-1/_git/repo-6",
+  "size": 11517590,
+  "sshUrl": "person7@example.com:v3/contoso/repo-1/repo-6",
+  "url": "https://dev.azure.com/contoso/00000000-0000-0000-0000-000000000002/_apis/git/repositories/00000000-0000-0000-0000-000000000003",
+  "validRemoteUrls": null,
+  "webUrl": "https://dev.azure.com/contoso/repo-1/_git/repo-6"
+ }
+}

@@ -11,6 +11,7 @@ import { existsSync, realpathSync, statSync } from 'node:fs'
 import { join, resolve, sep } from 'node:path'
 import type { IpcMain } from 'electron'
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import type {
   IntakeCatalogue, IntakeChange, IntakeDocument, NarrativeArtifact, NarrativeCoverage, PhaseReportEntry,
   PhaseReportResult, ReviewStanding, StrictCheckResult,
@@ -50,7 +51,7 @@ async function runJson(scriptsDir: string, script: string, args: string[], what:
   })
   if (entry.exitCode === null || !accept.includes(entry.exitCode)) return failed()
   try {
-    const raw: unknown = JSON.parse(entry.stdout)
+    const raw: unknown = JSON.parse(rawStdout(entry))
     return isRecord(raw) ? { ok: true, raw, exitCode: entry.exitCode } : failed()
   } catch {
     return failed()

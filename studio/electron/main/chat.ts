@@ -32,6 +32,7 @@ import { mcpConfigPath } from './chatMcpConfig'
 import { describeLatestActivity, parseStreamJsonToMessages } from './chatStreamParse'
 import { readPluginName } from './chatArgs'
 import type { ChatMessage, ChatState, ChatTurnResult, DraftOutcome } from '../../shared/types'
+import type { HostName } from '../../shared/codeHostModel'
 
 export { CHAT_TOOLS, buildChatArgs, buildSystemPrompt, readPluginName } from './chatArgs'
 export type { ChatArgsOptions } from './chatArgs'
@@ -48,6 +49,8 @@ export interface RunTurnContext {
   stageId: string
   stageDisplay: string
   execPath: string
+  /** The project's code host, for the system prompt's "read GitHub / Azure DevOps" sentence. */
+  host?: HostName
   /** Called with a plain-words label each time what the model is doing changes mid-turn. */
   onActivity?: (label: string) => void
 }
@@ -77,6 +80,7 @@ export async function runChatTurn(
     mcpConfig: mcpConfigPath(ctx.execPath),
     resume: priorSessionId !== null,
     sessionId,
+    host: ctx.host,
   })
   // claudePath overrides the resolved binary name only — args/cwd already fully built above.
   const resolvedCommand = ctx.claudePath || command
@@ -128,6 +132,7 @@ export interface ChatContext {
   stageDisplay: string
   claudePath: string
   execPath: string
+  host?: HostName
   onActivity?: (label: string) => void
 }
 
@@ -145,6 +150,7 @@ function turnContext(ctx: ChatContext): RunTurnContext {
     stageId: ctx.stageId,
     stageDisplay: ctx.stageDisplay,
     execPath: ctx.execPath,
+    host: ctx.host,
     onActivity: ctx.onActivity,
   }
 }

@@ -9,6 +9,7 @@ import { dirname, isAbsolute, join } from 'node:path'
 import type { IpcMain } from 'electron'
 import { ensureDocumentFromTemplate } from './documents'
 import { runPluginScript } from './project'
+import { rawStdout } from './commandRunner'
 import { getStageReadiness } from './readiness'
 import type { ActivityCheckResult, StageGuide, StartActivityResult } from '../../shared/types'
 
@@ -87,7 +88,7 @@ export async function runActivityCheck(
   const entry = await runPluginScript(scriptsDir, check.script, check.args(projectPath))
   if (!entry.ok) return failed
   try {
-    const raw: unknown = JSON.parse(entry.stdout)
+    const raw: unknown = JSON.parse(rawStdout(entry))
     if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return failed
     return check.read(raw as Record<string, unknown>)
   } catch {

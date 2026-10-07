@@ -57,7 +57,8 @@ gate system checks that it does.
 | Type | Description | Example |
 |------|-------------|---------|
 | **Markdown artifacts** | Structured documents with sections, tables, and placeholder content | `constitution.md`, `requirements.md` |
-| **JSON tracking files** | Machine-readable state for session continuity | `session-handoff.json` |
+| **JSON tracking files** | Machine-readable state for session continuity (legacy; nothing in the plugin reads it since 1.6.0) | `session-handoff.json` |
+| **Sprint records** | Sprint commitment window written to `.sdlc/sprints/SNN.md` by `sprint.py` | `sprint.md` |
 | **YAML state** | Project state machine definition | `state-init.yaml` |
 | **Handoff documents** | Phase transition records with open questions and risk summaries | `phase1-handoff.md`, `phase2-handoff.md`, `phase3-handoff.md`, `build-handoff.md`, `phase7-handoff.md`, `phase8-handoff.md`, `phase9-handoff.md`, `close-handoff.md` (the chain jumps 3 → `build-handoff` → 7 — there is no phase4/5/6-handoff) |
 
@@ -175,7 +176,7 @@ templates/
     ├── 03-foundation/
     │   ├── foundation-report.md             # Walking-skeleton + harness/rails stand-up report
     │   ├── risk-tier-map.md                 # HIGH/MEDIUM/LOW risk tiers + registered security gates
-    │   ├── cadence-plan.md                  # Cadence calendar, WIP cap, review-wait tripwire
+    │   ├── cadence-plan.md                  # Cadence calendar, WIP cap, review-wait tripwire, sprint length, review-turnaround target
     │   ├── build-handoff.md                 # Ordered spec backlog; handoff into the Build loop
     │   └── section-plans/
     │       ├── SECTION-template.md          # Pure SDLC section plan format
@@ -183,7 +184,8 @@ templates/
     ├── build/
     │   ├── phase7-handoff.md                # Feature-complete declaration; exits into Documentation
     │   ├── build-summary.md                 # Rolling merged-work summary
-    │   └── session-handoff.json             # Session continuity state
+    │   ├── sprint.md                        # Sprint record shape (.sdlc/sprints/SNN.md); filled by sprint.py new
+    │   └── session-handoff.json             # Legacy session continuity state (not read by the hook)
     ├── 07-documentation/
     │   ├── api-docs.md                      # API documentation
     │   ├── RUNBOOK.md                       # Operational runbook
@@ -366,7 +368,7 @@ Groups related functionality into epics, prioritized by P0/P1/P2.
 
 | Section | Purpose | What Must Be Filled In |
 |---------|---------|----------------------|
-| **Epic Map** | Visual overview | Table mapping epics to priorities, story counts, and sprint targets |
+| **Epic Map** | Visual overview | Table mapping epics to priorities, story counts, and target release (a sprint window is set later, at `/sdlc-sprint slate`, never here) |
 | **P0 Epics** (EP-NNN) | Must-ship functionality | Goal, user value, constituent stories (US-NNN refs), acceptance criteria, dependencies |
 | **P1 Epics** | Should-ship functionality | Same structure as P0 |
 | **P2 Epics** | Nice-to-have functionality | Same structure as P0 |
@@ -530,6 +532,9 @@ that flags stalled review.
 | **Cadence Calendar** | When work happens | The recurring rhythm of build/review beats |
 | **WIP Cap** | Concurrency limit | Maximum changes allowed in flight at once |
 | **Review-Wait Tripwire** | Stall detector | The threshold at which a change waiting on review raises a flag |
+| **Sprint length** | Commitment window | Business days per sprint (default 10); `/sdlc-sprint new` derives `end` from it |
+| **Review-turnaround target** | Verdict clock | Per lane (Engineering, Data); the sprint agenda flags verdicts waiting beyond it; `[not set]` is an allowed final value and reads "no target set" |
+| **Cross-functional review** (Mon/Wed/Fri) | Sprint refinement slot | Slate readiness, pending verdicts, overdue decisions -- `/sdlc-refine` renders the agenda |
 
 ### build-handoff.md -- Handoff into the Build Loop
 
@@ -559,7 +564,7 @@ The standard section plan template with structured fields for gate validation an
 
 | Field | Purpose | What Must Be Filled In |
 |-------|---------|----------------------|
-| **Header metadata** | Section identity | Owner, sprint assignment, estimated effort (S/M/L/XL), status |
+| **Header metadata** | Section identity | Owner, sprint window (`[SNN]`, blank until slated at `/sdlc-sprint slate`), estimated effort (S/M/L/XL), status |
 | **Goal** | What this section delivers | One sentence describing the capability that exists when complete |
 | **Epics / Stories Covered** | Traceability | List of EP-NNN and US-NNN identifiers this section implements |
 | **Entry Criteria** | Prerequisites | Conditions that must be true before work begins |
@@ -620,8 +625,9 @@ gate -- checking happens per change inside the loop, and a human declares the ba
 feature-complete to leave.
 
 The loop's durable per-change record is `specs/` (the spec files in the repo). Under the `build/`
-template directory it tracks rolling state in `build-summary.md` and the two JSON continuity
-trackers, and emits `phase7-handoff.md` when the human declares the work feature-complete.
+template directory it tracks rolling state in `build-summary.md`, ships the sprint-record shape
+(`sprint.md`, optional), keeps the legacy `session-handoff.json`, and emits `phase7-handoff.md`
+when the human declares the work feature-complete.
 
 ### specs/ -- Per-Change Specifications
 
@@ -665,12 +671,47 @@ risk: HIGH            # HIGH / MEDIUM / LOW
 | WIP-cap breach | With `--wip-cap N`, flags (and exits non-zero) when in-flight specs exceed `N` |
 
 It runs standalone (`--repo <path>`) or in-workflow (`--state .sdlc/state.yaml`). See
-[specs/](#specs--per-change-specifications) above for the spec format.
+[specs/](#specs--per-change-specifications) above for the spec format. With `--sprint SNN` it
+reports only that sprint's slate, and its summary carries a `by_sprint` partition (each `SNN`,
+`unassigned`, `pre-sprint` for specs merged before the sprint layer existed).
+
+**Optional sprint keys.** A spec slated by `/sdlc-sprint` carries five more frontmatter keys --
+`sprint`, `next_owner`, `eng_review`, `data_review`, `depends_on` -- written only by
+`scripts/sprint.py` (values are enumerations, names and spec ids; `""` by default). `status`
+is not one of them and stays hand-moved. `templates/phases/build/spec.md` ships the keys blank;
+a spec without them behaves exactly as before.
+
+### sprint.md -- Sprint Record
+
+Shape of `.sdlc/sprints/SNN.md`, the optional two-week commitment window over the spec backlog
+(`/sdlc-sprint`). `sprint.py new` fills the frontmatter and the H1; `slate`, `unslate`, `ready` and `close`
+render the `## Slate` table and `close` writes `## Close` -- never hand-edit them. `status` is
+read-only: it prints the live view (`/sdlc-sprint status`) and touches no file.
+
+| Field | Purpose | Values |
+|-------|---------|--------|
+| `sprint` | Human-typed id | `S07` (`^S\d{2,}$`) |
+| `goal` | One outcome-shaped sentence | prose |
+| `start` / `end` | The window | ISO dates; `end` defaults to the last business day of a 10-business-day window that starts on `start` (start is day 1: Mon 2026-09-28 -> Fri 2026-10-09) |
+| `state` | Lifecycle | `planning` -> `ready` -> `closed`, forward only |
+| `target` | How many specs to slate | an integer count, never a size |
+| `mix` | Slate shape by risk tier | `"HIGH:1,MEDIUM:2,LOW:3"`; sum <= `target`; a breach warns |
+| `board_ref` | Manual board mapping | e.g. `ADO Iteration 6`; nothing reads it |
+| `readied_by` / `closed_by` | Named humans | set at `ready` / `close` |
+| `## Slate` | Rendered from spec frontmatter by `slate` / `unslate` / `ready` / `close` | spec, name, risk, type, status, DoR, eng, data, next owner |
+| `## Close` | Written at `close` | spec, outcome (kept / carried -> SNN / dropped), by, reason |
+
+Companion outputs: the append-only ledger `.sdlc/metrics/sprint-log.jsonl` and the self-contained
+pages `.sdlc/reports/sprint-SNN-planning.html` (at `ready`, or on demand) and
+`sprint-SNN-review.html` (at `close`). See `references/sprint-model.md`.
 
 ### session-handoff.json -- Session Continuity State
 
-JSON file enabling Build-loop continuity across Claude Code sessions. Updated at the end of
-each session to provide context for the next session.
+Legacy JSON file for Build-loop continuity across Claude Code sessions. An engagement may still
+keep it for its own notes, but **nothing in the plugin reads it** since 1.6.0 -- the session-start
+hook's summary of it was retired (it was a section-plan progress model competing with the spec
+backlog), and the retired `current_sprint` field is gone: the active sprint lives in
+`.sdlc/sprints/SNN.md` and the hook prints it as `[SDLC-SPRINT]`.
 
 **Schema version:** `session-handoff-v1`
 
@@ -681,7 +722,6 @@ each session to provide context for the next session.
   "last_updated": null,
   "session_number": 1,
   "overall_status": "in_progress",
-  "current_sprint": 1,
   "sections": [
     {
       "id": "SECTION-001",
@@ -925,3 +965,5 @@ Templates use these placeholder patterns consistently:
 | `profiles/_schema.yaml` | Profile configuration determines which artifacts are required vs. optional per phase |
 | `scripts/check_gates.py` | Python script that implements Gate 1 and Gate 2 checks against artifact templates |
 | `agents/section-evaluator.md` | Agent that evaluates completed sections against their Evaluator Contract |
+| `scripts/sprint.py` | Fills `sprint.md` into `.sdlc/sprints/SNN.md` and writes the five optional spec sprint keys |
+| [references/sprint-model.md](../references/sprint-model.md) | The sprint lifecycle, the ready rule, the mix, the metrics policy |

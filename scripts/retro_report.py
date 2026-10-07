@@ -19,9 +19,18 @@ Four read-only sections, all exit 0 always (advisory — a retro never blocks an
   4. DISPOSITION DEBT ROLLUP — combined honest-counting debt across the three ledgers, each line
                             naming its source.
 
-Everything is keyed by category / artifact / stem — never by actor. There is deliberately no flag to
-rank by person, and the forbidden activity metrics (velocity, story points, PR count, LOC) are never
-computed. Patterns, not people.
+Two more sections read the sprint ledger (sprint-log.jsonl, written by sprint.py) when it exists:
+
+  5. CARRY-OVER RECURRENCE — per spec, how many sprints it was carried out of, which ones, and the
+                            recorded reasons; flagged RECURRING at >= 2 (the only cross-sprint number
+                            the standard allows — never a kept/carried trend, which is velocity with
+                            the points removed).
+  6. BOUNCE CAUSES        — `verdict: returned` events grouped by lane (eng | data) and reason
+                            category; rendered only when at least one return exists.
+
+Everything is keyed by category / artifact / stem / spec / lane — never by actor. There is deliberately
+no flag to rank by person, the `by` field of every sprint event is dropped on read, and the forbidden
+activity metrics (velocity, story points, PR count, LOC) are never computed. Patterns, not people.
 
 Standalone or Workflow (CLAUDE.md design rule):
   --repo <path>   standalone (reads <repo>/.sdlc)      |   --state .sdlc/state.yaml   in-workflow
@@ -37,9 +46,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import artifact_model as am
 import audit_artifacts as aa
 import findings_model as fm
+import sprint_model as sm
 import track_specs as ts
 
 FINDINGS_LEDGER_NAME = "findings-log.jsonl"
+SPRINT_LEDGER_NAME = "sprint-log.jsonl"
+NO_REASON = "(no reason recorded)"
+RECURRENCE_THRESHOLD = 2  # carried out of >= 2 sprints => RECURRING
 
 
 # --- Loading (never crashes; a non-dict / bad line is skipped, mirroring aa.load_ledger) -------
@@ -281,6 +294,72 @@ def debt_rollup(findings: list[dict], art_ledger: list[dict], base_dir: Path, sd
     }
 
 
+# --- Sections 5 + 6: sprint ledger — carry-over recurrence and bounce causes ------------------
+
+def _reason_category(reason) -> str:
+    """Collapse a free-text reason into a comparable category: lower-cased, whitespace-normalised,
+    trailing punctuation dropped. Empty → NO_REASON (honest: the gap is itself a pattern)."""
+    text = " ".join(str(reason or "").split()).strip().rstrip(".!;,").strip().lower()
+    return text or NO_REASON
+
+
+def carry_over_recurrence(sprint_events: list[dict], cutoff: datetime | None) -> list[dict]:
+    """Per spec: the distinct sprints it was `carried` out of (in ledger order), where each carry went,
+    and the recorded reasons. `carried` >= RECURRENCE_THRESHOLD flags RECURRING. Keyed by spec id —
+    the `by` field is never read."""
+    per_spec: dict[str, dict] = {}
+    for e in sprint_events:
+        if str(e.get("event") or "").strip().lower() != "carried":
+            continue
+        if not in_window(e.get("ts", ""), cutoff):
+            continue
+        spec = str(e.get("spec") or "").strip()
+        if not spec:
+            continue
+        g = per_spec.setdefault(spec, {"spec": spec, "sprints": [], "carries": []})
+        src = str(e.get("sprint") or "").strip() or "?"
+        if src not in g["sprints"]:
+            g["sprints"].append(src)
+        to = str(e.get("to_sprint") or "").strip() or "?"
+        reason = str(e.get("reason") or "").strip() or NO_REASON
+        g["carries"].append({"from": src, "to": to, "reason": reason})
+
+    out: list[dict] = []
+    for g in per_spec.values():
+        carried = len(g["sprints"])
+        out.append({"spec": g["spec"], "carried": carried, "sprints": g["sprints"],
+                    "carries": g["carries"], "reasons": [c["reason"] for c in g["carries"]],
+                    "flagged": carried >= RECURRENCE_THRESHOLD})
+    out.sort(key=lambda x: (not x["flagged"], -x["carried"], x["spec"]))
+    return out
+
+
+def bounce_causes(sprint_events: list[dict], cutoff: datetime | None) -> list[dict]:
+    """`verdict` events whose verdict is `returned`, grouped by (lane, reason category) with the
+    distinct specs each cause bounced. Grouped by lane and cause — never by who returned it."""
+    groups: dict[tuple, dict] = {}
+    for e in sprint_events:
+        if str(e.get("event") or "").strip().lower() != "verdict":
+            continue
+        if sm.normalize_review(e.get("verdict")) != "returned":
+            continue
+        if not in_window(e.get("ts", ""), cutoff):
+            continue
+        lane = str(e.get("lane") or "").strip().lower() or "?"
+        cause = _reason_category(e.get("reason"))
+        g = groups.setdefault((lane, cause), {"lane": lane, "reason": cause, "times": 0, "specs": set()})
+        g["times"] += 1
+        spec = str(e.get("spec") or "").strip()
+        if spec:
+            g["specs"].add(spec)
+
+    lane_rank = {lane: i for i, lane in enumerate(sm.LANES)}
+    out = [{"lane": g["lane"], "reason": g["reason"], "times": g["times"],
+            "specs": sorted(g["specs"])} for g in groups.values()]
+    out.sort(key=lambda x: (lane_rank.get(x["lane"], len(lane_rank)), -x["times"], x["reason"]))
+    return out
+
+
 # --- Assembly ----------------------------------------------------------------------------------
 
 def build_payload(args) -> dict:
@@ -296,6 +375,10 @@ def build_payload(args) -> dict:
     debt = _safe(lambda: debt_rollup(findings, art_ledger, base_dir, sdlc_dir, funnel),
                  {"findings": 0, "artifact_staleness": 0, "refresh_open": 0, "total": 0})
 
+    sprint_events = load_jsonl(metrics_dir / SPRINT_LEDGER_NAME)
+    carry_over = _safe(lambda: carry_over_recurrence(sprint_events, cutoff), [])
+    bounces = _safe(lambda: bounce_causes(sprint_events, cutoff), [])
+
     has_data = {
         "recurring_findings": bool(recurring),
         "repeat_stale": bool(stale),
@@ -305,6 +388,8 @@ def build_payload(args) -> dict:
         # Debt is a real measurement (possibly 0) whenever either ledger exists; only truly-absent
         # ledgers read "no data" (never a fabricated zero).
         "debt": bool(art_ledger) or bool(findings),
+        "carry_over_recurrence": bool(carry_over),
+        "bounce_causes": bool(bounces),
     }
     return {
         "has_data": has_data,
@@ -312,6 +397,11 @@ def build_payload(args) -> dict:
         "repeat_stale": stale,
         "refresh_funnel": funnel,
         "debt": debt,
+        "carry_over_recurrence": carry_over,
+        "bounce_causes": bounces,
+        # True iff sprint-log.jsonl holds at least one event. The text report renders sections 5 + 6
+        # only then, so a repo that never used the sprint layer prints exactly the pre-1.6 text.
+        "sprint_ledger_present": bool(sprint_events),
         "window_days": getattr(args, "window_days", None),
     }
 
@@ -376,6 +466,34 @@ def format_report(p: dict) -> str:
         L.append(f"  total open debt:     {d['total']}")
     L.append("")
 
+    # Sections 5 + 6 exist only when the sprint ledger does — never a phantom block for a repo that
+    # has no sprints, so the four legacy sections above stay byte-identical.
+    if p.get("sprint_ledger_present"):
+        arrow = aa._glyph("→", "->")
+        L.append("Carry-over recurrence (sprint-log.jsonl — per spec, never per person):")
+        if not hd.get("carry_over_recurrence"):
+            L.append("  no data")
+        else:
+            for r in p["carry_over_recurrence"]:
+                n = r["carried"]
+                flag = " — RECURRING" if r["flagged"] else ""
+                L.append(f"  • spec {r['spec']}: carried out of {n} sprint{'s' if n != 1 else ''} "
+                         f"({', '.join(r['sprints'])}){flag}")
+                for c in r["carries"]:
+                    L.append(f"      {c['from']} {arrow} {c['to']}: {c['reason']}")
+        L.append("")
+
+        if hd.get("bounce_causes"):
+            L.append("Bounce causes (verdict: returned — by lane and reason, never by who returned it):")
+            current_lane = None
+            for b in p["bounce_causes"]:
+                if b["lane"] != current_lane:
+                    current_lane = b["lane"]
+                    L.append(f"  {current_lane}:")
+                specs = f"; specs {', '.join(b['specs'])}" if b["specs"] else ""
+                L.append(f"    • {b['reason']} ({b['times']} time{'s' if b['times'] != 1 else ''}{specs})")
+            L.append("")
+
     L.append("=" * 60)
     L.append("ADVISORY — read-only; patterns, not people; never blocks (exit 0).")
     L.append("Never tracked: velocity, story points, PR count, lines of code. No per-person ranking.")
@@ -387,7 +505,8 @@ def format_report(p: dict) -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         description="Cross-ledger retro roll-up: recurring findings, repeat-stale artifacts, the "
-                    "refresh funnel, and combined disposition debt (read-only, advisory; exit 0)")
+                    "refresh funnel, combined disposition debt, and — when sprint-log.jsonl exists — "
+                    "carry-over recurrence and bounce causes (read-only, advisory; exit 0)")
     src = p.add_mutually_exclusive_group()
     src.add_argument("--state", help="Path to .sdlc/state.yaml (workflow mode)")
     src.add_argument("--repo", default=".", help="Repo root containing .sdlc/ (standalone; default cwd)")

@@ -7,6 +7,7 @@ monkeypatched.
 """
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -549,3 +550,244 @@ class TestWaitingOnHandle:
 
     def test_an_unidentifiable_reviewer_is_None_rather_than_the_word_someone(self):
         assert ss.waiting_on_handle(self._pr(reviewRequests=[{}])) is None
+
+
+# ---------------------------------------------------------------------------
+# Board rows carry the sprint-layer fields; only `NNNN-` files are rows (studio-improvements F4/F10)
+# ---------------------------------------------------------------------------
+
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+HARNESS_TEMPLATE = PLUGIN_ROOT / "harness" / "spec-template.md"
+
+SPEC_WITH_SPRINT_KEYS = SPEC_TEXT.replace(
+    "status: in-flight\n",
+    'status: in-flight\nsprint: "S07"\nnext_owner: "@sam-k"\neng_review: "@priya-n"\n'
+    'data_review: "@dana"\ndepends_on: "0007, 0009"\n',
+)
+
+
+class TestReportAllSprintFields:
+    def test_rows_carry_the_sprint_fields_from_the_frontmatter(self, tmp_path, monkeypatch):
+        assert "sprint: " in SPEC_WITH_SPRINT_KEYS  # the fixture really has the keys
+        _write_spec(tmp_path, text=SPEC_WITH_SPRINT_KEYS)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["sprint"] == "S07"
+        assert row["next_owner"] == "@sam-k"
+        assert row["eng_review"] == "@priya-n"
+        assert row["data_review"] == "@dana"
+        assert row["depends_on"] == ["0007", "0009"]
+
+    def test_a_spec_without_the_keys_gets_empty_values_not_missing_keys(self, tmp_path, monkeypatch):
+        # Additive: a repo that has never run a sprint still gets every key, so a board can
+        # read row["sprint"] without a presence check — and "" is honest, where a missing key
+        # would be read by some consumers as "unknown" and by others as a crash.
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["sprint"] == ""
+        assert row["next_owner"] == ""
+        assert row["eng_review"] == ""
+        assert row["data_review"] == ""
+        assert row["depends_on"] == []
+
+    def test_depends_on_uses_the_sprint_models_parser(self, tmp_path, monkeypatch):
+        # One parser for the comma-separated field, so the board and sprint.py agree on what
+        # "0007,0007 , 0009" means (deduped, trimmed, order kept).
+        text = SPEC_TEXT.replace("status: in-flight\n", 'status: in-flight\ndepends_on: "0007,0007 , 0009"\n')
+        assert "depends_on" in text  # the fixture really has the key
+        _write_spec(tmp_path, text=text)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        assert ss.report_all(tmp_path)["specs"][0]["depends_on"] == ["0007", "0009"]
+
+    def test_the_text_report_is_unchanged_by_the_new_keys(self, tmp_path, monkeypatch):
+        # The new keys ride the JSON only; the text board a person reads is byte-identical
+        # whether or not a spec carries them.
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        _write_spec(tmp_path)
+        plain = ss.format_all_report(ss.report_all(tmp_path))
+        _write_spec(tmp_path, text=SPEC_WITH_SPRINT_KEYS)
+        with_keys = ss.format_all_report(ss.report_all(tmp_path))
+        assert plain == with_keys
+
+
+class TestReportAllOnlyListsSpecFiles:
+    """The harness installs specs/spec-template.md beside the real specs. It has frontmatter
+    (spec: "NNNN"), so it used to parse as a phantom board row. Only files named like a spec —
+    new_spec.SPEC_FILE_RE, `NNNN-` — are rows, the same rule track_specs and sprint.py apply."""
+
+    def test_the_installed_spec_template_is_not_a_board_row(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        (tmp_path / "specs" / "spec-template.md").write_bytes(HARNESS_TEMPLATE.read_bytes())
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        rows = ss.report_all(tmp_path)["specs"]
+        assert len(rows) == 1
+        assert rows[0]["spec"] == "0042"
+        assert not any("spec-template" in str(r.get("path", "")) for r in rows)
+
+    def test_other_non_spec_markdown_is_not_a_row_either(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        (tmp_path / "specs" / "notes.md").write_text("# scratch\n", encoding="utf-8")
+        (tmp_path / "specs" / "readme.md").write_text("# lower-case readme\n", encoding="utf-8")
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        assert len(ss.report_all(tmp_path)["specs"]) == 1
+
+    def test_a_broken_file_that_IS_named_like_a_spec_still_gets_its_error_row(self, tmp_path, monkeypatch):
+        # The filter narrows WHICH files are specs; it must not hide a real spec that is
+        # unreadable. That row saying "no parseable frontmatter" is the point of the board.
+        _write_spec(tmp_path, text="# Just a heading\n", name="0099-broken.md")
+        (tmp_path / "specs" / "spec-template.md").write_bytes(HARNESS_TEMPLATE.read_bytes())
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        rows = ss.report_all(tmp_path)["specs"]
+        assert [r["path"] for r in rows] == ["0099-broken.md"]
+        assert "frontmatter" in rows[0]["error"]
+
+
+class TestOnAzureDevOps:
+    """Additive (code-host providers, Wave 3): the same report over `ado_import`, driven by FakeAz
+    on the CAPTURED fixtures. `gh` is never called and bulk mode never runs git; the classes above
+    are untouched and the GitHub text is pinned by test_gh_argv_golden.py."""
+
+    BRANCH = "spec/0042-duplicate-claim"
+
+    @pytest.fixture(autouse=True)
+    def _ado(self, monkeypatch):
+        import ado_import
+        import ado_transport
+        import code_host
+        from tests.ado_fixtures import ADO_REMOTE, FakeAz, load
+        ado_import.clear_caches()
+        monkeypatch.delenv(code_host.ENV_VAR, raising=False)
+        monkeypatch.setattr(code_host, "origin_url", lambda root: ADO_REMOTE)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: pytest.fail("gh was called on an Azure DevOps repository"))
+        monkeypatch.setattr(ss, "run_git", lambda *a, **k: pytest.fail("bulk mode ran git"))
+        self.az = FakeAz()
+        # The captured PRs sit on the anonymised `branch-x` (the newest is active); here they are
+        # re-labelled onto the spec's branch (handoff.branch_name_for) so the board can match them.
+        # Derived, and said so.
+        self.prs = [{**p, "sourceRefName": f"refs/heads/{self.BRANCH}"} for p in load("pr_list")]
+        self.az.answers["repos pr list"] = lambda args: (
+            self.prs if "--source-branch" not in args or args[args.index("--source-branch") + 1] == self.BRANCH else [])
+        monkeypatch.setattr(ado_transport, "az_json", self.az)
+        yield
+        ado_import.clear_caches()
+
+    def _roster(self, repo):
+        (repo / ".sdlc").mkdir(exist_ok=True)
+        (repo / ".sdlc" / "team.yaml").write_text(
+            "people:\n  - handle: '@priya-n'\n    name: Priya\n    team: claims\n    roles: [checker]\n"
+            "    email: person2@example.com\nteams:\n  - name: claims\n    lead: '@priya-n'\n", encoding="utf-8")
+
+    def test_single_spec_is_read_through_az_and_carries_the_host_block(self, tmp_path):
+        spec = _write_spec(tmp_path)
+        import ado_import
+        from tests.ado_fixtures import load
+        result = ss.report_status(tmp_path, spec)
+        pr = result["pull_request"]
+        newest = max(self.prs, key=lambda p: p["pullRequestId"])  # the captured branch's newest PR is active
+        assert newest["status"] == "active"
+        assert result["code_host_available"] is True and pr["number"] == newest["pullRequestId"] and pr["state"] == "OPEN"
+        # Captured: `pr policy list` on the active PR is [] — no policy on its target branch, so no checks (not "unknown").
+        assert sorted(c["name"] for c in pr["checks"]) == sorted(c["name"] for c in ado_import.map_checks(load("pr_policy_list")))
+        assert pr["waiting_on"] == "waiting for the grader to run"  # no check named `grader` among the policies
+        assert pr["url"] == f"https://dev.azure.com/contoso/Claims/_git/claims-api/pullrequest/{newest['pullRequestId']}"
+        assert result["host"] == {"name": "azure-devops", "source": "remote", "cli": "az", "cli_state": "available",
+                                  "detail": "from origin https://dev.azure.com/contoso/Claims/_git/claims-api"}
+        text = ss.format_report(result)
+        assert text.splitlines()[-1] == "Code host: azure-devops (from origin)"
+        assert any(c[:4] == ["repos", "pr", "policy", "list"] for c in self.az.calls)
+
+    def test_approvals_carry_a_null_time_and_the_roster_handle(self, tmp_path):
+        self._roster(tmp_path)
+        approved = {**self.prs[0], "reviewers": [{**self.prs[0]["reviewers"][0], "vote": 10}]}  # person2 approves (derived)
+        self.az.answers["repos pr list"] = lambda args: [approved]
+        result = ss.report_status(tmp_path, _write_spec(tmp_path))
+        assert result["pull_request"]["approvals"] == [{"by": "person2@example.com", "at": None, "handle": "@priya-n"}]
+        text = ss.format_report(result)
+        assert "  Approved by: @priya-n (person2@example.com) (time not recorded by Azure DevOps)" in text
+
+    def test_board_rows_past_the_checks_cap_say_live_checks_not_read(self, tmp_path, monkeypatch):
+        import ado_import
+        monkeypatch.setattr(ado_import, "ADO_CHECKS_MAX", 0)
+        self._roster(tmp_path)
+        _write_spec(tmp_path)
+        result = ss.report_all(tmp_path)
+        assert result["code_host_available"] is True and result["host"]["name"] == "azure-devops"
+        pr = result["specs"][0]["pull_request"]
+        assert pr["waiting_on"] == "live checks not read for this row"
+        assert pr["updated_at"] is None  # GitPullRequest has no last-moved field; "unknown", not creationDate
+        assert pr["waiting_on_handle"] == "@priya-n"  # the roster handle, not the UPN
+        # The review-request moment comes from the ReviewersUpdate thread (captured), so an age IS known here.
+        assert "wait_hours" in pr and pr["wait_hours"] > 0 and isinstance(pr["over_alarm"], bool)
+        assert not any(c[:4] == ["repos", "pr", "policy", "list"] for c in self.az.calls)
+        text = ss.format_all_report(result)
+        assert "live checks not read for this row" in text and text.splitlines()[-1] == "Code host: azure-devops (from origin)"
+
+    def test_board_rows_under_the_cap_read_the_ladder(self, tmp_path):
+        _write_spec(tmp_path)
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert pr["waiting_on"] == "waiting for the grader to run"
+        assert pr["waiting_on_handle"] == "@person2@example.com"  # no roster: the UPN is what is known
+
+    def test_no_request_timestamp_means_the_keys_are_absent_not_zero(self, tmp_path):
+        from tests.ado_fixtures import load
+        self.az.answers["devops invoke git pullRequestThreads"] = load("pr_threads_active")  # RefUpdate only
+        _write_spec(tmp_path)
+        pr = ss.report_all(tmp_path)["specs"][0]["pull_request"]
+        assert "wait_hours" not in pr and "over_alarm" not in pr
+        assert ss.format_all_report(ss.report_all(tmp_path)).count("h]") == 0
+
+    def test_an_az_failure_is_code_host_available_false_with_the_az_detail(self, tmp_path):
+        self.az.fail["repos pr list"] = "ERROR: Please run 'az login' to setup account."
+        result = ss.report_status(tmp_path, _write_spec(tmp_path))
+        assert result["code_host_available"] is False and "az login" in result["error"]
+        assert result["host"]["cli_state"] == "signed_out" and result["host"]["cli"] == "az"
+        text = ss.format_report(result)
+        assert "Code-host data unavailable" in text and text.splitlines()[-1] == "Code host: azure-devops (from origin)"
+        board = ss.report_all(tmp_path)
+        assert board["code_host_available"] is False and board["specs"][0]["pull_request"] is None
+        assert board["host"]["cli_state"] == "signed_out"
+
+    def test_no_pull_request_is_a_clean_answer(self, tmp_path):
+        self.az.answers["repos pr list"] = lambda args: []
+        result = ss.report_status(tmp_path, _write_spec(tmp_path))
+        assert result["code_host_available"] is True and result["pull_request"] is None
+        assert "No pull request found for this branch." in ss.format_report(result)
+
+    def test_reviewer_handle_prefers_the_roster_handle(self):
+        assert ss._reviewer_handle({"login": "person2@example.com", "handle": "@priya-n"}) == "priya-n"
+        assert ss._reviewer_handle({"login": "person2@example.com", "handle": None}) == "person2@example.com"
+        assert ss._reviewer_handle({"login": "priya-n"}) == "priya-n"  # gh entries: unchanged
+
+    def test_host_flag_github_on_an_ado_remote_uses_gh(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        _write_spec(tmp_path)
+        result = ss.report_all(tmp_path, host="github")
+        assert result["host"]["name"] == "github" and result["host"]["source"] == "flag"
+        assert not self.az.calls and result["specs"][0]["pull_request"] is None
+        assert "Code host:" not in ss.format_all_report(result)
+
+
+# ---------------------------------------------------------------------------
+# SDLC Studio command center (togo-command-center.md §2.5 row 10): the row carries `deferred_reason`
+# ---------------------------------------------------------------------------
+
+class TestReportAllDeferredReason:
+    def test_a_deferred_spec_carries_its_reason_verbatim(self, tmp_path, monkeypatch):
+        text = SPEC_TEXT.replace("status: in-flight\n",
+                                 "status: deferred\ndeferred_reason: 'the upstream service slipped a quarter'\n")
+        _write_spec(tmp_path, text=text)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["status"] == "deferred"
+        assert row["deferred_reason"] == "the upstream service slipped a quarter"
+
+    def test_a_spec_without_the_key_reads_empty_not_missing(self, tmp_path, monkeypatch):
+        _write_spec(tmp_path)
+        monkeypatch.setattr(ss, "gh_json", lambda *a, **k: [])
+        row = ss.report_all(tmp_path)["specs"][0]
+        assert row["deferred_reason"] == ""
+        # Every key the row had before is still there, in the same order, with the new one before `branch`.
+        keys = list(row)
+        assert keys.index("deferred_reason") == keys.index("branch") - 1
+        assert keys[:3] == ["spec", "name", "path"] and keys[-2:] == ["branch", "pull_request"]

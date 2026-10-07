@@ -1,7 +1,7 @@
 # Hook System
 
 The SDLC plugin ships **one hook**: a session-start script that injects the project's SDLC
-context (phase, artifacts, session handoff) into Claude's context at the start of every
+context (phase, artifacts, active sprint) into Claude's context at the start of every
 session. It reads project state and never modifies it.
 
 > An earlier revision of the plugin also shipped a per-edit `sdlc-phase-inject.ps1` hook
@@ -55,7 +55,9 @@ no output, no error.
 |------|---------|
 | `.sdlc/state.yaml` | Extracts `current_phase`, `phase_name`, `profile_id`, `project_name` via regex |
 | `.sdlc/artifacts/<slug>/` | Counts all files recursively to report artifact progress (dir is the phase slug; `build` and `close` are non-numeric) |
-| `.sdlc/artifacts/build/session-handoff.json` | Build Loop only — reads section/spec progress, blockers, and next actions |
+| `.sdlc/profile.yaml` | Convention reminders (`immutability`, `no_console_log`) and the opt-in `session_health_check` |
+| `.sdlc/constitution.md`, `.sdlc/context/layers/`, `.sdlc/context/intake/index.md` | The 3-tier context: Foundation, the three most recent frozen layers, the document-intake index |
+| `.sdlc/sprints/*.md` | Sprint Team Layer — one `[SDLC-SPRINT]` line per sprint record whose `state:` is not `closed` (any phase; silent when the directory is absent) |
 
 ### State Parsing
 
@@ -79,52 +81,64 @@ how much work product exists for the current phase.
 
 ### Output Format
 
-The hook emits two mandatory lines for every initialized project:
+The hook emits two mandatory lines for every initialized project, then one phase reminder:
 
 ```
-[SDLC] Project: My API Service | Profile: microsoft-enterprise | Phase: Build Loop | Artifacts: 12
-[SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance)
+[SDLC] Project: My API Service | Profile: microsoft-enterprise | Phase build: Build Loop | Artifacts: 12
+[SDLC] Commands: /sdlc (guidance) | /sdlc-status (dashboard) | /sdlc-gate (check) | /sdlc-next (advance) | /sdlc-coach (coaching)
+[SDLC-PHASE] One spec at a time: Intent -> Delegate -> Discern. Check per change, never in a batch. The author never approves their own work. Refinement for the next sprint runs alongside — /sdlc-refine; the board is /sdlc-sprint.
 ```
 
 The first line gives Claude situational awareness. The second reminds it which slash
-commands are available.
+commands are available. The third is the phase's behavioural reminder; the Build Loop's
+carries the sprint clause so the reminder is no longer wrong when a session is spent
+refining the *next* sprint's specs rather than building the current one.
 
-### Session Continuity (Build Loop Special Handling)
+### Active Sprint Line (Sprint Team Layer)
 
-When the current phase is the Build Loop, the hook looks for `session-handoff.json` inside
-`.sdlc/artifacts/build/`. This file is maintained by the SDLC workflow to track
-multi-session implementation progress across section plans.
-
-If the file exists and is valid JSON, the hook reads:
-
-- **sections[]** — Each section has a `status` field: `complete`, `in_progress`, `blocked`, or `pending`.
-- **session_number** — Incremented each session for tracking.
-- **context_for_next_session** — Free-text summary left by the previous session.
-- **next_actions[]** — Array of objects with `action` and `section` fields.
-- **blockers[]** — Array of blocker objects with a `resolved` boolean.
-
-The hook outputs up to four additional lines:
+Directly after the `[SDLC-PHASE]` reminder, the hook lists every sprint record under
+`.sdlc/sprints/*.md` (the `templates/phases/build/sprint.md` shape written by `/sdlc-sprint`)
+whose `state:` is not `closed`. It emits **one additional line per active sprint**, in
+filename order:
 
 ```
-[SDLC] Session Handoff: 3/8 sections complete, 1 in progress, 0 blocked (session #5)
-[SDLC] Context: Auth service tests passing, need to wire up API gateway next.
-[SDLC] Next action: Implement API gateway routes (SECTION-004)
-[SDLC] WARNING: 1 active blocker(s)
+[SDLC-SPRINT] S07 (ready) — "Ship the duplicate-claim rail" — 2026-09-28 → 2026-10-09
 ```
 
-If `session-handoff.json` is malformed (invalid JSON), the hook emits a warning and skips
-handoff output rather than failing:
+The fields are the record's `sprint`, `state`, `goal`, `start` and `end` frontmatter values,
+read with grep/sed (bash) and `Select-String`-style regexes (PowerShell) only — no date
+arithmetic, no JSON, no `uv`, no Python. The parsing rule is deliberately small and
+identical in both twins:
 
-```
-[SDLC] WARNING: session-handoff.json is malformed - skipping handoff summary
-```
+- the first `key:` line in the file wins;
+- a double-quoted value is taken verbatim; an unquoted value is cut at a trailing `# comment`
+  and trimmed (so `state: ready   # planning | ready | closed` reads `ready`);
+- `\r` is stripped, so a record authored on Windows renders the same;
+- a file with no `state:` line, or an empty one, is not a sprint record the hook understands
+  and is skipped; a `closed` record is skipped;
+- a missing `sprint:` falls back to the file's basename.
 
-This design enables seamless multi-session build work. A developer can close Claude Code,
-reopen it hours later, and Claude will immediately know which section was last completed,
-what comes next, and whether any blockers exist.
+This is the line that lets everyone open a session knowing the sprint and its end date. It is
+not phase-gated: refinement for the next sprint runs in any phase where specs exist, so the
+sprint shows wherever the record does. Everything the line summarises is computed
+authoritatively by `sprint.py status` — the hook only echoes the record.
 
-The bash twin needs `jq` for the handoff summary (it falls back to python if `jq` is
-absent); everything else is plain POSIX tooling.
+**Never throws.** The PowerShell twin wraps the whole block in `try/catch` and reads with
+`-ErrorAction SilentlyContinue`; the bash twin uses `grep -a` and never exits non-zero on a
+bad file. That matters because registration runs `pwsh … || bash …`: a thrown error in the
+first twin would fall through to the second and double-print the whole banner. A malformed
+sprint file therefore produces no line, no warning and no error.
+
+### Retired: the section-plan handoff summary
+
+Earlier revisions of the Build Loop hook parsed `.sdlc/artifacts/build/session-handoff.json`
+and printed a `[SDLC] Session Handoff: 3/8 sections complete …` summary (plus `Context`,
+`Next action` and `active blocker(s)` lines). That block has been **removed from both twins**.
+The SECTION model it summarised was retired from the Build loop when specs became the Build
+unit (`track_specs.py` derives backlog progress from spec frontmatter); left in place, the
+old summary would have sat next to `[SDLC-SPRINT]` as a competing progress model. A legacy
+`session-handoff.json` may still exist in older projects — the hook ignores it. The bash
+twin no longer needs `jq` or Python; both twins are plain regex/grep tooling end to end.
 
 ---
 
@@ -182,8 +196,10 @@ are prohibited.
 
 ### Graceful Degradation
 
-If `.sdlc/state.yaml` does not exist, the hook exits 0 silently. If `session-handoff.json`
-is malformed, it warns and continues. No hook failure should block the user's workflow.
+If `.sdlc/state.yaml` does not exist, the hook exits 0 silently. If a sprint record under
+`.sdlc/sprints/` is malformed, both twins skip it silently — no line, no warning, no thrown
+error (a thrown error would make the `pwsh … || bash …` registration double-print). No hook
+failure should block the user's workflow.
 
 ### Context Injection Model
 
