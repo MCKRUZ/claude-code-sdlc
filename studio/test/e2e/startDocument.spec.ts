@@ -62,10 +62,10 @@ test.describe('[smoke bug 2] Start this document, in the real window', () => {
     try { if (workspace) rmSync(workspace, { recursive: true, force: true }) } catch { /* not a failed test */ }
   })
 
-  test('a document that is not there offers Start this document, never Edit', async () => {
+  test('a document that is not there offers Start this document, and Edit is switched off', async () => {
     expect(existsSync(constitution())).toBe(false)
     await expect(page.getByRole('button', { name: 'Start this document' })).toBeVisible({ timeout: 30_000 })
-    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled()
   })
 
   test('pressing it creates the file from the template and opens it for editing, with no error', async () => {

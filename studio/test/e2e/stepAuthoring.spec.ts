@@ -134,11 +134,11 @@ test.describe('[spec 0018] the step-authoring panel, in the real window', () => 
     await expect(page.getByText('epics.md').first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test('a document that does not exist offers Start this document, not Edit', async () => {
+  test('a document that does not exist offers Start this document, and Edit is switched off', async () => {
     // epics.md is the current step and is deliberately never written. Edit on it used to open an
     // editor onto a file that is not there ("does not exist"); it now offers to start it instead.
     await expect(page.getByRole('button', { name: 'Start this document' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeDisabled()
   })
 
   test('Edit opens the real structured editor for a document that exists', async () => {
