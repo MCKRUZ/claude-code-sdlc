@@ -115,6 +115,24 @@ export function wasCancelled(entry: ConsoleEntry): boolean {
 /** Stops a child that was aborted. On Windows `child.kill()` ends only the process it started, and a
  * model run is a tree (the CLI, its hooks, anything a hook launched), so the whole tree goes with
  * `taskkill /T /F`. The only argument is the child's numeric pid, which Node itself assigned. */
+/** Every child this module has started and not yet seen end. Electron only quits once its
+ * children are gone, and a plugin script or a model run can outlive the window the person
+ * closed — the e2e job's worker teardown timed out on exactly that. `killLiveChildren()` runs on
+ * `before-quit` (index.ts) so quitting is prompt; nothing else reads this set. */
+const liveChildren = new Set<ChildProcessWithoutNullStreams>()
+
+export function liveChildCount(): number {
+  return liveChildren.size
+}
+
+/** Ends every child still running — the whole tree on Windows — and forgets them. */
+export function killLiveChildren(): number {
+  const n = liveChildren.size
+  for (const child of liveChildren) killChildTree(child)
+  liveChildren.clear()
+  return n
+}
+
 function killChildTree(child: ChildProcessWithoutNullStreams): void {
   if (process.platform === 'win32' && typeof child.pid === 'number') {
     const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], { windowsHide: true, stdio: 'ignore' })
@@ -287,6 +305,9 @@ export function runCommand(
       finish(null, err instanceof Error ? err.message : String(err))
       return
     }
+    liveChildren.add(child)
+    child.once('exit', () => liveChildren.delete(child))
+    child.once('error', () => liveChildren.delete(child))
 
     if (opts?.timeoutMs) {
       timeoutHandle = setTimeout(() => {

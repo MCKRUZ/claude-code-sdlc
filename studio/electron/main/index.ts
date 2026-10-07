@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import os from 'node:os'
 import { detectAllTooling, type DetectAllToolingResult } from './tooling'
-import { getConsoleLog, onConsoleEntry, rawStdout } from './commandRunner'
+import { getConsoleLog, onConsoleEntry, rawStdout, killLiveChildren } from './commandRunner'
 import { setGhBinary, setGitBinary } from './git'
 import { setAzBinary } from './az'
 import { invalidateCodeHost, resolveCodeHost } from './codeHost'
@@ -1016,6 +1016,10 @@ app.whenReady().then(() => {
   registerIpcHandlers()
   createWindow()
 })
+
+// Quitting must not wait on a plugin script or a model run that outlived the window: end every
+// child this process started (the e2e worker teardown once timed out on exactly that).
+app.on('before-quit', () => { killLiveChildren() })
 
 app.on('window-all-closed', () => {
   win = null
