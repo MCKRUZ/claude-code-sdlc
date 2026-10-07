@@ -36,3 +36,5 @@ yarn.lock
 test/screenshots/*.png
 
 *.tsbuildinfo
+# the smoke suite writes a screenshot per screen, observations.json and report.md here
+test/screenshots/smoke/

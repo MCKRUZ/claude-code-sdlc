@@ -23,6 +23,18 @@ export interface KnownIssue {
 export const KNOWN_ISSUES: KnownIssue[] = [
   {
     kind: 'scrolls-sideways',
+    detail: /Findings touching this spec's scope path/,
+    problem: 'On the spec card (opened from the Build board) the "Findings touching this spec\'s scope path" section is wider than its column, even at the normal 1280 px window, so the card scrolls sideways.',
+    fix: 'Let that section wrap, or give the card a minimum width that holds it.',
+  },
+  {
+    kind: 'scrolls-sideways',
+    detail: /This project lives at|origin is not GitHub/,
+    problem: 'At 640 px, Settings\' folder path and the "This folder\'s origin is not GitHub or Azure DevOps" message do not wrap and run past the edge.',
+    fix: 'Let long paths and messages wrap, with the full text on hover.',
+  },
+  {
+    kind: 'scrolls-sideways',
     detail: /<span> "(Artifacts|Signed off by|Entered|Completed|State)"/,
     problem: 'On a narrower window (1024 px with the chat open, and 640 px) the Lifecycle table at the top of every stage is wider than the window: its Artifacts, Signed off by, Entered and Completed columns run past the edge.',
     fix: 'Let the table scroll inside its own box, or drop the lesser columns below about 1100 px.',
