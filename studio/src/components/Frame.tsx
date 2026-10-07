@@ -20,6 +20,7 @@ import { consoleStore, useConsoleEntries, useConsoleOpen } from '../stores/conso
 import { useBacklogStore } from '../stores/backlogStore'
 import { useConnection } from '../stores/connectionStore'
 import { stageTabStore } from '../stores/stageTabStore'
+import { CHAT_RAIL_WIDTH, chatStore, useChatCollapsed } from '../stores/chatStore'
 import { SkipLink } from '../ui/VisuallyHidden'
 import { cn } from '../ui/cn'
 import { ToastRegion } from '../ui/ToastRegion'
@@ -161,10 +162,14 @@ function FrameBody({
   // Open/closed is store state so the palette's "Toggle console" and ⌘J flip the same flag the
   // band's button does; the dock below subscribes on its own.
   const consoleOpen = useConsoleOpen()
-  // ⌘\ hides the chat without unmounting it: the aside keeps its place in DOM order (the a11y
-  // pins count two asides, band then chat) and its composer keeps whatever was typed.
-  const [chatHidden, setChatHidden] = useState(false)
-  const toggleChat = useCallback(() => setChatHidden((h) => !h), [])
+  // ⌘\, the band's Chat button and the `…` row fold the chat to its rail without unmounting it:
+  // the aside keeps its place in DOM order (the a11y pins count two asides, band then chat) and
+  // its composer keeps whatever was typed. The flag is PER AREA in `chatStore` (owner's v12
+  // item 1): the sprint home and planning start folded so the lanes get the window; the choice
+  // is remembered per machine. Steering hides the aside outright, as before.
+  const chatCollapsed = useChatCollapsed(area)
+  const toggleChat = useCallback(() => chatStore.toggle(area), [area])
+  const expandChat = useCallback(() => chatStore.setCollapsed(area, false), [area])
   // Steering closes the console: the committee's screen has no drawer of command output.
   useEffect(() => { if (steering) consoleStore.setOpen(false) }, [steering])
   // The palette's open flag lives in ShellPalette so opening it re-renders that component alone;
@@ -199,16 +204,25 @@ function FrameBody({
   const rootRef = useRef<HTMLDivElement>(null)
   const chatWidthRef = useRef<number>(readStoredChatWidth() ?? CHAT_DEFAULT_WIDTH)
   const consoleHeightRef = useRef<number>(consoleOpen ? readStoredConsoleHeight() : 0)
-  const onChatWidth = useCallback((px: number) => {
-    chatWidthRef.current = px
+  // Folded, the aside is its 40 px rail, and that is the width the screens beside it (the toast
+  // stack) must lay out against — the panel's own chosen width waits for the moment it reopens.
+  const chatCollapsedRef = useRef(chatCollapsed)
+  chatCollapsedRef.current = chatCollapsed
+  const applyChatWidth = useCallback(() => {
+    const px = chatCollapsedRef.current ? CHAT_RAIL_WIDTH : chatWidthRef.current
     rootRef.current?.style.setProperty('--chat-width', `${px}px`)
   }, [])
+  const onChatWidth = useCallback((px: number) => {
+    chatWidthRef.current = px
+    applyChatWidth()
+  }, [applyChatWidth])
+  useEffect(() => { applyChatWidth() }, [chatCollapsed, applyChatWidth])
   const onConsoleHeight = useCallback((px: number) => {
     consoleHeightRef.current = px
     rootRef.current?.style.setProperty('--console-height', `${px}px`)
   }, [])
   const rootStyle = {
-    '--chat-width': `${chatWidthRef.current}px`,
+    '--chat-width': `${chatCollapsed ? CHAT_RAIL_WIDTH : chatWidthRef.current}px`,
     '--console-height': `${consoleHeightRef.current}px`,
   } as CSSProperties
 
@@ -216,7 +230,7 @@ function FrameBody({
   usePrefetchCanvasHost(projectPath)
 
   return (
-    <div ref={rootRef} data-frame-root="" data-chat-hidden={chatHidden || steering ? '' : undefined} data-steering={steering ? '' : undefined} style={rootStyle} className="flex h-screen flex-col bg-slate-50">
+    <div ref={rootRef} data-frame-root="" data-chat-hidden={steering ? '' : undefined} data-chat-collapsed={chatCollapsed && !steering ? '' : undefined} data-steering={steering ? '' : undefined} style={rootStyle} className="flex h-screen flex-col bg-slate-50">
       <SkipLink />
       <LiveAnnouncer />
       {/* The shell band: the FIRST aside, holding the band and the strip (`nav[aria-label="Project"]`). */}
@@ -234,6 +248,8 @@ function FrameBody({
           currentStageId={currentStageId ?? null}
           overflow={overflow}
           presentation={presentation}
+          chatOpen={!chatCollapsed}
+          onToggleChat={toggleChat}
         />
         {/* The strip (and the Build views under it) is navigation; steering mode draws none. */}
         {!steering && <MemoStrip status={status} projectPath={projectPath} area={area} viewedStageId={viewedStageId} sprint={sprintFacts} onNavigate={onNavigate} />}
@@ -244,8 +260,15 @@ function FrameBody({
         {/* `id="main"` is the skip link's target; `tabIndex={-1}` takes programmatic focus without
             joining the tab order. Children render directly — no wrapper (§7 Frame row [MF]).
             Steering: no padding, so the room is full-bleed without negative margins. */}
+        {/* <main> is the ONLY scroller, so it is also POSITIONED (`main#main { position: relative }`
+            in theme/base.css, beside the root-never-scrolls rule) — the containing block of every
+            absolutely positioned descendant. Unpositioned, an `absolute` box inside a screen resolves
+            against the viewport, escapes main's clip and grows the document (v13's probe measured the
+            root at 1440×1608 on the review and closing screens, scrolled 7.5 px — the whole shell
+            offset, owner's item 6). The class list here is a pin (frame.memo.test), so the rule
+            lives in the stylesheet. */}
         <main id="main" tabIndex={-1} className={cn('min-w-0 flex-1 overflow-auto', steering ? 'p-0' : 'p-6')}>{children}</main>
-        <MemoChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} hidden={chatHidden || steering} onWidthChange={onChatWidth} />
+        <MemoChatPanel status={status} projectPath={projectPath} actor={actor} stageId={stageId ?? null} hidden={steering} collapsed={chatCollapsed} onExpand={expandChat} onWidthChange={onChatWidth} />
       </div>
       <ConsoleDock entries={consoleEntries} onHeightReport={onConsoleHeight} />
       <ToastRegion />
@@ -409,7 +432,8 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
       capabilities: commandCenter?.capabilities ?? null,
       actor: identityLabel(connection?.account, connection?.rosterHandle),
     }
-    return (query: string) => intentEntries(query, ctx, openIntent)
+    // `suggest` is the palette's own: a typo's nearest template fills the query and stays open.
+    return (query: string, suggest: (phrase: string) => void) => intentEntries(query, ctx, openIntent, suggest)
   }, [steering, openIntent, backlog, commandCenter, connection])
 
   useShortcuts({

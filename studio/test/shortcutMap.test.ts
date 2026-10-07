@@ -103,3 +103,57 @@ describe('no clash across the whole table', () => {
     for (const k of ['s', 'l', 'p', 't', 'b', 'h', 'c', 'd']) expect(seconds).toContain(k)
   })
 })
+
+// --- Q4: the keyboard model, documented as data --------------------------------------------------
+
+import { describeBindings, ESC_LAYERS, kbdFor, namedEscLayers } from '../src/shortcuts/shortcutMap'
+import { ALL_BINDINGS } from '../src/shortcuts/useShortcuts'
+
+describe('the Esc layering is one ordered list', () => {
+  it('innermost first — dialog, palette, help, spec card, steering, lane focus, graph hover, Board search — and back last', () => {
+    expect(ESC_LAYERS.map((l) => l.layer)).toEqual(['dialog', 'palette', 'help', 'spec-card', 'steering', 'lane-focus', 'graph-hover', 'board-search', 'back'])
+    for (const l of ESC_LAYERS) expect(l.closes.length).toBeGreaterThan(8)
+    expect(ESC_LAYERS[ESC_LAYERS.length - 1].closes).toMatch(/never while .* dirty/)
+  })
+  it('namedEscLayers orders whatever closers a host has by that list, never by the host\'s object order', () => {
+    const calls: string[] = []
+    const layers = namedEscLayers({ 'graph-hover': () => { calls.push('graph'); return false }, dialog: () => { calls.push('dialog'); return false }, palette: () => { calls.push('palette'); return true } })
+    expect(layers).toHaveLength(3)
+    for (const l of layers) if (l()) break
+    expect(calls).toEqual(['dialog', 'palette'])
+  })
+})
+
+describe('kbdFor: a control shows its own key from the one map', () => {
+  it('finds the first binding of an action type, platform-resolved; unbound → null', () => {
+    expect(kbdFor(ALL_BINDINGS, 'palette', undefined, true)).toEqual([['⌘', 'K']])
+    expect(kbdFor(ALL_BINDINGS, 'palette', undefined, false)).toEqual([['Ctrl', 'K']])
+    expect(kbdFor(ALL_BINDINGS, 'chat', undefined, true)).toEqual([['⌘', '\\']])
+    expect(kbdFor(ALL_BINDINGS, 'lane', (a) => a.type === 'lane' && a.command === 'handoff')).toEqual([['h']])
+    expect(kbdFor(ALL_BINDINGS, 'buildView', (a) => a.type === 'buildView' && a.view === 'planning')).toEqual([['g'], ['p']])
+    expect(kbdFor(ALL_BINDINGS, 'steering')).toEqual([['g'], ['t']])
+    expect(kbdFor([] as typeof ALL_BINDINGS, 'palette')).toBeNull()
+  })
+})
+
+describe('describeBindings: the README table is generated from the map', () => {
+  it('covers every scope, collapses alternatives and the g 0–9 run, and marks input-safe rows', () => {
+    const rows = describeBindings(ALL_BINDINGS)
+    const palette = rows.find((r) => r.does === 'Command palette')!
+    expect(palette).toEqual({ keys: '`Mod+K`, `/`', where: 'Everywhere', does: 'Command palette', inInputs: true })
+    expect(rows.filter((r) => /^Go to Phase/.test(r.does))).toEqual([{ keys: '`g` `0`…`g` `9`', where: 'In a project', does: 'Go to Phase 0–9', inInputs: false }])
+    expect(rows.find((r) => r.does === 'Hand off')).toEqual({ keys: '`h`', where: 'In the lanes', does: 'Hand off', inInputs: false })
+    expect(rows.find((r) => r.does === 'Steering mode')?.keys).toBe('`g` `t`')
+    // Every scope that HAS a binding is a column value (the Board scope binds nothing: its search is a field, not a key).
+    expect(new Set(rows.map((r) => r.where))).toEqual(new Set(ALL_BINDINGS.map((b) => SHORTCUT_SCOPE_LABEL[b.scope])))
+  })
+  it('no two bindings in one live scope set share a chord (the whole table, lanes and scene included)', () => {
+    const seen = new Map<string, string>()
+    for (const b of ALL_BINDINGS) {
+      const id = `${b.scope}:${b.keys.map(normalizeChord).join(' ')}`
+      const prev = seen.get(id)
+      if (prev) expect(prev, id).toBe(b.label)   // the same label twice is an alias, not a clash
+      seen.set(id, b.label)
+    }
+  })
+})

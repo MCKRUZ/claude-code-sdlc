@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { Flag } from 'lucide-react'
 import type { SlateProposal, SprintView } from '../../../shared/types'
-import { REASONED_SLATE } from '../../../shared/reasons'
+import { REASONED_SLATE, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
 import { dorChipTone } from '../../../shared/sprintModel'
 import { Button, Chip, Eyebrow, Textarea } from '../../ui'
 import type { CommitStep } from './commitSprint'
@@ -48,7 +48,7 @@ export function PluginSaysColumn({ view, proposal, writeReason, busy, steps, com
   const [overrideReason, setOverrideReason] = useState('')
   const over = overTarget(view.sprint?.target ?? null, view.slate.length)
   const disabled = Boolean(writeReason) || busy || committing
-  const reason = writeReason ?? (busy || committing ? 'Waiting for the plugin to answer.' : undefined)
+  const reason = writeReason ?? (busy || committing ? WAITING_FOR_PLUGIN_ANSWER : undefined)
   const proposed = proposal?.proposal ?? []
   const grouped = groupGaps(view.readiness.gaps)
 
@@ -66,8 +66,9 @@ export function PluginSaysColumn({ view, proposal, writeReason, busy, steps, com
             : (
               <ul className="space-y-1" aria-label="Proposed slate">
                 {proposed.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-2 text-xs" data-proposed={r.id}>
-                    <span className="min-w-0 truncate"><span className="font-mono text-ident text-accent-text">{r.id}</span> <span className="text-ink-1">{r.name}</span></span>
+                  <li key={r.id} className="flex items-start justify-between gap-2 text-xs" data-proposed={r.id}>
+                    {/* The id and name wrap, never truncate: a proposal that reads "payments-led…" names nothing (v12 critique #2). */}
+                    <span className="min-w-0 leading-[18px] [overflow-wrap:anywhere]"><span className="font-mono text-ident text-accent-text">{r.id}</span> <span className="text-ink-1">{r.name}</span></span>
                     <span className="flex shrink-0 gap-1"><Chip tone={dorChipTone(r.dor)} casing="state" dot>{r.dor}</Chip><Chip tone={riskTone(r.risk)} casing="identifier">{r.risk}</Chip></span>
                   </li>
                 ))}
@@ -76,7 +77,12 @@ export function PluginSaysColumn({ view, proposal, writeReason, busy, steps, com
           {proposal?.mixWarnings.map((w) => <p key={w} className="mt-1 text-xs text-status-warn-ink">{w}</p>)}
           {proposal?.dependencyWarnings.map((w) => <p key={w} className="mt-1 text-xs text-status-warn-ink">{w}</p>)}
           <div className="mt-2 flex flex-wrap gap-2">
-            <Button size="sm" variant="primary" data-write="" disabled={disabled || proposed.length === 0} disabledReason={reason ?? (proposed.length === 0 ? 'the plugin proposes nothing to apply' : undefined)} onClick={() => onApplyProposal([...proposal!.alreadySlated, ...proposed.map((r) => r.id)])}>
+            {/* Apply sends the PROPOSAL alone, never the union with what is already slated: `sprint.py
+                slate` is additive and refuses a merged spec outright ("spec 0003 is merged — slating
+                delivered work is not a commitment", exit 1) even when it already sits in this sprint,
+                so re-sending the slated set made the whole verb Not done the moment one slated spec
+                had merged (cockpit.spec, v13 integration). */}
+            <Button size="sm" variant="primary" data-write="" disabled={disabled || proposed.length === 0} disabledReason={reason ?? (proposed.length === 0 ? 'the plugin proposes nothing to apply' : undefined)} onClick={() => onApplyProposal(proposed.map((r) => r.id))}>
               {APPLY_PROPOSAL}
             </Button>
             <Button size="sm" disabled disabledReason={REASONED_SLATE}>Claude proposes a reasoned slate</Button>

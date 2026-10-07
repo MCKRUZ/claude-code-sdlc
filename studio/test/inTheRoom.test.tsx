@@ -49,3 +49,17 @@ describe('InTheRoom', () => {
     expect(screen.getByTestId('room-empty').textContent).toBe(NO_ROSTER)
   })
 })
+
+describe('InTheRoom as one row under the header (owner\'s v12 item 1)', () => {
+  it('lays the roster out as pills in a wrapping row, each naming the person with handle and team on hover', () => {
+    render(<InTheRoom people={ROSTER.people} view={SPRINT} board={BOARD_ROWS} me={ME} />)
+    const room = screen.getByTestId('in-the-room')
+    expect(room.hasAttribute('data-room-row')).toBe(true)
+    expect(room.className).toContain('flex-wrap')
+    expect(room.className).not.toContain('space-y')
+    const sam = document.querySelector('[data-person-row][data-handle="@sam-k"]') as HTMLElement
+    expect(sam.className).toContain('rounded-full')
+    expect(sam.getAttribute('title')).toBe('@sam-k · data')
+    expect(sam.getAttribute('aria-label')).toBe('Sam K, data')
+  })
+})

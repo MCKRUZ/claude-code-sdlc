@@ -8,7 +8,7 @@
 // plugin owns).
 import type { RosterPerson } from '../../../shared/types'
 import { samePerson } from '../../../shared/identity'
-import { newerPlugin, SECURITY_SIGNER } from '../../../shared/reasons'
+import { newerPlugin, NO_ROSTER, SECURITY_SIGNER, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
 import { Select } from '../../ui'
 import { withRole } from './planningModel'
 
@@ -20,6 +20,11 @@ export const SLOT_LABEL: Record<SlotRole, string> = { developer: 'Builder', chec
 export const SELF_CHECK_NOTE = 'same person as the builder — the plugin refuses a self-check (developer_is_checker)'
 
 export const NOBODY = ''
+
+/** The compact picker's width on a slate row: 11 rem (176 px), the number `SlateColumn`'s inline
+ * threshold is derived from. A long roster name ellipsises inside the native select, where the
+ * full option list still reads it whole. */
+export const COMPACT_SELECT_CLASS = 'w-44 max-w-full'
 
 /** The empty option's words: an INVITATION on a slot a person fills ("choose a builder"), and on
  * the Security signer — a slot no frontmatter field backs — the fact that there is no field,
@@ -36,7 +41,9 @@ export interface RolePickerProps {
   /** Whether the installed plugin declares `assign-roles`. Undefined = not yet known: drawn live. */
   canAssign?: boolean
   busy?: boolean
-  /** On a one-line slate row: the label rides as the select's accessible name only. */
+  /** On a one-line slate row: the label rides as the select's accessible name only, and the
+   * select takes a FIXED width (`COMPACT_SELECT_CLASS`) so the slate's name track keeps its floor
+   * — a natural-width "Sam Kowalski (@sam-k)" select grew to ≈ 190 px and took it (v13). */
   compact?: boolean
   onChange: (handle: string) => void
 }
@@ -53,7 +60,9 @@ export function RolePicker({ role, spec, value, people, developer, canAssign, bu
     )
   }
   const candidates = withRole(people, role)
-  const reason = canAssign === false ? newerPlugin('assign-roles') : busy ? 'Waiting for the plugin to answer.' : undefined
+  // With no roster there is nobody to pick: disabled with `NO_ROSTER` rather than an enabled
+  // picker holding only its placeholder (§2.7: a disabled control always carries its reason).
+  const reason = canAssign === false ? newerPlugin('assign-roles') : busy ? WAITING_FOR_PLUGIN_ANSWER : people.length === 0 ? NO_ROSTER : undefined
   const selfCheck = role === 'checker' && value !== NOBODY && samePerson(value, developer)
   const options = [{ value: NOBODY, label: PLACEHOLDER[role] }, ...candidates.map((p) => ({ value: p.handle, label: p.name ? `${p.name} (${p.handle})` : p.handle }))]
   // A handle on the row that the roster filter does not list (a person who lost the role) stays
@@ -71,6 +80,7 @@ export function RolePicker({ role, spec, value, people, developer, canAssign, bu
         disabledReason={reason}
         options={options}
         data-write=""
+        className={compact ? COMPACT_SELECT_CLASS : undefined}
         aria-label={`${SLOT_LABEL[role]} for ${spec}`}
       />
       {selfCheck && <p className={compact ? 'max-w-[14rem] text-[11px] text-status-warn-ink' : 'text-[11px] text-status-warn-ink'} data-self-check="">{SELF_CHECK_NOTE}</p>}

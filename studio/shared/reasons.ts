@@ -106,7 +106,14 @@ export const FORBIDDEN_METRIC_WORDS = /velocity|story points|PR count|lines of c
 
 /** Every fixed sentence above. `isReason(text)` is what `reasonsSweep.test.tsx` asks of each
  * disabled control's description when it is not a plugin message from the fixture. */
+/** A write control while its own verb is still running: the plugin has not answered yet. */
+export const WAITING_FOR_PLUGIN_ANSWER = 'Waiting for the plugin to answer.'
+/** `HandoffDialog`: the two gaps the form itself can see before `handoff.py` is asked. */
+export const NAME_DEVELOPER_FIRST = 'Name the developer first.'
+export const REASON_REQUIRED_PAST_LIMIT = 'A reason is required to go past a limit.'
+
 export const REASON_SENTENCES: readonly string[] = [
+  WAITING_FOR_PLUGIN_ANSWER, NAME_DEVELOPER_FIRST, REASON_REQUIRED_PAST_LIMIT,
   NO_ACTOR, SIGN_IN_TO_SEE, NO_ROSTER, OWN_BUILD_VERDICT, DATA_VERDICT_NO_DISCIPLINE,
   SECURITY_SIGNER, STANDUP_NOTES, PROMOTE_FINDING, SPRINT_FIELDS_FIXED, LOOP_EVENTS_TOTALS_ONLY,
   VAGUE_LINE_REWRITE, REASONED_SLATE, TIER_CONFIRMATION_ARRIVES, SKIPPED_TIER_CONFIRMATION, STREAM_ARRIVES,

@@ -154,8 +154,9 @@ export function SpecCard({ projectPath, row, roster, capabilities, actor, onBack
       {error && <Notice tone="error" className="mt-4">{error}</Notice>}
       {!card && !error && <p role="status" aria-busy="true" className="mt-4 text-sm text-ink-3">Reading the spec…</p>}
 
+      {/* The body's `pb-16` = the sticky foot's height (64 px), so its last line clears the foot (v12 #3). */}
       {card && (
-        <div className="mt-6 grid gap-6 pb-20 lg:grid-cols-[minmax(320px,1fr)_280px_minmax(300px,1fr)]">
+        <div className="mt-6 grid gap-6 pb-16 lg:grid-cols-[minmax(320px,1fr)_280px_minmax(300px,1fr)]" data-testid="spec-body">
           <section aria-label="Intent · Definition of Ready" className="space-y-4" data-testid="spec-intent">
             <TierChip projectPath={projectPath} specPath={row.path} risk={readiness?.risk ?? row.risk} whyNotes={why} canConfirm={has(CAPABILITIES.confirmTier)} writeReason={writeReason} onChanged={reload} />
             <Card>
@@ -233,11 +234,16 @@ function Group({ title, tone, items, empty, extra, collapsed = false }: { title:
   )
 }
 
+/** `null`: the document has no such section; `''`: the section is there with nothing in it (the
+ * template's comment stripped) — two different facts, each said in `ink-3` words, never a blank. */
+export const SECTION_EMPTY = `${NO_DATA} — the section is empty`
+export const SECTION_ABSENT = 'not in the document'
+
 function Doc({ label, text }: { label: string; text: string | null }) {
   return (
     <div className="mt-2" data-doc={label}>
       <p className="text-xs font-medium text-ink-2">{label}</p>
-      {text ? <pre className="mt-0.5 whitespace-pre-wrap font-sans text-xs text-ink-1">{text}</pre> : <p className="mt-0.5 text-xs text-ink-3">not in the document</p>}
+      {text ? <pre className="mt-0.5 whitespace-pre-wrap font-sans text-xs text-ink-1">{text}</pre> : <p className="mt-0.5 text-xs text-ink-3" data-doc-empty={text === null ? 'absent' : 'empty'}>{text === null ? SECTION_ABSENT : SECTION_EMPTY}</p>}
     </div>
   )
 }

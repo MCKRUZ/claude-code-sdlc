@@ -47,6 +47,15 @@ export interface ConstellationSceneProps {
 
 export const CAMERA_FOV = 40
 
+/** The anchor-writing frame callback runs BEFORE `Plates` projects (R3F sorts `useFrame`
+ * subscribers by priority, lowest first; a negative one keeps automatic rendering on). Without
+ * it, both were priority 0 and ran in MOUNT order — `Plates` (a child) subscribed first and
+ * projected the anchors the scene had not yet written: on a Board whose layout came from the
+ * cache (no settle tween → one demand frame and the loop idles) every plate projected (0,0,0)
+ * and the labels stacked in a column at the canvas centre, detached from their bodies
+ * (observatory-v13-board-graph.png). */
+export const ANCHOR_FRAME_PRIORITY = -1
+
 export function ConstellationScene({ data, model, hoverId, onHover, live, orbit, projectKey }: ConstellationSceneProps) {
   const gl = useThree((s) => s.gl)
   const camera = useThree((s) => s.camera)
@@ -182,6 +191,7 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
     const p = layout.positions.current
     const dirty = layout.dirty.current
     const scale = fit.bodyScale.current
+    const wroteTransforms = dirty.transforms
     if (dirty.transforms) { writeBodyTransforms(bodies, model, p, scale, hovered.current); dirty.transforms = false }
     if (dirty.colors) { writeBodyColors(bodies, model, palette, weights.current, hovered.current); writeHalos(bodies, model, hovered.current); dirty.colors = false }
     if (dirty.tethers) { writeTethers(tethers, model, p, hovered.current, scale); dirty.tethers = false }
@@ -192,7 +202,10 @@ export function ConstellationScene({ data, model, hoverId, onHover, live, orbit,
       item.anchor.set(p[rb.index * 3], p[rb.index * 3 + 1], p[rb.index * 3 + 2])
       item.anchorRadius = rb.radius * scale
     }
-  })
+    // The positions moved this frame: ask for one more, so whatever projected before this
+    // callback in an earlier frame (a plate registered late, a resize) reads the final anchors.
+    if (wroteTransforms) invalidate()
+  }, ANCHOR_FRAME_PRIORITY)
 
   return (
     <>

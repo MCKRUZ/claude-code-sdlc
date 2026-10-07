@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { HandOffCheck, SourcedBlock } from '../shared/types'
 import { CAPABILITIES, newerPlugin, ONE_SPEC_ONE_BRANCH } from '../shared/reasons'
-import { DOR_BLOCKS, HandoffFoot, handOffDisabledReason, LIVE_DECIDES } from '../src/components/SpecCard/HandoffFoot'
+import { DOR_BLOCKS, FOOT_STICK_CLASS, HandoffFoot, handOffDisabledReason, LIVE_DECIDES } from '../src/components/SpecCard/HandoffFoot'
 
 const block = (data: HandOffCheck | null, error: string | null = null): SourcedBlock<HandOffCheck> => ({ source: 'handoff.py --check --json', fetchedAt: 'now', ok: data !== null, data, error })
 const REFUSED = block({ ok: false, refusal: { kind: 'not_ready', message: 'Spec 0008 is not ready: ## Scope Out: missing' } })
@@ -59,6 +59,21 @@ describe('HandoffFoot', () => {
     // The dry run's own answer wins over the checker's line when both exist.
     expect(handOffDisabledReason(OK, true, lines)).toBeNull()
     expect(handOffDisabledReason(REFUSED, true, lines)).toBe('Spec 0008 is not ready: ## Scope Out: missing')
+  })
+
+  /** v12 critique #3: a sliver of the spec body showed under the foot. Chromium pins a sticky box
+   * to the scroll container's CONTENT edge, and `<main>` has 24 px of padding (visual §4), so the
+   * foot must stick at `bottom: -24px` to sit flush with the visible edge (measured in this
+   * Electron: `bottom:0` → 24 px short; `bottom:-24px` → flush). The foot is opaque `surface-1`. */
+  it('sticks flush with the scrollport — offset by the main padding it would otherwise float above — and is opaque', () => {
+    render(<HandoffFoot check={REFUSED} status="ready" onHandOff={vi.fn()} />)
+    const foot = screen.getByTestId('handoff-foot')
+    expect(FOOT_STICK_CLASS).toBe('-bottom-6')
+    expect(foot.className).toContain('sticky')
+    expect(foot.className).toContain(FOOT_STICK_CLASS)
+    expect(foot.className).not.toMatch(/\bbottom-0\b/)
+    expect(foot.className).toContain('bg-surface-1')
+    expect(foot.className).toContain('h-16')
   })
 
   it('an in-flight or merged spec states it instead of offering a hand-off', () => {

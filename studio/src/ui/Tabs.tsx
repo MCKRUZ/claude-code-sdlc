@@ -1,13 +1,18 @@
 // #9 Tabs: TabList / Tab / TabPanel with WAI-ARIA wiring. The list owns `value` and `onChange`
 // and hands them down through context; each Tab derives its own `id` and `aria-controls` from a
 // shared `useId` base, so a panel is always labelled by its tab and a tab always controls its
-// panel. StageHome's `aria-label="Stage view"` is pinned. Never used in the Sidebar
-// (sidebar.test:98 forbids `role="tab"` there) — a caller's rule. The underline is a real
+// panel. StageHome's `aria-label="Stage view"` is pinned. Round 3 (Q3): `@radix-ui/react-tabs`
+// sits under TabList / Tab — Radix owns selection on mouse down, Enter / Space and focus
+// (automatic activation), the roving tab stop and ← → Home End on a focused tab, typeahead-free.
+// `TabsProvider` renders no DOM (StageHome's `space-y-6` rhythm counts its children), so the
+// Radix root rides `asChild` on the list; `TabPanel` stays the kit's own plain `role="tabpanel"`
+// (Radix would keep every unselected panel mounted and hidden). The underline is a real
 // `<span data-tab-underline-bar>` the list positions under the selected tab in a layout effect
 // and slides with a CSS transition (zeroed under `[data-motion="off"]`); until a width has been
 // measured (SSR, jsdom, first paint) base.css draws the selected tab's own bottom border
 // instead, keyed off the absent `data-tab-measured`. The selected tab keeps `data-tab-underline`.
 import { createContext, forwardRef, useContext, useId, useLayoutEffect, useRef, type ForwardedRef, type KeyboardEvent, type ReactNode } from 'react'
+import * as RadixTabs from '@radix-ui/react-tabs'
 import type { TabListProps, TabPanelProps, TabProps } from './contract'
 import { cn } from './cn'
 import { Icon } from './Icon'
@@ -68,40 +73,49 @@ function TabListInner<V extends string>(
     return () => ro.disconnect()
   }, [value])
 
+  // Radix owns a key pressed ON a tab (its roving focus moves on the next tick and automatic
+  // activation selects on focus). A key that reaches the list itself — dispatched on the tablist,
+  // the path stageHomeTabs.test pins — is answered here at once, from the focused tab or, failing
+  // that, the selected one. Radix's focus handler selects the tab it lands on; the explicit
+  // `onChange` below is the same fact said once more for a focus that did not land.
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    if (target !== e.currentTarget && target.getAttribute('role') === 'tab') return
     if (!isRovingKey(e.key)) return
     const tabs = Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-    const current = tabs.findIndex((t) => t === document.activeElement)
-    const next = nextRovingIndex(e.key, current < 0 ? 0 : current, tabs.map((t) => !t.disabled))
+    const focused = tabs.findIndex((t) => t === document.activeElement)
+    const current = focused >= 0 ? focused : Math.max(0, tabs.findIndex((t) => t.dataset.value === ctx.value))
+    const next = nextRovingIndex(e.key, current, tabs.map((t) => !t.disabled))
     if (next === null) return
     e.preventDefault()
-    const target = tabs[next]
-    target?.focus()
-    const nextValue = target?.dataset.value
+    const tab = tabs[next]
+    tab?.focus()
+    const nextValue = tab?.dataset.value
     if (nextValue !== undefined && nextValue !== ctx.value) ctx.onChange(nextValue)
   }
   return (
     <TabsContext.Provider value={ctx}>
-      <div
-        ref={(el) => {
-          list.current = el
-          if (typeof ref === 'function') ref(el)
-          else if (ref) ref.current = el
-        }}
-        role="tablist"
-        aria-label={label}
-        onKeyDown={onKeyDown}
-        className={cn('relative flex items-center gap-1 border-b border-line-1', className)}
-        {...rest}
-      >
-        {children}
-        <span
-          ref={bar}
-          aria-hidden="true"
-          data-tab-underline-bar=""
-          className="pointer-events-none absolute -bottom-px left-0 h-0.5 rounded-full bg-accent-600 transition-[transform,width] duration-[200ms] ease-[var(--ease-in-out)]"
-        />
-      </div>
+      <RadixTabs.Root asChild value={value} onValueChange={(v) => onChange(v as V)} activationMode="automatic">
+        <RadixTabs.List
+          ref={(el) => {
+            list.current = el
+            if (typeof ref === 'function') ref(el)
+            else if (ref) ref.current = el
+          }}
+          aria-label={label}
+          onKeyDown={onKeyDown}
+          className={cn('relative flex items-center gap-1 border-b border-line-1', className)}
+          {...rest}
+        >
+          {children}
+          <span
+            ref={bar}
+            aria-hidden="true"
+            data-tab-underline-bar=""
+            className="pointer-events-none absolute -bottom-px left-0 h-0.5 rounded-full bg-accent-600 transition-[transform,width] duration-[200ms] ease-[var(--ease-in-out)]"
+          />
+        </RadixTabs.List>
+      </RadixTabs.Root>
     </TabsContext.Provider>
   )
 }
@@ -117,19 +131,20 @@ function TabInner<V extends string>(
   const ctx = useTabs('Tab')
   const selected = ctx.value === value
   return (
-    <button
-      type="button"
+    <RadixTabs.Trigger
+      value={value}
       disabled={disabled}
-      role="tab"
       id={tabId(ctx.baseId, value)}
-      aria-selected={selected}
       aria-controls={panelId(ctx.baseId, value)}
+      // The selected tab is the row's one tab stop from the first paint (WAI-ARIA roving); Radix
+      // moves the stop as focus moves.
       tabIndex={selected ? 0 : -1}
       data-value={value}
       data-tab-underline={selected ? '' : undefined}
       data-pressable=""
+      // Radix selects on mouse down, Enter / Space and focus; a synthetic click selects here too.
       onClick={() => {
-        if (!selected) ctx.onChange(value)
+        if (!selected && !disabled) ctx.onChange(value)
       }}
       {...disabledReasonProps(disabledReason, disabled)}
       ref={ref}
@@ -146,7 +161,7 @@ function TabInner<V extends string>(
       {icon ? <Icon icon={icon} size={14} /> : null}
       {children}
       <DisabledReason reason={disabledReason} disabled={disabled} />
-    </button>
+    </RadixTabs.Trigger>
   )
 }
 

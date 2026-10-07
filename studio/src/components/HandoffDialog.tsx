@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { BoardRow, HandoffResult } from '../../shared/types'
+import { NAME_DEVELOPER_FIRST, REASON_REQUIRED_PAST_LIMIT } from '../../shared/reasons'
 import { Button, Card, Chip, DefinitionList, Eyebrow, Field, Input, Notice, toast } from '../ui'
 import type { RosterEntry } from '../ui'
 import { useEnter } from '../motion/useEnter'
@@ -205,8 +206,8 @@ export function HandoffDialog({
           loadingLabel="Handing off…"
           disabled={!developer.trim() || (atLimit && !reason.trim())}
           disabledReason={
-            !developer.trim() ? 'Name the developer first.'
-              : atLimit && !reason.trim() ? 'A reason is required to go past a limit.'
+            !developer.trim() ? NAME_DEVELOPER_FIRST
+              : atLimit && !reason.trim() ? REASON_REQUIRED_PAST_LIMIT
                 : undefined
           }
         >
@@ -215,7 +216,7 @@ export function HandoffDialog({
             : atLimit ? 'Hand off anyway' : 'Hand off'}
         </Button>
         {atLimit && !reason.trim() && (
-          <span className="text-xs text-status-warn-ink">A reason is required to go past a limit.</span>
+          <span className="text-xs text-status-warn-ink">{REASON_REQUIRED_PAST_LIMIT}</span>
         )}
       </div>
     </div>

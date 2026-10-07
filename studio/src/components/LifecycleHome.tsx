@@ -35,6 +35,11 @@ export interface LifecycleHomeProps extends StageHomeProps {
 export const NEEDS_YOU_SOURCE = { scripts: 'sprint.py status · spec_status.py --all · track_decisions.py', how: 'matched to your handle' }
 export const WORKING_SOURCE = "Tōgō's own record of this session"
 
+/** The Today column's height cap as the right column (≥ 1600 px): the window less the 169 px
+ * above it (band 48 + strip 64 + main padding 24 + the strip's own hairline and labels, probe-
+ * measured) and main's 24 px bottom padding, so the column ends on screen and scrolls inside. */
+export const LIFECYCLE_TODAY_MAX_HEIGHT_CLASS = 'min-[1600px]:max-h-[calc(100dvh-193px)]'
+
 export function LifecycleHome({ commandCenter, onNeedsYou, ...stageHome }: LifecycleHomeProps) {
   const { status, stageId, onNavigate, projectPath } = stageHome
   const resolvedStage = stageId ?? status.stages.find((s) => s.stage_state === 'current')?.id ?? status.current_phase.id
@@ -49,7 +54,15 @@ export function LifecycleHome({ commandCenter, onNeedsYou, ...stageHome }: Lifec
         <StageHome {...stageHome} />
       </div>
       {/* A `<section>`, not an `<aside>`: the shell pins exactly two asides (the strip, the chat). */}
-      <section aria-label="Today" data-testid="today" className="order-first grid gap-6 md:grid-cols-3 min-[1600px]:order-none min-[1600px]:grid-cols-1 min-[1600px]:pt-1">
+      {/* `min-[768px]:grid-cols-3`, not `md:` — v13's 1680×1000 shot showed three cramped sub-columns
+          inside the 320 px rail: Tailwind orders a rem breakpoint and a px arbitrary variant by
+          source, not by width, so `md:grid-cols-3` beat `min-[1600px]:grid-cols-1`. Two px variants
+          sort by value and the wider one wins, as the layout intends.
+          As the right column (≥ 1600) it caps at the window's height below its top (169 px of
+          band + strip + main padding, measured by the overlap probe at 1680×1000, plus main's 24 px
+          bottom padding) and scrolls inside — v13 measured the uncapped column at 1030 px, its
+          "Decisions this week" below the fold. */}
+      <section aria-label="Today" data-testid="today" className={cn('order-first grid gap-6 min-[768px]:grid-cols-3 min-[1600px]:order-none min-[1600px]:grid-cols-1 min-[1600px]:content-start min-[1600px]:pt-1 min-[1600px]:overflow-y-auto min-[1600px]:overscroll-contain min-[1600px]:pr-1', LIFECYCLE_TODAY_MAX_HEIGHT_CLASS)}>
         <Group
           label="Needs you"
           source={commandCenter ? <>{NEEDS_YOU_SOURCE.scripts} — {NEEDS_YOU_SOURCE.how}</> : null}

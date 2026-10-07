@@ -13,9 +13,10 @@ import type { BoardRow, CommandCenter, ReadinessAll, SinceWindow, SprintVerbRequ
 import { CAPABILITIES, NO_DATA } from '../../shared/reasons'
 import { slateToBoardRow } from '../../shared/sprintModel'
 import { PanelError } from './activityPanelBits'
-import { SkeletonRows } from '../ui'
+import { cn, SkeletonRows } from '../ui'
 import { motion } from '../motion/motion'
 import { useEnter } from '../motion/useEnter'
+import { focusPlanFor, useFocusReturn } from '../motion/focusReturn'
 import { batonPass, boardRegroup, contextFrom, verdictSeal } from '../motion/choreo'
 import { getScene } from '../scenes/core/sceneRegistry'
 import { SceneSlot } from '../scenes/core/SceneSlot'
@@ -28,6 +29,7 @@ import { SprintHeader } from './SprintHeader'
 import { InTheRoom } from './InTheRoom'
 import { Refining } from './Refining'
 import { LaneBoard } from './lanes/LaneBoard'
+import { useCockpitChrome } from './lanes/useCockpitChrome'
 import { VerdictDialog } from './lanes/VerdictDialog'
 import type { LaneFilterMode, LaneRow } from './lanes/laneModel'
 import { TodayColumn } from './today/TodayColumn'
@@ -57,6 +59,21 @@ export function focusBackSelector(back: NonNullable<SprintHomeProps['focusBack']
   return back.where === 'lane' ? `[data-lane-card][data-spec="${id}"]` : `[data-testid="refining-row"][data-spec="${id}"] [data-refine]`
 }
 
+/** The cockpit ROW (v13 fixer round, owner's v12 item 1): from 1240 px of home width the home
+ * grid's one row is `100dvh − --cockpit-chrome` (floor 280), so the four wells and the Today rail
+ * — both grid items that stretch — end on ONE line, 24 px above the fold, and the band below
+ * starts under it. Lanes and the rail each scroll inside. `--cockpit-chrome` is the grid's own
+ * top plus `<main>`'s bottom padding (`cockpitLayout.ts`; measured live by `useCockpitChrome`). */
+export const COCKPIT_ROW_CLASS = '@min-[1240px]:grid-rows-[max(280px,calc(100dvh-var(--cockpit-chrome,396px)))]'
+/** The strip (under 1240 px): capped at 120 px, scrolling inside, four groups in a row. */
+export const TODAY_STRIP_CLASS = '@min-[700px]:grid-cols-2 @min-[1000px]:grid-cols-4 @max-[1239px]:max-h-[120px] @max-[1239px]:overflow-y-auto @max-[1239px]:overscroll-contain @max-[1239px]:pr-1 @max-[1239px]:pb-2'
+/** The rail (from 1240 px): one column, the grid row's height, scrolling inside. */
+export const TODAY_RAIL_CLASS = '@min-[1240px]:order-1 @min-[1240px]:grid-cols-1 @min-[1240px]:content-start @min-[1240px]:min-h-0 @min-[1240px]:overflow-y-auto @min-[1240px]:overscroll-contain @min-[1240px]:pr-1 @min-[1240px]:pb-2'
+/** Both branches scroll inside a capped box, so the last 16 px fade: a clipped row reads as "more
+ * below", never as a slice (v13 probe at 1280×800: "0005 data · today" cut mid-row with no cue).
+ * Plain CSS in a class — nothing inline, nothing the CSP cares about. */
+export const TODAY_SCROLL_MASK_CLASS = '[mask-image:linear-gradient(to_bottom,#000_calc(100%-16px),transparent)]'
+
 /** The board row the spec view takes: the board's row by exact id, else the slate row's shape. */
 export function boardRowFor(row: LaneRow): BoardRow {
   return row.board ?? slateToBoardRow(row.slate)
@@ -75,9 +92,16 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
   const flipState = useRef<Flip.FlipState | null>(null)
   const root = useRef<HTMLDivElement>(null)
   const lanesRef = useRef<HTMLDivElement>(null)
+  const gridRef = useRef<HTMLDivElement>(null)
   useEnter(root, 'rise', { key: projectPath })
   const tier = motion.familiarity(projectPath)
   const connection = useConnection()
+  const hasSprint = Boolean(cc?.sprint.data?.sprint)
+  useCockpitChrome(root, gridRef, hasSprint)
+  // After a verb's exit 0 the control that changed takes focus — once the refreshed read (a new
+  // `cc`) has landed, never before (plan §10; `motion/focusReturn`). Keyed on the document
+  // itself: `fetchedAt` is the STALEST block's stamp and can survive a write (the host block's TTL).
+  const focus = useFocusReturn(root, cc)
 
   // Re-read: capture the cards' positions first so the lane Flip has a "before".
   const reload = useCallback(() => {
@@ -145,9 +169,9 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
 
   const runVerb = useCallback(async (request: SprintVerbRequest) => {
     const result = await window.studio.runSprintVerb(projectPath, request)
-    if (result.ok) reload()
+    if (result.ok) { focus.schedule(focusPlanFor(request)); reload() }
     return result
-  }, [projectPath, reload])
+  }, [projectPath, reload, focus])
   const decide = useCallback(async (id: string, resolution: string) => {
     const result = await window.studio.decideDecision(projectPath, id, resolution)
     if (result.ok) reload()
@@ -185,22 +209,60 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
   const twin = <SprintBoard projectPath={projectPath} view={view} twin onOpenSpec={onOpenSpec} onRefresh={reload} />
 
   return (
-    // `@container`: the Today column takes its 320 px beside the lanes once THIS screen is 1000 px
-    // wide — measured on the screen, not the window, because the chat takes 380 px of it (a 1440
-    // window leaves ≈ 1012). Beside Today the lanes keep their own ≥ 220 px by wrapping two by two
-    // (`LaneBoard`'s container query) until the lane row has the 4 × 220 + gutters that visual §4
-    // sets for four across; so Today sits beside the loop on every working window, never as a band
-    // below it. Narrower than 1000, Today becomes a band of groups below the lanes.
-    <div ref={root} data-testid="sprint-home" data-tier={tier} className="@container space-y-12" data-fetched-at={cc.fetchedAt}>
+    // The cockpit (owner's v12 item 1; `lanes/cockpitLayout.ts` holds the arithmetic): header,
+    // In the room as one row, then the home grid. `@container`: measured on THIS screen, not the
+    // window — the chat is a 40 px rail here by default (chatStore), so a 1440 window leaves 1352
+    // and a 1280 window 1192. From 1240 px (4 × 220 + 3 × 12 + 24 + 300) Today is a 300 px RIGHT
+    // RAIL beside four full lanes and the grid's one row IS the cockpit: `100dvh − --cockpit-chrome`
+    // tall (`COCKPIT_ROW_CLASS`), so wells and rail fill it and end together 24 px above the fold
+    // (v13 fixer round: the wells had stopped at their content height, leaving a void and the
+    // band's eyebrows sliced on the fold). Under 1240 Today is a capped strip ABOVE the lanes, the
+    // lanes take the whole width (four across from 916 px of their own, two by two below) and cap
+    // their height at `100dvh − --cockpit-chrome`, scrolling inside. Refining, How it is going and
+    // the slate sit below the fold, 48 px on, where `<main>` scrolls to them.
+    <div
+      ref={root}
+      data-testid="sprint-home"
+      data-tier={tier}
+      data-fetched-at={cc.fetchedAt}
+      className="@container flex flex-col gap-6"
+    >
       {view ? <SprintHeader view={view} actor={cc.actor} capabilities={cc.capabilities} onNewSprint={onNewSprint} />
         : <PanelError message={cc.sprint.error ?? 'The sprint could not be read.'} />}
-      <div className="grid grid-cols-1 gap-6 @min-[1000px]:grid-cols-[minmax(0,1fr)_320px]" data-home-grid="">
+      <InTheRoom people={people} view={view} board={boardRows} me={cc.actor?.name ?? null} />
+      {/* `--cockpit-chrome` lives HERE, on a child of the `@container` root, not on the root: a
+          container query measures the nearest ANCESTOR container, so the same variant on the root
+          itself never matched (v13 probe). The classes carry the first-paint defaults
+          (`COCKPIT_CHROME_PX` for the rail, `COCKPIT_CHROME_WITH_STRIP_PX` under it, where the
+          strip, its gap and the filter row join the chrome); `useCockpitChrome` writes the measured
+          value inline once the grid is laid out. Under the rail threshold the grid's gap tightens
+          to 16 (`STRIP_GAP_PX`). The row height applies only while there is a sprint — the
+          no-sprint list is a short well, not a cockpit. */}
+      <div
+        ref={gridRef}
+        className={cn(
+          'grid grid-cols-1 gap-6 [--cockpit-chrome:396px] @max-[1239px]:gap-4 @max-[1239px]:[--cockpit-chrome:572px] @min-[1240px]:grid-cols-[minmax(0,1fr)_300px]',
+          hasSprint && COCKPIT_ROW_CLASS,
+        )}
+        data-home-grid=""
+      >
+        {/* Today first in DOM — needs-you is the first thing to act on — and `order-1` from 1240 px
+            so auto-placement seats the lanes in the 1fr column and Today in the rail. As a strip
+            (under 1240) its four groups sit in a row and it caps at 120 px (`STRIP_MAX_PX`),
+            scrolling inside. As the RAIL it is a grid item of the cockpit row — `min-h-0` so it
+            may be shorter than its content — and scrolls inside, so the cockpit (four lanes AND the
+            rail) fits the first screen; v13's probe measured the uncapped rail at 1467 px. */}
+        <TodayColumn cc={cc} onRun={runVerb} onDecide={decide} onConfirmTier={(id) => confirmTier(specPathFor(id))} onSince={setSince} onActed={reload} claudeLine={claudeLine}
+          className={cn(TODAY_STRIP_CLASS, TODAY_RAIL_CLASS, TODAY_SCROLL_MASK_CLASS)} />
         {view && view.sprint ? (
-          <div ref={lanesRef}>
+          // In the rail branch the wrapper is a flex column of the row's height, so the lane board
+          // can hand its wells the height left under the filter row (`LaneBoard`: `flex-1 min-h-0`).
+          <div ref={lanesRef} className="min-w-0 @min-[1240px]:flex @min-[1240px]:min-h-0 @min-[1240px]:flex-col">
             <LaneBoard
               view={view} board={boardRows} hostReason={hostReason} actor={cc.actor} capabilities={cc.capabilities} roster={people}
               filter={filter} onFilter={setFilter} onOpen={openLane} onHandOff={onHandOff ? (row) => onHandOff(boardRowFor(row)) : undefined}
               onVerdict={setVerdictRow} onRun={runVerb} onAcked={(spec) => { pendingBaton.current = spec }} tier={tier} revealKey={`${projectPath}|${cc.fetchedAt}`}
+              className="@min-[1240px]:min-h-0 @min-[1240px]:flex-1"
             />
           </div>
         ) : (
@@ -215,11 +277,10 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
             ) : <p className="text-ink-3">{hostReason ?? 'no spec on the board'}</p>}
           </div>
         )}
-        <TodayColumn cc={cc} onRun={runVerb} onDecide={decide} onConfirmTier={(id) => confirmTier(specPathFor(id))} onSince={setSince} onActed={reload} claudeLine={claudeLine}
-          className="@min-[700px]:grid-cols-2 @min-[1000px]:grid-cols-1" />
       </div>
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
-        <InTheRoom people={people} view={view} board={boardRows} me={cc.actor?.name ?? null} />
+      {/* Below the fold: 48 px on (the column gap plus this margin), Refining for S(n+1) beside
+          How it is going, then the slate's Graph surface with its Table twin. */}
+      <div className="mt-6 grid grid-cols-1 gap-6 @min-[960px]:grid-cols-2" data-home-below="">
         <Refining rows={boardRows} readiness={readiness} roster={people} actor={cc.actor} capabilities={cc.capabilities} afterSprint={view?.sprint?.id ?? null} onOpen={onOpenSpec} onConfirmTier={(row) => confirmTier(row.path)} />
         <GoingPanel block={cc.scorecard} />
       </div>

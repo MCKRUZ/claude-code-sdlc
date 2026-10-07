@@ -16,7 +16,8 @@ import { businessDays, sprintStateChip } from '../../shared/sprintModel'
 import { Button, Chip, Eyebrow, PageHeader, Select, Textarea } from '../ui'
 import { CcEmptyFigure } from './brand/figures'
 import { CloseSprintDialog, closeRequest, type CloseDecision } from './CloseSprintDialog'
-import { denominatorText, scorecardMeasures, shownValue } from './ExplainScorecard'
+import { denominatorText, isDora, NONE_RECORDED, scorecardMeasures, shownValue, type ScorecardMeasure } from './ExplainScorecard'
+import { BreakableField } from './fieldName'
 import { riskTone } from './planning/planningModel'
 
 export interface SprintCloseProps {
@@ -102,22 +103,30 @@ export function SprintClose({ projectPath, onNewSprint, refreshKey = 0, children
             lede={<span><Chip tone={sprintStateChip(sprint.state).tone} casing="state" dot={sprintStateChip(sprint.state).dot} data-testid="sprint-state" className={sprintStateChip(sprint.state).muted ? 'text-ink-3' : undefined}>{sprintStateChip(sprint.state).label}</Chip> <span className="font-mono text-ident">{sprint.start} → {sprint.end}</span> · {sprint.days.remaining === null ? 'dates unreadable' : `${businessDays(sprint.days.remaining)} remaining`}</span>}
             actions={<Button variant="primary" icon={Flag} data-write="" disabled={!actor || sprint.state === 'closed'} disabledReason={!actor ? NO_ACTOR : sprint.state === 'closed' ? `closed by ${sprint.closedBy || 'no name recorded'}` : undefined} onClick={() => setDialog(true)}>Close the sprint</Button>} />
 
-          <section aria-label="Outcomes" data-testid="close-outcomes">
-            <Eyebrow as="h3">Outcomes · {center.scorecard.source}</Eyebrow>
+          {/* The same two labelled rows steering mode draws — Outcomes, then Delivery with the escaped
+              bugs — at the screen's size: one voice for the committee's room and the team's close. The
+              grid measures the screen (a container query), not the window the chat aside shares. */}
+          <section aria-label="Outcomes" data-testid="close-outcomes" className="@container">
+            {/* Provenance is a line a person can type: mono, lower-case, never the eyebrow's caps
+                ("SCORECARD.PY REPORT --JSON" in the v13 review shot). */}
+            <Eyebrow as="h3">How it went · <span className="font-mono normal-case tracking-normal text-ink-3" data-source="">{center.scorecard.source}</span></Eyebrow>
             {!card ? <p className="mt-2 text-sm text-ink-3">{NO_DATA} — {center.scorecard.error ?? 'the scorecard was not read'}</p> : (
-              <ul className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3" role="list">
-                {scorecardMeasures(card).map((m) => {
-                  const { shown, unit, words } = shownValue(m)
-                  return (
-                    <li key={m.id} className="rounded-[10px] border border-line-1 bg-surface-1 px-4 py-3" data-outcome={m.field}>
-                      <Eyebrow>{m.label}</Eyebrow>
-                      {shown === null ? <p className="mt-1 text-sm font-medium text-ink-3" data-no-data="">{words ?? 'no data'}</p> : <p className="mt-1 text-metric tabular-nums text-ink-1" data-stat={m.field}>{shown}<span className="ml-1 text-sm font-medium text-ink-3">{unit}</span></p>}
-                      {shown !== null && denominatorText(m.denominator) && <p className="font-mono text-ident text-ink-3" data-denominator={m.denominator!.field}>{denominatorText(m.denominator)}</p>}
-                      <p className="mt-1 font-mono text-[10px] text-ink-3">{m.field}</p>
-                    </li>
-                  )
-                })}
-              </ul>
+              <div className="mt-2 space-y-4">
+                <OutcomeGroup label="Outcomes" group="outcomes" measures={scorecardMeasures(card).filter((m) => !isDora(m))} />
+                <OutcomeGroup label="Delivery" group="delivery" measures={scorecardMeasures(card).filter(isDora)}>
+                  <li className="rounded-[10px] border border-line-1 bg-surface-1 px-4 py-3" data-outcome="escaped_bugs[]">
+                    <Eyebrow>Bugs that got through</Eyebrow>
+                    {card.escaped_bugs.length === 0 ? (
+                      <p className="mt-1 text-sm font-medium text-ink-3">{NONE_RECORDED}</p>
+                    ) : (
+                      <ul className="mt-1 space-y-0.5 text-sm text-ink-1" role="list">
+                        {card.escaped_bugs.map((b, i) => <li key={i}>{String(b.summary ?? b.which_check ?? 'a bug')}</li>)}
+                      </ul>
+                    )}
+                    <p className="mt-1 font-mono text-[10px] text-ink-3">escaped_bugs[]</p>
+                  </li>
+                </OutcomeGroup>
+              </div>
             )}
           </section>
 
@@ -137,7 +146,7 @@ export function SprintClose({ projectPath, onNewSprint, refreshKey = 0, children
           </section>
 
           <section aria-label="Decisions" data-testid="close-decisions">
-            <Eyebrow as="h3">Decisions · {center.decisions.source}</Eyebrow>
+            <Eyebrow as="h3">Decisions · <span className="font-mono normal-case tracking-normal text-ink-3" data-source="">{center.decisions.source}</span></Eyebrow>
             {!center.decisions.data ? <p className="mt-2 text-sm text-ink-3">{center.decisions.error ?? NO_DATA}</p>
               : center.decisions.data.openDecisions.length === 0 ? <p className="mt-2 text-sm text-ink-3">no open decisions</p> : (
                 <ul className="mt-2 space-y-2" role="list">
@@ -162,6 +171,32 @@ export function SprintClose({ projectPath, onNewSprint, refreshKey = 0, children
         </>
       )}
       {children}
+    </div>
+  )
+}
+
+/** One labelled row of outcome tiles (the shape steering mode draws, at this screen's size): the
+ * number in `--text-metric`, "no data" as words, a rate's base under it, the field on its own
+ * mono line — five across once the screen is wide enough, so a row never leaves an orphan. */
+function OutcomeGroup({ label, group, measures, children }: { label: string; group: string; measures: ScorecardMeasure[]; children?: ReactNode }) {
+  return (
+    <div data-outcome-group={group}>
+      <p className="text-xs text-ink-3">{label}</p>
+      <ul className="mt-1 grid grid-cols-2 gap-3 @min-[640px]:grid-cols-3 @min-[960px]:grid-cols-5" role="list">
+        {measures.map((m) => {
+          const { shown, unit, words } = shownValue(m)
+          return (
+            <li key={m.id} className="rounded-[10px] border border-line-1 bg-surface-1 px-4 py-3" data-outcome={m.field}>
+              <Eyebrow>{m.label}</Eyebrow>
+              {shown === null ? <p className="mt-1 text-sm font-medium text-ink-3" data-no-data="">{words ?? 'no data'}</p> : <p className="mt-1 text-metric tabular-nums text-ink-1" data-stat={m.field}>{shown}<span className="ml-1 text-sm font-medium text-ink-3">{unit}</span></p>}
+              {shown !== null && denominatorText(m.denominator) && <p className="font-mono text-ident text-ink-3" data-denominator={m.denominator!.field}>{denominatorText(m.denominator)}</p>}
+              {/* The field breaks at its own `_` / `.` seams first (v13: `…_media / n_hours` split mid-word here). */}
+              <p className="mt-1 font-mono text-[10px] text-ink-3 [overflow-wrap:anywhere]" data-field-name={m.field}><BreakableField field={m.field} /></p>
+            </li>
+          )
+        })}
+        {children}
+      </ul>
     </div>
   )
 }

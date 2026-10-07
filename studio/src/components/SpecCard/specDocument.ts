@@ -24,11 +24,19 @@ export function scopeSections(sections: readonly DocumentSection[]): ScopeText {
   }
 }
 
-/** A section's text without its own heading line. */
+/** A section's text without its own heading line and without the template's HTML comments
+ * (`<!-- What the change must not touch … -->` is guidance to the author, not the spec's scope —
+ * v13: the card showed it as the "In" text). An empty body reads as `''`: the section exists,
+ * says nothing, and the card says "no data" — the DoR already names the gap. */
 function bodyOf(section: DocumentSection): string {
-  const lines = section.text.replace(/\r\n/g, '\n').split('\n')
+  const lines = stripHtmlComments(section.text.replace(/\r\n/g, '\n')).split('\n')
   if (lines[0]?.trim().startsWith('#')) lines.shift()
   return lines.join('\n').trim()
+}
+
+/** `<!-- … -->` removed, across lines; the text between comments is kept byte-for-byte. */
+export function stripHtmlComments(text: string): string {
+  return text.replace(/<!--[\s\S]*?-->/g, '')
 }
 
 /** `harness_context` — the ONE reused pattern. A section or field whose heading / label names it;

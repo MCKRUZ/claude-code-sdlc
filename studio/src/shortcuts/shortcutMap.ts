@@ -202,6 +202,57 @@ export function commandCenterSequenceFor(first: string, second: string): Command
   return hit ? hit.action : null
 }
 
+// --- the keyboard model, documented as data (Q4) ----------------------------------------------
+
+/** Esc closes the innermost thing, in THIS order, and stops at the first layer that closed
+ * something; "back" is last and never fires while something is being edited. The listener's
+ * `escLayers` is built from this order by `namedEscLayers` so no host can mis-order it, and the
+ * help / README list the same rows. */
+export type EscLayerName = 'dialog' | 'palette' | 'help' | 'spec-card' | 'steering' | 'lane-focus' | 'graph-hover' | 'board-search' | 'back'
+
+export const ESC_LAYERS: readonly { layer: EscLayerName; closes: string }[] = [
+  { layer: 'dialog', closes: 'an open dialog (verb, hand-off, verdict, close) — focus returns to its opener' },
+  { layer: 'palette', closes: 'the omnibar' },
+  { layer: 'help', closes: 'the Shortcuts help' },
+  { layer: 'spec-card', closes: 'the spec card — back to the board, focus on the card that opened it' },
+  { layer: 'steering', closes: 'steering mode — back to the screen it was entered from' },
+  { layer: 'lane-focus', closes: 'the roving focus in the lanes' },
+  { layer: 'graph-hover', closes: 'the hover in a graph' },
+  { layer: 'board-search', closes: 'the Board search text' },
+  { layer: 'back', closes: 'the screen (its own back) — never while a field, hand-off form or AI proposal is dirty' },
+]
+
+/** The listener's `escLayers`, in `ESC_LAYERS` order, from whichever closers a host has. */
+export function namedEscLayers(closers: Partial<Record<Exclude<EscLayerName, 'back'>, () => boolean>>): (() => boolean)[] {
+  return ESC_LAYERS.flatMap(({ layer }) => (layer !== 'back' && closers[layer] ? [closers[layer]!] : []))
+}
+
+/** The first chord bound to an action type, as `Kbd` keys — so a control can show its own
+ * shortcut from the one map ("⌘ K" on the omnibar trigger, "h" on Hand off). Null when unbound. */
+export function kbdFor<A extends { type: string }>(bindings: readonly ShortcutBinding<A>[], type: A['type'], match?: (a: A) => boolean, isMac = isMacPlatform()): string[][] | null {
+  const hit = bindings.find((b) => b.action.type === type && (!match || match(b.action)))
+  return hit ? hit.keys.map((step) => kbdKeys(step, isMac)) : null
+}
+
+export interface KeyboardRow { keys: string; where: string; does: string; inInputs: boolean }
+
+/** The whole model as table rows — the README's "Keyboard shortcuts" table and the help's data
+ * come from this, so a binding added to the map is documented by construction. Bindings sharing
+ * a label collapse into one row with alternatives; the ten `g 0`…`g 9` collapse into one. */
+export function describeBindings<A>(bindings: readonly ShortcutBinding<A>[]): KeyboardRow[] {
+  const rows = new Map<string, KeyboardRow>()
+  for (const b of bindings) {
+    const phase = /^Go to Phase \d$/.test(b.label)
+    const label = phase ? 'Go to Phase 0–9' : b.label
+    const keys = phase ? '`g` `0`…`g` `9`' : b.keys.map((k) => `\`${k}\``).join(' ')
+    const id = `${b.scope}:${label}`
+    const row = rows.get(id) ?? { keys: '', where: SHORTCUT_SCOPE_LABEL[b.scope], does: label, inInputs: Boolean(b.inInputs) }
+    if (!row.keys.includes(keys)) row.keys = row.keys ? `${row.keys}, ${keys}` : keys
+    rows.set(id, row)
+  }
+  return Array.from(rows.values())
+}
+
 // --- chord vocabulary ------------------------------------------------------------------------
 
 /** The primary modifier follows the platform, not a setting: ⌘ on a Mac, Ctrl elsewhere. Read

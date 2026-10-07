@@ -1,26 +1,35 @@
 // #20 HoverCard / Popover: read-only cards that open on hover AND `focus-visible`, close on
 // Escape, and never contain a write control (the content is `pointer-events: none`, so nothing
 // in it can be clicked — the rule is enforced by construction). Text-only content is a tooltip
-// to assistive tech; richer content is a described region. Round 2 (M7): the card plays row #17
-// — arrives `opacity 0→1, y 4→0` after the intent delay, leaves in 80 ms with its role and
-// `pointer-events: none` kept through the fade; Escape closes synchronously, no fade.
-import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type RefObject } from 'react'
+// to assistive tech; richer content is a described region. Round 3 (Q3): `@radix-ui/react-hover-card`
+// sits under it — the card portals to `#overlays` and is placed by Radix's popper (it flips and
+// shifts to stay on screen, so a card on a row deep inside a scrolling lane is never clipped),
+// and Radix's dismissable layer owns Escape. The kit keeps the intent timing (`useDelayedOpen`:
+// 350 ms in, 120 ms grace, the M7 80 ms leave fade with role and `pointer-events: none` kept)
+// and drives Radix as a controlled card, so a pointer, a focus and a test's `mouseEnter` all
+// reach the same timer.
+import { useId, useLayoutEffect, useRef, useState, type ComponentPropsWithoutRef, type KeyboardEvent, type Ref, type RefObject } from 'react'
+import * as RadixHoverCard from '@radix-ui/react-hover-card'
 import type { HoverCardProps, Placement } from './contract'
 import { hoverPlate } from '../motion/choreo/hoverPlate'
 import { cn } from './cn'
+import { overlayRoot } from './focusTrap'
 import { kitChoreoContext, motionEnabled } from './kitMotion'
 
-export const PLACEMENT: Record<Placement, string> = {
-  top: 'bottom-full left-1/2 mb-2 -translate-x-1/2',
-  bottom: 'top-full left-1/2 mt-2 -translate-x-1/2',
-  left: 'right-full top-1/2 mr-2 -translate-y-1/2',
-  right: 'left-full top-1/2 ml-2 -translate-y-1/2',
+/** The kit's four placements as Radix popper sides (the popper flips when the side lacks room). */
+export const PLACEMENT: Record<Placement, 'top' | 'bottom' | 'left' | 'right'> = {
+  top: 'top',
+  bottom: 'bottom',
+  left: 'left',
+  right: 'right',
 }
 
 export const HOVER_OPEN_DELAY = 350
 export const HOVER_CLOSE_DELAY = 120
 /** How long the leave fade holds the node (M7), in ms. */
 export const HOVER_LEAVE_MS = 80
+/** Gap between trigger and plate, in px (the 8 px rhythm's half step). */
+export const PLATE_OFFSET = 6
 
 export interface DelayedOpen {
   /** Mounted: visible, or leaving (fading out). */
@@ -43,7 +52,7 @@ export function useDelayedOpen(openDelay: number, closeDelay: number): DelayedOp
     if (timer.current) clearTimeout(timer.current)
     timer.current = null
   }
-  useEffect(() => clear, [])
+  useLayoutEffect(() => clear, [])
   return {
     open: phase !== 'closed',
     leaving: phase === 'leaving',
@@ -92,44 +101,65 @@ export function HoverCard({ trigger, content, placement = 'bottom', openDelay = 
     }
   }
   return (
-    <span
-      className={cn('relative inline-flex', className)}
-      onMouseEnter={show}
-      onMouseLeave={hide}
-      onFocus={show}
-      onBlur={hide}
-      onKeyDown={onKeyDown}
-      {...(textOnly ? { 'aria-describedby': open && !leaving ? id : undefined } : {})}
-    >
-      {trigger}
-      {open ? <HoverPlate id={id} role={textOnly ? 'tooltip' : undefined} placement={placement} leaving={leaving}>{content}</HoverPlate> : null}
-    </span>
+    // Controlled: Radix's own pointer/focus intents and the span's mouse events all land in the
+    // kit's timer, so Radix's delays are zero and the kit's are the only ones.
+    <RadixHoverCard.Root open={open} onOpenChange={(next) => (next ? show() : hide())} openDelay={0} closeDelay={0}>
+      <RadixHoverCard.Trigger asChild>
+        <span
+          className={cn('relative inline-flex', className)}
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          onKeyDown={onKeyDown}
+          {...(textOnly ? { 'aria-describedby': open && !leaving ? id : undefined } : {})}
+        >
+          {trigger}
+        </span>
+      </RadixHoverCard.Trigger>
+      {open ? (
+        <RadixHoverCard.Portal container={overlayRoot() ?? undefined}>
+          <RadixHoverCard.Content
+            asChild
+            side={PLACEMENT[placement]}
+            sideOffset={PLATE_OFFSET}
+            collisionPadding={8}
+            onEscapeKeyDown={(e) => {
+              e.preventDefault()
+              close()
+            }}
+          >
+            <HoverPlate id={id} role={textOnly ? 'tooltip' : undefined} leaving={leaving}>{content}</HoverPlate>
+          </RadixHoverCard.Content>
+        </RadixHoverCard.Portal>
+      ) : null}
+    </RadixHoverCard.Root>
   )
 }
 
-interface HoverPlateProps {
-  id: string
+interface HoverPlateProps extends Omit<ComponentPropsWithoutRef<'span'>, 'children' | 'role'> {
   role?: 'tooltip'
-  placement: Placement
   leaving: boolean
-  className?: string
   children: HoverCardProps['content']
+  ref?: Ref<HTMLSpanElement>
 }
 
-/** The plate itself — one element for HoverCard and Tooltip, so both arrive and leave alike. */
-export function HoverPlate({ id, role, placement, leaving, className, children }: HoverPlateProps) {
-  const ref = useRef<HTMLSpanElement | null>(null)
-  useHoverPlate(ref, leaving)
+/** The plate itself — one element for HoverCard and Tooltip, so both arrive and leave alike.
+ * Radix's popper wrapper positions it; the plate carries no placement of its own. Extra props
+ * (Radix's `role`, `id`, `data-state`, popper CSS variables) spread onto the span. */
+export function HoverPlate({ leaving, className, children, ref, ...rest }: HoverPlateProps) {
+  const inner = useRef<HTMLSpanElement | null>(null)
+  useHoverPlate(inner, leaving)
   return (
     <span
-      ref={ref}
-      id={id}
-      role={role}
+      {...rest}
+      ref={(el) => {
+        inner.current = el
+        if (typeof ref === 'function') ref(el)
+        else if (ref) ref.current = el
+      }}
       data-hover-card=""
       data-leaving={leaving ? '' : undefined}
       className={cn(
-        'pointer-events-none absolute z-30 w-max max-w-xs rounded-[10px] bg-surface-raised px-3 py-2 text-xs text-ink-1 shadow-2',
-        PLACEMENT[placement],
+        'pointer-events-none z-30 w-max max-w-xs rounded-[10px] bg-surface-raised px-3 py-2 text-xs text-ink-1 shadow-2',
         className,
       )}
     >

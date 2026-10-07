@@ -80,26 +80,39 @@ export function LaneBoard({
       // before any card was touched, moves to the first card; it never joins the tab order.
       tabIndex={-1}
       onKeyDown={keys.onKeyDown}
-      className={cn('@container space-y-3 outline-none', className)}
+      // A flex column, not `space-y`: when the host gives the board a height (the sprint home's
+      // cockpit row), the wells' grid takes what is left under the filter row (`flex-1 min-h-0`)
+      // and the four wells stretch to it — flush with the Today rail, no void under short lanes.
+      className={cn('@container flex flex-col gap-3 outline-none', className)}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      {/* One row above the lanes: the filter, the host's own sentence when PR facts are
+          unreadable (ONCE for the board — the same quiet notice the Board and the spec card use; a
+          degraded read is information, never an alarm — so the cards drop their pull-request facts
+          rather than each repeating why), and the partition caption. The notice rides THIS row
+          (v13: the separate block cost the lanes 44 px the 1280×800 strip branch did not have);
+          the sentence is set whole (owner's rule: never truncate meaning) and wraps when narrow. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <LaneFilter value={filter} onChange={onFilter} me={me} team={team} />
-        <p className="text-xs text-ink-3" title="sprint.py status --json · slate[] placed by status, dor, verdicts_pending and the PR's waiting_on">
+        {/* No bold title line on the notice: ONE 12 px line in the row (the title + sentence pair
+            cost 56 px and put the 1280×800 lane bottoms 4 px under the fold); the heading rides the
+            tooltip. */}
+        {hostReason !== null && (
+          <Notice tone="info" role="status" data-testid="lanes-host-reason" data-compact="" className="min-w-0 flex-1 basis-[22rem] !py-1 [&>svg]:mt-0">
+            <span className="block min-w-0 text-xs leading-4 [overflow-wrap:anywhere]" title={`the code host could not be read — ${hostReason}`}>{hostReason}</span>
+          </Notice>
+        )}
+        <p className="ml-auto text-xs text-ink-3" title="sprint.py status --json · slate[] placed by status, dor, verdicts_pending and the PR's waiting_on">
           {view.slate.length === 0 ? 'nothing slated' : 'every slated spec sits in exactly one lane'}
         </p>
       </div>
-      {/* The host's own sentence, ONCE for the board (the same quiet notice the Board and the spec
-          card use — a degraded read is information, never an alarm): the cards drop their
-          pull-request facts rather than each repeating why. */}
-      {hostReason !== null && (
-        <Notice tone="info" role="status" data-testid="lanes-host-reason" title="the code host could not be read">{hostReason}</Notice>
-      )}
-      {/* Four lanes at ≥ 220 px each when the board is wide enough (visual §4); two by two below.
-          `relative`: the baton is ONE overlay for the whole grid, centred on the Building→Checking
-          gutter (the 50 % line of four equal columns), 12 px below the 40 px headers — never a child
-          of a lane, so the four lanes paint identically. Below 940 px the gutter does not exist (the
-          lanes wrap two by two), so the same element becomes a full-width row between the two. */}
-      <div className="relative grid grid-cols-2 gap-3 @min-[940px]:grid-cols-4" data-lanes-grid="">
+      {/* Four lanes at ≥ 220 px each once the board has 4 × 220 + 3 × 12 = 916 px (visual §4);
+          two by two below — the cockpit's rail threshold (SprintHome) is set so the board is never
+          between 916 and 4 × 220 when Today sits beside it. `relative`: the baton is ONE overlay
+          for the whole grid, centred on the Building→Checking gutter (the 50 % line of four equal
+          columns), 12 px below the 40 px headers — never a child of a lane, so the four lanes
+          paint identically. Below 916 px the gutter does not exist, so the same element becomes a
+          full-width row between the two pairs. */}
+      <div className="relative grid min-h-0 flex-1 grid-cols-2 gap-3 @min-[916px]:grid-cols-4" data-lanes-grid="">
         {LANE_IDS.map((id) => (
           <Lane key={id} id={id} rows={visible[id]} total={lanes.lanes[id].length} view={view} reserve={batonReserve(id, view.handoffsOpen.length)}>
             {visible[id].map((row) => (
@@ -125,7 +138,7 @@ export function LaneBoard({
         {view.handoffsOpen.length > 0 && (
           <div
             data-baton-overlay=""
-            className="col-span-2 @min-[940px]:absolute @min-[940px]:left-1/2 @min-[940px]:top-[52px] @min-[940px]:z-10 @min-[940px]:w-[clamp(220px,26%,320px)] @min-[940px]:-translate-x-1/2"
+            className="col-span-2 @min-[916px]:absolute @min-[916px]:left-1/2 @min-[916px]:top-[52px] @min-[916px]:z-10 @min-[916px]:w-[clamp(220px,26%,320px)] @min-[916px]:-translate-x-1/2"
           >
             <Baton handoffs={view.handoffsOpen} actor={actor} capabilities={capabilities} onRun={onRun} onAcked={onAcked} />
           </div>
@@ -168,12 +181,22 @@ export function batonReserve(id: LaneId, handoffs: number): number {
   return 12 + handoffs * BATON_SLOT_PX + (handoffs - 1) * BATON_GAP_PX
 }
 
+/** The lane's height cap (owner's v12 item 1: every lane header on screen at 1440×900 and
+ * 1280×800, cards scrolling INSIDE the lane). Binding under the sprint home's STRIP branch,
+ * where the wells are content-sized: `100dvh − --cockpit-chrome` (the strip, its gap, the filter
+ * row and `<main>`'s padding join the chrome there — `cockpitLayout.ts`), floor `LANE_FLOOR_PX`.
+ * In the rail branch the cockpit row sizes the wells and this cap sits above it. The fallback is
+ * the strip chrome, so a board rendered outside the home caps conservatively. */
+export const LANE_MAX_HEIGHT_CLASS = 'max-h-[max(240px,calc(100dvh-var(--cockpit-chrome,572px)))]'
+
 function Lane({ id, rows, total, view, reserve, children }: { id: LaneId; rows: readonly LaneRow[]; total: number; view: SprintView; reserve: number; children: ReactNode }) {
   const count = laneCount(id, rows, view)
   const title = id === 'building' && count.includes(' of ') ? 'sprint.py status --json · wip' : `${total} slated row${total === 1 ? '' : 's'} placed here`
   return (
-    <section data-testid={`lane-${id}`} data-lane={id} aria-label={`${LANE_LABEL[id]} lane`} className="flex min-h-[220px] flex-col rounded-[14px] bg-lane p-2">
-      <header className="sticky top-0 z-[1] -mx-2 -mt-2 mb-2 flex h-10 items-center justify-between rounded-t-[14px] border-b border-lane-line bg-lane-header px-3">
+    <section data-testid={`lane-${id}`} data-lane={id} aria-label={`${LANE_LABEL[id]} lane`} className={cn('flex min-h-[220px] flex-col rounded-[14px] bg-lane p-2', LANE_MAX_HEIGHT_CLASS)}>
+      {/* The header is static and the BODY below is the scroller, so the 40 px band is always on
+          screen whatever the lane holds. */}
+      <header className="z-[1] -mx-2 -mt-2 mb-2 flex h-10 shrink-0 items-center justify-between rounded-t-[14px] border-b border-lane-line bg-lane-header px-3">
         <span className="flex items-center gap-2 text-ink-2">
           <LaneGlyph lane={id} size={18} className="text-ink-2" />
           <Eyebrow as="span">{LANE_LABEL[id]}</Eyebrow>
@@ -182,9 +205,17 @@ function Lane({ id, rows, total, view, reserve, children }: { id: LaneId; rows: 
           {count}
         </span>
       </header>
-      {/* The reserve applies only beside the gutter the baton sits on (≥ 940 px); below that the
-          baton is its own row and the lanes keep their natural top. */}
-      <div className="flex flex-1 flex-col gap-2 @max-[939px]:!pt-0" style={reserve > 0 ? { paddingTop: reserve } : undefined} data-baton-reserve={reserve > 0 ? reserve : undefined}>{children}</div>
+      {/* The reserve applies only beside the gutter the baton sits on (≥ 916 px); below that the
+          baton is its own row and the lanes keep their natural top. `-mx-2 px-2` keeps a card's
+          focus ring inside the scroller's clip without narrowing the card. */}
+      <div
+        className="-mx-2 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto overscroll-contain px-2 pb-0.5 @max-[915px]:!pt-0"
+        data-lane-scroll=""
+        style={reserve > 0 ? { paddingTop: reserve } : undefined}
+        data-baton-reserve={reserve > 0 ? reserve : undefined}
+      >
+        {children}
+      </div>
     </section>
   )
 }

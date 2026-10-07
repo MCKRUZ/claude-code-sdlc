@@ -12,7 +12,7 @@
 // process addressed to this person by exact handle — never a count Studio made; with no actor
 // it is disabled with `reasons.SIGN_IN_TO_SEE`; with nothing addressed it says so in words.
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Bell, Command, Settings, SunMoon, Terminal, type LucideIcon } from 'lucide-react'
+import { Bell, Command, MessageSquare, Settings, SunMoon, Terminal, type LucideIcon } from 'lucide-react'
 import type { ProjectStatus, SyncState } from '../../shared/types'
 import { targetForHome, type Area, type NavTarget } from '../../shared/nav'
 import { NOTHING_NEEDS_YOU } from '../../shared/reasons'
@@ -47,6 +47,11 @@ export interface TopBandProps {
   home: 'sprint' | 'lifecycle'
   currentStageId: string | null
   overflow: OverflowActions
+  /** The band's Chat toggle (owner's v12 item 1): `aria-pressed` while the aside is open, so the
+   * collapsed-by-default sprint home has a visible way back to the chat beside ⌘\ and the `…`
+   * row. Absent → no button (a test that mounts the band alone). */
+  chatOpen?: boolean
+  onToggleChat?: () => void
   /** Steering mode (togo-command-center.md §3.5, visual §4): the band steps back to a
    * presentation — the mark and the project name (still the one `<h1>`) and ONE "Leave steering
    * (Esc)" — no omnibar, no needs-you chip, no console or settings controls: the committee's
@@ -58,11 +63,12 @@ export const LEAVE_STEERING = 'Leave steering (Esc)'
 
 export const TopBand = memo(function TopBand({
   status, syncState, area, consoleOpen, onToggleConsole, onOpenPalette, onNavigate, needsYou = null, home, currentStageId, overflow, presentation,
+  chatOpen, onToggleChat,
 }: TopBandProps) {
   const toLifecycle = () => onNavigate(targetForHome('lifecycle', currentStageId))
   if (presentation) {
     return (
-      <div data-topband="" data-presentation="" className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-line-1 bg-steer-bg px-4 py-1">
+      <div data-topband="" data-testid="top-band" data-presentation="" className="flex min-h-12 shrink-0 items-center justify-between gap-3 border-b border-line-1 bg-steer-bg px-4 py-1">
         <h1 className="min-w-0 shrink text-sm font-semibold leading-5 text-ink-1">
           <span className="flex max-w-[20rem] items-center gap-2.5 py-1 pl-1 pr-2">
             <TogoMark className="h-6 w-6 shrink-0 text-accent-600" />
@@ -77,7 +83,7 @@ export const TopBand = memo(function TopBand({
     )
   }
   return (
-    <div data-topband="" className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-1 bg-surface-0 px-4 py-1">
+    <div data-topband="" data-testid="top-band" className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-line-1 bg-surface-0 px-4 py-1">
       <h1 className="min-w-0 shrink text-sm font-semibold leading-5 text-ink-1">
         <button
           type="button"
@@ -113,6 +119,7 @@ export const TopBand = memo(function TopBand({
         <NeedsYouChip facts={needsYou} onClick={() => onNavigate(targetForHome(home, currentStageId))} />
         <div className="hidden max-w-[14rem] sm:block"><SyncChip syncState={syncState} /></div>
         <BandButton label="Console" icon={Terminal} kbd={['Mod', 'J']} pressed={consoleOpen} onClick={onToggleConsole} />
+        {onToggleChat && <BandButton label="Chat" icon={MessageSquare} kbd={['Mod', '\\']} pressed={chatOpen === true} onClick={onToggleChat} />}
         <AppearanceButton />
         <BandButton label="Settings" icon={Settings} kbd={['Mod', ',']} current={area === 'settings'} onClick={() => onNavigate({ area: 'settings' })} />
         <OverflowMenu actions={overflow} />

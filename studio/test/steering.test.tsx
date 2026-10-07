@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Scorecard } from '../shared/types'
 import { FORBIDDEN_METRIC_WORDS } from '../shared/reasons'
-import { companionsFor, SteeringMode } from '../src/components/SteeringMode'
+import { companionsFor, fieldPieces, PAGE_CLASS, PAGES_CLASS, SteeringMode, TILE_GRID_CLASS } from '../src/components/SteeringMode'
 
 const CARD: Scorecard = {
   accepted_as_is_rate: 0.72, review_wait_median_hours: 5.3, security_review_wait_median_hours: null, rework_revert_rate: null, bounce_back_rate: null,
@@ -114,8 +114,80 @@ describe('SteeringMode', () => {
     expect(screen.getByTestId('no-companions')).toBeTruthy()
   })
 
+  /** v13 fixer round: a committee screen pages cleanly. The pages container is the one scroller
+   * (`snap-y snap-mandatory`), each labelled row a `snap-start` page at least the room's height;
+   * the lockup and sentence ride page 1 with Outcomes, Delivery and the actions are page 2, and a
+   * companion opens as page 3 — so a settled scroll never shows half a row (the v13 shot cut the
+   * Delivery titles at the fold). The room itself never scrolls past <main>. */
+  it('each labelled row is a snap page the room scrolls to; the lockup rides the first, the actions the second, a companion the third', async () => {
+    const studio = install(); await renderSteering()
+    const root = screen.getByTestId('steering-mode')
+    expect(root.className).toContain('h-full')
+    expect(root.className).not.toContain('overflow-y-auto')
+    const pages = root.querySelector('[data-steer-pages]') as HTMLElement
+    expect(pages.className).toBe(PAGES_CLASS)
+    expect(PAGES_CLASS).toContain('snap-y')
+    expect(PAGES_CLASS).toContain('snap-mandatory')
+    expect(PAGES_CLASS).toContain('overflow-y-auto')
+    expect(pages.getAttribute('data-testid')).toBe('steering-tiles')
+    const pageIds = () => Array.from(pages.querySelectorAll('[data-steer-page]')).map((p) => p.getAttribute('data-steer-page'))
+    expect(pageIds()).toEqual(['outcomes', 'delivery'])
+    for (const page of pages.querySelectorAll('[data-steer-page]')) {
+      expect(page.className).toBe(PAGE_CLASS)
+      expect(page.className).toContain('snap-start')
+      expect(page.className).toContain('min-h-full')
+      expect(page.className).toContain('p-12')
+    }
+    const first = pages.querySelector('[data-steer-page="outcomes"]')!
+    expect(first.querySelector('[data-steering-lockup]')).toBeTruthy()
+    expect(first.querySelector('[data-testid="steering-source"]')).toBeTruthy()
+    expect(first.querySelector('[data-steer-group="outcomes"]')).toBeTruthy()
+    expect(first.querySelector('[data-steer-group="delivery"]')).toBeNull()
+    const second = pages.querySelector('[data-steer-page="delivery"]')!
+    expect(second.querySelector('[data-steer-group="delivery"]')).toBeTruthy()
+    expect(second.querySelector('[data-steer-actions]')).toBeTruthy()
+    expect(within(second as HTMLElement).getByRole('button', { name: 'Open the review page' })).toBeTruthy()
+    fireEvent.click(await screen.findByRole('button', { name: 'build-handoff narrative' }))
+    await screen.findByTestId('steering-companion')
+    expect(studio.openDocument).toHaveBeenCalled()
+    expect(pageIds()).toEqual(['outcomes', 'delivery', 'companion'])
+  })
+
   it('the lazy chunk resolves', async () => {
     const mod = await import('../src/components/SteeringMode')
     expect(mod.default).toBe(mod.SteeringMode)
+  })
+
+  /** v12 critique #4: a committee view never truncates meaning. The "produces" sentence is set in
+   * full, the field name sits on its own mono line breaking at its own seams first, the grid is
+   * 3 across from 1280 and 5 from 1440 (so ≥ 1600 is five), and every number is tabular. */
+  it('tiles set the description in full, the field on its own breakable mono line, on a 2 / 3 / 5 grid with tabular numbers', async () => {
+    install(); await renderSteering()
+    const tiles = screen.getByTestId('steering-tiles')
+    for (const grid of tiles.querySelectorAll('[data-steer-grid]')) {
+      expect(grid.className).toBe(TILE_GRID_CLASS)
+      expect(grid.className).toContain('min-[1280px]:grid-cols-3')
+      expect(grid.className).toContain('min-[1440px]:grid-cols-5')
+      expect(grid.className).not.toContain('auto-fit')
+    }
+    for (const tile of tiles.querySelectorAll('[data-steer-tile]')) {
+      const produces = tile.querySelector('[data-produces]') as HTMLElement
+      expect(produces.className).not.toMatch(/line-clamp/)
+      expect(produces.className).toContain('text-steer-label')
+      expect(produces.textContent!.length).toBeGreaterThan(10)
+      // The field name: its own line, the full name as text (the <wbr> seams carry no characters).
+      const field = tile.querySelector('[data-field-name]') as HTMLElement
+      expect(field.className).toContain('block')
+      expect(field.textContent).toBe(field.getAttribute('data-field-name'))
+      expect(field.closest('[aria-label="source"]')?.className).toContain('font-mono')
+      // The script line and the field line are two lines, not one joined by " · ".
+      expect(tile.querySelector('[aria-label="source"]')?.textContent).not.toContain(' · ')
+    }
+    expect(tiles.querySelector('[data-steer-tile="security-wait"] [data-field-name]')?.querySelectorAll('wbr').length).toBe(4)
+    for (const stat of tiles.querySelectorAll('[data-stat]')) expect(stat.className).toContain('tabular-nums')
+    // The seams: after each `_` and `.`, the pieces rejoin to the field byte-for-byte.
+    expect(fieldPieces('security_review_wait_median_hours')).toEqual(['security_', 'review_', 'wait_', 'median_', 'hours'])
+    expect(fieldPieces('dora.deploy_count')).toEqual(['dora.', 'deploy_', 'count'])
+    expect(fieldPieces('escaped_bugs[]').join('')).toBe('escaped_bugs[]')
   })
 })

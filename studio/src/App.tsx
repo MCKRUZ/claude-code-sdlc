@@ -3,12 +3,13 @@ import type { BoardRow, ClashChoice, CommandCenter, DocumentFocus, FileClash, Pr
 import type { Area, NavTarget } from '../shared/nav'
 import { BUILD_STAGE_ID, homeFor, targetForBuildView, targetForHome, targetForStage } from '../shared/nav'
 import { slateToBoardRow } from '../shared/sprintModel'
-import type { IntentMatch } from './palette/intents'
+import { effectOf, type IntentMatch } from './palette/intents'
 import { consoleStore } from './stores/consoleStore'
 import { dirtyStore } from './stores/dirtyStore'
 import { backlogStore } from './stores/backlogStore'
 import { stageTabStore } from './stores/stageTabStore'
 import { connectionStore, useConnection } from './stores/connectionStore'
+import { chatStore } from './stores/chatStore'
 import { Notice, ToastRegion, dismiss, toast } from './ui'
 import { motion } from './motion/motion'
 import { ProjectKeyProvider } from './motion/projectKey'
@@ -16,6 +17,7 @@ import { valueMemory } from './motion/valueMemory'
 import { useFocusOnNavigate } from './a11y/focusOnNavigate'
 import { announce } from './a11y/LiveAnnouncer'
 import { useShortcuts } from './shortcuts/useShortcuts'
+import { escOwnedAbove } from './shortcuts/escOwners'
 import { CommandPalette } from './palette/CommandPalette'
 import { usePaletteIndex, usePreferenceActionHooks } from './palette/usePaletteIndex'
 import type { SettingsAnchor } from './palette/types'
@@ -112,14 +114,10 @@ function focusedMainFieldHasText(): boolean {
 }
 
 /** Anything open ABOVE the screen owns Esc: the palette and `Dialog`s (portalled to `#overlays`),
- * a hover card, the OpeningOverlay. Each already closes itself on Esc, so this layer only has to
- * recognise them and step aside — it reports "something is being edited" so `handleEscape` does
- * nothing and the event reaches their own listeners untouched. */
-const ESC_OWNER_SELECTOR = '[role="dialog"], [role="alertdialog"], [role="tooltip"]'
-
-function escOwnedAbove(): boolean {
-  return typeof document !== 'undefined' && document.querySelector(ESC_OWNER_SELECTOR) !== null
-}
+ * the `…` menu, a hover card, the OpeningOverlay. Each already closes itself on Esc, so this layer
+ * only has to recognise them and step aside — it reports "something is being edited" so
+ * `handleEscape` does nothing and the event reaches their own listeners untouched. The selector
+ * lives in `shortcuts/escOwners.ts` (one list, tested against the kit's own overlays). */
 
 /** Frame's `useShortcuts` (the palette's) and this one share `window`, and a two-key sequence
  * only works when ONE listener sees both keys: the first to read `g` claims it with
@@ -288,6 +286,9 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
   const [commandCenter, setCommandCenter] = useState<CommandCenter | null>(null)
   /** The omnibar verb awaiting Confirm (§3.6); the dialog is mounted only while one is. */
   const [verbIntent, setVerbIntent] = useState<IntentMatch | null>(null)
+  /** Every match the host builds itself carries the plugin's own `effect` sentence (intents.ts):
+   * what the verb WRITES on Done, from the verbs' code — the dialog previews it before Confirm. */
+  const withEffect = (m: Omit<IntentMatch, 'effect'>): IntentMatch => ({ ...m, effect: effectOf(m.intent) })
   /** Bumped after every exit 0 this component learns of (the omnibar's dialog, a needs-you action,
    * "Refresh this screen") — AFTER the command center has been re-read, so the screens' own
    * re-reads find the refreshed document. Nothing on screen moves before that (§2.4). */
@@ -503,21 +504,25 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
    * picked from the roster there; no free text reaches `--to`. */
   const openSprintVerb = useCallback((verb: SprintVerb, row: BoardRow) => {
     if (verb === 'handoff') {
-      setVerbIntent({
-        intent: { kind: 'sprint', request: { verb: 'handoff', spec: row.spec, to: '' } },
+      // The row's own `checker` (spec frontmatter, set by `spec_transition.py assign`) is the
+      // recipient the dialog opens with — a plugin field, so the preview reads `--to @sam-k`
+      // rather than `<to?>` (cockpit.spec `h`). A row with no checker opens with the picker.
+      const checker = row.checker?.trim() || ''
+      setVerbIntent(withEffect({
+        intent: { kind: 'sprint', request: { verb: 'handoff', spec: row.spec, to: checker }, ...(checker ? { recipient: { handle: checker } } : {}) },
         title: `Hand off ${row.spec}`,
         subtitle: 'sprint.py handoff — the baton passes to a person on the roster; the plugin checks they are a person and the spec is in the sprint',
-      })
+      }))
     } else if (verb === 'ack') {
-      setVerbIntent({ intent: { kind: 'sprint', request: { verb: 'ack', spec: row.spec } }, title: `Acknowledge the hand-off of ${row.spec}`, subtitle: 'sprint.py ack — recorded against you' })
+      setVerbIntent(withEffect({ intent: { kind: 'sprint', request: { verb: 'ack', spec: row.spec } }, title: `Acknowledge the hand-off of ${row.spec}`, subtitle: 'sprint.py ack — recorded against you'}))
     } else if (verb === 'unslate') {
-      setVerbIntent({ intent: { kind: 'sprint', request: { verb: 'unslate', spec: row.spec, reason: '' } }, title: `Take ${row.spec} off the slate`, subtitle: 'sprint.py unslate — the reason goes in the ledger line' })
+      setVerbIntent(withEffect({ intent: { kind: 'sprint', request: { verb: 'unslate', spec: row.spec, reason: '' } }, title: `Take ${row.spec} off the slate`, subtitle: 'sprint.py unslate — the reason goes in the ledger line'}))
     }
   }, [])
 
   /** The `new` sprint dialog; `suggestedId` ("S09" after "S08") pre-fills the id field only. */
   const openNewSprint = useCallback((suggestedId?: string) => {
-    setVerbIntent({ intent: { kind: 'new-sprint', sprint: suggestedId }, title: 'New sprint', subtitle: 'sprint.py new — id, goal, start, length and target, recorded against you' })
+    setVerbIntent(withEffect({ intent: { kind: 'new-sprint', sprint: suggestedId }, title: 'New sprint', subtitle: 'sprint.py new — id, goal, start, length and target, recorded against you'}))
   }, [])
 
   /** "pull NNNN" on a slated, READY spec (and a needs-you hand-off row): the existing hand-off
@@ -630,7 +635,17 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
         // The ends are ends: no wrap from Close back to Phase 0.
         if (next) handleNavigate(targetForStage(next.id))
       },
-      focusChat: focusChatComposer,
+      // ⌘⇧C on a screen whose chat is folded (the sprint home and planning start that way,
+      // chatStore) unfolds it first and focuses the composer once the aside has re-rendered —
+      // folded, the composer is `display:none` and refuses focus, so the shortcut would do nothing.
+      focusChat: () => {
+        if (chatStore.isCollapsed(area)) {
+          chatStore.setCollapsed(area, false)
+          requestAnimationFrame(focusChatComposer)
+        } else {
+          focusChatComposer()
+        }
+      },
     },
     scopes: stageHomeShowing ? ['project', 'stageHome'] : ['project'],
     onBack: back,
@@ -993,10 +1008,10 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             }}
             onNeedsYou={(item) => {
               // One action per item (§2.3): the verb the item names, through the dialog.
-              if (item.kind === 'ack' && item.spec) setVerbIntent({ intent: { kind: 'sprint', request: { verb: 'ack', spec: item.spec } }, title: `ack ${item.spec}`, subtitle: item.text })
+              if (item.kind === 'ack' && item.spec) setVerbIntent(withEffect({ intent: { kind: 'sprint', request: { verb: 'ack', spec: item.spec } }, title: `ack ${item.spec}`, subtitle: item.text}))
               else if (item.kind === 'confirm-tier' && item.spec) {
                 const row = backlogStore.rows.find((r) => r.spec === item.spec)
-                if (row) setVerbIntent({ intent: { kind: 'confirm-tier', spec: row.spec, path: row.path }, title: `confirm tier ${row.spec}`, subtitle: item.text })
+                if (row) setVerbIntent(withEffect({ intent: { kind: 'confirm-tier', spec: row.spec, path: row.path }, title: `confirm tier ${row.spec}`, subtitle: item.text}))
                 else handleNavigate({ area: 'sprint' })
               } else if (item.kind === 'review' && item.spec) openSpecByPath(backlogStore.rows.find((r) => r.spec === item.spec)?.path ?? '')
               else handleNavigate({ area: 'sprint' })

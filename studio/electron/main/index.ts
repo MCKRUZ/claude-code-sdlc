@@ -45,7 +45,7 @@ import {
   getSpecReadiness, getSpecStatus, transitionSpec,
 } from './board'
 import { checkHandOff, handOff } from './handoff'
-import { getCommandCenter, invalidateCommandCenter } from './commandCenter'
+import { getCommandCenter, invalidateCommandCenter, prefetchCommandCenter } from './commandCenter'
 import { resolveActor } from './actor'
 import { runSprintVerb } from './sprintWrites'
 import { decideDecision, getDecisions, openDecision } from './decisions'
@@ -209,6 +209,11 @@ function registerIpcHandlers() {
       }
       openProjectPath = projectPath
       startPullTimer()
+      // Q4 (P3 seam): warm the command-center fan-out the moment the project opens, so the home's
+      // first `getCommandCenter` is a cache hit (or joins the in-flight read) instead of eight
+      // cold spawns after the shell paints. Best-effort and silent: the renderer's own read still
+      // decides what shows, and a failure here only means that read does the work itself.
+      void prefetchCommandCenter(projectPath, scriptsDir)
     }
     return result
   })

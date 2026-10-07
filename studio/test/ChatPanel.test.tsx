@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { ReactElement } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { connectingSteps } from '../src/chatConnectingSteps'
-import { ChatPanel } from '../src/components/ChatPanel'
+import { ChatPanel, errorNamesTheFailure } from '../src/components/ChatPanel'
 import { StageReadinessProvider } from '../src/components/StageReadinessContext'
 import type { ChatState, ChatTurnResult, ProjectStatus, StageReadiness } from '../shared/types'
 
@@ -568,6 +568,32 @@ describe('ChatPanel — S9: the empty and the failed conversation read from the 
     expect(container.querySelectorAll('aside li')).toHaveLength(0)
   })
 
+  /** v13 fixer round: every screen with the chat open led with "The assistant could not start.
+   * The assistant could not respond. Type a message…" — the fixed title AND a host sentence that
+   * already named the failure. One failure sentence: a host error that names it stands alone (in
+   * ink-2); a raw host message keeps the title before it (the pinned case below). Retry re-runs
+   * the start, so the hint is still true and the button is quicker. */
+  it('a host error that already names the failure is said once, and Retry re-runs the start', async () => {
+    const studio = installStudioMock({
+      getChatState: vi.fn().mockResolvedValue(emptyState()),
+      ensureChatStarted: vi.fn().mockResolvedValue({ ok: false, state: emptyState(), error: 'The assistant could not respond.' } satisfies ChatTurnResult),
+    })
+    renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" />)
+    await waitFor(() => expect(screen.getByTestId('chat-start-error')).toBeTruthy())
+    const empty = screen.getByTestId('chat-empty-state')
+    const text = empty.textContent ?? ''
+    expect(text.split('The assistant could not').length - 1).toBe(1)
+    expect(text).not.toContain('could not start')
+    expect(text).toContain('The assistant could not respond. Type a message to try again')
+    expect(screen.getByTestId('chat-start-error').className).toContain('text-ink-2')
+    expect(errorNamesTheFailure('The assistant could not respond.')).toBe(true)
+    expect(errorNamesTheFailure('claude: not signed in')).toBe(false)
+    expect(studio.ensureChatStarted).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByTestId('chat-retry-start'))
+    await waitFor(() => expect(studio.ensureChatStarted).toHaveBeenCalledTimes(2))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('a failed start states the failure, the host\'s words in their own span, and the retry hint — once, inside the card', async () => {
     installStudioMock({
       getChatState: vi.fn().mockResolvedValue(emptyState()),
@@ -739,5 +765,38 @@ describe('ChatPanel — Rules of Hooks across the placeholder boundary', () => {
     } finally {
       window.removeEventListener('error', onError)
     }
+  })
+})
+
+describe('ChatPanel — collapsed to its rail (owner\'s v12 item 1)', () => {
+  it('stays an <aside> with one "Open the chat" control, the thread hidden but mounted, and no Chat heading in the rail', async () => {
+    installStudioMock()
+    const onExpand = vi.fn()
+    const { container } = renderChatPanel(<ChatPanel status={status()} projectPath="/p" actor="" stageId="0" collapsed onExpand={onExpand} />)
+    await waitFor(() => expect(window.studio.getChatState).toHaveBeenCalled())
+    const aside = container.querySelector('aside') as HTMLElement
+    expect(aside.hasAttribute('data-chat-collapsed')).toBe(true)
+    expect(aside.className).toMatch(/\bsm:!w-10\b/)
+    expect(aside.className).toMatch(/\bmax-h-\[35vh\]/)
+    // The inner wrapper is hidden, never gone: the composer and thread survive the fold.
+    const inner = aside.querySelector('[data-chat-inner]') as HTMLElement
+    expect(inner.className).toContain('hidden')
+    expect(container.querySelector('[role="separator"]')).toBeNull()
+    const open = screen.getByRole('button', { name: 'Open the chat' })
+    expect(open.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(open)
+    expect(onExpand).toHaveBeenCalledTimes(1)
+  })
+
+  it('without a project the placeholder folds the same way; open again, the handle and the heading return', () => {
+    installStudioMock()
+    const { container, rerender } = renderChatPanel(<ChatPanel status={null} projectPath={null} actor="" stageId={null} collapsed onExpand={vi.fn()} />)
+    expect(container.querySelector('aside')?.hasAttribute('data-chat-collapsed')).toBe(true)
+    expect(screen.getByRole('button', { name: 'Open the chat' })).toBeTruthy()
+    rerender(<ChatPanel status={null} projectPath={null} actor="" stageId={null} collapsed={false} />)
+    expect(container.querySelector('aside')?.hasAttribute('data-chat-collapsed')).toBe(false)
+    expect(container.querySelector('aside')?.className).toMatch(/sm:w-\[var\(--chat-width\)\]/)
+    expect(screen.queryByRole('button', { name: 'Open the chat' })).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Chat' })).toBeTruthy()
   })
 })

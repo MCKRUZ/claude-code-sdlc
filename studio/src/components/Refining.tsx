@@ -94,7 +94,8 @@ export function Refining({ rows, readiness, roster, actor, capabilities, afterSp
               <span className="font-mono text-ident tabular-nums text-ink-2">{row.spec}</span>
               <span className="text-ink-1">{row.name}</span>
               <Chip tone="neutral" size="xs">deferred</Chip>
-              <span className="min-w-0 flex-1 truncate text-ink-3" title="spec frontmatter · deferred_reason">{deferredReasonText(row)}</span>
+              {/* The reason whole (owner's rule: never truncate meaning) — it wraps, the row grows. */}
+              <span className="min-w-0 flex-1 text-ink-3 [overflow-wrap:anywhere]" title="spec frontmatter · deferred_reason">{deferredReasonText(row)}</span>
               <Button size="sm" variant="link" iconEnd={ArrowRight} onClick={() => onOpen(row)}>open the spec</Button>
             </li>
           ))}
@@ -127,7 +128,7 @@ function RefiningRow({ row, readiness, readinessMissing, roster, actor, confirmR
     <li data-testid="refining-row" data-spec={row.spec} data-lit={lit ? '' : undefined} className={cn('space-y-1 rounded-[10px] border bg-surface-1 px-3 py-2 text-xs', lit ? 'border-card-lit' : 'border-line-1')}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-ident tabular-nums text-ink-2">{row.spec}</span>
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink-1">{row.name}</span>
+        <span className="min-w-0 flex-1 text-sm font-medium text-ink-1 [overflow-wrap:anywhere]">{row.name}</span>
         <Chip tone={riskTone(row.risk)} size="xs" title="spec frontmatter · risk">{row.risk || 'no tier'}</Chip>
         <Chip tone={dor.tone} size="xs" data-dor="" title="spec_readiness.py --all --json · ready / blocking">{dor.label}</Chip>
         {row.owner && <PersonRing initials={initialsFor(row.owner, roster)} name={row.owner} you={samePerson(row.owner, actor?.name)} lit={lit} />}

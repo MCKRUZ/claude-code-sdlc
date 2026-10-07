@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import { ArrowUp, Square } from 'lucide-react'
+import { ArrowUp, MessageSquare, Square } from 'lucide-react'
 import type { ChatMessage, ChatProposal, ChatQuestion, ChatState, ProjectStatus } from '../../shared/types'
 import { connectingSteps } from '../chatConnectingSteps'
 import { computeWorkflowSteps } from '../workflowSteps'
@@ -25,6 +25,12 @@ import { useClaudeIssue } from './ClaudeIssueContext'
  * (`[data-chat-inner]`), never this element. */
 const ASIDE_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-line-1 bg-surface-1 sm:max-h-none sm:w-[var(--chat-width)]'
 
+/** The collapsed aside (owner's v12 item 1): the same element, now a 40 px rail holding ONE
+ * control that reopens it. The inner wrapper is `hidden`, never unmounted — the thread, its
+ * draft and its width survive — and the shell still has exactly two asides. `sm:!w-10` beats
+ * the inline `--chat-width` the aside still carries for the moment it reopens. */
+const ASIDE_COLLAPSED_CLASS = 'relative flex max-h-[35vh] w-full shrink-0 flex-col border-l border-line-1 bg-surface-1 sm:max-h-none sm:!w-10'
+
 /** Why Stop is greyed: there is no cancel verb for a chat turn yet, and a button that looked
  * live would promise one. Said in the person's words, not the backlog's (C5). */
 const STOP_REASON = 'Stopping a reply is not available yet'
@@ -37,7 +43,7 @@ const STOP_REASON = 'Stopping a reply is not available yet'
  * (never gating the box below), and every proposed write is a card the person accepts, edits, or
  * discards — never a silent write. */
 export function ChatPanel({
-  status, projectPath, actor, stageId, hidden = false, onWidthChange,
+  status, projectPath, actor, stageId, hidden = false, collapsed = false, onExpand, onWidthChange,
 }: {
   status: ProjectStatus | null
   projectPath: string | null
@@ -49,6 +55,10 @@ export function ChatPanel({
    * conversation, its draft and its width survive being tucked away; the shell still has
    * exactly two asides in the DOM either way. */
   hidden?: boolean
+  /** Collapsed to its rail (chatStore, per area): the inner wrapper is hidden, the aside stays
+   * 40 px wide with one control that calls `onExpand`. Steering uses `hidden`, not this. */
+  collapsed?: boolean
+  onExpand?: () => void
   /** Reports the applied width (px) whenever it changes, so the Frame root can carry
    * `--chat-width` for the screens beside this panel. The aside still sets its own variable. */
   onWidthChange?: (px: number) => void
@@ -92,6 +102,9 @@ export function ChatPanel({
   // session the person already navigated away from believing they're on a different one.
   const currentStageId = useRef(stageId)
   useEffect(() => { currentStageId.current = stageId }, [stageId])
+  // Bumped by the empty state's Retry after a failed start: the start effect below runs again
+  // for the same stage, exactly as a stage switch would, with the error cleared first.
+  const [startAttempt, setStartAttempt] = useState(0)
 
   useEffect(() => {
     if (!projectPath || !stageId) {
@@ -160,7 +173,7 @@ export function ChatPanel({
 
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- actor changing mid-conversation should not re-greet
-  }, [projectPath, stageId])
+  }, [projectPath, stageId, startAttempt])
 
   // "Ready" only once BOTH halves have settled — the chat flow above (including the model's own
   // first turn, when one was needed) AND the shared readiness read — so the checklist can never
@@ -204,7 +217,7 @@ export function ChatPanel({
   useRegisterDirty(() => hasPendingProposal)
 
   if (!projectPath || !stageId) {
-    return <ChatPlaceholder status={status} style={widthStyle} hidden={hidden} />
+    return <ChatPlaceholder status={status} style={widthStyle} hidden={hidden} collapsed={collapsed} onExpand={onExpand} />
   }
 
   // The current step's document, by the SAME rule the Workflow tab uses to pick it — null while
@@ -287,22 +300,24 @@ export function ChatPanel({
     // down to nothing. 35vh keeps the two capped siblings' combined worst case at 85vh, always
     // leaving the document panel real room, while still giving the conversation meaningfully
     // more than a token sliver.
-    <aside style={widthStyle} className={cn(ASIDE_CLASS, hidden && 'hidden')}>
-      <ChatResizeHandle
-        width={chatWidth.width}
-        min={CHAT_MIN_WIDTH}
-        max={chatWidth.max}
-        onResize={chatWidth.setWidth}
-        onCommit={chatWidth.commit}
-        onReset={chatWidth.reset}
-      />
-      <div data-chat-inner="" className="flex min-h-0 flex-1 flex-col">
+    <aside style={widthStyle} data-chat-collapsed={collapsed ? '' : undefined} className={cn(collapsed ? ASIDE_COLLAPSED_CLASS : ASIDE_CLASS, hidden && 'hidden')}>
+      {collapsed ? <ChatRail onExpand={onExpand} /> : (
+        <ChatResizeHandle
+          width={chatWidth.width}
+          min={CHAT_MIN_WIDTH}
+          max={chatWidth.max}
+          onResize={chatWidth.setWidth}
+          onCommit={chatWidth.commit}
+          onReset={chatWidth.reset}
+        />
+      )}
+      <div data-chat-inner="" className={cn('flex min-h-0 flex-1 flex-col', collapsed && 'hidden')}>
         <ChatHeader status={status} projectOpen currentDocumentTitle={currentDocumentTitle} />
         {initializing ? (
           <ConnectingChecklist steps={connectingSteps(state, readiness, chatSettled, status, currentDocumentTitle)} />
         ) : (
           <>
-            <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} stageDisplay={stageDisplay} onAnswer={answer} onResolveProposal={resolveProposal} />
+            <ChatMessageList listRef={listRef} state={state} busy={busy} projectPath={projectPath} stageId={stageId} startError={error} stageDisplay={stageDisplay} onAnswer={answer} onResolveProposal={resolveProposal} onRetryStart={() => setStartAttempt((n) => n + 1)} />
             {/* A chat-turn failure takes priority when both are set — it's the more recent, more
                 actionable one; the shared readiness error is what proves this panel isn't silently
                 stuck with no document scoping after that fetch failed outright (PR #76 finding #2,
@@ -363,14 +378,38 @@ function ChatHeader({
   )
 }
 
-function ChatPlaceholder({ status, style, hidden }: { status: ProjectStatus | null; style: CSSProperties; hidden: boolean }) {
+/** The collapsed rail's one control: reopens the chat. Its accessible name says what it does and
+ * carries the key; `aria-expanded="false"` tells assistive tech the panel is there, folded. Not
+ * a heading — the steering pin counts `heading[name=Chat]` and a rail is not a chat. */
+export const CHAT_RAIL_LABEL = 'Open the chat'
+
+function ChatRail({ onExpand }: { onExpand?: () => void }) {
+  return (
+    <div data-chat-rail="" className="flex flex-1 flex-col items-center gap-2 py-2">
+      <IconButton
+        label={CHAT_RAIL_LABEL}
+        icon={MessageSquare}
+        aria-expanded={false}
+        aria-keyshortcuts="Meta+Backslash Control+Backslash"
+        title={`${CHAT_RAIL_LABEL} (⌘\\)`}
+        onClick={onExpand}
+        disabled={!onExpand}
+        disabledReason={onExpand ? undefined : 'the shell did not pass a chat toggle'}
+      />
+      <span aria-hidden="true" className="text-[11px] font-medium uppercase tracking-[0.08em] text-ink-3 [writing-mode:vertical-rl]">Chat</span>
+    </div>
+  )
+}
+
+function ChatPlaceholder({ status, style, hidden, collapsed, onExpand }: { status: ProjectStatus | null; style: CSSProperties; hidden: boolean; collapsed: boolean; onExpand?: () => void }) {
   return (
     // Same cap as the main panel's own `<aside>` above (finding #5) — this renders in the exact
     // same Frame.tsx sibling slot whenever no project/stage is open, so it is just as capable of
     // pushing the document panel off-screen at phone width if left uncapped. `relative` is
     // harmless here (no handle to position) and keeps the one class string.
-    <aside style={style} className={cn(ASIDE_CLASS, hidden && 'hidden')}>
-      <div data-chat-inner="" className="flex min-h-0 flex-1 flex-col">
+    <aside style={style} data-chat-collapsed={collapsed ? '' : undefined} className={cn(collapsed ? ASIDE_COLLAPSED_CLASS : ASIDE_CLASS, hidden && 'hidden')}>
+      {collapsed && <ChatRail onExpand={onExpand} />}
+      <div data-chat-inner="" className={cn('flex min-h-0 flex-1 flex-col', collapsed && 'hidden')}>
         <ChatHeader status={status} projectOpen={false} />
         {/* The kit's one "nothing here, and why" frame (G4-9); the sentence is unchanged. */}
         <div className="flex flex-1 flex-col justify-end p-3">
@@ -415,18 +454,36 @@ function useMessageArrival(listRef: React.RefObject<HTMLDivElement | null>, coun
  * text without separators, so the title ends in a trailing space and the hint must follow it
  * directly. No `<li>` anywhere (chatLook counts exactly four in the aside). The failure message
  * sits in its own span so a test (and a reader) can find the host's words on their own. */
-function ChatEmptyState({ startError, stageDisplay }: {
+/** Does the host's own error already say that the assistant failed? The CLI's two default
+ * sentences do; a raw message ("claude: not signed in") does not and gets the title before it. */
+export function errorNamesTheFailure(error: string): boolean {
+  return /^The assistant could not (start|respond)\b/.test(error.trim())
+}
+
+export const RETRY_START = 'Retry'
+
+function ChatEmptyState({ startError, stageDisplay, onRetry }: {
   startError: string | null
   stageDisplay: string | null
+  onRetry?: () => void
 }) {
   const facts = [stageDisplay, 'read-only until you accept a proposal'].filter((f): f is string => Boolean(f))
   if (startError) {
     // A failed start is a quiet fact, not a hero: one small block in `ink-3` with the host's words
     // in their own span and the retry hint — the same sentences, no figure (fixer round, v11).
+    // ONE failure sentence (v13): when the host's words already name the failure ("The assistant
+    // could not respond.") they stand alone in `ink-2`; the fixed title precedes only a raw
+    // message. The Retry button re-runs the start — the hint is still true, the button is quicker.
+    const titled = !errorNamesTheFailure(startError)
     return (
       <div data-testid="chat-empty-state" className="px-1 py-2 text-xs leading-4 text-ink-3">
-        <p><span className="font-medium text-ink-2">The assistant could not start.</span>{' '}<span>{startError}</span> Type a message to try again, or open a document to edit it directly.</p>
+        <p>
+          {titled && <><span className="font-medium text-ink-2">The assistant could not start.</span>{' '}</>}
+          <span className={titled ? undefined : 'font-medium text-ink-2'} data-testid="chat-start-error">{startError}</span>
+          {' '}Type a message to try again, or open a document to edit it directly.
+        </p>
         <span className="mt-1.5 block" data-testid="chat-empty-facts">{facts.join(' · ')}</span>
+        {onRetry && <Button size="sm" variant="secondary" className="mt-2" onClick={onRetry} data-testid="chat-retry-start">{RETRY_START}</Button>}
       </div>
     )
   }
@@ -449,7 +506,7 @@ function ChatEmptyState({ startError, stageDisplay }: {
 }
 
 function ChatMessageList({
-  listRef, state, busy, projectPath, stageId, startError, stageDisplay, onAnswer, onResolveProposal,
+  listRef, state, busy, projectPath, stageId, startError, stageDisplay, onAnswer, onResolveProposal, onRetryStart,
 }: {
   listRef: React.RefObject<HTMLDivElement | null>
   state: ChatState | null
@@ -464,6 +521,8 @@ function ChatMessageList({
   stageDisplay: string | null
   onAnswer: (questionId: string, option: string) => void
   onResolveProposal: (proposalId: string, outcome: 'accepted' | 'edited' | 'discarded', finalValue: string) => void
+  /** Re-run the start after a failure (the empty state's Retry). */
+  onRetryStart?: () => void
 }) {
   useMessageArrival(listRef, state?.messages.length ?? 0)
   return (
@@ -471,7 +530,7 @@ function ChatMessageList({
       {state === null || (state.messages.length === 0 && busy) ? (
         <p className="text-xs text-ink-3">Starting the conversation…</p>
       ) : state.messages.length === 0 ? (
-        <ChatEmptyState startError={startError} stageDisplay={stageDisplay} />
+        <ChatEmptyState startError={startError} stageDisplay={stageDisplay} onRetry={onRetryStart} />
       ) : (
         state.messages.map((message) => (
           <MessageBubble key={message.id} message={message} busy={busy} onAnswer={onAnswer} onResolveProposal={onResolveProposal} />

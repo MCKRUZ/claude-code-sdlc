@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { newerPlugin, SECURITY_SIGNER } from '../shared/reasons'
-import { PLACEHOLDER, RolePicker, SELF_CHECK_NOTE } from '../src/components/planning/RolePicker'
+import { COMPACT_SELECT_CLASS, PLACEHOLDER, RolePicker, SELF_CHECK_NOTE } from '../src/components/planning/RolePicker'
 
 const PEOPLE = [
   { handle: '@sam-k', name: 'Sam K', roles: ['owner', 'developer'] },
@@ -16,6 +16,20 @@ const PEOPLE = [
 afterEach(cleanup)
 
 describe('RolePicker', () => {
+  /** v13 fixer round: on a slate row the select is a FIXED 11 rem (`w-44`), never its natural
+   * width — "Sam Kowalski (@sam-k)" grew to ≈ 190 px and took the name's track. Off the slate the
+   * select keeps the kit's natural width. */
+  it('compact: the select is a fixed w-44 with the label visually hidden; otherwise natural width', () => {
+    render(<RolePicker role="developer" spec="0001" value="" people={PEOPLE} compact onChange={vi.fn()} />)
+    const compact = screen.getByLabelText('Builder for 0001') as HTMLSelectElement
+    expect(compact.className).toContain('w-44')
+    expect(compact.className).toContain(COMPACT_SELECT_CLASS)
+    expect(document.querySelector('label[for]')?.className).toContain('sr-only')
+    cleanup()
+    render(<RolePicker role="developer" spec="0001" value="" people={PEOPLE} onChange={vi.fn()} />)
+    expect((screen.getByLabelText('Builder for 0001') as HTMLSelectElement).className).not.toContain('w-44')
+  })
+
   it('lists only the roster people holding the role, the invitation first (never "nobody" as a value), and yields the handle', () => {
     const onChange = vi.fn()
     render(<RolePicker role="checker" spec="0003" value="" people={PEOPLE} onChange={onChange} />)

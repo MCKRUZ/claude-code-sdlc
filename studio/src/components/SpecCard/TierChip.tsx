@@ -9,7 +9,7 @@
 // `reasons.TIER_RULE`; `**Why this tier:**` notes are read from the document by the host.
 import { useState } from 'react'
 import type { ConfirmTierResult, SpecTransitionResult } from '../../../shared/types'
-import { newerPlugin, TIER_RULE } from '../../../shared/reasons'
+import { newerPlugin, TIER_RULE, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
 import { Button, Chip, Eyebrow, Field, Input, Notice, Segmented } from '../../ui'
 import { riskTone } from '../planning/planningModel'
 
@@ -54,7 +54,7 @@ export function TierChip({ projectPath, specPath, risk, whyNotes, canConfirm, wr
     const r: ConfirmTierResult = await window.studio.confirmTier(projectPath, specPath)
     return { ...r, message: r.message ?? (r.changed === false ? 'already confirmed' : r.confirmedBy ? `confirmed by ${r.confirmedBy}` : 'confirmed') }
   })
-  const busyReason = busy ? 'Waiting for the plugin to answer.' : undefined
+  const busyReason = busy ? WAITING_FOR_PLUGIN_ANSWER : undefined
 
   return (
     <section aria-label="Risk tier" data-testid="tier-chip" className="space-y-2">

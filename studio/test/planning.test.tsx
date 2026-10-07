@@ -9,6 +9,8 @@ import type { BoardRow, CommandCenter, ReadinessAll, SlateProposal, SourcedBlock
 import { NO_ACTOR, ORDER_ARRIVES_ON_COMMIT, ORDER_NOT_GIVEN, REASONED_SLATE, SECURITY_SIGNER, newerPlugin } from '../shared/reasons'
 import { Planning } from '../src/components/planning/Planning'
 import { groupGaps } from '../src/components/planning/PluginSaysColumn'
+import { COMPACT_SELECT_CLASS } from '../src/components/planning/RolePicker'
+import { SLATE_INLINE_PX, SLATE_LINE_CLASS, SLATE_NAME_TRACK, SLATE_PICKERS_CLASS } from '../src/components/planning/SlateColumn'
 import { COMMIT_CONFIRM, commitPreview } from '../src/components/planning/CommitDialog'
 
 const block = <T,>(data: T | null, source: string, error: string | null = null): SourcedBlock<T> => ({ source, fetchedAt: '2026-10-06T10:00:00Z', ok: data !== null, data, error })
@@ -123,8 +125,15 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
     // The meter is bars and numbers, last sprint beside: 3 tiers never a chart.
     const meter = within(screen.getByTestId('mix-meter'))
     expect(meter.getByText(/last sprint S07/)).toBeTruthy()
-    expect(meter.getAllByRole('listitem').map((li) => li.getAttribute('data-mix-tier'))).toEqual(['HIGH', 'MEDIUM'])
-    expect(meter.getByText('MEDIUM: 1 slated of 2 targeted')).toBeTruthy()
+    expect(Array.from(screen.getByTestId('mix-meter').querySelectorAll('[data-mix-tier]')).map((li) => li.getAttribute('data-mix-tier'))).toEqual(['HIGH', 'MEDIUM'])
+    // v13 fixer round: the mix gap is the SAME warn-tone chip the sprint header wears — one fact,
+    // one meaning on every screen — never red text under the bars.
+    const warning = meter.getByText('MEDIUM: 1 slated of 2 targeted')
+    const chip = warning.closest('[data-mix-warning]') as HTMLElement
+    expect(chip).not.toBeNull()
+    expect(chip.className).toMatch(/warn/)
+    expect(chip.className).not.toMatch(/error/)
+    expect(screen.getByTestId('mix-meter').querySelectorAll('p.text-status-warn-ink, p.text-status-error-ink')).toHaveLength(0)
     expect(screen.getByTestId('carried-in').textContent).toContain('blocked on the vendor API')
     expect(slate.querySelectorAll('[data-person]')).not.toHaveLength(0)
     for (const el of slate.querySelectorAll('[data-person]')) expect(el.textContent).not.toMatch(/\d/)
@@ -138,13 +147,19 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
     await waitFor(() => expect(studio.getCommandCenter).toHaveBeenCalledTimes(2))
   })
 
-  it('"The plugin proposes" lists the id-order fill and Apply sends ONE slate with the already-slated set plus the proposal; the reasoned slate is disabled with its reason', async () => {
+  // Re-recorded (v13 integration): this asserted the union `['0003','0004','0005','0002']`. The
+  // plugin's own rule says otherwise — `sprint.py slate` is additive and raises Illegal (exit 1)
+  // for a merged spec even when it already sits in the sprint (sprint.py `cmd_slate`: "spec NNNN
+  // is merged — slating delivered work is not a commitment"), so the union made the verb Not done
+  // as soon as one slated spec had merged (cockpit.spec "Apply proposal", live refusal). Apply
+  // sends the proposal alone.
+  it('"The plugin proposes" lists the id-order fill and Apply sends ONE slate with the proposal alone; the reasoned slate is disabled with its reason', async () => {
     const studio = install()
     await renderPlanning()
     const says = within(screen.getByTestId('planning-plugin-says'))
     expect(says.getByRole('list', { name: 'Proposed slate' }).querySelector('[data-proposed="0002"]')).toBeTruthy()
     fireEvent.click(says.getByRole('button', { name: 'Apply proposal' }))
-    await waitFor(() => expect(studio.runSprintVerb).toHaveBeenCalledWith('/p', { verb: 'slate', sprint: 'S08', specs: ['0003', '0004', '0005', '0002'] }))
+    await waitFor(() => expect(studio.runSprintVerb).toHaveBeenCalledWith('/p', { verb: 'slate', sprint: 'S08', specs: ['0002'] }))
     const reasoned = says.getByRole('button', { name: /Claude proposes a reasoned slate/ }) as HTMLButtonElement
     expect(reasoned.disabled).toBe(true)
     expect(reasoned.getAttribute('title')).toBe(REASONED_SLATE)
@@ -244,7 +259,8 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
     render(<main><Planning projectPath="/p" onOpenSpec={vi.fn()} onIntent={onIntent} /></main>)
     await screen.findByTestId('planning-header')
     fireEvent.click(within(screen.getByTestId('planning-plugin-says')).getByRole('button', { name: 'Apply proposal' }))
-    expect(onIntent).toHaveBeenCalledWith(expect.objectContaining({ intent: { kind: 'sprint', request: { verb: 'slate', sprint: 'S08', specs: ['0003', '0004', '0005', '0002'] } } }))
+    // The proposal alone (see the re-record note on the Apply test above).
+    expect(onIntent).toHaveBeenCalledWith(expect.objectContaining({ intent: { kind: 'sprint', request: { verb: 'slate', sprint: 'S08', specs: ['0002'] } } }))
     expect(studio.runSprintVerb).not.toHaveBeenCalled()
   })
 
@@ -261,5 +277,60 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
   it('the lazy chunk resolves to the screen', async () => {
     const mod = await import('../src/components/planning/Planning')
     expect(mod.default).toBe(mod.Planning)
+  })
+
+  /** v12 critique #2: the slate rows had lost their id + name (two intrinsic-width pickers in an
+   * `auto` track collapsed the `1fr` name track to 0 and overflowed the column), and "The plugin
+   * proposes" truncated ids and names. The slate must name what is slated on every row.
+   * v13 fixer round (re-opened at ≥ 1600 px: "0001 dupl / icate- / claim-409"): the name track has
+   * a 12 rem FLOOR, the name wraps at word seams only (`break-word`, never `anywhere`, which lets a
+   * grid shrink a word to one letter per line), the pickers are a fixed 11 rem each, and they join
+   * the line only from 820 px of column width — the arithmetic of those parts. */
+  it('every slate row names its spec — the name track has a 12 rem floor, wraps at word seams only, with 11 rem pickers on their own line under 820 px of column width', async () => {
+    install()
+    await renderPlanning()
+    const slate = screen.getByTestId('planning-slate')
+    // The column is the container the row measures against.
+    expect(slate.className).toContain('@container')
+    // The threshold holds the parts: numeral 2 rem + name floor 12 rem + chips ≈ 140 + two 11 rem
+    // pickers + three 12 px gaps — anything narrower puts the pickers under the name.
+    const rem = 16
+    expect(SLATE_INLINE_PX).toBeGreaterThanOrEqual(2 * rem + 12 * rem + 140 + 2 * 11 * rem + 3 * 12)
+    expect(COMPACT_SELECT_CLASS).toContain('w-44')
+    for (const row of slate.querySelectorAll('li[data-spec]')) {
+      const line = row.querySelector('[data-slate-line]') as HTMLElement
+      expect(line.className).toBe(SLATE_LINE_CLASS)
+      expect(line.className).toContain(`grid-cols-[2rem_${SLATE_NAME_TRACK}_auto]`)
+      expect(line.className).toContain(`@min-[${SLATE_INLINE_PX}px]:grid-cols-[2rem_${SLATE_NAME_TRACK}_auto_auto]`)
+      expect(line.className).not.toContain('minmax(0,1fr)')
+      expect(SLATE_NAME_TRACK).toBe('minmax(12rem,1fr)')
+      const nameButton = line.querySelector('button') as HTMLButtonElement
+      expect(nameButton.className).not.toContain('truncate')
+      expect(nameButton.className).toContain('[overflow-wrap:break-word]')
+      expect(nameButton.className).not.toContain('anywhere')
+      expect(nameButton.textContent).toContain(row.getAttribute('data-spec')!)
+      expect(nameButton.getAttribute('title')).toContain(row.getAttribute('data-spec')!)
+      // Pickers: a full-width second line by default, joining the line only at ≥ 820 px, each a
+      // fixed width so a long roster name can never take the name's track.
+      const pickers = line.querySelector('[data-slate-pickers]') as HTMLElement
+      expect(pickers.className).toBe(SLATE_PICKERS_CLASS)
+      expect(pickers.className).toContain('col-span-3')
+      expect(pickers.className).toContain(`@min-[${SLATE_INLINE_PX}px]:col-span-1`)
+      expect(pickers.className).toContain('flex-wrap')
+      const selects = pickers.querySelectorAll('select')
+      expect(selects).toHaveLength(2)
+      for (const s of selects) expect(s.className).toContain('w-44')
+    }
+    // "The plugin proposes" wraps an id + name rather than cutting it.
+    const proposed = screen.getByRole('list', { name: 'Proposed slate' }).querySelector('[data-proposed] > span') as HTMLElement
+    expect(proposed.className).not.toContain('truncate')
+    expect(proposed.className).toContain('[overflow-wrap:anywhere]')
+    // The slate is the widest of the three columns, measured against the screen (a container
+    // query), and stacks first below the threshold.
+    const columns = screen.getByTestId('planning-columns')
+    expect(columns.className).toContain('@min-[1056px]:grid-cols-[minmax(300px,1fr)_minmax(400px,1.4fr)_320px]')
+    expect(columns.parentElement?.className).toContain('@container')
+    expect(columns.querySelector('[data-slate-first]')?.className).toContain('order-first')
+    expect(columns.querySelector('[data-slate-first] [data-testid="planning-slate"]')).toBeTruthy()
   })
 })

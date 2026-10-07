@@ -45,6 +45,47 @@ project on the **lifecycle home**. What a team sees:
   gradient gains one home — the steering lockup; brand figures for every empty state; three new
   choreography rows (`batonPass`, `verdictSeal`, `stripDraw`) that quieten with familiarity and
   whose end state equals a cold reload.
+- **The cockpit round** (the owner's v12 critique, rounds 3–4 on the same branch). The sprint
+  home's first screen is now a cockpit: the four lanes in ONE row with Today as a 300 px right
+  rail from 1240 px of width, the home grid's row sized to the window (`100dvh − chrome`, the
+  chrome measured live from the grid's own top, `lanes/cockpitLayout.ts` + `useCockpitChrome.ts`)
+  so every lane is visible without scrolling at 1440×900, wells and rail ending on one line 24 px
+  above the fold and the band below never sliced on it; cards scroll inside a lane; Today is a
+  capped strip with a bottom fade under 1240. The chat starts **collapsed** to a 40 px rail on the
+  sprint home and planning (`stores/chatStore.ts`, per area, remembered per machine; the band's
+  Chat toggle, the `…` row and ⌘\ reopen it; it stays mounted so the a11y pins hold). The
+  business-day bar spans the header; a mix short of target is a warn-tone chip. Planning's slate
+  names every row (`minmax(12rem,1fr)` floor, pickers on a second line under 820 px). The spec
+  card's scroll region is masked under the sticky Hand off foot; the findings caption no longer
+  overlaps its chip. Steering mode pages (snap-y, each row a page ≥ the room's height) so no tile
+  straddles the fold, and no description truncates. "Since yesterday" shows the ledger line's
+  full sentence (two lines allowed), once. People rings stack later-above with the you-ring last.
+  `main#main { position: relative }` keeps the root from ever scrolling (the review and closing
+  screens were offset 8 px). The constellation's anchor plates draw under their bodies (`useFrame`
+  priority −1). One Escape-owner list (`shortcuts/escOwners.ts`) so a menu or hover card answers
+  Esc alone. Focus returns to the acted-on card only after the refreshed read.
+- **Radix under the kit** — the one dependency added: `@radix-ui/react-{dialog,tooltip,hover-card,
+  tabs,dropdown-menu,popover}` + `cmdk` under `Dialog` / `Tooltip` / `HoverCard` / `Tabs` / the `…`
+  menu / the palette; the kit keeps the `#overlays` portal, literal `role="dialog" aria-modal`, the
+  catalogue's motion and the disabled-carries-its-reason rule. Main chunk 737 → 772.7 kB
+  (test mode, Vite's report; ≤ 800, `bundleSize.test`).
+- **Mechanics** — the command-center cache carries an `epoch`: a block whose spawn started before a
+  write and settled after it is handed to its caller but never stored. A host error that already
+  names the failure is said once, with Retry. Scope `<!-- -->` comments are stripped; an empty
+  section reads "no data — the section is empty". Provenance reads mono lower-case.
+- **QA tooling** — `test/e2e/cc/overlap.spec.ts` measures the shell's landmarks in the real window
+  (1280×800 and 1440×900, light and dark, four screens: inside the viewport, no unintended
+  intersection, the root never scrolls, lane bottoms == rail bottom == fold − 24, a chip never
+  crosses its caption); `cockpit.spec.ts` walks the command center end to end against the real
+  plugin; `steering.spec.ts` checks the paging. The capture script grew the same probe
+  (`SHOT_OVERLAP=1 SHOT_WIDTHS="1280x800,1440x900,1680x1000"`, exit 3 on a violation) beside its
+  ghost probe and GPU-line check. Verified on this checkout: typecheck clean; vitest 299 files ·
+  3344 passed · 7 skipped; pytest 3622 passed · 19 skipped, protected list clean; Playwright 173
+  passed · 3 skipped; `observatory-v14` captured (59 shots at 1280×800 · 1440×900 · 1680×1000,
+  light and dark; 0 GPU console lines; overlap probe 0 violations; ghost probe 0 deviating rows,
+  worst 1/255, at 1.2 / 1.6 / 2.0 / 2.5 s). The user guide (`docs/guide/togo-user-guide.html`) is
+  rebuilt on `observatory-v14` with "The cockpit" and "Keyboard and the omnibar" passages;
+  `docs/proposals/togo-before-after.md` is the owner's before/after.
 
 ### Plugin — additive sprint and spec verbs (1.7.0)
 

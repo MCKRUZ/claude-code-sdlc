@@ -75,6 +75,11 @@ export interface DialogProps {
    * list (ShortcutsHelp, the palette) scrolls inside the panel while the header and footer stay
    * put; the footer takes `rounded-b-[inherit]`. Default false. */
   scrollBody?: boolean
+  /** Where the panel sits on the scrim. `center` (default) for a verdict, a hand-off, a confirm.
+   * `top` anchors the panel 12vh from the top so a panel whose height follows its content — the
+   * command palette's result list — never moves the field the person is typing into (v13: the
+   * centred palette jumped ≈ 150 px between a one-row and an eight-row result). */
+  placement?: 'center' | 'top'
 }
 
 // --- #20 Popover / HoverCard -------------------------------------------------------------------

@@ -7,7 +7,15 @@
 // hand-off would be refused, so nobody is sent to click into a refusal. With nothing blocking
 // and no dry run the button is enabled and the live refusal lands after, in the plugin's words;
 // the foot SAYS so (never sr-only). The caption is `reasons.ONE_SPEC_ONE_BRANCH`. Sticky, 64 px,
-// `surface-1`, hairline above.
+// `surface-1` (opaque), hairline above. It sticks at `bottom: -24px`, not 0: Chromium pins a
+// sticky box to the scroll container's CONTENT edge, and `<main>` has 24 px of padding (visual
+// §4, an e2e pin), so `bottom: 0` floated the foot 24 px above the visible edge with a sliver of
+// the spec body scrolling past beneath it (v12 critique #3). Measured in this Electron (the
+// scratchpad's `sticky-probe-electron.mjs`): `bottom:0` → 24 px short, `bottom:-24px` → flush.
+// The card's body carries `pb-16` (= this foot's height) so its last line clears the foot.
+
+/** The main scroller's padding the foot offsets (visual §4: `<main>` padding 24). */
+export const FOOT_STICK_CLASS = '-bottom-6'
 import { Hand } from 'lucide-react'
 import type { HandOffCheck, SourcedBlock } from '../../../shared/types'
 import { CAPABILITIES, newerPlugin, ONE_SPEC_ONE_BRANCH } from '../../../shared/reasons'
@@ -44,21 +52,21 @@ export function HandoffFoot({ check, hasCheckCapability = true, blocking = [], r
   const would = check?.data?.ok ? check.data.would : null
   const past = status === 'in-flight' || status === 'merged'
   return (
-    <footer data-testid="handoff-foot" className="sticky bottom-0 -mx-6 -mb-6 flex h-16 items-center justify-between gap-4 border-t border-line-1 bg-surface-1 px-6 rounded-b-[20px]">
+    <footer data-testid="handoff-foot" className={`sticky ${FOOT_STICK_CLASS} -mx-6 -mb-6 flex h-16 items-center justify-between gap-4 border-t border-line-1 bg-surface-1 px-6 rounded-b-[20px]`}>
       <div className="min-w-0 text-xs text-ink-3">
         <p>{ONE_SPEC_ONE_BRANCH}</p>
         {past ? (
           <p className="text-ink-2">already {status}{would?.branch ? ` · ${would.branch}` : ''}</p>
         ) : would ? (
-          <p className="truncate font-mono text-ident text-ink-2" data-testid="handoff-would">
+          <p className="line-clamp-2 font-mono text-ident text-ink-2 [overflow-wrap:anywhere]" data-testid="handoff-would">
             {would.branch} · {would.developer}{would.checker ? ` · checker ${would.checker}` : ''}{would.team ? ` · ${would.team}` : ''}{would.inFlightAfter !== null ? ` · in flight after: ${would.inFlightAfter}` : ''}
           </p>
         ) : reason && !fromDryRun ? (
-          <p className="truncate" data-testid="handoff-grounds">{DOR_BLOCKS} · <span className="font-mono text-ident">{readinessSource ?? 'spec_readiness.py --spec --json'}</span></p>
+          <p className="line-clamp-2 [overflow-wrap:anywhere]" data-testid="handoff-grounds">{DOR_BLOCKS} · <span className="font-mono text-ident">{readinessSource ?? 'spec_readiness.py --spec --json'}</span></p>
         ) : reason ? (
-          <p className="truncate font-mono text-ident" data-testid="handoff-grounds">{check?.source}</p>
+          <p className="line-clamp-2 font-mono text-ident [overflow-wrap:anywhere]" data-testid="handoff-grounds">{check?.source}</p>
         ) : (
-          <p className="truncate" data-testid="handoff-grounds">
+          <p className="line-clamp-2 [overflow-wrap:anywhere]" data-testid="handoff-grounds">
             {hasCheckCapability ? (check?.source ?? LIVE_DECIDES) : <>{newerPlugin(CAPABILITIES.handoffCheck)} · {LIVE_DECIDES}</>}
           </p>
         )}

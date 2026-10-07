@@ -2,8 +2,7 @@
  * window, each tagged by origin, newest first by the source's timestamp, undated rows last and
  * labelled. The window is a filter date main passes as `--since`, never a reported number. */
 import { describe, expect, it } from 'vitest'
-import { sinceDateFor, sinceYesterday } from '../../electron/main/commandCenter'
-import { UNDATED } from '../../shared/reasons'
+import { logEventText, sinceDateFor, sinceYesterday, STREAM_ROW_FIELDS } from '../../electron/main/commandCenter'
 import type { BoardRow, SourcedBlock, SprintLogView } from '../../shared/types'
 
 const block = <T>(source: string, data: T | null): SourcedBlock<T> => ({ source, fetchedAt: 't', ok: data !== null, data, error: data === null ? 'no' : null })
@@ -31,11 +30,28 @@ describe('sinceYesterday', () => {
   ]
   const board = { rows: [row('0001', '2026-10-05T17:00:00Z'), row('0002', '2026-09-20T10:00:00Z'), row('0003', null)], codeHostAvailable: true, error: null, teamLimits: null, warnings: [] }
 
-  it('orders newest first by the source timestamp, undated last and labelled', () => {
+  it('orders newest first by the source timestamp, undated last — labelled by the renderer\'s stamp, not a second word in the text', () => {
     const rows = sinceYesterday({ log: block('sprint.py log --since 2026-10-05 --json', log(events)), board: block('b', board), since: '2026-10-05' })
     expect(rows.map((r) => `${r.origin}:${r.event}:${r.spec}`)).toEqual(['log:verdict:0007', 'board:merged:0001', 'log:slated:0007', 'log:ack:0003'])
-    expect(rows[3].at).toBeNull(); expect(rows[3].text).toContain(UNDATED)
-    expect(rows.slice(0, 3).every((r) => !r.text.includes(UNDATED))).toBe(true)
+    // v13 fixer round: `at: null` IS the undated fact (TodayColumn's `stampText` says "undated"
+    // on the id line); the text used to append the word too and the row said it twice.
+    expect(rows[3].at).toBeNull(); expect(rows[3].text).toBe('')
+  })
+
+  /** v13 fixer round: a log row's text is the line's OTHER fields — never the event, spec and
+   * `by` the row already shows on its id line and by-line ("handoff · 0003 · by Pod Lead" under
+   * "0003 handoff" over "by Pod Lead" was one fact three times). */
+  it('a log row\'s text is the ledger line\'s other fields, in the plugin\'s own words; none → empty', () => {
+    const rows = sinceYesterday({ log: block('l', log(events)), board: block('b', board), since: '2026-10-05' })
+    expect(rows.find((r) => r.event === 'verdict')!.text).toBe('lane eng · verdict accepted')
+    expect(rows.find((r) => r.event === 'slated')!.text).toBe('')
+    expect(rows.find((r) => r.event === 'ack')!.text).toBe('')
+    // Never the spec id or the `by` name again (the id line and the by-line carry them).
+    for (const r of rows.filter((x) => x.origin === 'log')) { expect(r.text).not.toContain(r.spec!); if (r.by) expect(r.text).not.toContain(r.by) }
+    expect(logEventText({ ts: 't', event: 'handoff', spec: '0006', by: 'Pod Lead', to: '@sam-k', note: 'ready for checking' })).toBe('to @sam-k · note ready for checking')
+    expect(logEventText({ event: 'carried', spec: '0001', to_sprint: 'S08', reason: 'blocked on DL-03', by: 'x' })).toBe('to_sprint S08 · reason blocked on DL-03')
+    expect(logEventText({ event: 'x', spec: '1', extra: { a: 1 }, empty: '', nothing: null })).toBe('extra {"a":1}')
+    expect([...STREAM_ROW_FIELDS].sort()).toEqual(['by', 'event', 'spec', 'sprint', 'timestamp', 'ts'])
   })
 
   it('keeps the ledger line verbatim in raw and keys a row by timestamp+event+spec', () => {

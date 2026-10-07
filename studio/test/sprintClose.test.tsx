@@ -156,4 +156,44 @@ describe('SprintClose', () => {
     const mod = await import('../src/components/SprintClose')
     expect(mod.default).toBe(mod.SprintClose)
   })
+
+  /** v12 critique: the close screen reads in steering mode's voice — the same two labelled rows
+   * (Outcomes, then Delivery with the escaped bugs), the field on its own mono line, a grid that
+   * measures the screen rather than the window, and "none recorded" as words, never a 0. */
+  it('Outcomes are drawn as the two labelled rows steering draws — Outcomes, then Delivery with the escaped bugs — with no number the plugin did not report', async () => {
+    install(); await renderClose()
+    const outcomes = screen.getByTestId('close-outcomes')
+    expect(outcomes.className).toContain('@container')
+    // v13 fixer round: the provenance is a line a person can type — mono, lower-case, never the
+    // eyebrow's caps ("SCORECARD.PY REPORT --JSON" / "TRACK_DECISIONS.PY --JSON" in the shots).
+    for (const src of document.querySelectorAll('[data-source]')) {
+      expect(src.className).toContain('font-mono')
+      expect(src.className).toContain('normal-case')
+      expect(src.className).toContain('tracking-normal')
+      expect(src.closest('h3')).not.toBeNull()
+    }
+    expect(document.querySelectorAll('[data-source]')).toHaveLength(2)
+    expect(outcomes.querySelector('[data-source]')?.textContent).toBe('scorecard.py report --json')
+    expect(screen.getByTestId('close-decisions').querySelector('[data-source]')?.textContent).toBe('track_decisions.py --json')
+    const groups = Array.from(outcomes.querySelectorAll('[data-outcome-group]')).map((g) => g.getAttribute('data-outcome-group'))
+    expect(groups).toEqual(['outcomes', 'delivery'])
+    expect(outcomes.querySelector('[data-outcome-group="outcomes"] [data-outcome="accepted_as_is_rate"]')).toBeTruthy()
+    expect(outcomes.querySelector('[data-outcome-group="delivery"] [data-outcome="dora.deploy_count"]')).toBeTruthy()
+    expect(outcomes.querySelector('[data-outcome-group="outcomes"] [data-outcome^="dora."]')).toBeNull()
+    // v13: the field name breaks at its own `_` / `.` seams (a `<wbr>` after each), never mid-word —
+    // the review shot showed `security_review_wait_media / n_hours`; its text is still the field exactly.
+    const field = outcomes.querySelector('[data-outcome="review_wait_median_hours"] [data-field-name]')!
+    expect(field.textContent).toBe('review_wait_median_hours')
+    expect(field.querySelectorAll('wbr')).toHaveLength(3)
+    expect(field.className).toContain('[overflow-wrap:anywhere]')
+    for (const grid of outcomes.querySelectorAll('[data-outcome-group] ul')) expect(grid.className).toContain('@min-[960px]:grid-cols-5')
+    const bugs = outcomes.querySelector('[data-outcome-group="delivery"] [data-outcome="escaped_bugs[]"]') as HTMLElement
+    expect(bugs.textContent).toContain('none recorded in this window')
+    expect(bugs.querySelector('[data-stat]')).toBeNull()
+    expect(bugs.textContent).not.toMatch(/\b0\b/)
+    // Every tile still names its field, and the stat count is the fixture's three non-null numbers
+    // (accepted, rework, deployments) — the regrouping adds none.
+    for (const tile of outcomes.querySelectorAll('[data-outcome]')) expect(tile.textContent).toContain(tile.getAttribute('data-outcome')!)
+    expect(outcomes.querySelectorAll('[data-stat]')).toHaveLength(3)
+  })
 })

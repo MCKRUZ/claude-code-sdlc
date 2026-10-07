@@ -55,7 +55,13 @@ export function FindingsLedger({ findings, error = null, hasFindingsCapability =
         <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-line-2 px-5 py-6">
           <CcEmptyFigure figure="no-findings" />
           <p className="text-[13px] leading-[18px] text-ink-2">{findings.tracked === 0 ? 'no findings recorded — the ledger is empty' : 'no finding targets a path under this spec\'s scope'}</p>
-          <p className="text-xs text-ink-3">A <code className="font-mono text-ident">/sdlc-review</code> report recorded with <code className="font-mono text-ident">record_findings.py record</code> would appear here.</p>
+          {/* The inline code chips are taller than a 12 px line (the kit's `code` adds 2 px padding
+              and a 1 px border around 13 px mono) and painted over the line above when the sentence
+              wrapped (v13 spec-card shots at 1280 and 1680). Two guards, so neither alone has to
+              hold: the line pitch is 24 px (`leading-6`) and the chips drop their vertical padding
+              (`py-0`: ≈ 18 px tall, inside the pitch with room). The e2e probe
+              (`overlap.spec` "spec-card caption") measures the chips against the text. */}
+          <p className="text-xs leading-6 text-ink-3 [&_code]:py-0" data-testid="findings-caption">A <code className="font-mono text-ident">/sdlc-review</code> report recorded with <code className="font-mono text-ident">record_findings.py record</code> would appear here.</p>
         </div>
       ) : (
         <ul className="divide-y divide-line-1" role="list">

@@ -138,3 +138,22 @@ describe('TopBand in steering mode (fixer round)', () => {
     expect(onLeave).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('TopBand — the Chat toggle (owner\'s v12 item 1)', () => {
+  it('is a band control with aria-pressed mirroring the aside, named by its text, and absent when the shell passes no toggle', () => {
+    const onToggleChat = vi.fn()
+    const open = mount({ chatOpen: true, onToggleChat })
+    const chat = screen.getByRole('button', { name: 'Chat' })
+    expect(chat.getAttribute('aria-pressed')).toBe('true')
+    expect(chat.textContent).toBe('Chat')
+    fireEvent.click(chat)
+    expect(onToggleChat).toHaveBeenCalledTimes(1)
+    open.unmount()
+    mount({ chatOpen: false, onToggleChat })
+    expect(screen.getByRole('button', { name: 'Chat' }).getAttribute('aria-pressed')).toBe('false')
+    cleanup()
+    mount()
+    expect(screen.queryByRole('button', { name: 'Chat' })).toBeNull()
+    expect(document.querySelectorAll('input')).toHaveLength(0)
+  })
+})

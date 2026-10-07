@@ -104,7 +104,11 @@ describe('guides', () => {
     }
   })
 
-  it('the guide builder defaults to the v11 shots (the command center series)', () => {
-    expect(readFileSync(join(guideDir, 'build-user-guide.mjs'), 'utf8')).toContain("'observatory-v11'")
+  // Re-recorded (round 3, the integrator): this pinned v11 while the builder at 98e257a already
+  // defaulted to v12 — the test was red at HEAD. The builder now defaults to the NEWEST series,
+  // v13 (every v12 name has a v13 twin; the capture produced 59 shots), and the pin follows it.
+  // Round 4 (the v14 verification pass): the builder moved to v14, the series the guide ships on.
+  it('the guide builder defaults to the v14 shots (the command center series, round 4)', () => {
+    expect(readFileSync(join(guideDir, 'build-user-guide.mjs'), 'utf8')).toContain("'observatory-v14'")
   })
 })

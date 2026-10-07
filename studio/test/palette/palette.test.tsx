@@ -17,6 +17,14 @@ import type { PaletteEntry, PaletteIndexInput } from '../../src/palette/types'
 import { BUILD_VIEWS, targetForBuildView } from '../../shared/nav'
 import type { ProjectStage } from '../../shared/types'
 
+// Round 3 (Q3): the palette is a cmdk combobox, and cmdk scrolls the selected row into view
+// after every selection change. jsdom has no `scrollIntoView` (a real gap in jsdom, not in the
+// component — the same shape as setupTests' `scrollTo` stub); an inert one lets the combobox
+// run, and the assertions below stay about the DOM, not scroll physics jsdom never had.
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {}
+}
+
 function stage(id: string, display: string, stage_state: ProjectStage['stage_state'] = 'later'): ProjectStage {
   return { id, name: display.toLowerCase(), display, status: 'pending', stage_state, artifact_count: 0, entered_at: null, completed_at: null, signed_off_by: null }
 }
@@ -64,6 +72,18 @@ describe('CommandPalette', () => {
   })
   afterEach(() => {
     for (const fn of Object.values(studio)) expect(fn).not.toHaveBeenCalled()
+  })
+
+  /** v13 fixer round: the palette's panel follows its result list, so it is anchored by its top
+   * edge (`Dialog placement="top"`) — the input never moves between a one-row and an eight-row
+   * result (the v13 shots put it at y 205 and y 352). */
+  it('open: the panel is anchored at the top of the scrim, not centred', () => {
+    renderOpen(buildIndex(input()))
+    const scrim = screen.getByTestId('command-palette').parentElement as HTMLElement
+    expect(scrim.hasAttribute('data-dialog-scrim')).toBe(true)
+    expect(scrim.getAttribute('data-placement')).toBe('top')
+    expect(scrim.className).toContain('items-start')
+    expect(scrim.className).not.toContain('items-center')
   })
 
   it('closed: no <input> anywhere in the document, no dialog', () => {

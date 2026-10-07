@@ -2,18 +2,25 @@
 // owns real focus (`aria-activedescendant` points here), so the row must never take focus of
 // its own or the combobox pattern breaks. Matched characters are emphasised by weight, not by
 // colour alone. Round 2: the row carries `data-pressable` (M8, attribute only) and
-// `data-flip-id="palette:<id>"` so a re-rank glides rows to their new place (M5).
-import type { ReactNode } from 'react'
+// `data-flip-id="palette:<id>"` so a re-rank glides rows to their new place (M5). Round 3 (Q3):
+// the palette is a cmdk combobox — `CommandPalette` renders this row through `Command.Item
+// asChild`, so cmdk's slot props (its `id`, `data-value`, `onClick` → select, `onPointerMove` →
+// hover-select, the ref it registers) arrive as ordinary props and spread onto the `<li>`; a bare
+// row (no cmdk above it) still renders and runs on mouse down exactly as before.
+import type { ComponentPropsWithoutRef, ReactNode, Ref } from 'react'
 import { cn } from '../ui/cn'
 import type { ScoredEntry } from './types'
 
-interface PaletteOptionProps {
-  id: string
+interface PaletteOptionProps extends Omit<ComponentPropsWithoutRef<'li'>, 'id' | 'role' | 'children'> {
+  /** cmdk supplies the id through its Item slot; a bare row may name its own. */
+  id?: string
   item: ScoredEntry
   selected: boolean
-  onHover: () => void
-  onRun: () => void
+  onHover?: () => void
+  /** Runs a bare row on mouse down; under cmdk the Item's `onSelect` runs the row instead. */
+  onRun?: () => void
   kbd: ReactNode
+  ref?: Ref<HTMLLIElement>
 }
 
 export const paletteFlipId = (entryId: string) => `palette:${entryId}`
@@ -33,25 +40,35 @@ export function highlightRuns(title: string, matches: readonly number[]): { text
   return runs
 }
 
-export function PaletteOption({ id, item, selected, onHover, onRun, kbd }: PaletteOptionProps) {
+export function PaletteOption({ id, item, selected, onHover, onRun, kbd, className, ref, ...rest }: PaletteOptionProps) {
   const { entry, matches } = item
   const isVerb = entry.group === 'verbs'
   return (
     <li
+      {...rest}
+      ref={ref}
       id={id}
       role="option"
       aria-selected={selected}
       data-entry-id={entry.id}
       data-flip-id={paletteFlipId(entry.id)}
       data-pressable=""
-      onMouseEnter={onHover}
-      // mousedown, not click: a click would first blur the input and the Dialog's trap would
-      // fight over focus before the row ran.
-      onMouseDown={(e) => { e.preventDefault(); onRun() }}
+      onMouseEnter={(e) => {
+        rest.onMouseEnter?.(e)
+        onHover?.()
+      }}
+      // mousedown, not click: a click would first blur the input and the dialog's focus scope
+      // would fight over focus before the row ran. Under cmdk the click itself runs the row.
+      onMouseDown={(e) => {
+        rest.onMouseDown?.(e)
+        e.preventDefault()
+        onRun?.()
+      }}
       className={cn(
         'mx-1 flex cursor-default items-start gap-3 rounded-md px-2 py-[7px] text-sm',
         // surface-3, not -2: the row must read as selected against the palette's own surface.
         selected ? 'bg-surface-3 text-ink-1' : 'text-ink-2',
+        className,
       )}
     >
       <span className="min-w-0 flex-1">

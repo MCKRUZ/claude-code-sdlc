@@ -35,6 +35,24 @@ const VENV_PYTHON = process.platform === 'win32'
   : join(SCRIPTS_DIR, '.venv', 'bin', 'python')
 const SETTLE = Number(process.env.SHOT_SETTLE ?? 1_200)
 const PREFIX = process.env.SHOT_PREFIX ?? 'observatory-v2'
+// Q5 cockpit QA (the owner's v12 critique, items 1, 6, 7). SHOT_WIDTHS="1280x800,1440x900,1680x1000"
+// (default 1440x900): after the walk, each width revisits sprint-home, planning, spec-card and
+// lifecycle-home in light and dark and writes <prefix>-<name>[-dark]@<w>.png (w = the width).
+// SHOT_OVERLAP=1: after EVERY shot, measure the landmarks' boxes — band, strip, <main>, both asides,
+// the lane board and each lane, Today, the sprint header, any dialog — and assert each sits inside
+// the viewport (waived for <main>'s children while <main> is deliberately scrolled), that no two
+// intersect unintentionally (containment is fine; lanes never touch each other or Today; the chat
+// aside never overlaps <main>; a dialog may overlay) and that the ROOT never scrolls (only <main>
+// does). Prints PROBE OVERLAP lines; a violation sets exit code 3. The same probe runs in
+// Playwright: test/e2e/cc/overlap.spec.ts (`measureLandmarks` — the two bodies are kept in step by
+// hand, since an .mjs cannot import a .ts).
+const WIDTHS = (process.env.SHOT_WIDTHS ?? '1440x900').split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
+  const [w, h] = s.split('x').map(Number)
+  if (!w || !h) throw new Error(`SHOT_WIDTHS: "${s}" is not <width>x<height>`)
+  return { w, h }
+})
+const OVERLAP = process.env.SHOT_OVERLAP === '1'
+const overlapViolations = []
 // SHOT_PROBE=ghost (studio-upgrade-2 §4 P3 / C4-A2): instead of the walk, open Sprint on the GRAPH
 // surface WITHOUT moving the pointer afterwards, capture the 25 px band above the Sprint header at
 // 1.2 / 1.6 / 2.0 / 2.5 s and report the max per-channel deviation from `surface-0` per capture
@@ -75,8 +93,97 @@ const py = (label, args) => {
   catch (e) { failures.push(`${label}: ${String(e.stderr ?? e.stdout ?? e.message).trim().split('\n').slice(-3).join(' | ')}`) }
 }
 const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: 'pipe' })
-const shot = (page, name) => page.screenshot({ path: join(here, `${PREFIX}-${name}.png`) })
+const shot = async (page, name) => {
+  await page.screenshot({ path: join(here, `${PREFIX}-${name}.png`) })
+  if (OVERLAP) await probeOverlap(page, name)
+}
 const settle = async (page, ms = SETTLE) => page.waitForTimeout(ms)
+
+/** Runs INSIDE the page. The twin of overlap.spec.ts's `measureLandmarks` — same body, kept in step by hand. */
+function measureLandmarks() {
+  const vw = window.innerWidth, vh = window.innerHeight, EPS = 1
+  const boxes = []
+  const add = (kind, el, name = kind) => {
+    const r = el.getBoundingClientRect()
+    if (r.width < 1 || r.height < 1 || getComputedStyle(el).visibility === 'hidden') return // hidden / collapsed: not on screen
+    if (boxes.some((b) => b.el === el)) return // one element, one box: `today-rail` and `today` may resolve to the same section
+    boxes.push({ name, kind, el, left: r.left, top: r.top, right: r.right, bottom: r.bottom })
+  }
+  const one = (kind, sel) => { const el = document.querySelector(sel); if (el) add(kind, el) }
+  const all = (kind, sel, name) => document.querySelectorAll(sel).forEach((el, i) => add(kind, el, name(el, i)))
+  one('top-band', '[data-testid="top-band"]')
+  one('lifecycle-strip', '[data-testid="lifecycle-strip"]')
+  one('shell-band', '[data-testid="shell-band"]')
+  one('main', 'main#main')
+  all('aside', 'aside', (el, i) => `aside[${i}]${el.getAttribute('data-testid') ? ` ${el.getAttribute('data-testid')}` : ''}`)
+  one('lane-board', '[data-testid="lane-board"]')
+  all('lane', '[data-testid^="lane-"][data-lane]:not([data-testid="lane-card"])', (el) => el.getAttribute('data-testid') ?? 'lane')
+  one('today-rail', '[data-today-rail]')
+  one('today', '[data-testid="today"]')
+  one('sprint-header', '[data-testid="sprint-header"]')
+  all('dialog', '[role="dialog"]', (_el, i) => `dialog[${i}]`)
+
+  const fmt = (b) => `${b.name} [${Math.round(b.left)},${Math.round(b.top)} → ${Math.round(b.right)},${Math.round(b.bottom)}]`
+  const violations = []
+  const main = document.getElementById('main')
+  const mainScrollTop = main?.scrollTop ?? 0
+  for (const b of boxes) {
+    const inScrolledMain = mainScrollTop > 0 && b.kind !== 'main' && b.kind !== 'aside' && b.kind !== 'shell-band' && b.kind !== 'top-band' && b.kind !== 'lifecycle-strip'
+    if (inScrolledMain) continue
+    if (b.left < -EPS || b.top < -EPS || b.right > vw + EPS || b.bottom > vh + EPS) violations.push(`outside the ${vw}×${vh} viewport: ${fmt(b)}`)
+  }
+  const contains = (a, b) => a.left <= b.left + EPS && a.top <= b.top + EPS && a.right >= b.right - EPS && a.bottom >= b.bottom - EPS
+  const depth = (a, b) => Math.min(Math.min(a.right, b.right) - Math.max(a.left, b.left), Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
+  const STRICT = new Set(['lane|lane', 'lane|today', 'lane|today-rail', 'aside|main'])
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = i + 1; j < boxes.length; j += 1) {
+      const a = boxes[i], b = boxes[j]
+      if (a.kind === 'dialog' || b.kind === 'dialog') continue
+      const d = depth(a, b)
+      if (d <= EPS) continue
+      const key = [a.kind, b.kind].sort().join('|')
+      if (STRICT.has(key)) { violations.push(`intersect ${Math.round(d)} px: ${fmt(a)} ∩ ${fmt(b)}`); continue }
+      // A DOM descendant spilling past its ancestor's box is overflow, already reported by the viewport rule above.
+      if (a.el.contains(b.el) || b.el.contains(a.el)) continue
+      if (!contains(a, b) && !contains(b, a)) violations.push(`partial overlap ${Math.round(d)} px: ${fmt(a)} ∩ ${fmt(b)}`)
+    }
+  }
+  const root = document.scrollingElement ?? document.documentElement
+  if (root.scrollTop !== 0 || root.scrollLeft !== 0) violations.push(`the root is scrolled (top ${root.scrollTop}, left ${root.scrollLeft}) — only <main> may scroll`)
+  if (root.scrollHeight > vh + EPS || root.scrollWidth > vw + EPS) {
+    // Name what grows the document: elements reaching past the viewport with NO clipping or
+    // scrolling ancestor below <html> (an ancestor that clips would have absorbed the overflow).
+    // Only a SCROLLING ancestor absorbs overflow for this purpose: `overflow: hidden` on <body> or
+    // #root does not stop an absolutely positioned portal child (containing block = the viewport)
+    // from growing the document, and a zero-height box can still sit past the edge.
+    const clips = (el) => /(auto|scroll)/.test(getComputedStyle(el).overflow)
+    const culprits = []
+    for (const el of Array.from(document.querySelectorAll('body *'))) {
+      const r = el.getBoundingClientRect()
+      if (r.bottom <= vh + EPS && r.right <= vw + EPS) continue
+      let p = el.parentElement, clipped = false
+      while (p && p !== document.documentElement) { if (clips(p)) { clipped = true; break } p = p.parentElement }
+      if (clipped) continue
+      const pos = getComputedStyle(el).position
+      const cls = (el.getAttribute('class') ?? '').split(/\s+/).slice(0, 4).join(' ')
+      culprits.push(`${el.tagName.toLowerCase()}${el.id ? `#${el.id}` : ''}${el.getAttribute('data-testid') ? `[${el.getAttribute('data-testid')}]` : ''}${cls ? ` .${cls}` : ''} ${pos} [${Math.round(r.left)},${Math.round(r.top)} → ${Math.round(r.right)},${Math.round(r.bottom)}] in ${el.parentElement?.tagName.toLowerCase()}${el.parentElement?.id ? `#${el.parentElement.id}` : ''}`)
+      if (culprits.length >= 4) break
+    }
+    violations.push(`the root overflows its ${vw}×${vh} viewport (${root.scrollWidth}×${root.scrollHeight}) — the shell must never scroll${culprits.length ? `; unclipped past the edge: ${culprits.join(' · ')}` : ''}`)
+  }
+  const theme = document.documentElement.getAttribute('data-theme') ?? 'light'
+  return { viewport: `${vw}x${vh}`, theme, mainScrollTop, landmarks: boxes.map(fmt), violations }
+}
+
+/** One PROBE OVERLAP line per violation (or one "ok" line); a violation is exit code 3 at the end. */
+async function probeOverlap(page, name) {
+  const r = await page.evaluate(measureLandmarks)
+  const head = `PROBE OVERLAP ${name} ${r.viewport} ${r.theme}${r.mainScrollTop > 0 ? ` (main scrolled ${Math.round(r.mainScrollTop)} px — viewport rule waived inside it)` : ''}`
+  if (r.violations.length === 0) { console.log(`${head}: ok — ${r.landmarks.length} landmarks`); return }
+  for (const v of r.violations) console.log(`${head}: ${v}`)
+  overlapViolations.push(`${name} ${r.viewport} ${r.theme}: ${r.violations.length} violation(s)`)
+  process.exitCode = 3
+}
 
 /** Replace one frontmatter line in place (`key: …` → `key: "value"`), everything else untouched. */
 const setFm = (file, key, value) => {
@@ -639,6 +746,53 @@ try {
   await page.keyboard.press('Escape')
   await page.getByTestId('steering-mode').waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {})
   await setTheme('Light')
+
+  // --- Q5: the cockpit at each SHOT_WIDTHS size, light and dark ----------------------------------
+  // The four screens the owner judges the cockpit by, each at rest (<main> scrolled to the top) so
+  // the overlap probe's viewport rule applies in full. Files: <prefix>-<name>[-dark]@<w>.png.
+  for (const { w, h } of WIDTHS) {
+    await page.setViewportSize({ width: w, height: h })
+    await page.waitForTimeout(400)
+    for (const theme of ['Light', 'Dark']) {
+      await setTheme(theme)
+      const suffix = `${theme === 'Dark' ? '-dark' : ''}@${w}`
+      await openBuild('Home')
+      await home.waitFor({ timeout: 60_000 })
+      await page.waitForTimeout(1_500)
+      await scrollTop()
+      await settle(page)
+      await shot(page, `sprint-home${suffix}`)
+      await openBuild('Planning')
+      await page.getByTestId('planning-backlog').waitFor({ timeout: 60_000 })
+      await page.waitForTimeout(1_200)
+      await scrollTop()
+      await settle(page)
+      await shot(page, `planning${suffix}`)
+      await openBuild('Home')
+      await home.waitFor({ timeout: 60_000 })
+      // The command-center read fills Refining after the home mounts: wait for a row, as the walk does.
+      await refining.locator('[data-testid="refining-row"]').first().waitFor({ timeout: 60_000 }).catch(() => {})
+      const refineAt = refining.locator('[data-refine]').first()
+      if (await refineAt.count()) {
+        await refineAt.scrollIntoViewIfNeeded()
+        await refineAt.click()
+        await page.getByTestId('spec-card').waitFor({ timeout: 60_000 })
+        await page.waitForTimeout(1_200)
+        await scrollTop()
+        await settle(page)
+        await shot(page, `spec-card${suffix}`)
+        await page.keyboard.press('Escape')
+        await home.waitFor({ timeout: 60_000 })
+      } else notes.push(`spec-card${suffix}: no "refine in place →" to click`)
+      await openBuild('Documents')
+      await page.getByRole('button', { name: 'Go to the sprint home →' }).waitFor({ timeout: 60_000 }).catch(() => notes.push(`lifecycle-home${suffix}: no "Go to the sprint home" button`))
+      await page.waitForTimeout(1_200)
+      await scrollTop()
+      await settle(page)
+      await shot(page, `lifecycle-home${suffix}`)
+    }
+    await setTheme('Light')
+  }
 } catch (e) {
   if (!(e instanceof ProbeDone)) throw e
 } finally {
@@ -652,4 +806,8 @@ console.log(`wrote ${readdirSync(here).filter((f) => f.startsWith(`${PREFIX}-`))
 const gpu = consoleLines.filter((l) => GPU_ERROR.test(l))
 console.log(`renderer console: ${consoleLines.length} error/warning line(s), ${gpu.length} GPU-related`)
 for (const l of consoleLines.slice(0, 12)) console.log(`  ${l}`)
-if (gpu.length) { console.log('GPU errors are a failed capture: a scene drew less than it claims.'); process.exitCode = 2 }
+if (gpu.length) { console.log('GPU errors are a failed capture: a scene drew less than it claims.'); if (!process.exitCode) process.exitCode = 2 }
+if (OVERLAP) {
+  if (overlapViolations.length) { console.log(`overlap probe: ${overlapViolations.length} shot(s) with a violation (exit 3):`); for (const v of overlapViolations) console.log(`  - ${v}`) }
+  else console.log('overlap probe: every shot clean — no landmark outside the viewport, no unintended intersection, the root never scrolled')
+}

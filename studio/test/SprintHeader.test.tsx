@@ -30,6 +30,17 @@ describe('SprintHeader with a sprint', () => {
     expect(screen.getAllByTestId('sprint-mix').map((c) => c.textContent)).toEqual(['HIGH 1/1', 'MEDIUM 2/2', 'LOW 2/1'])
     expect(screen.getByTestId('sprint-mix-warnings').textContent).toContain('LOW: 2 slated of 1 targeted')
     expect(screen.getByTestId('sprint-mix-warnings').className).toContain('status-warn')
+    // Owner's v12 item 1: the gap is a warn-tone CHIP on the facts line (a measured gap, never an
+    // error tone), each sentence whole; the day bar spans the header, not a 36rem column.
+    const warningChips = screen.getByTestId('sprint-mix-warnings').querySelectorAll('[data-mix-warning]')
+    expect(warningChips).toHaveLength(1)
+    expect(warningChips[0].className).toContain('status-warn')
+    expect(warningChips[0].className).not.toContain('status-error')
+    expect(warningChips[0].textContent).toBe('LOW: 2 slated of 1 targeted')
+    expect(header.hasAttribute('data-cockpit-header')).toBe(true)
+    expect(header.className).toContain('space-y-2')
+    expect(screen.getByTestId('business-day-bar').className).toContain('w-full')
+    expect(screen.getByTestId('business-day-bar').className).not.toContain('max-w-xl')
     expect(screen.getByTestId('business-day-bar').getAttribute('data-bar')).toBe('drawn')
     expect(screen.queryByText('New sprint')).toBeNull()
   })

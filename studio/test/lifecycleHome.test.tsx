@@ -8,7 +8,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommandCenter, ProjectStage, ProjectStatus, SourcedBlock, StageDocument } from '../shared/types'
 import { NO_DATA, NOTHING_NEEDS_YOU, SIGN_IN_TO_SEE } from '../shared/reasons'
-import { LifecycleHome, NEEDS_YOU_SOURCE, WORKING_SOURCE, workingText } from '../src/components/LifecycleHome'
+import { LifecycleHome, NEEDS_YOU_SOURCE, WORKING_SOURCE, workingText, LIFECYCLE_TODAY_MAX_HEIGHT_CLASS } from '../src/components/LifecycleHome'
 import { StageReadinessProvider } from '../src/components/StageReadinessContext'
 import { chatTurnStore, resetChatTurnStore } from '../src/stores/chatTurnStore'
 import { readinessWith } from './activityFixtures'
@@ -84,6 +84,10 @@ describe('LifecycleHome', () => {
     expect(main.firstElementChild?.querySelector('h2')).not.toBeNull()
     expect(container.querySelectorAll('aside')).toHaveLength(0)
     expect(screen.getByTestId('today').tagName).toBe('SECTION')
+    // v13: as the ≥ 1600 px right column the section caps at the window and scrolls inside — the
+    // overlap probe measured it 1030 px tall at 1680×1000, its decisions below the fold.
+    expect(screen.getByTestId('today').className).toContain(LIFECYCLE_TODAY_MAX_HEIGHT_CLASS)
+    expect(screen.getByTestId('today').className).toContain('min-[1600px]:overflow-y-auto')
   })
 
   it('needs-you lists the addressed items with one action each; the action hands the item up', async () => {

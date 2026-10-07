@@ -163,6 +163,41 @@ Round 2 (`docs/proposals/studio-upgrade-2.md`) added the pieces every screen now
 - `shared/format.ts` — `plural`, `formatDate`, `formatRelative`, `formatHours`, `NO_DATA`: the one
   place a plugin value becomes words. It formats what the plugin reported and derives nothing;
   a value the plugin did not give reads "no data" / "no date recorded", never 0 or today.
+- **Radix under the kit** (command-center round 3; the only dependency added since round 2):
+  `@radix-ui/react-dialog` sits under `Dialog` (focus scope, dismissable layer, `aria-hidden`
+  outside, labelled-by / described-by from Title and Description), `react-tooltip` under
+  `Tooltip`, `react-hover-card` under `HoverCard`, `react-tabs` under `Tabs`, `react-dropdown-menu`
+  under the band's `…` (`OverflowMenu`), and `cmdk` under the palette's list. The kit keeps what
+  Radix does not do: the portal goes to `#overlays` (never inside `<main>` or an `<aside>`),
+  `role="dialog" aria-modal` stays literal, focus returns to the opener as soon as the panel is
+  gone, the catalogue's motion rows are unchanged and a disabled control still carries its reason.
+  `shortcuts/escOwners.ts` is the one list of what owns Escape above the screen (`[role=dialog]`,
+  `[role=alertdialog]`, `[role=tooltip]`, `[role=menu]`, `[data-hover-card]`) so the screen's own
+  Esc chain steps aside while any of them is up. `Dialog placement="top"` is the palette's seat.
+
+### Cockpit QA
+
+The sprint home's first screen is the **cockpit** (`components/lanes/cockpitLayout.ts`): from
+1240 px of home width the four lane wells sit in one row with Today as a 300 px rail, and the home
+grid's row is `100dvh − --cockpit-chrome` (floor 280) so wells and rail fill it and end on one line
+24 px above the fold; `useCockpitChrome.ts` measures the chrome live from the grid's own top at
+rest and writes the custom property (the classes carry the first-paint defaults, 396 rail / 572
+strip). Under 1240 Today is a 120 px strip above the lanes with a bottom fade. The chat starts
+collapsed to a 40 px rail on the sprint home and planning (`stores/chatStore.ts`, per area,
+remembered per machine; the band's Chat toggle, the `…` row and ⌘\ reopen it; it stays mounted).
+`main#main { position: relative }` in `theme/base.css` keeps the root from ever scrolling. What
+holds it: unit `cockpitGeometry.test` (the class literals against the arithmetic),
+`useCockpitChrome.test`, `rootNeverScrolls.test`, `frameChat.test` / `chatStore.test`,
+`escOwners.test`; e2e `test/e2e/cc/overlap.spec.ts` (`measureLandmarks`: at 1280×800 and 1440×900,
+light and dark, on four screens every landmark sits inside the viewport, no two intersect
+unintentionally, the root never scrolls; `cockpitRules` checks lane bottoms == rail bottom ==
+fold − 24; `captionRules` checks a chip never crosses its caption's text), `cockpit.spec.ts` (the
+walk against the real plugin: land → card → hand off → verdict → omnibar → spec card → planning →
+close → steering) and `steering.spec.ts` (the room pages; no tile straddles the fold). The capture
+script has the same probe: `SHOT_OVERLAP=1 SHOT_WIDTHS="1280x800,1440x900,1680x1000"` measures
+every shot and exits 3 on a violation; `SHOT_PROBE=ghost` measures the band above the header at
+1.2 / 1.6 / 2.0 / 2.5 s; a GPU console line fails the run. The series the guide ships on is
+`observatory-v14`.
 
 ## Releases — the .dmg and the .exe
 
@@ -278,18 +313,20 @@ Tōgō computes no status of its own, and a value the plugin reports as null rea
 
 ## Bundle
 
-Measured on the production `vite build` of the v11 capture after the command center (2026-10-06):
-main chunk `dist/assets/index-*.js` **715.7 KB** (gzip 213.3 KB; budget ≤ 800 KB, enforced by
-`test/bundleSize.test.ts` — the `--mode=test` build measures 732.3 KB), `scene-core-*.js`
-**944.2 KB** (gzip 250.4 KB; three, R3F, d3-force-3d — loaded on the first Canvas mount only),
-the command center's lazy chunks `Planning` 30.0 KB, `SpecCard` 19.4 KB, `SprintClose` 12.5 KB and
-`SteeringMode` 6.1 KB, per-scene chunks ConstellationScene 25.6 KB and SpineScene 17.6 KB, `gsap`
-68 KB, the choreography 31 KB and its presets 29 KB, the kit 46 KB, CSS 86.5 KB (gzip 18.5 KB).
-Round 2 measured 641.8 / 966.9 KB; the main chunk grew 74 KB for the shell (band, strip, omnibar
-grammar and dialog), the sprint home (lanes, Today, the room, Refining) and the brand figures —
-the sprint home is the default screen in Build and stays eager; everything behind a click is a
-chunk. Fonts (Inter Variable, JetBrains Mono Variable) are bundled woff2; nothing is fetched over
-the network, and the Content-Security-Policy in `index.html` is unchanged.
+Re-measured on the production `vite build` of the v14 capture, after the cockpit round and Radix
+(2026-10-06; Vite reports 1000-based kB): main chunk `dist/assets/index-*.js` **773.3 kB**
+(755.2 KiB; gzip 234.2 kB; budget ≤ 800, enforced by `test/bundleSize.test.ts` — the `--mode=test`
+build measures 772.7 kB / 754.6 KiB), `scene-core-*.js` **966.9 kB** (gzip 259.6 kB; three, R3F,
+d3-force-3d — loaded on the first Canvas mount only), the command center's lazy chunks `Planning`
+32.4 kB, `SpecCard` 21.8 kB, `SprintClose` 14.4 kB and `SteeringMode` 7.7 kB, per-scene chunks
+ConstellationScene 26.3 kB and SpineScene 18.0 kB, `DependencyConstellation` 8.4 kB, `gsap`
+69.6 kB, CSS 93.0 kB (gzip 20.2 kB). The history: round 2 641.8 → the command center (v11) 715.7 →
+Radix + `cmdk` (round 3) 768.8 → the cockpit round 772.7 in test mode. The main chunk carries the
+shell (band, strip, omnibar grammar and dialog), the sprint home (lanes, Today, the room,
+Refining) and the brand figures — the sprint home is the default screen in Build and stays eager;
+everything behind a click is a chunk. Fonts (Inter Variable, JetBrains Mono Variable) are bundled
+woff2; nothing is fetched over the network, and the Content-Security-Policy in `index.html` is
+unchanged.
 
 ## Security
 

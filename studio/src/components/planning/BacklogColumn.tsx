@@ -9,7 +9,7 @@ import { useState } from 'react'
 import { ArrowRightToLine, PenLine } from 'lucide-react'
 import type { BoardRow, ConfirmTierResult, RosterPerson, SpecReadinessFull, SprintVerbResult } from '../../../shared/types'
 import { samePerson } from '../../../shared/identity'
-import { newerPlugin } from '../../../shared/reasons'
+import { newerPlugin, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
 import { Button, Chip, Eyebrow } from '../../ui'
 import { CcEmptyFigure, PersonRing } from '../brand/figures'
 import { dorChipTone } from '../../../shared/sprintModel'
@@ -95,11 +95,11 @@ export function BacklogColumn(props: BacklogColumnProps) {
                   {confirmed[row.spec] && <span className="text-ink-2" data-confirm-result="">{confirmed[row.spec]}</span>}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <Button size="sm" variant="primary" icon={ArrowRightToLine} data-write="" disabled={Boolean(writeReason) || busy} disabledReason={writeReason ?? (busy ? 'Waiting for the plugin to answer.' : undefined)} onClick={() => onAddToSlate(row.spec)}>
+                  <Button size="sm" variant="primary" icon={ArrowRightToLine} data-write="" disabled={Boolean(writeReason) || busy} disabledReason={writeReason ?? (busy ? WAITING_FOR_PLUGIN_ANSWER : undefined)} onClick={() => onAddToSlate(row.spec)}>
                     {ADD_TO_SLATE}
                   </Button>
                   <Button size="sm" variant="ghost" icon={PenLine} data-refine="" onClick={() => onOpenSpec(row)}>{REFINE_IN_PLACE}</Button>
-                  <Button size="sm" data-write="" disabled={!canConfirm || busy} disabledReason={!canConfirm ? newerPlugin('confirm-tier') : busy ? 'Waiting for the plugin to answer.' : undefined} onClick={() => confirm(row)}>
+                  <Button size="sm" data-write="" disabled={!canConfirm || busy} disabledReason={!canConfirm ? newerPlugin('confirm-tier') : busy ? WAITING_FOR_PLUGIN_ANSWER : undefined} onClick={() => confirm(row)}>
                     Confirm tier
                   </Button>
                 </div>

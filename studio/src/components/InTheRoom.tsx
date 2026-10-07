@@ -41,15 +41,18 @@ export function InTheRoom({ people, view, board, me, className }: InTheRoomProps
   const lit = useRoomLit()
   const rows = view ? buildLanes(view, board).all : []
   return (
-    <section data-testid="in-the-room" aria-labelledby="in-the-room-title" className={cn('space-y-3', className)}>
-      <div className="flex items-baseline justify-between gap-2">
+    // Owner's v12 item 1: ONE row under the header — the eyebrow, then every person as a pill
+    // (ring · name · lane dots) wrapping only when the roster outgrows the line. Presence at a
+    // glance, no column of its own, so the lanes start sooner.
+    <section data-testid="in-the-room" aria-labelledby="in-the-room-title" data-room-row="" className={cn('flex flex-wrap items-center gap-x-3 gap-y-1', className)}>
+      <div className="flex shrink-0 items-baseline gap-2">
         <Eyebrow as="h3" id="in-the-room-title">In the room</Eyebrow>
         <span className="text-xs text-ink-3" title={ROOM_SOURCE}>presence, not totals</span>
       </div>
       {!people || people.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-line-2 px-5 py-6 text-sm text-ink-2" data-testid="room-empty">{NO_ROSTER}</p>
+        <p className="rounded-lg border border-dashed border-line-2 px-3 py-1 text-xs text-ink-2" data-testid="room-empty">{NO_ROSTER}</p>
       ) : (
-        <ul className="space-y-1" onMouseLeave={() => roomStore.setLit(null)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) roomStore.setLit(null) }}>
+        <ul className="flex min-w-0 flex-1 flex-wrap items-center gap-1" onMouseLeave={() => roomStore.setLit(null)} onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) roomStore.setLit(null) }}>
           {people.map((person) => {
             const held = holdings(person, rows)
             const you = samePerson(person.handle, me)
@@ -63,21 +66,20 @@ export function InTheRoom({ people, view, board, me, className }: InTheRoomProps
                   data-lit={isLit ? '' : undefined}
                   onMouseEnter={() => roomStore.setLit(person.handle)}
                   onFocus={() => roomStore.setLit(person.handle)}
+                  title={`${person.handle}${person.team ? ` · ${person.team}` : ''}`}
                   className={cn(
-                    'flex w-full items-center gap-3 rounded-[10px] px-2 py-1.5 text-left transition-[background-color,opacity] duration-[120ms] hover:bg-surface-2',
+                    'flex h-8 items-center gap-2 rounded-full border border-line-1 bg-surface-1 py-0.5 pl-1 pr-2.5 text-left transition-[background-color,opacity,border-color] duration-[120ms] hover:border-line-2 hover:bg-surface-2',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ring)',
+                    isLit && 'border-card-lit',
                     lit !== null && !isLit && 'opacity-55',
                   )}
                   aria-label={`${person.name ?? person.handle}${you ? ' (you)' : ''}${person.team ? `, ${person.team}` : ''}`}
                 >
                   <PersonRing initials={initialsFor(person.handle, people)} name={person.name ?? person.handle} you={you} lit={isLit} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm text-ink-1">{person.name ?? person.handle}</span>
-                    <span className="block truncate text-xs text-ink-3">{person.handle}{person.team ? ` · ${person.team}` : ''}</span>
-                  </span>
-                  <span className="flex items-center gap-1" aria-hidden="true" data-holdings="">
+                  <span className="max-w-[12rem] truncate text-xs font-medium text-ink-1">{person.name ?? person.handle}</span>
+                  <span className="flex items-center gap-0.5" aria-hidden="true" data-holdings="">
                     {held.map(({ row, lane }) => (
-                      <LaneGlyph key={row.id} lane={lane} size={18} className="text-ink-3" />
+                      <LaneGlyph key={row.id} lane={lane} size={16} className="text-ink-3" />
                     ))}
                     {held.length === 0 && <span className="text-xs text-ink-4">·</span>}
                   </span>

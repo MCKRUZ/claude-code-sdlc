@@ -31,6 +31,7 @@ export interface TodayColumnProps {
 }
 
 const ICON: Record<NeedsYouItem['kind'], typeof Bell> = { ack: Hand, review: GitPullRequest, decide: Scale, 'confirm-tier': Check }
+export const TEAM_WAITING_CAPTION = "a lane, not a person — the verdict is the team's"
 const WINDOWS: { value: '1' | '3'; label: string }[] = [{ value: '1', label: '1 business day' }, { value: '3', label: '3 business days' }]
 
 /** The PR url for a needs-you row, looked up on the board by exact spec id. */
@@ -46,12 +47,24 @@ export function stampText(at: string | null): string {
   return m ? `${m[1]} ${m[2]}` : at
 }
 
+/** The stream row's own sentence, or null when the row has none to add: main's `text` carries
+ * the ledger line's OTHER fields ("lane eng · verdict accepted", "to @sam-k") or the board's
+ * "PR #40 merged"; the id line already shows origin, spec, event and stamp, and the by-line shows
+ * `by`, so a row never says one fact three times (v13: "0003 handoff / handoff · 0003 · by Pod
+ * Lead / by Pod Lead"). */
+export function streamSentence(r: Pick<StreamRow, 'text'>): string | null {
+  const t = r.text.trim()
+  return t.length > 0 ? t : null
+}
+
 export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onActed, claudeLine, className }: TodayColumnProps) {
   const sprint = cc.sprint.data
   const verdictGroups = sprint ? groupVerdicts(sprint.verdictsPending) : []
   const hasLog = cc.capabilities.includes(CAPABILITIES.sprintLog)
   return (
-    <section data-testid="today" aria-label="Today" className={cn('grid grid-cols-1 gap-6', className)}>
+    // Owner's v12 item 1: a 300 px right rail (or a strip above the lanes on a narrow main),
+    // needs-you first; 16 px between groups so the four groups fit the rail's height.
+    <section data-testid="today" aria-label="Today" data-today-rail="" className={cn('grid grid-cols-1 gap-4', className)}>
       <section aria-labelledby="needs-you-title" className="space-y-2">
         <div className="flex items-baseline justify-between">
           <Eyebrow as="h3" id="needs-you-title">Needs you</Eyebrow>
@@ -74,17 +87,20 @@ export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onAct
       <section aria-labelledby="team-waiting-title" className="space-y-2">
         <Eyebrow as="h3" id="team-waiting-title">Team is waiting on</Eyebrow>
         {!sprint ? <p className="text-xs text-ink-3">{NO_DATA}</p> : verdictGroups.length === 0 ? <p className="text-xs text-ink-3">{sprint.hasData ? 'no verdict pending' : NO_DATA}</p> : (
-          <ul className="space-y-1" title="sprint.py status --json · verdicts_pending" data-testid="team-waiting">
-            {verdictGroups.map((g) => (
-              <li key={g.spec} className="flex min-h-[44px] flex-wrap items-center gap-x-2 rounded-[10px] border-l-2 border-line-2 bg-surface-1 px-3 py-2 text-xs">
-                <span className="font-mono text-ident tabular-nums text-ink-1">{g.spec}</span>
-                {g.lanes.map((v) => (
-                  <span key={v.lane} className="font-mono text-ident text-ink-2">{v.lane} · {businessDays(v.sinceBusinessDays)}</span>
-                ))}
-                <span className="w-full text-ink-3">a lane, not a person — the verdict is the team's</span>
-              </li>
-            ))}
-          </ul>
+          <>
+            {/* Said ONCE for the group, not under every row (v13: two identical captions). */}
+            <p className="text-[11px] text-ink-3" data-testid="team-waiting-caption">{TEAM_WAITING_CAPTION}</p>
+            <ul className="space-y-1" title="sprint.py status --json · verdicts_pending" data-testid="team-waiting">
+              {verdictGroups.map((g) => (
+                <li key={g.spec} className="flex min-h-[44px] flex-wrap items-center gap-x-2 rounded-[10px] border-l-2 border-line-2 bg-surface-1 px-3 py-2 text-xs">
+                  <span className="font-mono text-ident tabular-nums text-ink-1">{g.spec}</span>
+                  {g.lanes.map((v) => (
+                    <span key={v.lane} className="font-mono text-ident text-ink-2">{v.lane} · {businessDays(v.sinceBusinessDays)}</span>
+                  ))}
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
 
@@ -191,16 +207,24 @@ function Stream({ rows, hasLog, logError }: { rows: StreamRow[]; hasLog: boolean
   if (rows.length === 0) return <p className="text-xs text-ink-3">nothing in the window</p>
   return (
     <ul ref={list} className="space-y-1" data-testid="stream">
-      {rows.map((r) => (
-        <li key={r.key} data-stream-key={r.key} data-origin={r.origin} className="flex min-h-[44px] flex-wrap items-center gap-x-2 rounded-[10px] border-l-2 border-line-2 bg-surface-1 px-3 py-2 text-xs text-ink-2">
-          <Chip tone="neutral" size="xs" title="which read this row came from">{r.origin}</Chip>
-          <span className="font-mono text-ident tabular-nums text-ink-1">{r.spec ?? r.id ?? ''}</span>
-          <span className="font-medium text-ink-1">{r.event}</span>
-          <span className="min-w-0 flex-1 truncate">{r.text}</span>
-          <span className="font-mono text-ident text-ink-3">{stampText(r.at)}</span>
-          {r.by && <span className="w-full text-ink-3">by {r.by}</span>}
-        </li>
-      ))}
+      {rows.map((r) => {
+        const sentence = streamSentence(r)
+        return (
+          // Owner's v12 item 5: the row's sentence WHOLE, on its own line, two lines allowed —
+          // never "handoff ha…". The id line carries the origin tag, the spec, the event and the
+          // stamp; the sentence is the line's OTHER fields (`streamSentence`), the by-line `by`.
+          <li key={r.key} data-stream-key={r.key} data-origin={r.origin} className="min-h-[44px] rounded-[10px] border-l-2 border-line-2 bg-surface-1 px-3 py-2 text-xs text-ink-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+              <Chip tone="neutral" size="xs" title="which read this row came from">{r.origin}</Chip>
+              <span className="font-mono text-ident tabular-nums text-ink-1">{r.spec ?? r.id ?? ''}</span>
+              <span className="font-medium text-ink-1">{r.event}</span>
+              <span className="ml-auto font-mono text-ident text-ink-3">{stampText(r.at)}</span>
+            </div>
+            {sentence && <p className="mt-0.5 line-clamp-2 text-[13px] leading-[18px] text-ink-2" data-stream-text="" title={sentence}>{sentence}</p>}
+            {r.by && <p className="text-ink-3" data-stream-by="">by {r.by}</p>}
+          </li>
+        )
+      })}
     </ul>
   )
 }

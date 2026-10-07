@@ -17,9 +17,22 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /* The root never scrolls (owner's v12 item 6): the closing and review shots showed the whole
+     shell offset ~8 px because the DOCUMENT had scrolled — a toast, a focus ring or a 1 px
+     rounding past the viewport is enough to give `html` a scrollbar it then honours. Only
+     `<main>` scrolls (Frame.tsx), and a lane scrolls inside itself; the three root boxes are
+     the viewport's exact height and clip. `min-height` would let content re-grow them, so it
+     is `height`. The pre-project screens are `h-screen` and centre their content, so they
+     fit by construction. */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   html {
     min-width: 320px;
-    min-height: 100%;
     background: var(--color-surface-0);
   }
 
@@ -27,15 +40,23 @@
      layer below it shows through; an opaque body would paint over a negative z-index child. */
   body {
     min-width: 320px;
-    min-height: 100vh;
     margin: 0;
     background: transparent;
     color: var(--color-ink-1);
   }
 
   #root {
-    min-height: 100vh;
     background: transparent;
+  }
+
+  /* <main> is the ONLY scroller (Frame.tsx), so it is also POSITIONED: the containing block of
+     every absolutely positioned descendant. Unpositioned, an `absolute` box inside a screen
+     resolves against the viewport, escapes main's clip and grows the document — v13's overlap
+     probe measured the root at 1440×1608 on the review and closing screens, scrolled 7.5 px,
+     the whole shell offset (owner's v12 item 6, measured). The class list on <main> is a pin
+     (frame.memo.test), so the rule lives here beside the root-never-scrolls rule above. */
+  main#main {
+    position: relative;
   }
 
   /* The two radial glows live on a fixed, inert layer UNDER the app rather than on `body`

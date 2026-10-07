@@ -5,7 +5,7 @@
  * disabled with its reason. No IPC of its own — every action is a callback. */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TodayColumn, prUrlFor, stampText } from '../src/components/today/TodayColumn'
+import { TodayColumn, prUrlFor, stampText, streamSentence, TEAM_WAITING_CAPTION } from '../src/components/today/TodayColumn'
 import { SIGN_IN_TO_SEE, STANDUP_NOTES, STREAM_ARRIVES, UNDATED } from '../shared/reasons'
 import type { SprintVerbResult } from '../shared/types'
 import { CC, EMPTY_CC, withCc } from './sprintHomeFixture'
@@ -114,5 +114,51 @@ describe('team is waiting on, since yesterday, Claude, standup', () => {
     const standup = screen.getByRole('button', { name: /Standup notes/ })
     expect(standup.hasAttribute('disabled')).toBe(true)
     expect(standup.querySelector('[data-disabled-reason]')?.textContent).toBe(STANDUP_NOTES)
+  })
+})
+
+describe('a row says each fact once (v13 fixer round)', () => {
+  it('a log row whose text is empty shows the id line and the by-line only — no sentence paragraph; a row with other fields shows them', () => {
+    const rows = [
+      { origin: 'log' as const, key: 'k1', at: '2026-10-06T23:00:00Z', event: 'handoff', spec: '0003', by: 'Pod Lead', text: '', raw: {} },
+      { origin: 'log' as const, key: 'k2', at: '2026-10-06T22:00:00Z', event: 'verdict', spec: '0005', by: 'Eng Lead', text: 'lane eng · verdict accepted', raw: {} },
+    ]
+    mount(withCc({ sinceYesterday: rows }))
+    const items = Array.from(screen.getByTestId('stream').querySelectorAll('[data-stream-key]'))
+    expect(items[0].querySelector('[data-stream-text]')).toBeNull()
+    expect(items[0].querySelector('[data-stream-by]')?.textContent).toBe('by Pod Lead')
+    // The event, the spec and `by` appear ONCE each in the row.
+    const text = items[0].textContent ?? ''
+    expect(text.split('handoff').length - 1).toBe(1)
+    expect(text.split('0003').length - 1).toBe(1)
+    expect(text.split('Pod Lead').length - 1).toBe(1)
+    expect(items[1].querySelector('[data-stream-text]')?.textContent).toBe('lane eng · verdict accepted')
+    expect(streamSentence({ text: '  ' })).toBeNull()
+    expect(streamSentence({ text: 'PR #40 merged' })).toBe('PR #40 merged')
+  })
+
+  it('"a lane, not a person" is said once for the Team-is-waiting group, not under every row', () => {
+    mount()
+    const team = screen.getByTestId('team-waiting')
+    expect(team.textContent).not.toContain(TEAM_WAITING_CAPTION)
+    expect(screen.getByTestId('team-waiting-caption').textContent).toBe(TEAM_WAITING_CAPTION)
+    expect(document.body.textContent!.split(TEAM_WAITING_CAPTION).length - 1).toBe(1)
+  })
+})
+
+describe('since yesterday reads whole sentences (owner\'s v12 item 5)', () => {
+  it('each row\'s text is its own line, clamped to two lines, never truncated to a sliver; the stamp sits on the id line', () => {
+    mount()
+    const rows = Array.from(screen.getByTestId('stream').querySelectorAll('[data-stream-key]'))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const text = row.querySelector('[data-stream-text]') as HTMLElement
+      expect(text).not.toBeNull()
+      expect(text.className).toContain('line-clamp-2')
+      expect(text.className).not.toContain('truncate')
+      expect(text.textContent?.length).toBeGreaterThan(0)
+      expect(text.getAttribute('title')).toBe(text.textContent)
+    }
+    expect(screen.getByTestId('today').hasAttribute('data-today-rail')).toBe(true)
   })
 })

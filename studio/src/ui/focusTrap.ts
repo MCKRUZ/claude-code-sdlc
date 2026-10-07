@@ -1,41 +1,26 @@
-// Focus-trap helpers for Dialog. Plain DOM functions, no React, so the trap can be tested on a
-// detached fragment and reused by anything else that needs modal focus later (the palette shell
-// is a Dialog, so it inherits this for free).
+// Overlay plumbing for the kit. Round 3 (Q3, Radix under the kit): `@radix-ui/react-dialog`'s
+// FocusScope and DismissableLayer now own Tab containment and the Escape layering (only the
+// topmost layer answers Escape), so the hand-rolled trap is retired. The names stay exported
+// because the kit barrel (`index.ts`) re-exports them: `trapTab` is a documented no-op and
+// `focusableWithin` is a plain query nothing in the kit calls any more. `overlayRoot` is still
+// the one place that names where every overlay portals (dialogs, menus, tooltips, hover cards).
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), ' +
   '[tabindex]:not([tabindex="-1"]):not([disabled]), [contenteditable="true"]'
 
+/** @deprecated The kit no longer traps focus by hand; kept for callers outside the kit. */
 export function focusableWithin(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((el) => !el.hasAttribute('aria-hidden'))
 }
 
-/** Keeps Tab / Shift+Tab inside `root`. Returns true when it handled the key. */
-export function trapTab(event: KeyboardEvent, root: HTMLElement): boolean {
-  if (event.key !== 'Tab') return false
-  const items = focusableWithin(root)
-  if (items.length === 0) {
-    event.preventDefault()
-    root.focus()
-    return true
-  }
-  const first = items[0]
-  const last = items[items.length - 1]
-  const active = document.activeElement as HTMLElement | null
-  if (event.shiftKey && (active === first || !root.contains(active))) {
-    event.preventDefault()
-    last.focus()
-    return true
-  }
-  if (!event.shiftKey && (active === last || !root.contains(active))) {
-    event.preventDefault()
-    first.focus()
-    return true
-  }
+/** @deprecated Radix's FocusScope owns Tab / Shift+Tab inside a Dialog. Always returns false. */
+export function trapTab(_event: KeyboardEvent, _root: HTMLElement): boolean {
   return false
 }
 
-/** Where a Dialog portals: `#overlays` (a sibling of `#root` in index.html) when present, else
- * `document.body`. Called at render time so SSR never touches `document`. */
+/** Where every overlay portals: `#overlays` (a sibling of `#root` in index.html — never inside
+ * `<main>` or an `<aside>`, so the shell's a11y counts hold) when present, else `document.body`.
+ * Called at render time so SSR never touches `document`. */
 export function overlayRoot(): HTMLElement | null {
   if (typeof document === 'undefined') return null
   return document.getElementById('overlays') ?? document.body

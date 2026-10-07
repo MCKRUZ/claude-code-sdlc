@@ -7,8 +7,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BoardRow, DocumentSection, SourcedBlock, SpecCard as SpecCardRead } from '../shared/types'
 import { NO_CHANNEL_BOUND, NO_PR_YET, TIER_RULE, VAGUE_LINE_REWRITE, newerPlugin } from '../shared/reasons'
-import { SpecCard } from '../src/components/SpecCard/SpecCard'
-import { harnessContext, scopeSections, whyTierNotes } from '../src/components/SpecCard/specDocument'
+import { SECTION_ABSENT, SECTION_EMPTY, SpecCard } from '../src/components/SpecCard/SpecCard'
+import { harnessContext, scopeSections, stripHtmlComments, whyTierNotes } from '../src/components/SpecCard/specDocument'
 
 const ROW: BoardRow = {
   spec: '0008', name: 'claim-export', path: 'specs/0008-claim-export.md', title: 'Claim export', status: 'draft',
@@ -175,5 +175,43 @@ describe('SpecCard', () => {
     expect(whyTierNotes(SECTIONS)).toEqual(['lowered to MEDIUM by Matt K — read path only.'])
     expect(scopeSections([])).toEqual({ scopeIn: null, scopeOut: null })
     expect(harnessContext([])).toBeNull()
+  })
+
+  /** v13 fixer round: the template's guidance comment is not the spec's scope. "In" showed
+   * `<!-- What the change must not touch is as load-bearing as what it must do. -->` as content;
+   * now a comment is stripped and an empty section reads "no data — the section is empty", which
+   * is a different fact from "not in the document". */
+  it('an HTML comment in a section is not its text; an empty section says "no data", an absent one "not in the document"', async () => {
+    const sections: DocumentSection[] = [
+      { kind: 'section', key: 'Scope', heading: 'Scope', start: 0, end: 10, text: '## Scope\n<!-- What the change must not touch is as load-bearing as what it must do. -->\n', fields: {} },
+      { kind: 'section', key: 'Scope Out', heading: 'Scope Out', start: 10, end: 20, text: '## Scope Out\n<!-- a note -->Billing.<!-- another\nnote -->\n', fields: {} },
+    ]
+    expect(stripHtmlComments('a <!-- b --> c')).toBe('a  c')
+    expect(scopeSections(sections)).toEqual({ scopeIn: '', scopeOut: 'Billing.' })
+    install({ openDocument: vi.fn().mockResolvedValue({ ok: true, path: ROW.path, shaped: true, warnings: [], sections }) })
+    await renderCard()
+    const inDoc = document.querySelector('[data-doc="In"]') as HTMLElement
+    expect(inDoc.textContent).not.toContain('<!--')
+    expect(inDoc.textContent).not.toContain('load-bearing')
+    expect(inDoc.querySelector('[data-doc-empty]')?.getAttribute('data-doc-empty')).toBe('empty')
+    expect(within(inDoc).getByText(SECTION_EMPTY)).toBeTruthy()
+    expect(inDoc.querySelector('[data-doc-empty]')?.className).toContain('text-ink-3')
+    expect(within(document.querySelector('[data-doc="Out"]') as HTMLElement).getByText('Billing.')).toBeTruthy()
+    const harness = document.querySelector('[data-doc="harness_context"]') as HTMLElement
+    expect(harness.querySelector('[data-doc-empty]')?.getAttribute('data-doc-empty')).toBe('absent')
+    expect(within(harness).getByText(SECTION_ABSENT)).toBeTruthy()
+  })
+
+  /** v12 critique #3: the body's padding-bottom equals the sticky foot's height (64 px), so its
+   * last line clears the foot; the foot is the card's last child, after the body. */
+  it('the body clears the sticky foot by the foot\'s own height, and the foot comes last', async () => {
+    install(); await renderCard()
+    const body = screen.getByTestId('spec-body')
+    expect(body.className).toContain('pb-16')
+    expect(body.className).not.toContain('pb-20')
+    const foot = screen.getByTestId('handoff-foot')
+    expect(foot.className).toContain('h-16')
+    expect(body.compareDocumentPosition(foot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(foot.parentElement).toBe(screen.getByTestId('spec-card'))
   })
 })

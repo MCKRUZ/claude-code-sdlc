@@ -51,6 +51,11 @@ describe('FindingsLedger', () => {
     expect(document.body.textContent).not.toMatch(/\b0 (attributed|tracked|unattributed)/)
     expect(document.body.textContent).not.toContain('`')
     expect(Array.from(document.querySelectorAll('code')).map((c) => c.textContent)).toEqual(['/sdlc-review', 'record_findings.py record'])
+    // v13 fixer round: the chips painted over the line above when the caption wrapped (1280, 1680
+    // shots). Two guards in the caption's classes: a 24 px pitch and chips with no vertical padding.
+    const caption = screen.getByTestId('findings-caption')
+    expect(caption.className).toContain('leading-6')
+    expect(caption.className).toContain('[&_code]:py-0')
     cleanup()
     // Attribution with zero rows under the scope paths is the same absence: the sentence says so.
     render(<FindingsLedger findings={{ ...FINDINGS, findings: [], attribution: { method: 'scope-paths', attributed: 0, unattributed: 3 } }} />)

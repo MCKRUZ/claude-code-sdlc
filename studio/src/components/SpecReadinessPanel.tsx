@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { SpecReadiness } from '../../shared/types'
+import { WAITING_FOR_PLUGIN_ANSWER } from '../../shared/reasons'
 import { Button, Card, Disclosure, EYEBROW_CLASS, EYEBROW_TYPE_CLASS, Eyebrow, Field, Input, Notice, Segmented } from '../ui'
 
 type Tier = 'LOW' | 'MEDIUM' | 'HIGH'
@@ -82,7 +83,7 @@ export function SpecReadinessPanel({
     <Button
       size="sm"
       disabled={busy}
-      disabledReason="Waiting for the plugin to answer."
+      disabledReason={WAITING_FOR_PLUGIN_ANSWER}
       onClick={() => act(() => window.studio.markSpecReady(projectPath, specPath))}
     >
       Mark ready
@@ -133,7 +134,7 @@ export function SpecReadinessPanel({
             tone="inverse"
             value={currentTier}
             disabled={busy}
-            disabledReason="Waiting for the plugin to answer."
+            disabledReason={WAITING_FOR_PLUGIN_ANSWER}
             options={TIERS.map((tier) => ({ value: tier, label: tier }))}
             onChange={(tier) => act(() => window.studio.setSpecRisk(
               projectPath, specPath, tier, authorisedBy?.trim() || undefined,

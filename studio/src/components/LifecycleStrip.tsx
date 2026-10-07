@@ -128,6 +128,7 @@ export const LifecycleStrip = memo(function LifecycleStrip({ status, projectPath
       ref={navRef}
       aria-label="Project"
       data-lifecycle-strip=""
+      data-testid="lifecycle-strip"
       data-expanded={expanded ? '' : undefined}
       // `overflow-x-hidden`: nine absolutely positioned stations never widen the document (a
       // 400 px window stacks the panes and must not scroll sideways).

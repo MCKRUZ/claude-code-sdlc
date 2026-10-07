@@ -117,3 +117,85 @@ describe('intentEntries: one row in the verbs group that opens the dialog and sp
     expect(gated[0].subtitle).toContain(newerPlugin('sprint-write'))
   })
 })
+
+// --- Q4: the effect sentence and the nearest intents ---------------------------------------------
+
+import { editDistance, effectOf, nearestIntents, NEAR_EDITS, SUGGEST_ENTRY_PREFIX } from '../src/palette/intents'
+import { FORBIDDEN_METRIC_WORDS } from '../shared/reasons'
+
+describe('every match carries the effect — what the plugin writes on Done, in its own terms', () => {
+  const PHRASES = [
+    'pull 0001', 'pull 0005', 'verdict 0002 accepted', 'verdict 0002 n-a data because none', 'hand 0006 to Sam', 'ack 0006',
+    'defer 0001 to S09 because slipped', 'defer 0001 because out of scope', 'unslate 0001 because dup', 'decide DL-01 fail closed',
+    'decision fail open or closed?', 'confirm tier 0001', 'ready S08', 'close S08', 'new sprint',
+  ]
+  it('names the frontmatter key or file the plugin writes and the ledger event — never a screen change, never a metric word', () => {
+    for (const p of PHRASES) {
+      const m = parseIntent(p, CTX)
+      expect(m, p).not.toBeNull()
+      expect(m!.effect.length, p).toBeGreaterThan(10)
+      expect(m!.effect, p).not.toMatch(/card (moves|will)|chip|counter|lane will/i)
+      expect(m!.effect, p).not.toMatch(FORBIDDEN_METRIC_WORDS)
+    }
+  })
+  it('the sprint verbs say exactly which of the five keys and which EVENTS name', () => {
+    expect(effectOf(parseIntent('verdict 0002 returned data', CTX)!.intent)).toBe('writes data_review: returned into spec 0002\'s frontmatter and appends one "verdict" ledger line')
+    expect(effectOf(parseIntent('hand 0006 to Sam', CTX)!.intent)).toBe('writes next_owner: @sam-k into spec 0006\'s frontmatter and appends one "handoff" ledger line')
+    expect(effectOf(parseIntent('ack 0006', CTX)!.intent)).toBe('clears next_owner on spec 0006 and appends one "ack" ledger line')
+    expect(effectOf(parseIntent('defer 0001 to S09 because slipped', CTX)!.intent)).toContain('"carried"')
+    expect(effectOf(parseIntent('pull 0005', CTX)!.intent)).toBe('writes sprint: S08 into spec 0005 and appends one "slated" ledger line')
+    expect(effectOf(parseIntent('pull 0001', CTX)!.intent)).toContain('handoff.py creates the branch')
+    expect(effectOf(parseIntent('confirm tier 0001', CTX)!.intent)).toBe('writes risk_confirmed_by: <you> into specs/0001-a.md')
+    expect(effectOf(parseIntent('close S08', CTX)!.intent)).toMatch(/^nothing runs/)
+  })
+  it('the palette row\'s subtitle carries the effect after the plugin\'s preconditions', () => {
+    const [row] = intentEntries('verdict 0002 accepted', CTX, vi.fn())
+    expect(row.subtitle).toContain(' · writes eng_review: accepted into spec 0002')
+  })
+})
+
+describe('nearestIntents: unknown words offer up to three near templates, filled only with what was said', () => {
+  it('a typo on the verb is repaired and the id on the board kept; a complete phrase is marked so', () => {
+    const s = nearestIntents('verdcit 0002 accepted', CTX)
+    expect(s[0]).toMatchObject({ phrase: 'verdict 0002 accepted', complete: true })
+    expect(s.length).toBeLessThanOrEqual(3)
+  })
+  it('a missing "to" and a roster first name resolve; a stranger stays NAME', () => {
+    expect(nearestIntents('hand 0006 Sam', CTX)[0]).toMatchObject({ phrase: 'hand 0006 to @sam-k', complete: true })
+    expect(nearestIntents('hnd 0006 to Zed', CTX)[0].phrase).toBe('hand 0006 to NAME')
+  })
+  it('a value never said stays a placeholder — never a guess at a spec or a reason', () => {
+    expect(nearestIntents('defer 0001', CTX)[0]).toMatchObject({ phrase: 'defer 0001 because <reason>', complete: false })
+    expect(nearestIntents('pul', CTX)[0]).toMatchObject({ phrase: 'pull NNNN', complete: false })
+    expect(nearestIntents('verdict 9999 accepted', CTX)[0].phrase).toBe('verdict NNNN accepted')
+  })
+  it('a known or active sprint fills SNN for ready/close; a prefix of two letters is nearest of all', () => {
+    expect(nearestIntents('rea', CTX)[0]).toMatchObject({ phrase: 'ready S08', complete: true })
+    expect(nearestIntents('clo S09', CTX)[0]).toMatchObject({ phrase: 'close S09', complete: true })
+    // Two letters shared by several verbs (return, remove, resolve, ready) is ambiguous: three rows, all prefix matches, none a guess.
+    const re = nearestIntents('re', CTX)
+    expect(re).toHaveLength(3)
+    for (const s of re) expect(s.complete).toBe(false)
+  })
+  it(`words farther than ${NEAR_EDITS} edits from every verb offer nothing — no padding with unrelated verbs`, () => {
+    expect(nearestIntents('nothing here', CTX)).toEqual([])
+    expect(nearestIntents('x', CTX)).toEqual([])
+    expect(editDistance('verdcit', 'verdict')).toBe(2)
+    expect(editDistance('', 'abc')).toBe(3)
+  })
+  it('intentEntries lists a complete suggestion as a row that opens its dialog; an incomplete one only with onSuggest', () => {
+    const onIntent = vi.fn(), onSuggest = vi.fn()
+    const complete = intentEntries('verdcit 0002 accepted', CTX, onIntent)
+    expect(complete[0]).toMatchObject({ id: `${SUGGEST_ENTRY_PREFIX}0`, group: 'verbs', title: 'verdict 0002 accepted' })
+    expect(complete[0].subtitle).toContain('Run: sprint.py verdict --spec 0002')
+    complete[0].run()
+    expect(onIntent).toHaveBeenCalledWith(expect.objectContaining({ intent: expect.objectContaining({ kind: 'sprint' }) }))
+    expect(intentEntries('defer 0001', CTX, onIntent)).toEqual([])          // nothing a row could do without the field
+    const incomplete = intentEntries('defer 0001', CTX, onIntent, onSuggest)
+    expect(incomplete[0].title).toBe('defer 0001 because <reason>')
+    incomplete[0].run()
+    expect(onSuggest).toHaveBeenCalledWith('defer 0001 because <reason>')
+    expect(onIntent).toHaveBeenCalledTimes(1)
+    expect(intentEntries('>verdcit 0002', CTX, onIntent, onSuggest)).toEqual([])
+  })
+})

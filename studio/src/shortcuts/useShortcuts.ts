@@ -57,8 +57,10 @@ export interface UseShortcutsOptions {
   /** The scopes that are live on the current screen; `global` is always live. */
   scopes?: readonly ShortcutScope[]
   bindings?: readonly AnyShortcutBinding[]
-  /** Esc layering, outermost first: each closer returns true when it closed something, which
-   * ends the chain (close dialog → clear 3D hover → clear Board search). */
+  /** Esc layering, innermost first: each closer returns true when it closed something, which
+   * ends the chain. The sanctioned order is `shortcutMap.ESC_LAYERS` (dialog → palette → help →
+   * spec card → steering → lane focus → graph hover → Board search → back); build the list with
+   * `namedEscLayers({...})` so the order cannot drift between hosts. */
   escLayers?: readonly (() => boolean)[]
   /** Last resort for Esc: the screen's back. */
   onBack?: () => void

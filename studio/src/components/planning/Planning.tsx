@@ -8,7 +8,7 @@
 // an id lookup over plugin rows (`planningModel.ts`).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BoardRow, CommandCenter, ReadinessAll, SlateProposal, SprintMixTier, SprintVerbResult, SprintView } from '../../../shared/types'
-import { CAPABILITIES, newerPlugin, NO_ACTOR, ORDER_ARRIVES_ON_COMMIT, SPRINT_FIELDS_FIXED } from '../../../shared/reasons'
+import { CAPABILITIES, newerPlugin, NO_ACTOR, ORDER_ARRIVES_ON_COMMIT, SPRINT_FIELDS_FIXED, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
 import { businessDays, sprintStateChip } from '../../../shared/sprintModel'
 import { Button, Chip, Eyebrow, PageHeader, Segmented, Textarea } from '../../ui'
 import { useEnter } from '../../motion/useEnter'
@@ -17,7 +17,7 @@ import { CcEmptyFigure } from '../brand/figures'
 import { BacklogColumn } from './BacklogColumn'
 import { SlateColumn } from './SlateColumn'
 import { PluginSaysColumn } from './PluginSaysColumn'
-import type { IntentMatch } from '../../palette/intents'
+import { effectOf, type IntentMatch } from '../../palette/intents'
 import { CommitDialog } from './CommitDialog'
 import { commitSprint, type CommitStep } from './commitSprint'
 import { candidateRows, orderBacklog, previousSprintId, readinessById } from './planningModel'
@@ -87,7 +87,7 @@ export function Planning({ projectPath, onOpenSpec, onNewSprint, onIntent, refre
   const caps = center?.capabilities
   const has = (cap: string) => caps === undefined || caps.includes(cap)
   const actor = center?.actor ?? null
-  const writeReason = !center ? 'Waiting for the plugin to answer.' : !actor ? NO_ACTOR : !has(CAPABILITIES.sprintWrite) ? newerPlugin(CAPABILITIES.sprintWrite) : undefined
+  const writeReason = !center ? WAITING_FOR_PLUGIN_ANSWER : !actor ? NO_ACTOR : !has(CAPABILITIES.sprintWrite) ? newerPlugin(CAPABILITIES.sprintWrite) : undefined
   const people = center?.roster.data?.people ?? []
   const readiness = useMemo(() => readinessById(readinessAll), [readinessAll])
   const backlog = useMemo(() => orderBacklog(candidateRows(center?.board.data), readiness), [center, readiness])
@@ -122,10 +122,13 @@ export function Planning({ projectPath, onOpenSpec, onNewSprint, onIntent, refre
   const applyProposal = (specs: string[]) => {
     if (!sprint) return
     if (onIntent) {
+      // `effect` is the verb's own documented write (intents.ts `effectOf`), never this screen's guess.
+      const intent: IntentMatch['intent'] = { kind: 'sprint', request: { verb: 'slate', sprint: sprint.id, specs } }
       onIntent({
-        intent: { kind: 'sprint', request: { verb: 'slate', sprint: sprint.id, specs } },
+        intent,
         title: `Apply the plugin's proposal to ${sprint.id}`,
         subtitle: 'sprint.py slate --json proposal[] — deterministic, id-order fill; one slate verb for the whole set',
+        effect: effectOf(intent),
       })
     } else {
       runFor(sprint.id, { verb: 'slate', sprint: sprint.id, specs })
@@ -183,10 +186,23 @@ export function Planning({ projectPath, onOpenSpec, onNewSprint, onIntent, refre
         {lastResult?.spec === sprint.id && <p className="text-xs text-ink-2">{lastResult.result.stdout || lastResult.result.stderr}</p>}
       </header>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(300px,1fr)_minmax(360px,1.2fr)_320px]">
-        <BacklogColumn projectPath={projectPath} rows={backlog} readiness={readiness} people={people} me={actor?.name ?? null} writeReason={writeReason} canConfirm={has(CAPABILITIES.confirmTier)} busy={verb.busy} lastResult={lastResult} onAddToSlate={(spec) => runFor(spec, { verb: 'slate', sprint: sprint.id, specs: [spec] })} onOpenSpec={onOpenSpec} onSettled={reload} />
-        <SlateColumn view={view!} boardById={boardById} readiness={readiness} people={people} me={actor?.name ?? null} lastSprint={lastSprint} writeReason={writeReason} canAssign={caps === undefined ? undefined : has(CAPABILITIES.assignRoles)} busy={verb.busy} lastResult={lastResult} onUnslate={(spec, reason) => runFor(spec, { verb: 'unslate', spec, reason })} onAssign={assign} onOpenSpec={onOpenSpec} />
-        <PluginSaysColumn view={view!} proposal={proposal} writeReason={writeReason} busy={verb.busy} steps={commit ? [] : steps} committing={committing} onApplyProposal={applyProposal} onCommit={(override) => { setSteps([]); setCommit({ override }) }} />
+      {/* Three columns measured against the screen's own width (a container query, not the
+          window: the chat aside takes 380 px of the window when open). The slate is the widest
+          — `1.4fr` against the backlog's `1fr`, the plugin's column fixed at 320 (visual §4) —
+          and the threshold is the sum of the three minimums (300 + 400 + 320 + two 16 px gaps);
+          below it the columns stack with the slate first (visual §4 "stacked slate-first"). */}
+      <div className="@container">
+        <div className="grid gap-4 @min-[1056px]:grid-cols-[minmax(300px,1fr)_minmax(400px,1.4fr)_320px]" data-testid="planning-columns">
+          <div className="grid min-w-0 @min-[1056px]:order-none">
+            <BacklogColumn projectPath={projectPath} rows={backlog} readiness={readiness} people={people} me={actor?.name ?? null} writeReason={writeReason} canConfirm={has(CAPABILITIES.confirmTier)} busy={verb.busy} lastResult={lastResult} onAddToSlate={(spec) => runFor(spec, { verb: 'slate', sprint: sprint.id, specs: [spec] })} onOpenSpec={onOpenSpec} onSettled={reload} />
+          </div>
+          <div className="order-first grid min-w-0 @min-[1056px]:order-none" data-slate-first="">
+            <SlateColumn view={view!} boardById={boardById} readiness={readiness} people={people} me={actor?.name ?? null} lastSprint={lastSprint} writeReason={writeReason} canAssign={caps === undefined ? undefined : has(CAPABILITIES.assignRoles)} busy={verb.busy} lastResult={lastResult} onUnslate={(spec, reason) => runFor(spec, { verb: 'unslate', spec, reason })} onAssign={assign} onOpenSpec={onOpenSpec} />
+          </div>
+          <div className="grid min-w-0">
+            <PluginSaysColumn view={view!} proposal={proposal} writeReason={writeReason} busy={verb.busy} steps={commit ? [] : steps} committing={committing} onApplyProposal={applyProposal} onCommit={(override) => { setSteps([]); setCommit({ override }) }} />
+          </div>
+        </div>
       </div>
 
       {/* The constellation below the columns: the slate is the screen, the figure its second surface. */}

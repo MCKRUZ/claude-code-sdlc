@@ -9,6 +9,12 @@
 //   hand [off] NNNN to NAME [note …] · ack NNNN · defer NNNN because … · defer NNNN to SNN because …
 //   unslate NNNN because … · decide DL-NN … · decision … · confirm tier NNNN · ready SNN
 //   close SNN · new sprint
+//
+// Every match carries `effect`: what the plugin WRITES on Done, from the verbs' own code (five
+// frontmatter keys, one ledger line per event) — shown with the argv line before Confirm. Words
+// the grammar does not know get `nearestIntents`: the three templates nearest the first word,
+// filled only with values the text already names (an id on the board, a known sprint, a roster
+// person); the rest stays `NNNN` / `SNN` / `<…>` — never a guess.
 import type { SprintVerbRequest, VerdictLane, VerdictValue } from '../../shared/types'
 import { newerPlugin, CAPABILITIES } from '../../shared/reasons'
 import { SPRINT_ID } from '../../shared/sprintModel'
@@ -63,9 +69,15 @@ export interface IntentMatch {
   /** The row's title: the exact spawn for a sprint verb, the plain sentence otherwise. */
   title: string
   subtitle: string
+  /** What the plugin WRITES if it answers Done — its own documented effect (`sprint.py`'s five
+   * frontmatter keys and one ledger line per event), never a prediction of what a screen will
+   * show. Previewed with the argv line before Confirm. */
+  effect: string
   /** Set when the plugin lacks the verb's capability — the row is present, the Confirm disabled. */
   disabledReason?: string
 }
+
+type BareMatch = Omit<IntentMatch, 'effect'>
 
 const VERDICTS: Record<string, VerdictValue> = { accepted: 'accepted', returned: 'returned', pending: 'pending', 'n-a': 'n-a', na: 'n-a', 'n/a': 'n-a' }
 const DL_ID = /^DL-\d+$/i
@@ -133,7 +145,7 @@ export function sketchArgv(request: SprintVerbRequest, actor: string): string[] 
   return out
 }
 
-function sprintMatch(ctx: IntentContext, request: SprintVerbRequest, subtitle: string, recipient?: Recipient): IntentMatch {
+function sprintMatch(ctx: IntentContext, request: SprintVerbRequest, subtitle: string, recipient?: Recipient): BareMatch {
   return {
     intent: { kind: 'sprint', request, recipient },
     title: previewSprintVerb(request, ctx.actor),
@@ -142,7 +154,7 @@ function sprintMatch(ctx: IntentContext, request: SprintVerbRequest, subtitle: s
   }
 }
 
-export function parseIntent(raw: string, ctx: IntentContext): IntentMatch | null {
+function parseIntentBare(raw: string, ctx: IntentContext): BareMatch | null {
   const text = raw.trim().replace(/\s+/g, ' ')
   if (!text) return null
   let m: RegExpMatchArray | null
@@ -217,23 +229,169 @@ export function parseIntent(raw: string, ctx: IntentContext): IntentMatch | null
   return null
 }
 
-export const INTENT_ENTRY_ID = 'verb:intent'
+// --- the effect sentence: what the plugin writes on Done (from the verbs' own code) ------------
 
-/** The palette row for the typed words: zero or one entry in the `verbs` group. `run()` hands
- * the intent to the host, which opens the dialog — nothing is spawned here or there before
- * Confirm. A prefix query (`>` `#` `/` `@`) never parses as a verb. */
-export function intentEntries(query: string, ctx: IntentContext, onIntent: (match: IntentMatch) => void): PaletteEntry[] {
+/** `sprint.py` writes ONLY five frontmatter keys (`sprint next_owner eng_review data_review
+ * depends_on`) and one ledger line per event (`sprint_model.EVENTS`); the other scripts' writes
+ * are named in their own `--help`. The sentence is that record, so the person sees the write
+ * before the argv runs — never "the card will move", which is the refreshed read's to say. */
+export function effectOf(intent: Intent): string {
+  switch (intent.kind) {
+    case 'sprint': {
+      const r = intent.request
+      switch (r.verb) {
+        case 'verdict': return `writes ${r.lane}_review: ${r.verdict} into spec ${r.spec}'s frontmatter and appends one "verdict" ledger line`
+        case 'handoff': return `writes next_owner: ${r.to || '<to>'} into spec ${r.spec}'s frontmatter and appends one "handoff" ledger line`
+        case 'ack': return `clears next_owner on spec ${r.spec} and appends one "ack" ledger line`
+        case 'slate': return `writes sprint: ${r.sprint} into ${r.specs.length === 1 ? `spec ${r.specs[0]}` : `${r.specs.length} specs`} and appends one "slated" ledger line per spec`
+        case 'unslate': return `clears sprint: on spec ${r.spec} and appends one "unslated" ledger line carrying the reason`
+        case 'carry': return `rewrites sprint: to ${r.to} on spec ${r.spec}, both ## Slate tables, and appends one "carried" ledger line`
+        case 'ready': return `moves ${r.sprint} to ready and writes its planning page (sprint-${r.sprint}-planning.html); one "ready" ledger line`
+        case 'close': return `moves ${r.sprint} to closed, fills its ## Close table and writes the review page; one "closed" line plus one "carried" or "dropped" line per open spec`
+        case 'new': return `creates .sdlc/sprints/${r.sprint}.md from the template and appends one "sprint_new" ledger line`
+        case 'edit': return `replaces ${r.sprint}'s goal in its frontmatter and ## Goal section; one "sprint_edited" ledger line`
+      }
+      return 'one sprint.py write'
+    }
+    case 'pull': return intent.slated
+      ? `handoff.py creates the branch, commits status/developer into ${intent.path}, pushes, and opens the draft PR`
+      : `writes sprint: ${intent.sprint ?? '<sprint>'} into spec ${intent.spec} and appends one "slated" ledger line`
+    case 'defer': return `writes status: deferred and deferred_reason into ${intent.path}`
+    case 'decide': return `sets ${intent.id} to decided in .sdlc/decision-log.md, recording you and the resolution`
+    case 'decision': return 'allocates the next DL-NN in .sdlc/decision-log.md — opened today, due two business days on, owner you'
+    case 'confirm-tier': return `writes risk_confirmed_by: <you> into ${intent.path}`
+    case 'close': return 'nothing runs — the close screen decides each open spec first'
+    case 'new-sprint': return 'creates .sdlc/sprints/<id>.md from the template and appends one "sprint_new" ledger line'
+  }
+}
+
+export function parseIntent(raw: string, ctx: IntentContext): IntentMatch | null {
+  const bare = parseIntentBare(raw, ctx)
+  return bare ? { ...bare, effect: effectOf(bare.intent) } : null
+}
+
+// --- unknown input: the three nearest intents ---------------------------------------------------
+
+export interface IntentSuggestion {
+  /** The phrase to type, with `NNNN` / `SNN` / `<…>` where a value is still needed. */
+  phrase: string
+  /** The grammar line it stands for. */
+  template: string
+  /** True when `phrase` already parses — picking it opens the dialog directly. */
+  complete: boolean
+  hint: string
+}
+
+interface Template { words: string[]; template: string; hint: string; fill: (ctx: IntentContext, text: string) => string }
+const idIn = (ctx: IntentContext, text: string) => text.match(/\b(\d{4})\b/g)?.find((id) => row(ctx, id) !== null) ?? null
+const sprintIn = (ctx: IntentContext, text: string) => text.match(/\bS\d{2,}\b/gi)?.map((s) => s.toUpperCase()).find((s) => sprintKnown(ctx, s)) ?? ctx.activeSprint
+const tail = (text: string, after: RegExp) => text.match(after)?.[1]?.trim() ?? ''
+const VERDICT_WORD = /\b(accepted|returned|pending|n-a|na|accept|return)\b/i
+
+/** Grammar order. `words` are the verb and its near-synonyms a person is likely to type. */
+const TEMPLATES: readonly Template[] = [
+  { words: ['pull', 'start', 'take'], template: 'pull NNNN', hint: 'pull a spec into Building (hand-off if slated, slate it first otherwise)', fill: (c, t) => `pull ${idIn(c, t) ?? 'NNNN'}` },
+  { words: ['verdict', 'accept', 'accepted', 'return', 'returned', 'review'], template: 'verdict NNNN accepted|returned [eng|data] [because …]', hint: 'record a review verdict on a slated spec', fill: (c, t) => {
+    const v = t.match(VERDICT_WORD)?.[1].toLowerCase()
+    const verdict = v ? (v === 'accept' ? 'accepted' : v === 'return' ? 'returned' : v) : 'accepted'
+    return `verdict ${idIn(c, t) ?? 'NNNN'} ${verdict}${/\bdata\b/i.test(t) ? ' data' : ''}`
+  } },
+  { words: ['hand', 'handoff', 'give', 'pass'], template: 'hand NNNN to NAME [note …]', hint: 'open a hand-off to a person on the roster', fill: (c, t) => {
+    const name = tail(t, /\bto\s+(\S+)/i) || tail(t, /\b(?:\d{4})\s+(\S+)$/)
+    const who = name && resolvePerson(c, name).handle ? resolvePerson(c, name).handle : 'NAME'
+    return `hand ${idIn(c, t) ?? 'NNNN'} to ${who}`
+  } },
+  { words: ['ack', 'acknowledge', 'got'], template: 'ack NNNN', hint: 'acknowledge a hand-off addressed to you', fill: (c, t) => `ack ${idIn(c, t) ?? 'NNNN'}` },
+  { words: ['defer', 'postpone', 'carry', 'move'], template: 'defer NNNN because … · defer NNNN to SNN because …', hint: 'leave the Build loop with a reason, or carry to a later sprint', fill: (c, t) => `defer ${idIn(c, t) ?? 'NNNN'} because ${tail(t, /because\s+(.+)$/i) || '<reason>'}` },
+  { words: ['unslate', 'remove', 'drop'], template: 'unslate NNNN because …', hint: 'take a spec off the slate with the reason recorded', fill: (c, t) => `unslate ${idIn(c, t) ?? 'NNNN'} because ${tail(t, /because\s+(.+)$/i) || '<reason>'}` },
+  { words: ['decide', 'decided', 'resolve'], template: 'decide DL-NN …', hint: 'record a decision\'s resolution and stop its clock', fill: (_c, t) => `decide ${t.match(/\bDL-?\d+\b/i)?.[0].toUpperCase().replace(/^DL(\d)/, 'DL-$1') ?? 'DL-NN'} <resolution>` },
+  { words: ['decision', 'question', 'open'], template: 'decision …', hint: 'open a decision with you as owner and a 2-business-day clock', fill: () => 'decision <text>' },
+  { words: ['confirm', 'tier', 'risk'], template: 'confirm tier NNNN', hint: 'confirm a proposed risk tier as a named person', fill: (c, t) => `confirm tier ${idIn(c, t) ?? 'NNNN'}` },
+  { words: ['ready'], template: 'ready SNN', hint: 'mark the sprint ready — the plugin lists every gap otherwise', fill: (c, t) => `ready ${sprintIn(c, t) ?? 'SNN'}` },
+  { words: ['close', 'finish', 'end'], template: 'close SNN', hint: 'open the close screen for a sprint', fill: (c, t) => `close ${sprintIn(c, t) ?? 'SNN'}` },
+  { words: ['new', 'sprint', 'create'], template: 'new sprint', hint: 'create the next sprint record', fill: () => 'new sprint' },
+]
+
+/** Levenshtein distance — small inputs, so the plain table is fine. */
+export function editDistance(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j)
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0]; prev[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diag = tmp
+    }
+  }
+  return prev[b.length]
+}
+
+/** A verb word counts as near when it is within two edits of the typed word, or one is a prefix
+ * of the other. Farther than that is not "nearest", it is noise — nothing is offered. */
+export const NEAR_EDITS = 2
+
+/** For words that are not a verb the grammar knows: up to three templates whose verb word is
+ * nearest the FIRST typed word (a prefix of ≥ 2 letters counts as nearest of all), each filled
+ * with whatever the rest of the text already names — an id on the board, a known sprint, a
+ * verdict word, a roster person — and `NNNN` / `SNN` / `<…>` where nothing was said. Never a
+ * guess at a value; never padded with a verb that is not near. */
+export function nearestIntents(raw: string, ctx: IntentContext, limit = 3): IntentSuggestion[] {
+  const text = raw.trim().replace(/\s+/g, ' ')
+  const first = text.split(' ')[0]?.toLowerCase() ?? ''
+  if (first.length < 2) return []
+  const scored = TEMPLATES.map((t, order) => {
+    const best = Math.min(...t.words.map((w) => (w.startsWith(first) ? 0 : editDistance(first, w) - (first.startsWith(w) ? 0.5 : 0))))
+    return { t, order, score: best }
+  }).filter((x) => x.score <= NEAR_EDITS).sort((x, y) => x.score - y.score || x.order - y.order)
+  return scored.slice(0, limit).map(({ t }) => {
+    const phrase = t.fill(ctx, text)
+    // A placeholder is a value still to type; the grammar would accept `<reason>` as a reason, so
+    // the parse alone is not enough for "complete".
+    return { phrase, template: t.template, complete: !PLACEHOLDER.test(phrase) && parseIntentBare(phrase, ctx) !== null, hint: t.hint }
+  })
+}
+
+/** `NNNN` / `SNN` / `NAME` / `DL-NN` / `<…>` — what a suggestion leaves for the person to type. */
+export const PLACEHOLDER = /\bNNNN\b|\bSNN\b|\bNAME\b|\bDL-NN\b|<[^>]+>/
+
+export const INTENT_ENTRY_ID = 'verb:intent'
+export const SUGGEST_ENTRY_PREFIX = 'verb:suggest:'
+
+/** The palette rows for the typed words, all in the `verbs` group. A parse → ONE row whose
+ * `run()` hands the intent to the host (the dialog opens; nothing is spawned before Confirm) and
+ * whose subtitle carries the effect sentence. No parse → up to three nearest intents: a complete
+ * one runs as a match; an incomplete one (a value still to type) is offered only when the host
+ * passes `onSuggest` to put the phrase into the field — a row that could do nothing is not shown.
+ * A prefix query (`>` `#` `/` `@`) never parses as a verb. */
+export function intentEntries(
+  query: string, ctx: IntentContext, onIntent: (match: IntentMatch) => void, onSuggest?: (phrase: string) => void,
+): PaletteEntry[] {
   if (/^[>#/@]/.test(query.trimStart())) return []
   const match = parseIntent(query, ctx)
-  if (!match) return []
-  return [{
-    id: INTENT_ENTRY_ID,
-    group: 'verbs',
-    title: match.title,
-    subtitle: match.disabledReason ? `${match.subtitle} — ${match.disabledReason}` : match.subtitle,
-    keywords: [],
-    run: () => onIntent(match),
-  }]
+  if (match) {
+    return [{
+      id: INTENT_ENTRY_ID,
+      group: 'verbs',
+      title: match.title,
+      subtitle: `${match.disabledReason ? `${match.subtitle} — ${match.disabledReason}` : match.subtitle} · ${match.effect}`,
+      keywords: [],
+      run: () => onIntent(match),
+    }]
+  }
+  const rows: PaletteEntry[] = []
+  for (const [i, s] of nearestIntents(query, ctx).entries()) {
+    const full = s.complete ? parseIntent(s.phrase, ctx) : null
+    if (!full && !onSuggest) continue
+    rows.push({
+      id: `${SUGGEST_ENTRY_PREFIX}${i}`,
+      group: 'verbs',
+      title: s.phrase,
+      subtitle: full ? `${full.title} · ${full.effect}` : `${s.template} — ${s.hint}`,
+      keywords: [],
+      run: () => (full ? onIntent(full) : onSuggest!(s.phrase)),
+    })
+  }
+  return rows
 }
 
 /** The ids the parser accepts, exported so a test can assert the vocabulary is the plugin's. */

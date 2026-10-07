@@ -1,7 +1,11 @@
 // Planning — middle column, the slate (togo-command-center.md §3.2, visual §4 "slate rows 56 px"):
-// rows in the plugin's `build_order[]`, rows it did not list after under "order not given". ONE
-// line per row — the build-order numeral in `--text-ident`, the id and name, the DoR and risk
-// chips, the Builder / Checker pickers inline (`RolePicker` → `assignRoles`) — and the rest of
+// rows in the plugin's `build_order[]`, rows it did not list after under "order not given". One
+// line per row — the build-order numeral in `--text-ident`, the id and name (never truncated to
+// nothing: the name track is `minmax(12rem,1fr)`, a FLOOR, and the name wraps at its own
+// hyphens — `break-word`, never `anywhere`, which lets the grid shrink a word to one letter per
+// line), the DoR and risk chips, the Builder / Checker pickers (`RolePicker` → `assignRoles`, each
+// a fixed `w-44`) inline when the column is ≥ 820 px wide, else on a second line under the name
+// — and the rest of
 // the row (the HIGH line quoted verbatim from `ladder.rungs`, the people, `depends_on`, the
 // Security signer slot that is always disabled with its reason, "Remove from slate" with the
 // reason the plugin records) behind a disclosure on the row. The mix meter is three 6 px bars,
@@ -9,7 +13,7 @@
 import { useState } from 'react'
 import type { BoardRow, RosterPerson, SpecReadinessFull, SprintMixTier, SprintSlateRow, SprintVerbResult, SprintView } from '../../../shared/types'
 import { samePerson } from '../../../shared/identity'
-import { ORDER_NOT_GIVEN } from '../../../shared/reasons'
+import { ORDER_NOT_GIVEN, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
 import { dorChipTone, slateToBoardRow } from '../../../shared/sprintModel'
 import { Button, Chip, Disclosure, Eyebrow, Textarea } from '../../ui'
 import { PersonRing } from '../brand/figures'
@@ -19,6 +23,17 @@ import { VerbResult } from './VerbResult'
 
 export const REMOVE_FROM_SLATE = 'Remove from slate'
 export const ROW_MORE = 'More on this row'
+
+/** The slate row's line (v13 fixer round; owner's v12 item 2 re-opened at ≥ 1600 px). The name
+ * track has a 12 rem FLOOR — at 1680 the column measured ≈ 723 px and two natural-width pickers
+ * (≈ 190 each) plus the chips left the `minmax(0,1fr)` name ≈ 100 px, where `anywhere` broke
+ * "duplicate-claim-409" into "dupl / icate- / claim-409". The pickers join the line only from
+ * `SLATE_INLINE_PX`: numeral 32 + name 192 + chips ≈ 140 + 2 × 176 pickers + gaps ≈ 48 = 764,
+ * rounded up to 820 so the name keeps ≥ 12 rem with room; below it they take their own line. */
+export const SLATE_INLINE_PX = 820
+export const SLATE_NAME_TRACK = 'minmax(12rem,1fr)'
+export const SLATE_LINE_CLASS = `grid grid-cols-[2rem_${SLATE_NAME_TRACK}_auto] items-start gap-x-3 gap-y-1.5 @min-[${SLATE_INLINE_PX}px]:grid-cols-[2rem_${SLATE_NAME_TRACK}_auto_auto] @min-[${SLATE_INLINE_PX}px]:items-center`
+export const SLATE_PICKERS_CLASS = `col-span-3 col-start-1 flex min-w-0 flex-wrap items-end gap-2 @min-[${SLATE_INLINE_PX}px]:col-span-1 @min-[${SLATE_INLINE_PX}px]:col-start-auto @min-[${SLATE_INLINE_PX}px]:flex-nowrap`
 
 export interface SlateColumnProps {
   view: SprintView
@@ -51,18 +66,20 @@ export function SlateColumn(props: SlateColumnProps) {
     const peopleOnRow = [row.owner, row.developer, row.checker].filter(Boolean).filter((h, i, a) => a.indexOf(h) === i)
     return (
       <li key={l.row.id} data-spec={l.row.id} data-order={l.order ?? 'none'} className="rounded-[10px] border border-line-1 bg-surface-1 px-3 py-2">
-        {/* The 56 px line: numeral · id + name · chips · pickers. */}
-        <div className="grid min-h-10 grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-x-3 md:grid-cols-[2rem_minmax(0,1fr)_auto_auto]" data-slate-line="">
-          <span className="font-mono text-ident tabular-nums text-ink-3" aria-label={l.order === null ? ORDER_NOT_GIVEN : `build order ${l.order}`}>{l.order ?? '—'}</span>
-          <button type="button" className="min-w-0 truncate text-left" onClick={() => onOpenSpec(row)}>
+        {/* The line: numeral · id + name · chips, with the two pickers on a second line under the
+            name (v12 critique #2: the slate names what is slated on EVERY row). `SLATE_LINE_CLASS`
+            holds the tracks and the inline threshold; the name button wraps at word seams only. */}
+        <div className={SLATE_LINE_CLASS} data-slate-line="">
+          <span className={`pt-0.5 font-mono text-ident tabular-nums text-ink-3 @min-[${SLATE_INLINE_PX}px]:pt-0`} aria-label={l.order === null ? ORDER_NOT_GIVEN : `build order ${l.order}`}>{l.order ?? '—'}</span>
+          <button type="button" className="min-w-0 text-left leading-5 [overflow-wrap:break-word]" title={`${l.row.id} — ${l.row.name}`} onClick={() => onOpenSpec(row)}>
             <span className="font-mono text-ident text-accent-text">{l.row.id}</span>
             <span className="ml-2 text-sm font-medium text-ink-1">{l.row.name}</span>
           </button>
-          <span className="flex shrink-0 items-center gap-1.5">
+          <span className={`flex shrink-0 items-center gap-1.5 pt-0.5 @min-[${SLATE_INLINE_PX}px]:pt-0`}>
             <Chip tone={dorChipTone(l.row.dor)} casing="state" dot>{l.row.dor}</Chip>
             <Chip tone={riskTone(l.row.risk)} casing="identifier">{l.row.risk}</Chip>
           </span>
-          <span className="col-span-3 mt-1 flex flex-wrap items-end gap-2 md:col-span-1 md:mt-0 md:flex-nowrap">
+          <span className={SLATE_PICKERS_CLASS} data-slate-pickers="">
             <RolePicker role="developer" spec={l.row.id} value={row.developer} people={people} canAssign={canAssign} busy={busy} compact onChange={(h) => onAssign(row, { developer: h })} />
             <RolePicker role="checker" spec={l.row.id} value={row.checker} people={people} developer={row.developer} canAssign={canAssign} busy={busy} compact onChange={(h) => onAssign(row, { checker: h })} />
           </span>
@@ -81,7 +98,7 @@ export function SlateColumn(props: SlateColumnProps) {
                 return <PersonRing key={h} initials={ring.initials} name={ring.name} you={samePerson(h, me)} />
               })}
               {l.row.dependsOn.length > 0 && <span className="font-mono text-ident">depends on {l.row.dependsOn.join(', ')}</span>}
-              <Button size="sm" variant="ghost" data-write="" className="ml-auto" disabled={Boolean(writeReason) || busy} disabledReason={writeReason ?? (busy ? 'Waiting for the plugin to answer.' : undefined)} onClick={() => setRemoving({ spec: l.row.id, reason: '' })}>
+              <Button size="sm" variant="ghost" data-write="" className="ml-auto" disabled={Boolean(writeReason) || busy} disabledReason={writeReason ?? (busy ? WAITING_FOR_PLUGIN_ANSWER : undefined)} onClick={() => setRemoving({ spec: l.row.id, reason: '' })}>
                 {REMOVE_FROM_SLATE}
               </Button>
             </div>
@@ -102,7 +119,7 @@ export function SlateColumn(props: SlateColumnProps) {
   }
 
   return (
-    <section aria-label="The slate" data-testid="planning-slate" className="flex min-w-0 flex-col rounded-[14px] bg-plan-slate p-2 ring-1 ring-line-1">
+    <section aria-label="The slate" data-testid="planning-slate" className="@container flex min-w-0 flex-col rounded-[14px] bg-plan-slate p-2 ring-1 ring-line-1">
       <header className="flex h-10 items-center justify-between border-b border-lane-line px-2">
         <Eyebrow as="h3">The slate</Eyebrow>
         <span className="text-lane-count tabular-nums text-ink-1" data-stat="slated">{view.slate.length}{view.sprint?.target !== null && view.sprint?.target !== undefined ? <span className="text-sm text-ink-3"> of {view.sprint.target}</span> : null}</span>
@@ -126,7 +143,14 @@ export function SlateColumn(props: SlateColumnProps) {
             ))}
           </ul>
         )}
-        {view.mixWarnings.map((w) => <p key={w} className="mt-1 text-xs text-status-warn-ink">{w}</p>)}
+        {/* The mix gap is ONE fact with ONE meaning on every screen: the same warn-tone chip the
+            sprint header wears (`SprintHeader`, `data-mix-warning`) — a measured gap, never the
+            error tone (v13: the slate said it in red while the home said it in amber). */}
+        {view.mixWarnings.length > 0 && (
+          <ul className="mt-2 flex flex-wrap items-center gap-1" data-testid="slate-mix-warnings" title="sprint.py status --json · mix_warnings">
+            {view.mixWarnings.map((w) => <li key={w}><Chip tone="warn" size="xs" dot data-mix-warning="">{w}</Chip></li>)}
+          </ul>
+        )}
       </div>
 
       {view.slate.length === 0 ? (

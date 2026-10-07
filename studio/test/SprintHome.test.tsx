@@ -7,6 +7,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SprintHome } from '../src/components/SprintHome'
+import { ringOrder, stackedRingMargin } from '../src/components/lanes/LaneCard'
 import { resetRoomStore } from '../src/stores/roomStore'
 import { FORBIDDEN_METRIC_WORDS, NOTHING_NEEDS_YOU, OWN_BUILD_VERDICT, SIGN_IN_TO_SEE } from '../shared/reasons'
 import type { SprintVerbResult } from '../shared/types'
@@ -236,18 +237,61 @@ describe('SprintHome: the baton is one overlay on the gutter; rings never read a
     expect(document.querySelector('[data-baton-reserve]')).toBeNull()
   })
 
-  it('a row with more than two people stacks its rings with a surface gap and a descending z-order; a pair sits spaced', async () => {
+  /** v13 fixer round ("PN ƧK"): in a stack LATER rings sit above earlier ones — the standard
+   * avatar stack — so each ring's left letter stays whole and the 4 px overlap lands on the
+   * previous disc's letter-free right edge; the you-ring comes LAST and overlaps by 0, so its 4 px
+   * halo (drawn outside its disc) sits on those last 4 px and nothing paints over the halo. The
+   * earlier rule (descending z) put the first ring over the second's first letter. */
+  it('a row with more than two people stacks its rings with a surface gap, later rings above, the you-ring last and un-overlapped; a pair sits spaced', async () => {
     install()
     mount()
     await screen.findByTestId('lane-board')
-    const checking = screen.getByTestId('lane-checking').querySelector('[data-lane-card]')! // owner, developer, checker
+    const checking = screen.getByTestId('lane-checking').querySelector('[data-lane-card]')! // owner, developer, checker (me)
     const rings = Array.from(checking.querySelectorAll<HTMLElement>('[data-person]'))
     expect(rings.length).toBe(3)
     expect(checking.querySelector('[data-rings]')?.getAttribute('data-rings')).toBe('stacked')
-    expect(rings.map((r) => r.style.zIndex)).toEqual(['3', '2', '1'])
+    expect(rings.map((r) => r.style.zIndex)).toEqual(['1', '2', '3'])
+    expect(rings[2].hasAttribute('data-you')).toBe(true)
+    expect(rings[2].className).toContain('ml-0')
+    expect(rings[2].className).not.toContain('-ml-1')
+    expect(rings[1].className).toContain('-ml-1')
+    expect(rings[0].className).not.toMatch(/\bml-/)
     for (const r of rings) if (!r.hasAttribute('data-you')) expect(r.className).toContain('ring-surface-1')
+    // Building card 0008: owner @priya-n, developer ME, checker @sam-k — the you-ring moves last.
+    const building = screen.getByTestId('lane-building').querySelector('[data-lane-card]')!
+    const buildingRings = Array.from(building.querySelectorAll<HTMLElement>('[data-person]'))
+    expect(buildingRings.length).toBe(3)
+    expect(buildingRings.findIndex((r) => r.hasAttribute('data-you'))).toBe(2)
+    expect(ringOrder(['@a', ME, '@b'], ME)).toEqual(['@a', '@b', ME])
+    expect(ringOrder(['@a', '@b'], null)).toEqual(['@a', '@b'])
+    expect(stackedRingMargin(0, true)).toBeNull()
+    expect(stackedRingMargin(1, false)).toBe('-ml-1')
+    expect(stackedRingMargin(2, true)).toBe('ml-0')
     const ready = screen.getByTestId('lane-ready').querySelector('[data-lane-card]')! // the owner alone
     expect(ready.querySelector('[data-rings]')?.getAttribute('data-rings')).toBe('spaced')
+  })
+
+  /** Plan §10 / v13 fixer round: after a verb's exit 0 the control that changed takes focus —
+   * once the refreshed read has landed, never before (`motion/focusReturn`, now wired here). */
+  it('after a verb\'s exit 0, focus lands on the spec\'s card once the refreshed read is in hand — not before', async () => {
+    let release: (() => void) | null = null
+    const studio = install()
+    // The refreshed read is a NEW document (main builds one per read); the same object again would be no read at all.
+    studio.getCommandCenter.mockImplementationOnce(() => Promise.resolve(CC)).mockImplementation(() => new Promise((resolve) => { release = () => resolve({ ...CC }) }))
+    mount()
+    await screen.findByTestId('lane-board')
+    const card = screen.getByTestId('lane-checking').querySelector('[data-lane-card]') as HTMLElement
+    fireEvent.focus(card)
+    fireEvent.keyDown(card, { key: 'v' })
+    const dialog = await screen.findByTestId('verdict-dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }))
+    await waitFor(() => expect(studio.runSprintVerb).toHaveBeenCalled())
+    await waitFor(() => expect(studio.getCommandCenter).toHaveBeenCalledTimes(2))
+    // The write is done; the read is not: nothing has moved, focus is wherever the dialog left it.
+    expect(release).not.toBeNull()
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    release!()
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('lane-checking').querySelector('[data-lane-card]')))
   })
 
   it('the host\'s sentence is one quiet status notice above the lanes, never amber', async () => {
@@ -261,16 +305,44 @@ describe('SprintHome: the baton is one overlay on the gutter; rings never read a
   })
 })
 
-describe('SprintHome: Today sits beside the lanes on a working window (fixer round)', () => {
-  it('the home grid gives Today its 320 px column from a 1000 px screen, and the Today band collapses to one column there', async () => {
+describe('SprintHome: the cockpit — Today as a 300 px rail beside four full lanes (owner\'s v12 item 1)', () => {
+  // Re-recorded from the fixer round's `@min-[1000px] … 320px` / `@min-[940px]`: the chat is a
+  // 40 px rail on this screen now, so the home has the window, and the thresholds follow the
+  // arithmetic in `lanes/cockpitLayout.ts` (4 × 220 + 3 × 12 = 916 for four across; + 24 + 300
+  // = 1240 for the rail). `test/cockpitGeometry.test.tsx` holds the literals to the numbers.
+  it('the home grid gives Today its 300 px rail from 1240 px, Today is first in DOM and ordered last from there, and the lanes go four across from 916 px', async () => {
     install()
     mount()
     await screen.findByTestId('lane-board')
     const grid = document.querySelector('[data-home-grid]') as HTMLElement
-    expect(grid.className).toContain('@min-[1000px]:grid-cols-[minmax(0,1fr)_320px]')
-    expect(grid.className).not.toContain('@min-[1308px]')
-    expect(screen.getAllByTestId('today')[0].className).toContain('@min-[1000px]:grid-cols-1')
-    // The lanes wrap two by two below 940 px of their own width and go four across above it.
-    expect(document.querySelector('[data-lanes-grid]')?.className).toContain('@min-[940px]:grid-cols-4')
+    expect(grid.className).toContain('@min-[1240px]:grid-cols-[minmax(0,1fr)_300px]')
+    expect(grid.className).not.toContain('320px')
+    const today = screen.getAllByTestId('today')[0]
+    expect(grid.firstElementChild).toBe(today)
+    expect(today.className).toContain('@min-[1240px]:order-1')
+    expect(today.className).toContain('@min-[1240px]:grid-cols-1')
+    // v13: the strip is 120 px (cockpitLayout.STRIP_MAX_PX) — 200 left the lane bottoms 178 px below
+    // the fold at 1280×800; the geometry test holds the arithmetic.
+    expect(today.className).toContain('@max-[1239px]:max-h-[120px]')
+    expect(document.querySelector('[data-lanes-grid]')?.className).toContain('@min-[916px]:grid-cols-4')
+    // Each lane caps its height and scrolls inside; the header is a static band above the scroller.
+    // v13 fixer round: the cap's fallback is the STRIP chrome (572) — in the rail branch the grid's
+    // row sizes the wells (`cockpitGeometry.test` holds the numbers), so the cap binds only under it.
+    const lane = screen.getByTestId('lane-ready')
+    expect(lane.className).toContain('max-h-[max(240px,calc(100dvh-var(--cockpit-chrome,572px)))]')
+    expect(lane.querySelector('[data-lane-scroll]')?.className).toContain('overflow-y-auto')
+    expect(lane.querySelector('header')?.className).not.toContain('sticky')
+    // In the room is one row under the header, before the grid; Refining and Going sit below.
+    const home = screen.getByTestId('sprint-home')
+    const order = Array.from(home.children).map((c) => c.getAttribute('data-testid') ?? c.getAttribute('data-home-grid') ?? c.getAttribute('data-home-below') ?? c.tagName)
+    expect(order.slice(0, 3)).toEqual(['sprint-header', 'in-the-room', ''])
+    // v13: the chrome variable rides the home GRID (a child of the `@container` root) — a container
+    // query never matches on the container itself, so on the root the strip-branch value never applied.
+    // v13 fixer round: 396 (the grid's top 372 + main's padding 24) for the rail, 572 under the strip.
+    expect(home.className).not.toContain('--cockpit-chrome')
+    expect(document.querySelector('[data-home-grid]')?.className).toContain('[--cockpit-chrome:396px]')
+    expect(document.querySelector('[data-home-grid]')?.className).toContain('@max-[1239px]:[--cockpit-chrome:572px]')
+    expect(document.querySelector('[data-home-grid]')?.className).toContain('grid-rows-[max(280px,calc(100dvh-var(--cockpit-chrome,396px)))]')
+    expect(screen.getByTestId('refining').closest('[data-home-below]')).not.toBeNull()
   })
 })

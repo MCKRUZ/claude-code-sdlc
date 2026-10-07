@@ -6,11 +6,12 @@
 // verbs print prose and the dialog shows stdout/stderr verbatim. `--field` has no row in the
 // table and can never be emitted. No actor → refused here, before any spawn, with
 // `reasons.NO_ACTOR`. Every spawn, whatever its exit, invalidates the command center's local
-// blocks so the next read is fresh.
+// blocks so the next read is fresh; an exit 0 also warms that read (`warmCommandCenter`) so the
+// renderer's post-verb re-read joins one fan-out instead of starting a second.
 
 import { runPluginScript } from './project'
 import { sourceArgs } from './sprint'
-import { cachedBoardSpecIds, invalidateCommandCenter } from './commandCenter'
+import { cachedBoardSpecIds, invalidateCommandCenter, warmCommandCenter } from './commandCenter'
 import { buildSprintVerbArgv, SCRIPT, VERB_CAPABILITY, WRITE_VERBS } from '../../shared/sprintVerbArgv'
 import { NO_ACTOR, newerPlugin } from '../../shared/reasons'
 import type { ActorInfo, SprintVerbRequest, SprintVerbResult } from '../../shared/types'
@@ -50,6 +51,9 @@ export async function runSprintVerb(
 
   const entry = await runPluginScript(scriptsDir, SCRIPT, built.argv)
   invalidateCommandCenter(projectPath)
+  // Warm the read the renderer is about to make (it re-reads after exit 0 — never before), so the
+  // refreshed truth arrives as one fan-out. Nothing is shown from here; the exit code below is.
+  if (entry.exitCode === 0) warmCommandCenter(projectPath)
   return {
     ok: entry.exitCode === 0,
     exitCode: entry.exitCode,

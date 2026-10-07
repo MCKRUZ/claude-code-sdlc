@@ -28,6 +28,25 @@ export function ringsOverlap(count: number): boolean {
   return count > 2
 }
 
+/** The people of a row for the ring strip: the signed-in person LAST. In a stack later rings sit
+ * above earlier ones, and the you-ring's 4 px halo paints outside its disc — last, that halo
+ * lands on the previous disc's letter-free right edge and nothing sits on top of it. */
+export function ringOrder(people: readonly string[], me: string | null): string[] {
+  if (me === null) return [...people]
+  return [...people.filter((h) => !samePerson(h, me)), ...people.filter((h) => samePerson(h, me))]
+}
+
+/** The margin a ring in a STACK takes (v13 fixer round: "PN ƧK" — the first ring sat above the
+ * second and clipped its first letter). Later rings sit above earlier ones (`zIndex: i + 1`, the
+ * standard avatar stack), so each ring's left letter stays whole and the 4 px overlap covers only
+ * the previous disc's letter-free right edge (letters span ≈ 5–15 px of the 20 px disc). The
+ * you-ring draws a 4 px halo OUTSIDE its disc, so it overlaps by 0 instead: the halo, not the
+ * disc, then sits on those last 4 px. */
+export function stackedRingMargin(index: number, you: boolean): string | null {
+  if (index === 0) return null
+  return you ? 'ml-0' : '-ml-1'
+}
+
 /** The two letters a ring shows, from the roster NAME when the roster knows the handle (never a
  * digit from a handle — `PersonRing` strips any defensively). */
 export function initialsFor(handle: string, roster: readonly RosterPerson[] | null): string {
@@ -53,7 +72,7 @@ export const LaneCard = forwardRef<HTMLButtonElement, LaneCardProps>(function La
   { row, me, roster, hostReason, active, onOpen, onFocus }, ref,
 ) {
   const lit = useRoomLit()
-  const people = distinctPeople(row)
+  const people = ringOrder(distinctPeople(row), me)
   const isLit = lit !== null && people.some((h) => samePerson(h, lit))
   const dimmed = lit !== null && !isLit
   const pr = row.board?.pullRequest ?? null
@@ -99,8 +118,7 @@ export const LaneCard = forwardRef<HTMLButtonElement, LaneCardProps>(function La
       <span className="mt-2 flex items-center gap-2">
         <span className={cn('flex items-center py-0.5', !ringsOverlap(people.length) && 'gap-1')} aria-label={people.length === 0 ? 'nobody named' : undefined} data-rings={ringsOverlap(people.length) ? 'stacked' : 'spaced'}>
           {people.map((handle, i) => (
-            // Earlier rings sit ABOVE later ones (a descending z-index), so the you-ring's 4 px
-            // shadow never paints over the letters of the ring before it.
+            // Later rings sit ABOVE earlier ones (`stackedRingMargin` says why), the you-ring last.
             <PersonRing
               key={handle}
               initials={initialsFor(handle, roster)}
@@ -108,8 +126,8 @@ export const LaneCard = forwardRef<HTMLButtonElement, LaneCardProps>(function La
               you={samePerson(handle, me)}
               lit={isLit && samePerson(handle, lit)}
               stacked={ringsOverlap(people.length)}
-              className={cn('relative', ringsOverlap(people.length) && i > 0 && '-ml-1')}
-              style={{ zIndex: people.length - i }}
+              className={cn('relative', ringsOverlap(people.length) && stackedRingMargin(i, samePerson(handle, me)))}
+              style={{ zIndex: i + 1 }}
             />
           ))}
           {people.length === 0 && <span className="text-xs text-ink-3">nobody named</span>}

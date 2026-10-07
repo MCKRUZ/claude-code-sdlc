@@ -64,7 +64,10 @@ export function SprintHeader({
   const chips = mixChips(view.mix)
   const dot = <span aria-hidden="true" className="text-ink-4">·</span>
   return (
-    <header data-testid="sprint-header" className={cn('space-y-3', className)}>
+    // Owner's v12 item 1: a cockpit header — eyebrow, title row, ONE facts line (the mix gap is a
+    // warn-tone chip on it, a measured gap and never an error), then the day bar across the full
+    // header width. 8 px between rows, not 12: the lanes start ≈ 150 px below the eyebrow.
+    <header data-testid="sprint-header" data-cockpit-header="" className={cn('space-y-2', className)}>
       {/* The area eyebrow every screen opens with (round 2's PageHeader order): area · screen · id. */}
       <Eyebrow>Build · Sprint <span className="font-mono tabular-nums">{sprint.id}</span></Eyebrow>
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -89,15 +92,17 @@ export function SprintHeader({
             ? <span data-testid="sprint-mix" className="text-ink-3">{NO_DATA}</span>
             : chips.map((c) => <Chip key={c.tier} tone="neutral" size="xs" data-testid="sprint-mix">{c.label}</Chip>)}
         </span>
+        {/* `mix_warnings` ride the facts line as warn-tone chips: amber only because the plugin's
+            own list is non-empty (visual §8 #4), each sentence whole. */}
+        {view.mixWarnings.length > 0 && (
+          <ul data-testid="sprint-mix-warnings" className="inline-flex flex-wrap items-center gap-1 text-status-warn-ink" title={`${SPRINT_SOURCE} · mix_warnings`}>
+            {view.mixWarnings.map((w) => <li key={w}><Chip tone="warn" size="xs" dot data-mix-warning="">{w}</Chip></li>)}
+          </ul>
+        )}
         {sprint.readiedBy && <>{dot}<span className="text-ink-3">readied by {sprint.readiedBy}</span></>}
         {sprint.closedBy && <>{dot}<span className="text-ink-3">closed by {sprint.closedBy}</span></>}
       </div>
-      {view.mixWarnings.length > 0 && (
-        <ul data-testid="sprint-mix-warnings" className="space-y-0.5 text-xs text-status-warn-ink" title={`${SPRINT_SOURCE} · mix_warnings`}>
-          {view.mixWarnings.map((w) => <li key={w}>{w}</li>)}
-        </ul>
-      )}
-      <BusinessDayBar days={sprint.days} className="max-w-xl" />
+      <BusinessDayBar days={sprint.days} className="w-full" />
     </header>
   )
 }
