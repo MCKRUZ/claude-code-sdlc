@@ -189,6 +189,12 @@ class TestRefusals:
 
     def test_ordinary_words_are_not_secrets(self):
         assert im.secrets_in("the total shows 300 instead of 150; claim 1042; adjuster view") == []
+        assert im.secrets_in("the connection string read Password=******** in the log") == []
+        assert im.secrets_in("Bearer authentication is required for this endpoint") == []
+        assert im.secrets_in("Server=db;Password=hunter2secret;") == ["a connection string with a password"]
+
+    def test_a_secret_in_an_extra_answer_is_refused(self):
+        assert any("GitHub token" in r for r in im.refusals(full_report(extra="ghp_abcdefghijklmnopqrstuvwxyz012345"), "Priya N."))
 
 
 class TestProposedRisk:
@@ -247,6 +253,13 @@ class TestLifecycle:
     ])
     def test_transitions_follow_review_then_priority_then_spec(self, action, current, expected):
         assert im.next_status(action, current) == expected
+
+    def test_a_refusal_names_only_actions_the_lifecycle_allows_from_there(self):
+        assert im.allowed_from("promoted") == ["set-status fixed", "set-status wont-fix", "set-status duplicate"]
+        assert im.allowed_from("new") == ["triage", "set-status wont-fix", "set-status duplicate"]
+        sentence = im.transition_refusal("triage:confirmed", "promoted", "ISS-0001")
+        allows = sentence.split("the lifecycle allows:")[1]
+        assert "prioritize" not in allows and "promote" not in allows and "set-status fixed" in allows
 
     def test_a_refusal_says_what_comes_first(self):
         assert "review it first" in im.transition_refusal("promote", "new", "ISS-0001")

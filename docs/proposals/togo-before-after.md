@@ -41,10 +41,11 @@ A **command center** organised around the Build loop (`docs/proposals/togo-comma
 | pytest (`uv run --project scripts python -m pytest scripts/tests -q`) | 3622 passed · 19 skipped · protected list clean |
 | Playwright (`npm run pretest && npx playwright test`) | 173 passed · 3 skipped (176, one worker) |
 | Capture `observatory-v20` (1280×800 · 1440×900 · 1680×1000, light + dark) | 59 shots · 0 GPU console lines (24 warnings, all `THREE.Clock` deprecation) · overlap probe: every shot clean, exit 0 |
+| Capture `observatory-v21` (1440×900, light + dark; adds `issues`, `issues-dark`, `report-issue`) | 46 shots · 0 GPU console errors (`THREE.Clock` deprecation warnings only) · exit 0 |
 | Ghost probe (band above the sprint header at 1.2 / 1.6 / 2.0 / 2.5 s) | 0 deviating rows at every time, worst 1/255 |
 | Bundle (`--mode=test` main chunk) | 772.7 kB in Vite's report (754.6 KiB) · production 773.3 kB (755.2 KiB, gzip 234.2 kB) · budget 800 |
 
-## Screenshots to look at (`studio/test/screenshots/observatory-v20-*.png`)
+## Screenshots to look at (`studio/test/screenshots/observatory-v21-*.png`)
 
 The cockpit at three widths, light and dark: `sprint-home@1280`, `sprint-home@1440`, `sprint-home@1680` (+ `-dark@…`) — four lanes in one row, Today a rail, wells and rail ending on one line above the fold, chat as a rail. `planning@1440` / `planning-dark@1440` — the slate names every row. `spec-card@1440` — the Hand off foot with no sliver under it. `lifecycle-home@1440`. Then the walk: `sprint-home`, `sprint-home-dark`, `omnibar`, `planning`, `spec-card`, `lifecycle-home`, `review`, `review-dark`, `closing`, `closing-dark` (the shell un-offset), `steering`, `steering-light`, `board-list`, `board-graph` (plates under bodies), `sprint-graph`, `sprint-table`, `spec-view`, `stage-light`, `stage-dark-hover`, `palette`, `settings`, `welcome`, `welcome-dark`. The guide `docs/guide/togo-user-guide.html` is built from this series.
 

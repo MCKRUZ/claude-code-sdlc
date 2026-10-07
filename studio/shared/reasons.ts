@@ -133,6 +133,7 @@ export const PICK_CHANNEL = 'say where in the product you saw it first — the q
 export const ALREADY_FILED = 'already filed — the link is on the report'
 export const NO_ISSUES_YET = 'no issue reports yet — Report an issue writes the first'
 export const NOTHING_AWAITS_REVIEW = 'nothing awaits review'
+export const NOTHING_OPEN = 'nothing open — every report is closed'
 export const SELECT_A_REPORT = 'select a report to see it in full'
 export const NO_OPEN_SPRINT_TO_SLATE = 'no open sprint to slate into — prioritize with a target sprint first'
 
@@ -145,7 +146,7 @@ export const REASON_SENTENCES: readonly string[] = [
   GATED_PATH_NOT_DECLARED, ORDER_NOT_GIVEN, ORDER_ARRIVES_ON_COMMIT, UNDATED, DEFERRED_REASON_RECORDED,
   NO_NAME_RECORDED, WINDOW_IS_A_LABEL, NEXT_UP, ONE_SPEC_ONE_BRANCH, TIER_RULE, PICK_RECIPIENT,
   NO_SCREENSHOT, CONFIRM_NO_CLIENT_DATA, PICK_CHANNEL, ALREADY_FILED, NO_ISSUES_YET, NOTHING_AWAITS_REVIEW, SELECT_A_REPORT,
-  NO_OPEN_SPRINT_TO_SLATE,
+  NO_OPEN_SPRINT_TO_SLATE, NOTHING_OPEN,
 ]
 
 /** True for a fixed sentence, a `newerPlugin(cap)` line or a `createSprintFirst(id)` line. */

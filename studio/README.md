@@ -242,7 +242,7 @@ close → steering) and `steering.spec.ts` (the room pages; no tile straddles th
 script has the same probe: `SHOT_OVERLAP=1 SHOT_WIDTHS="1280x800,1440x900,1680x1000"` measures
 every shot and exits 3 on a violation; `SHOT_PROBE=ghost` measures the band above the header at
 1.2 / 1.6 / 2.0 / 2.5 s; a GPU console line fails the run. The series the guide ships on is
-`observatory-v20`.
+`observatory-v21` (the Issues view and the Report dialog joined the series with plugin 1.8.0).
 
 ## Releases — the .dmg and the .exe
 

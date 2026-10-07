@@ -14,7 +14,7 @@ import type { ActorInfo, IssueCapture, IssueEnvironmentRead, IssuePlanRead, Issu
 import { describeIssueArgv } from '../../shared/issueArgv'
 import { CAPABILITIES, NO_ACTOR, exitHeading } from '../../shared/reasons'
 import { Button, DefinitionList, Dialog, Field, Icon, Input, Notice, Segmented, Select, Textarea, cn } from '../ui'
-import { buildRequest, buildUnderTest, confirmReason, followUpIds, gapsByField, previewLine, type Answers } from './reportIssueModel'
+import { buildRequest, buildUnderTest, confirmReason, followUpIds, gapsByField, previewLine, withheldArgv, type Answers } from './reportIssueModel'
 
 export const REPORT_ISSUE_TITLE = 'Report an issue'
 export const CONFIRM_REPORT = 'Confirm — write the report'
@@ -51,7 +51,9 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
   const [busy, setBusy] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [result, setResult] = useState<IssueReportResult | null>(null)
+  const [versionTouched, setVersionTouched] = useState(false)
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const channelRef = useRef<HTMLSelectElement>(null)
 
   const canQuestions = !capabilities || capabilities.includes(CAPABILITIES.issueQuestions)
 
@@ -72,11 +74,12 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
     return () => { live = false }
   }, [open, projectPath])
 
-  // A local run's build is the branch and commit the plugin read — offered, never forced.
+  // A local run's build is the branch and commit the plugin read — offered once, never forced: a
+  // person who clears or edits the field keeps their words.
   useEffect(() => {
     const line = buildUnderTest(env)
-    if (line && answers.environment === 'local' && !answers.product_version) setAnswers((prev) => ({ ...prev, product_version: line }))
-  }, [env, answers.environment, answers.product_version])
+    if (line && answers.environment === 'local' && !answers.product_version && !versionTouched) setAnswers((prev) => ({ ...prev, product_version: line }))
+  }, [env, answers.environment, answers.product_version, versionTouched])
 
   const questions: IssueQuestion[] = plan?.ok ? plan.plan.questions : []
   const followUps = useMemo(() => followUpIds(questions), [questions])
@@ -85,7 +88,7 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
   const preview = previewLine(request, actor?.name ?? null)
   const gaps = useMemo(() => gapsByField(result?.gaps ?? []), [result])
 
-  const set = (id: string, value: string) => setAnswers((prev) => ({ ...prev, [id]: value }))
+  const set = (id: string, value: string) => { if (id === 'product_version') setVersionTouched(true); setAnswers((prev) => ({ ...prev, [id]: value })) }
   const addShot = (cap: IssueCapture | null) => {
     if (!cap) return
     if (cap.ok) { setShots((prev) => (prev.some((s) => s.path === cap.path) ? prev : [...prev, cap])); setShotError(null) } else setShotError(cap.error)
@@ -114,13 +117,13 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
   const channelOptions = channelQuestion?.options ?? [{ value: 'web', label: 'The web UI (a screen in the browser)' }]
 
   return (
-    <Dialog open={open} onClose={onClose} title={REPORT_ISSUE_TITLE} size="lg" className="sm:max-w-5xl" scrollBody initialFocus={confirmRef} data-testid="report-issue-dialog"
+    <Dialog open={open} onClose={busy ? () => {} : onClose} title={REPORT_ISSUE_TITLE} size="lg" className="sm:max-w-5xl" scrollBody initialFocus={channelRef} data-testid="report-issue-dialog"
       description="A bug in the product, with what a fixer needs. The plugin's own questions, your screenshot of the product, one line it runs. Nothing is written until the report is complete."
       footer={(
         <div className="flex w-full items-center justify-between gap-3">
           <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={preview} data-testid="issue-argv">{preview}</p>
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="ghost" onClick={onClose}>{result?.ok ? 'Close' : 'Cancel'}</Button>
+            <Button variant="ghost" onClick={onClose} disabled={busy} disabledReason={busy ? 'the plugin is answering' : undefined}>{result?.ok ? 'Close' : 'Cancel'}</Button>
             {!result?.ok && (
               <Button ref={confirmRef} variant="primary" data-write="" loading={busy} loadingLabel="Writing…" disabled={reason !== null} disabledReason={reason ?? undefined} onClick={confirm}>
                 {CONFIRM_REPORT}
@@ -154,7 +157,7 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
               ))}
               {shots.length === 0 && (
                 <p className="rounded-lg border border-dashed border-line-2 p-3 text-xs text-ink-3" data-testid="issue-no-shot">
-                  No screenshot yet. Take one of the product as it looked (⌘⇧4 / Win+Shift+S), then paste it here. The plugin will not write a report without one.
+                  No screenshot yet. Copy one of the product as it looked to the clipboard — ⌃⌘⇧4 on a Mac (⌘⇧4 saves a file you can choose instead), Win+Shift+S on Windows — then paste it here. The plugin will not write a report without one.
                 </p>
               )}
               {shotError && <p className="text-xs text-status-warn-ink" role="status">{shotError}</p>}
@@ -183,8 +186,9 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
         </div>
         <div className="space-y-3" data-testid="issue-form">
           <Field label="Where in the product did you see it?" required hint={channelQuestion?.hint ?? 'The next questions depend on this answer.'}>
-            <Select value={channel} onChange={(v) => { setChannel(v); setResult(null) }} aria-label="Where in the product did you see it?" options={channelOptions} />
+            <Select ref={channelRef} value={channel} onChange={(v) => { setChannel(v); setResult(null) }} aria-label="Where in the product did you see it?" options={channelOptions} />
           </Field>
+          {plan === null && canQuestions && <p className="text-xs text-ink-3" role="status">reading the plugin's questions for this channel…</p>}
           {questions.filter((q) => q.id !== 'channel' && q.id !== 'screenshot' && q.id !== 'no_client_data').map((q) => (
             <QuestionField key={q.id} q={q} value={answers[q.id] ?? ''} onChange={(v) => set(q.id, v)} error={gaps.byField[q.id]} specs={specs} />
           ))}
@@ -212,7 +216,7 @@ export function ReportIssueDialog({ open, projectPath, actor, capabilities, spec
           {result && (
             <div data-testid="issue-result" className="space-y-2">
               <Notice tone={result.exitCode === 0 ? 'ok' : result.exitCode === 2 ? 'error' : 'warn'} title={exitHeading(result.exitCode)} data-exit-code={result.exitCode ?? 'none'}>
-                <p className="font-mono text-[11px] text-ink-3">{result.argv.length ? describeIssueArgv(result.argv) : 'not run'}</p>
+                <p className="font-mono text-[11px] text-ink-3">{result.argv.length ? describeIssueArgv(result.refused ? withheldArgv(result.argv) : result.argv) : 'not run'}</p>
                 {gaps.general.length > 0 && <ul className="mt-1 text-xs">{gaps.general.map((g) => <li key={g}>• {g}</li>)}</ul>}
                 {[result.stdout, result.stderr].filter((s) => s.trim()).length > 0
                   ? <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink-1">{[result.stdout, result.stderr].filter((s) => s.trim()).join('\n').trim()}</pre>

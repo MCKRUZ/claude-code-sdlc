@@ -25,6 +25,17 @@ export const PRIORITIES = ['P1', 'P2', 'P3'] as const
 export const RISK_TIERS = ['HIGH', 'MEDIUM', 'LOW'] as const
 const ANSWER_KEY = /^[a-z][a-z0-9_]*$/
 const HANDLE = /^@?[A-Za-z0-9][A-Za-z0-9._-]*$/
+/** `new`'s own fields: an `--answer` may add a follow-up or a fact, never stand in for one of these
+ * (`report_issue.py` refuses the same keys; mirrored so the request never spawns). */
+export const RESERVED_ANSWER_KEYS: ReadonlySet<string> = new Set([
+  'channel', 'title', 'what_happened', 'expected', 'steps', 'environment', 'product_version', 'severity', 'frequency', 'data_impact',
+  'persona', 'reporter_role', 'spec', 'screenshot', 'no_client_data', 'escaped_from',
+])
+/** A free-text value that starts with `-` would be read by argparse as a flag; the plugin would answer
+ * with a usage error, exit 2 — "Refused by the plugin" for a typo. Refused here, in words, instead. */
+const dashFirst = (value: unknown, label: string, errors: string[]) => {
+  if (typeof value === 'string' && /^\s*-/.test(value)) errors.push(`${label} may not start with '-'`)
+}
 
 export type IssueArgvResult = { ok: true; argv: string[] } | { ok: false; errors: string[] }
 
@@ -50,6 +61,8 @@ export function validateIssueRequest(req: IssueReportRequest): string[] {
   text(req.title, 'title')
   text(req.whatHappened, 'what happened')
   text(req.expected, 'expected')
+  for (const [value, label] of [[req.title, 'title'], [req.whatHappened, 'what happened'], [req.expected, 'expected'], [req.persona, 'the type of user'], [req.productVersion, 'product version'], [req.escapedFrom, 'escaped from']] as const) dashFirst(value, label, errors)
+  if (Array.isArray(req.steps)) for (const s of req.steps) dashFirst(s, 'a step', errors)
   if (!Array.isArray(req.steps) || req.steps.every((s) => typeof s !== 'string' || !s.trim())) errors.push('at least one step is required')
   oneOf(ENVIRONMENTS, req.environment, 'environment', errors)
   oneLine(req.productVersion, 'product version', errors, false)
@@ -62,12 +75,16 @@ export function validateIssueRequest(req: IssueReportRequest): string[] {
   if (!Array.isArray(req.screenshots) || req.screenshots.length === 0) errors.push('a screenshot is required')
   else for (const p of req.screenshots) if (typeof p !== 'string' || !p.trim()) errors.push('a screenshot path is empty')
   if (req.noClientData !== true) errors.push('the privacy confirmation is required')
-  text(req.environmentPath, 'environment facts')
+  oneLine(req.environmentPath, 'environment facts', errors, false)
   if (req.answers && typeof req.answers === 'object') {
     for (const [k, v] of Object.entries(req.answers)) {
       if (!ANSWER_KEY.test(k)) errors.push(`answer key '${k}' is not a field name`)
+      else if (RESERVED_ANSWER_KEYS.has(k)) errors.push(`answer '${k}' is one of the report's own fields`)
       if (typeof v !== 'string') errors.push(`answer '${k}' is not text`)
-      else if (/[\r\n]/.test(v) && !['response_excerpt', 'expected_vs_actual'].includes(k)) errors.push(`answer '${k}' is one line`)
+      else {
+        dashFirst(v, `answer '${k}'`, errors)
+        if (/[\r\n]/.test(v) && !['response_excerpt', 'expected_vs_actual'].includes(k)) errors.push(`answer '${k}' is one line`)
+      }
     }
   }
   oneLine(req.escapedFrom, 'escaped from', errors, false)
@@ -91,7 +108,8 @@ export function buildIssueArgv(req: IssueReportRequest, actor: string): IssueArg
     if (value.trim()) argv.push('--answer', `${key}=${value.trim()}`)
   }
   for (const shot of req.screenshots) argv.push('--screenshot', shot)
-  argv.push('--no-client-data', '--env-json', req.environmentPath)
+  argv.push('--no-client-data')
+  if (req.environmentPath?.trim()) argv.push('--env-json', req.environmentPath.trim())
   if (req.escapedFrom?.trim()) argv.push('--escaped-from', req.escapedFrom.trim())
   argv.push(ISSUE_BY_FLAG, actor.trim(), '--json')
   return { ok: true, argv }
@@ -115,7 +133,7 @@ export function sketchIssueArgv(req: IssueReportRequest, actor: string): string[
   for (const key of Object.keys(req.answers ?? {}).sort()) if (req.answers[key]?.trim()) out.push('--answer', `${key}=${req.answers[key].trim()}`)
   if (req.screenshots?.length) for (const s of req.screenshots) out.push('--screenshot', s); else out.push('--screenshot', '<screenshot?>')
   out.push(req.noClientData ? '--no-client-data' : '<--no-client-data?>')
-  out.push('--env-json', req.environmentPath || '<environment?>')
+  if (req.environmentPath?.trim()) out.push('--env-json', req.environmentPath.trim())
   if (req.escapedFrom?.trim()) out.push('--escaped-from', req.escapedFrom.trim())
   out.push(ISSUE_BY_FLAG, actor || '<you>', '--json')
   return out
@@ -136,6 +154,9 @@ export function validateIssueVerbRequest(req: IssueVerbRequest): string[] {
   const errors: string[] = []
   if (!req || typeof req !== 'object' || !(ISSUE_VERBS as readonly string[]).includes((req as { verb?: unknown }).verb as string)) return ['not a verb this table knows']
   if (req.verb !== 'sync' && !ISSUE_ID.test(req.issue)) errors.push(`issue '${String(req.issue)}' is not an issue id (expected ISS-NNNN)`)
+  for (const [key, label] of [['reason', 'reason'], ['question', 'question'], ['note', 'note'], ['team', 'team'], ['label', 'label']] as const) {
+    dashFirst((req as unknown as Record<string, unknown>)[key], label, errors)
+  }
   switch (req.verb) {
     case 'triage':
       oneOf(TRIAGE_VERDICTS, req.verdict, 'verdict', errors)

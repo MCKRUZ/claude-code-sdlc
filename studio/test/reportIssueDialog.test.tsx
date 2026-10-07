@@ -185,6 +185,27 @@ describe('ReportIssueDialog', () => {
     expect(screen.queryByTestId('issue-written')).toBeNull()
   })
 
+  it('a refused report shows the plugin’s refusal and withholds the free text from the line it echoes', async () => {
+    const result: IssueReportResult = {
+      ok: false, exitCode: 2, refused: true, stdout: 'Refused: the report contains what looks like a GitHub token — remove it', stderr: '',
+      argv: ['new', '--title', 'A title', '--channel', 'web', '--what', 'secret ghp_abcdefghijklmnopqrstuvwxyz012345 here', '--by', 'Priya N.', '--json'],
+      issue: null, path: null, gaps: [], advisory: [], warnings: [], proposedRisk: null, proposedPriority: null,
+    }
+    install({ reportIssue: vi.fn().mockResolvedValue(result) })
+    mount()
+    await fillMinimum()
+    fireEvent.click(screen.getByRole('button', { name: PASTE_SCREENSHOT }))
+    await waitFor(() => expect(screen.getByAltText(/Screenshot 1/)).toBeTruthy())
+    fireEvent.click(screen.getByTestId('issue-privacy'))
+    await waitFor(() => expect(confirmButton().hasAttribute('disabled')).toBe(false))
+    fireEvent.click(confirmButton())
+    const pane = await screen.findByTestId('issue-result')
+    expect(pane.textContent).toContain('Refused by the plugin')
+    expect(pane.textContent).toContain('GitHub token')
+    expect(pane.textContent).toContain('--what <withheld>')
+    expect(pane.textContent).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz012345')
+  })
+
   it('a clipboard without an image is said in the plugin-side words, and the dialog stays', async () => {
     install({ pasteScreenshot: vi.fn().mockResolvedValue({ ok: false, error: 'the clipboard holds no image — take a screenshot of the product and copy it, or choose a file' }) })
     mount()

@@ -10,7 +10,7 @@
 // Electron is imported on first use so the spawn side runs under the unit tests without it.
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, extname, join, resolve, sep } from 'node:path'
 import type { BrowserWindow } from 'electron'
@@ -42,8 +42,21 @@ export function rememberIssued(path: string): void {
 }
 
 function tempFile(prefix: string, ext: string): string {
-  mkdirSync(ISSUE_TEMP_DIR, { recursive: true })
+  mkdirSync(ISSUE_TEMP_DIR, { recursive: true, mode: 0o700 })
   return join(ISSUE_TEMP_DIR, `${prefix}-${randomUUID()}${ext}`)
+}
+
+/** Owner-only on disk: a pasted screenshot of the product and the build facts are the person's. */
+const OWNER_ONLY = { mode: 0o600 } as const
+
+/** Once the plugin has copied them, the temp files have done their work: the ones under our own
+ * folder go (a file the person PICKED is theirs and stays), and they leave the issued set. */
+export function releaseIssued(paths: readonly string[]): void {
+  for (const p of paths) {
+    if (!issued.has(p)) continue
+    issued.delete(p)
+    if (p.startsWith(ISSUE_TEMP_DIR + sep)) { try { unlinkSync(p) } catch { /* already gone */ } }
+  }
 }
 
 type Read<T> = { ok: true; data: T } | { ok: false; error: string }
@@ -77,7 +90,7 @@ export async function getIssueEnvironment(projectPath: string, scriptsDir: strin
   if (!r.ok) return r
   const env = r.data as unknown as IssueEnvironment
   const envPath = tempFile('environment', '.json')
-  writeFileSync(envPath, JSON.stringify(env, null, 2), 'utf-8')
+  writeFileSync(envPath, JSON.stringify(env, null, 2), { encoding: 'utf-8', ...OWNER_ONLY })
   issued.add(envPath)
   return { ok: true, env, envPath }
 }
@@ -151,7 +164,7 @@ export async function captureWindow(win: BrowserWindow | null): Promise<IssueCap
 function imageCapture(image: Electron.NativeImage, source: 'clipboard' | 'window', prefix: string): IssueCapture {
   const png = image.toPNG()
   const path = tempFile(prefix, '.png')
-  writeFileSync(path, png)
+  writeFileSync(path, png, OWNER_ONLY)
   issued.add(path)
   const { width, height } = image.getSize()
   const preview = width > 960 ? image.resize({ width: 960 }) : image
@@ -198,7 +211,7 @@ export async function reportIssue(
   const caps = capabilities ?? await getCapabilities(projectPath, scriptsDir)
   if (!caps.includes(CAPABILITIES.issueReport)) return notRun(newerPlugin(CAPABILITIES.issueReport))
   if (!req || typeof req !== 'object') return notRun('That is not an issue report.')
-  const foreign = [...(Array.isArray(req.screenshots) ? req.screenshots : []), req.environmentPath].filter((p) => typeof p !== 'string' || !issued.has(p))
+  const foreign = [...(Array.isArray(req.screenshots) ? req.screenshots : []), ...(req.environmentPath ? [req.environmentPath] : [])].filter((p) => typeof p !== 'string' || !issued.has(p))
   if (foreign.length > 0) return notRun('A screenshot or the environment document is not one Studio pasted, picked or captured — add the screenshot again.')
   for (const p of req.screenshots) if (!existsSync(p)) return notRun(`The screenshot ${basename(p)} is no longer on disk — add it again.`)
   const built = buildIssueArgv(req, actor.name)
@@ -207,6 +220,8 @@ export async function reportIssue(
   const argv = [verb, ...sourceArgs(projectPath), ...rest]
   const entry = await runPluginScript(scriptsDir, ISSUE_SCRIPT, argv)
   invalidateCommandCenter(projectPath)
+  // Exit 0: the plugin copied the screenshots under .sdlc/issues/ — the temp copies go.
+  if (entry.exitCode === 0) releaseIssued([...req.screenshots, ...(req.environmentPath ? [req.environmentPath] : [])])
   const doc = parseDocument(rawStdout(entry)) ?? {}
   return {
     ok: entry.exitCode === 0, exitCode: entry.exitCode, refused: entry.exitCode === 2, stdout: entry.stdout, stderr: entry.stderr, argv,
@@ -234,7 +249,8 @@ export async function runIssueVerb(
   const [verb, ...rest] = built.argv
   const argv = [verb, ...sourceArgs(projectPath), ...rest]
   const entry = await runPluginScript(scriptsDir, ISSUE_SCRIPT, argv)
-  if (!(req.verb === 'file' && req.dryRun)) invalidateCommandCenter(projectPath)
+  // A promoted report is a new spec on the Board: drop the host block too, not just the local ones.
+  if (!(req.verb === 'file' && req.dryRun)) invalidateCommandCenter(projectPath, req.verb === 'promote' ? 'all' : 'local')
   return {
     ok: entry.exitCode === 0, exitCode: entry.exitCode, refused: entry.exitCode === 2, stdout: entry.stdout, stderr: entry.stderr, argv,
     verb: req.verb, doc: parseDocument(rawStdout(entry)),

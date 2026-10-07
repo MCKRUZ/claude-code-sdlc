@@ -96,6 +96,18 @@ export function gapsByField(gaps: readonly string[]): { byField: Record<string, 
   return { byField, general }
 }
 
+/** The line shown under "Refused by the plugin": the flags, with every free-text value withheld — a
+ * refusal may be about a token in exactly those words, and the Console already holds the spawn. */
+export function withheldArgv(argv: readonly string[]): string[] {
+  const FREE = new Set(['--title', '--what', '--expected', '--steps', '--persona', '--answer', '--product-version', '--escaped-from'])
+  const out: string[] = []
+  for (let i = 0; i < argv.length; i++) {
+    out.push(argv[i])
+    if (FREE.has(argv[i]) && i + 1 < argv.length) { out.push('<withheld>'); i++ }
+  }
+  return out
+}
+
 /** The build-under-test line the environment block shows for a local run, from the plugin's facts. */
 export function buildUnderTest(env: IssueEnvironmentRead | null): string | null {
   if (!env?.ok) return null

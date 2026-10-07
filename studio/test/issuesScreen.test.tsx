@@ -7,8 +7,8 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CommandCenter, IssueDetail, IssueRow, IssueVerbResult, SourcedBlock } from '../shared/types'
-import { NO_ACTOR, NO_ISSUES_YET, NOTHING_AWAITS_REVIEW } from '../shared/reasons'
-import { IssuesScreen, REPORT_AN_ISSUE } from '../src/components/issues/IssuesScreen'
+import { isReason, NO_ACTOR, NO_ISSUES_YET, NOTHING_AWAITS_REVIEW, NOTHING_OPEN } from '../shared/reasons'
+import { IssuesScreen, REPORT_AN_ISSUE, tablePairs } from '../src/components/issues/IssuesScreen'
 import { EMPTY_CC } from './sprintHomeFixture'
 
 const row = (over: Partial<IssueRow>): IssueRow => ({
@@ -89,8 +89,18 @@ describe('IssuesScreen', () => {
     expect(promote.getAttribute('title')).toMatch(/review it first/)
     const reopen = actions.getByRole('button', { name: /^Reopen…/ })
     expect(reopen.getAttribute('title')).toMatch(/nothing to reopen/)
-    // Every disabled button is described by its reason (the §2.7 contract the kit wires).
-    for (const b of actions.getAllByRole('button')) if (b.hasAttribute('disabled')) expect(b.getAttribute('aria-describedby')).toBeTruthy()
+    // §8 honesty check 1 for this screen: every disabled button is described by its reason, and the
+    // reason is a reasons.ts sentence or the plugin's own (`show --json`'s actions.*.reason).
+    const pluginReasons = new Set(Object.values(detailFor(ROWS[0]).actions).map((a) => a.reason).filter(Boolean))
+    for (const b of screen.getAllByRole('button')) {
+      if (!b.hasAttribute('disabled')) continue
+      const title = b.getAttribute('title') ?? ''
+      expect(b.getAttribute('aria-describedby'), b.textContent ?? '').toBeTruthy()
+      expect(isReason(title) || pluginReasons.has(title), `${b.textContent}: ${title}`).toBe(true)
+    }
+    // Check 2: no bare zero in a stat, no digit in a person.
+    expect([...document.querySelectorAll('[data-stat]')].some((el) => /\b0\b/.test(el.textContent ?? ''))).toBe(false)
+    expect([...document.querySelectorAll('[data-person]')].some((el) => /\d/.test(el.textContent ?? ''))).toBe(false)
   })
 
   it('without an actor every action reads NO_ACTOR; on an older plugin the capability', async () => {
@@ -133,12 +143,17 @@ describe('IssuesScreen', () => {
     expect(confirm.hasAttribute('disabled')).toBe(false) // the plugin is the judge; it will say "someone other than its reporter"
   })
 
-  it('an empty block reads the fixed sentences — never a zero', () => {
+  it('an empty block reads the fixed sentences — never a zero — and an Open filter over closed reports says so truthfully', () => {
     install()
-    render(<IssuesScreen projectPath="/p" cc={cc(block({ issues: [], queue: [] }))} onRefresh={vi.fn()} onReport={vi.fn()} />)
+    const { unmount } = render(<IssuesScreen projectPath="/p" cc={cc(block({ issues: [], queue: [] }))} onRefresh={vi.fn()} onReport={vi.fn()} />)
     expect(screen.getByTestId('issue-queue').textContent).toContain(NOTHING_AWAITS_REVIEW)
     expect(screen.getByTestId('issue-queue').textContent).toContain(NO_ISSUES_YET)
     expect(screen.getByTestId('issues-screen').textContent).not.toMatch(/\b0 awaiting/)
+    unmount()
+    install()
+    render(<IssuesScreen projectPath="/p" cc={cc(block({ issues: [row({ status: 'fixed' })], queue: [] }))} onRefresh={vi.fn()} onReport={vi.fn()} />)
+    expect(screen.getByTestId('issue-queue').textContent).toContain(NOTHING_OPEN)
+    expect(screen.getByTestId('issue-queue').textContent).not.toContain('no data')
   })
 
   it('a block the plugin could not produce shows its error, and Report an issue is the way in', () => {
@@ -148,5 +163,16 @@ describe('IssuesScreen', () => {
     expect(screen.getAllByText('arrives with a newer plugin: lacks issue-list').length).toBeGreaterThan(0)
     fireEvent.click(screen.getByRole('button', { name: REPORT_AN_ISSUE }))
     expect(onReport).toHaveBeenCalled()
+  })
+})
+
+describe('tablePairs — the plugin’s two-column sections as pairs', () => {
+  it('skips the header and the rule, keeps the words, restores an escaped pipe, and ignores prose', () => {
+    expect(tablePairs('| Question | Answer |\n|---|---|\n| Channel | A report, export, dataset or batch job |\n| Which report? | monthly \\| claims |')).toEqual([
+      ['Channel', 'A report, export, dataset or batch job'], ['Which report?', 'monthly | claims'],
+    ])
+    expect(tablePairs('| Fact | Value |\n|---|---|\n| environment | Test / QA |')).toEqual([['environment', 'Test / QA']])
+    expect(tablePairs('plain words')).toEqual([])
+    expect(tablePairs(undefined)).toEqual([])
   })
 })

@@ -116,27 +116,23 @@ export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onAct
             )), strip, 'needs-you-more', 'mt-2 space-y-2')}
           </ul>
         )}
+        {cc.issues && strip && (
+          <div data-testid="today-issues" className="pt-1">
+            <IssuesLine cc={cc} onOpenIssues={onOpenIssues} />
+          </div>
+        )}
       </section>
 
       {/* Bugs in the product awaiting review (the command center's `issues` block, plugin 1.8.0): the
           LENGTH of the plugin's queue — a count of reports, never of people — and the way to the
-          Issues view. Absent block (an older plugin) → the section is not drawn: there is nothing
+          Issues view. As the RAIL it is its own group; as the STRIP (a four-column grid under 1240
+          px) it rides inside Needs you, so the grid keeps four columns and the lanes stay above the
+          fold (the 1280×800 probe). Absent block (an older plugin) → not drawn: there is nothing
           honest to say about a list the plugin cannot produce. */}
-      {cc.issues && (
+      {cc.issues && !strip && (
         <section aria-labelledby="issues-title" className="space-y-2" data-testid="today-issues">
           <Eyebrow as="h3" id="issues-title">Issues</Eyebrow>
-          {!cc.issues.ok ? (
-            <p className="text-xs text-ink-3" title={cc.issues.source}>{cc.issues.error}</p>
-          ) : cc.issues.data!.queue.length === 0 ? (
-            <p className="text-xs text-ink-3" title={cc.issues.source}>{NOTHING_AWAITS_REVIEW}{cc.issues.data!.count > 0 ? ` · ${cc.issues.data!.count} on record` : ''}</p>
-          ) : (
-            <button type="button" data-pressable="" onClick={onOpenIssues} disabled={!onOpenIssues} title={cc.issues.source}
-              className="flex min-h-[44px] w-full items-center gap-3 rounded-[10px] border border-today-act-line bg-today-act-bg px-3 py-2 text-left text-sm text-today-act-ink hover:brightness-95 disabled:cursor-default">
-              <Bug size={16} aria-hidden="true" />
-              <span className="flex-1"><span data-stat="issues-awaiting" className="font-(--text-lane-count--font-weight) tabular-nums">{cc.issues.data!.queue.length}</span> awaiting review</span>
-              <span className="text-xs">Issues →</span>
-            </button>
-          )}
+          <IssuesLine cc={cc} onOpenIssues={onOpenIssues} />
         </section>
       )}
 
@@ -177,6 +173,24 @@ export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onAct
         <Button size="sm" variant="secondary" icon={Bell} disabled disabledReason={STANDUP_NOTES}>Standup notes</Button>
       </section>
     </section>
+  )
+}
+
+/** The one line: the plugin's queue length as a lean-to button, the fixed sentence when it is
+ * empty, the block's own error when the plugin could not produce the list. */
+function IssuesLine({ cc, onOpenIssues }: { cc: CommandCenter; onOpenIssues?: () => void }) {
+  const block = cc.issues!
+  if (!block.ok) return <p className="text-xs text-ink-3" title={block.source}>{block.error}</p>
+  if (block.data!.queue.length === 0) {
+    return <p className="text-xs text-ink-3" title={block.source}>{NOTHING_AWAITS_REVIEW}{block.data!.count > 0 ? ` · ${block.data!.count} on record` : ''}</p>
+  }
+  return (
+    <button type="button" data-pressable="" onClick={onOpenIssues} disabled={!onOpenIssues} title={block.source}
+      className="flex min-h-[44px] w-full items-center gap-3 rounded-[10px] border border-today-act-line bg-today-act-bg px-3 py-2 text-left text-sm text-today-act-ink hover:brightness-95 disabled:cursor-default">
+      <Bug size={16} aria-hidden="true" />
+      <span className="flex-1"><span data-stat="issues-awaiting" className="font-(--text-lane-count--font-weight) tabular-nums">{block.data!.queue.length}</span> awaiting review</span>
+      <span className="text-xs">Issues →</span>
+    </button>
   )
 }
 

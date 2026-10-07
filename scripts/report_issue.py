@@ -134,16 +134,29 @@ def split_frontmatter(text: str) -> tuple[dict, str]:
     return (fm if isinstance(fm, dict) else {}), body.lstrip("\r\n")
 
 
+def _is_report(root: Path, path: Path) -> bool:
+    """A report is a `ISS-NNNN-*.md` file whose REAL location is the project's `.sdlc/issues/` — so a
+    path to a spec, to state.yaml or to anything outside the folder is never written to as one."""
+    try:
+        real = path.resolve(strict=True)
+        issues = (root / ISSUES_DIR).resolve(strict=True)
+    except (OSError, RuntimeError):
+        return False
+    return real.parent == issues and real.suffix == ".md" and bool(im.ISSUE_FILE_RE.match(real.name))
+
+
 def find_issue(root: Path, ref: str) -> Path:
-    """`ISS-0007`, `0007`, a filename, or a path — resolved to the report file or NotDone."""
+    """`ISS-0007`, `0007`, a filename, or a path — resolved to the report file or NotDone. A path
+    that is not a report under `.sdlc/issues/` is refused, whatever it points at."""
     ref = (ref or "").strip()
     if not ref:
         raise NotDone("--issue is required (an id such as ISS-0007, or the report's path)")
     p = Path(ref)
-    if p.is_file():
-        return p.resolve()
-    if (root / p).is_file():
-        return (root / p).resolve()
+    for candidate in (p, root / p):
+        if candidate.is_file():
+            if not _is_report(root, candidate):
+                raise NotDone(f"'{ref}' is not an issue report — reports live under {ISSUES_DIR.as_posix()}/ as ISS-NNNN-<slug>.md")
+            return candidate.resolve()
     m = re.match(r"^(?:ISS-)?(\d{4})$", ref, re.IGNORECASE)
     if m:
         for f in issue_files(root):
@@ -176,6 +189,23 @@ def _q(value) -> str:
     return json.dumps("" if value is None else str(value), ensure_ascii=False)
 
 
+def _ledger_issue_names(root: Path) -> list[str]:
+    """`ISS-NNNN-` for every issue the ledger has seen, so a deleted report's id is never given
+    out again (its screenshots folder and its events would be another report's)."""
+    path = root / LEDGER
+    if not path.is_file():
+        return []
+    names: list[str] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            issue = json.loads(line).get("issue")
+        except (ValueError, AttributeError):
+            continue
+        if isinstance(issue, str) and im.ISSUE_ID_RE.match(issue):
+            names.append(f"{issue}-")
+    return names
+
+
 def write_ledger(root: Path, event: dict) -> Path:
     path = root / LEDGER
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,6 +233,13 @@ def append_history(text: str, line: str) -> str:
     if marker in text:
         return text.replace(marker, f"- {line}")
     return text.rstrip("\n") + f"\n- {line}\n"
+
+
+def _refuse_secrets(*texts: str | None) -> None:
+    """A token-shaped string in a reason, a question or a note is refused as it is in the report."""
+    found = im.secrets_in("\n".join(t for t in texts if t))
+    if found:
+        raise Refused(f"the text contains what looks like {', '.join(found)} — remove it; this record is shared with the code host")
 
 
 def _require_person(name: str | None, what: str) -> str:
@@ -317,6 +354,11 @@ def verb_env(args, root: Path) -> int:
 
 # --- new ----------------------------------------------------------------------------------------
 
+# The fields `new`'s own flags set. An `--answer` may add a channel follow-up or an extra fact, never
+# re-set one of these — `--answer no_client_data=1` must not stand in for the person's confirmation.
+RESERVED_ANSWER_KEYS = frozenset(im.CORE_FIELDS) | {"environment", "escaped_from", "no_client_data", "product_version"}
+
+
 def _kv_pairs(values: list[str], flag: str) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in values or []:
@@ -326,6 +368,8 @@ def _kv_pairs(values: list[str], flag: str) -> dict[str, str]:
         k = k.strip()
         if not re.match(r"^[a-z][a-z0-9_]*$", k):
             raise NotDone(f"{flag}: '{k}' is not a field name (lower-case letters, digits, underscores)")
+        if k in RESERVED_ANSWER_KEYS:
+            raise NotDone(f"{flag}: '{k}' is one of new's own fields — give it with its flag, not as an answer")
         out[k] = v
     return out
 
@@ -347,7 +391,7 @@ def build_report(args) -> tuple[dict, list[Path], dict]:
         if repo.get("branch") or repo.get("commit"):
             product_version = f"{repo.get('branch') or '?'} @ {repo.get('commit') or '?'}"
     report = {
-        "channel": args.channel, "title": args.title or "", "what_happened": args.what or "", "expected": args.expected or "",
+        "channel": im.normalize_channel(args.channel) or (args.channel or ""), "title": args.title or "", "what_happened": args.what or "", "expected": args.expected or "",
         "steps": "\n".join(args.steps or []), "environment": args.environment or "", "product_version": product_version,
         "severity": args.severity or "", "frequency": args.frequency or "", "data_impact": args.data_impact or "",
         "persona": args.persona or "", "reporter_role": args.reporter_role or "", "spec": args.spec or "",
@@ -358,6 +402,13 @@ def build_report(args) -> tuple[dict, list[Path], dict]:
 
 def _cell(value) -> str:
     return str(value).replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _prose(text: str) -> str:
+    """A reporter's words as a Markdown paragraph that cannot start a section: a leading `#` is
+    escaped, so `## Steps` typed inside "what happened" stays their sentence and `check` still finds
+    the sections `new` wrote."""
+    return "\n".join(("\\" + line) if line.lstrip().startswith("#") else line for line in str(text).strip().splitlines())
 
 
 def render_report(issue_id: str, report: dict, facts: dict, shots_rel: list[str], by: str, ts: str) -> str:
@@ -397,7 +448,7 @@ def render_report(issue_id: str, report: dict, facts: dict, shots_rel: list[str]
     body = body.replace("# ISS-NNNN — <title>", f"# {issue_id} — {report['title'].strip()}")
 
     steps = [s.strip() for s in str(report.get("steps") or "").splitlines() if s.strip()]
-    steps_md = "\n".join(f"{i}. {s}" for i, s in enumerate(steps, 1))
+    steps_md = "\n".join(f"{i}. {_prose(s)}" for i, s in enumerate(steps, 1))
 
     where_rows = [("Channel", im.CHANNEL_LABELS.get(channel, channel))]
     if im.CHANNEL_DESCRIPTOR.get(channel):
@@ -432,8 +483,8 @@ def render_report(issue_id: str, report: dict, facts: dict, shots_rel: list[str]
     privacy = f"{by} confirmed on {ts[:10]}: nothing in the screenshots or this report is client data, personal data or a secret."
     history = f"- {ts} — reported by {by}"
 
-    body = body.replace("<!-- {{what_happened}} -->", report["what_happened"].strip())
-    body = body.replace("<!-- {{expected}} -->", report["expected"].strip())
+    body = body.replace("<!-- {{what_happened}} -->", _prose(report["what_happened"]))
+    body = body.replace("<!-- {{expected}} -->", _prose(report["expected"]))
     body = body.replace("<!-- {{steps}} -->", steps_md)
     body = body.replace("<!-- {{where}} -->", where_md)
     body = body.replace("<!-- {{environment}} -->", env_md)
@@ -469,7 +520,7 @@ def verb_new(args, root: Path) -> int:
     ts = now_ts()
     issues_dir = root / ISSUES_DIR
     issues_dir.mkdir(parents=True, exist_ok=True)
-    issue_id = im.next_issue_id(p.name for p in issues_dir.iterdir())
+    issue_id = im.next_issue_id([*(p.name for p in issues_dir.iterdir()), *_ledger_issue_names(root)])
     slug = im.slugify(report["title"])
     report_path = issues_dir / f"{issue_id}-{slug}.md"
     shots_dir = issues_dir / issue_id
@@ -701,6 +752,7 @@ def verb_triage(args, root: Path) -> int:
     verdict = (args.verdict or "").strip()
     if verdict not in im.TRIAGE_VERDICTS:
         raise NotDone(f"--verdict must be one of {', '.join(im.TRIAGE_VERDICTS)}")
+    _refuse_secrets(args.reason, args.question)
     reason = (args.reason or "").strip()
     if _same_person(by, fm.get("reported_by")) and not args.override:
         raise NotDone(f"{issue_id} was reported by {fm.get('reported_by')} — a report is reviewed by someone other than its reporter "
@@ -789,8 +841,10 @@ def _check_target_sprint(args, root: Path, sprint_id: str) -> list[str]:
         return ["the sprint list could not be read; the target sprint is recorded as typed"]
     match = next((r for r in records if r.get("id") == sprint_id), None)
     if records and match is None:
-        raise NotDone(f"--target-sprint {sprint_id}: sprint.py lists no such sprint — create it with /sdlc-sprint new, or pick one of "
-                      f"{', '.join(r.get('id', '?') for r in records)}")
+        open_ids = [r.get("id", "?") for r in records if r.get("state") != "closed"]
+        raise NotDone(f"--target-sprint {sprint_id}: sprint.py lists no such sprint — "
+                      + (f"pick an open one ({', '.join(open_ids)}) or create it with /sdlc-sprint new" if open_ids
+                         else "every sprint record is closed; create the next sprint with /sdlc-sprint new first"))
     if match is not None and match.get("state") == "closed":
         raise NotDone(f"--target-sprint {sprint_id} is closed — pick an open sprint")
     return [] if match is not None else [f"no sprint records yet; {sprint_id} is recorded as typed"]
@@ -802,6 +856,7 @@ def verb_prioritize(args, root: Path) -> int:
     fm, secs, text = read_report(path)
     issue_id = str(fm.get("issue") or path.name[:8])
     priority = (args.priority or "").strip().upper()
+    _refuse_secrets(args.reason)
     report, _ = report_from_file(fm, secs, path)
     proposed = im.proposed_priority(report)
     if not priority:
@@ -881,6 +936,22 @@ def verb_promote(args, root: Path) -> int:
     if not spec_path or not spec_path.is_file():
         raise NotDone(f"new_spec.py reported a path that is not there: {spec_rel}")
 
+    try:
+        return _finish_promote(args, root, path, text, fm, issue_id, risk, proposed, target, spec_path, spec_rel, spec_id, by)
+    except Exception as exc:
+        # Nothing after the scaffold may leave a spec nobody's report points at: the file this run
+        # created goes, and the refusal is the exit-code contract, not a traceback.
+        try:
+            spec_path.unlink()
+        except OSError:
+            pass
+        if isinstance(exc, (NotDone, Refused)):
+            raise
+        raise NotDone(f"promote stopped after the scaffold and undid it: {exc}")
+
+
+def _finish_promote(args, root: Path, path: Path, text: str, fm: dict, issue_id: str, risk: str, proposed: str, target: str,
+                    spec_path: Path, spec_rel: str, spec_id: str, by: str) -> int:
     # The scaffold is a feature spec; a fix is a bugfix (the harness's repro-gate reads `type`).
     # One frontmatter line changes; the body stays the template's for the author to fill, with
     # the Goal pointing at the report so the acceptance checks start from its steps.
@@ -925,8 +996,7 @@ def verb_note(args, root: Path) -> int:
     note = (args.note or "").strip()
     if len(note) < 3:
         raise NotDone("--note is required: what you want the fixer or the reporter to know")
-    if im.secrets_in(note):
-        raise Refused(f"the note contains what looks like {', '.join(im.secrets_in(note))} — remove it")
+    _refuse_secrets(note)
     path = find_issue(root, args.issue)
     fm, _, text = read_report(path)
     issue_id = str(fm.get("issue") or path.name[:8])
@@ -946,11 +1016,16 @@ def verb_reopen(args, root: Path) -> int:
     reason = (args.reason or "").strip()
     if len(reason) < 10:
         raise NotDone("reopen needs --reason in your own words (at least 10 characters) — what still happens")
+    _refuse_secrets(reason)
     path = find_issue(root, args.issue)
     fm, _, text = read_report(path)
     issue_id = str(fm.get("issue") or path.name[:8])
-    status, _ = _move(root, path, text, fm, "reopen", by, f"reopened by {by}: {reason}", {"event": "reopened", "reason": reason},
-                      {"triaged_by": "", "triage_verdict": "", "duplicate_of": ""})
+    # Back to `new` means back to the start: the review, the priority and the target sprint are
+    # cleared so the lifecycle runs again honestly; the bugfix spec stays on the record (it was
+    # built) and the history says so.
+    kept = f" — bugfix spec {fm.get('bugfix_spec')} kept on the record" if fm.get("bugfix_spec") else ""
+    status, _ = _move(root, path, text, fm, "reopen", by, f"reopened by {by}: {reason}{kept}", {"event": "reopened", "reason": reason},
+                      {"triaged_by": "", "triage_verdict": "", "duplicate_of": "", "priority": "", "target_sprint": "", "prioritized_by": ""})
     if args.json:
         print(json.dumps({"ok": True, "issue": issue_id, "status": status}, indent=2, ensure_ascii=False))
     else:
@@ -1005,13 +1080,17 @@ def verb_set_status(args, root: Path) -> int:
     if status not in ("fixed", "wont-fix", "duplicate"):
         raise NotDone("--status must be fixed, wont-fix or duplicate (triage, prioritize, promote and reopen move the others)")
     reason = (args.reason or "").strip()
+    _refuse_secrets(reason)
     if status in ("wont-fix", "duplicate") and len(reason) < 10 and not (status == "duplicate" and args.of):
         raise NotDone(f"{status} needs --reason in your own words (at least 10 characters) — the reporter will read it")
     path = find_issue(root, args.issue)
     fm, _, text = read_report(path)
     issue_id = str(fm.get("issue") or path.name[:8])
     if _status(fm) == status:
-        print(f"{issue_id} is already {status}. Nothing changed.")
+        if args.json:
+            print(json.dumps({"ok": True, "issue": issue_id, "status": status, "changed": False, "message": f"already {status}; nothing changed"}, indent=2, ensure_ascii=False))
+        else:
+            print(f"{issue_id} is already {status}. Nothing changed.")
         return 0
     fields: dict[str, str] = {}
     if status == "duplicate":
@@ -1102,20 +1181,33 @@ def verb_file(args, root: Path) -> int:
     import code_host as ch
     detection = ch.detect_host(root, args.host)
     host = detection.host
+    if host not in ("github", "azure-devops"):
+        # Said before anything is written: a dry run against no host leaves nothing behind.
+        file_argv(host, detection.remote, "", Path("-"), None)
     body = host_body(fm, secs, rel(path, root))
-    body_path = root / ISSUES_DIR / issue_id / "host-body.md"
-    body_path.parent.mkdir(parents=True, exist_ok=True)
-    body_path.write_text(body, encoding="utf-8", newline="\n")
+    if args.dry_run:
+        # A dry run writes NOTHING into the repository: the body goes to a temp file so the printed
+        # command is still runnable as shown, and the preview says so.
+        import tempfile
+        fd, tmp = tempfile.mkstemp(prefix=f"{issue_id}-host-body-", suffix=".md")
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(body)
+        body_path = Path(tmp)
+    else:
+        body_path = root / ISSUES_DIR / issue_id / "host-body.md"
+        body_path.parent.mkdir(parents=True, exist_ok=True)
+        body_path.write_text(body, encoding="utf-8", newline="\n")
     argv = file_argv(host, detection.remote, str(fm.get("title") or issue_id), body_path, args.label)
 
     if args.dry_run:
         shown = [a if len(a) < 200 else a[:197] + "…" for a in argv]
         if args.json:
-            print(json.dumps({"ok": True, "dry_run": True, "host": host, "cwd": str(root), "argv": shown, "body": rel(body_path, root)}, indent=2, ensure_ascii=False))
+            print(json.dumps({"ok": True, "dry_run": True, "host": host, "cwd": str(root), "argv": shown, "body": str(body_path),
+                              "note": "the body is a temporary file for this preview; nothing was written into the repository"}, indent=2, ensure_ascii=False))
         else:
             print(f"Would run (cwd {root}):")
             print("  " + " ".join(json.dumps(a, ensure_ascii=False) if re.search(r"\s", a) else a for a in shown))
-            print(f"Body: {rel(body_path, root)} (written so the command above can run; the only write a dry run makes)")
+            print(f"Body: {body_path} (a temporary file for this preview; nothing was written into the repository)")
         return 0
 
     cli = argv[0]
@@ -1234,8 +1326,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("set-status", parents=[common, issue, by], help="fixed | wont-fix | duplicate, under the lifecycle's rules")
     p.add_argument("--status", required=True, help="fixed | wont-fix | duplicate")
-    p.add_argument("--reason", default=None, help="Required for wont-fix and duplicate")
-    p.add_argument("--of", default=None, metavar="ISS-NNNN", help="duplicate: the report it duplicates")
+    p.add_argument("--reason", default=None, help="Required for wont-fix; optional beside --of for duplicate; optional for fixed")
+    p.add_argument("--of", default=None, metavar="ISS-NNNN", help="duplicate: the report it duplicates (required)")
     return parser
 
 
@@ -1245,6 +1337,13 @@ VERBS = {"questions": verb_questions, "env": verb_env, "new": verb_new, "show": 
 
 
 def main(argv: list[str] | None = None) -> int:
+    # The output carries '—' and '→'; on a Windows pipe stdout is cp1252 and would raise AFTER a
+    # write landed. UTF-8 with replacement, so the exit code and the words always arrive.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+        except (AttributeError, ValueError):
+            pass
     args = build_parser().parse_args(argv)
     try:
         root = resolve_repo_root(args) if args.verb != "questions" else None

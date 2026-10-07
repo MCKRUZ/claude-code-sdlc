@@ -2268,7 +2268,7 @@ export interface IssueReportRequest {
   noClientData: boolean
   /** The channel follow-ups (`browser_device`, `endpoint`, `utterance`, …) by question id. */
   answers: Record<string, string>
-  /** The path `getIssueEnvironment` returned. */
+  /** The path `getIssueEnvironment` returned; empty when the build facts could not be read (the report stands without them). */
   environmentPath: string
   escapedFrom?: string
 }

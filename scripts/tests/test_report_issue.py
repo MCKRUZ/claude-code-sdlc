@@ -138,6 +138,39 @@ class TestNew:
         assert proc.returncode == 2 and "GitHub token" in proc.stdout and token not in proc.stdout
         assert not (repo / ".sdlc").exists()
 
+    def test_an_answer_may_not_stand_in_for_one_of_new_s_own_fields(self, repo, shot):
+        proc = run(base_new(repo, shot) + ["--answer", "no_client_data=1"])
+        assert proc.returncode == 1 and "one of new's own fields" in proc.stdout
+        proc = run(base_new(repo, shot) + ["--answer", "title=something else"])
+        assert proc.returncode == 1 and "one of new's own fields" in proc.stdout
+        assert not (repo / ".sdlc").exists()
+
+    def test_a_channel_typed_in_capitals_is_written_in_the_plugin_s_own_lower_case(self, repo, shot):
+        proc = run(base_new(repo, shot, **{"--channel": "WEB"}) + ["--json"])
+        assert proc.returncode == 0, proc.stdout
+        report = next((repo / ".sdlc" / "issues").glob("ISS-0001-*.md")).read_text(encoding="utf-8")
+        assert 'channel: "web"' in report
+        assert run(["check", "--repo", str(repo), "--issue", "ISS-0001"]).returncode == 0
+
+    def test_a_secret_in_an_extra_answer_is_refused_too(self, repo, shot):
+        proc = run(base_new(repo, shot) + ["--answer", "extra=token ghp_abcdefghijklmnopqrstuvwxyz012345"])
+        assert proc.returncode == 2 and "GitHub token" in proc.stdout
+
+    def test_a_heading_typed_inside_the_words_stays_their_sentence(self, repo, shot):
+        proc = run(base_new(repo, shot, **{"--what": "The totals page shows this:\n## Steps\nand then doubles the sum of the two lines."}))
+        assert proc.returncode == 0, proc.stdout
+        check = run(["check", "--repo", str(repo), "--issue", "ISS-0001", "--json"])
+        assert check.returncode == 0
+        doc = json.loads(run(["show", "--repo", str(repo), "--issue", "ISS-0001", "--json"]).stdout)
+        assert "Steps" not in doc["sections"] and "\\## Steps" in doc["sections"]["What happened"]
+
+    def test_a_deleted_report_s_id_is_never_given_out_again(self, repo, shot):
+        assert run(base_new(repo, shot)).returncode == 0
+        for p in (repo / ".sdlc" / "issues").glob("ISS-0001-*.md"):
+            p.unlink()
+        proc = run(base_new(repo, shot, **{"--title": "Second one, a different bug entirely"}) + ["--json"])
+        assert json.loads(proc.stdout)["issue"] == "ISS-0002"
+
     def test_a_screenshot_that_is_not_an_image_is_a_gap(self, repo, tmp_path):
         fake = tmp_path / "shot.png"
         fake.write_bytes(b"hello")
@@ -235,6 +268,22 @@ class TestCheckListAndStatus:
         assert bad.returncode == 1
         doc = json.loads(bad.stdout)
         assert doc["verdict"] == "INCOMPLETE" and any(g.startswith("steps:") for g in doc["blocking"])
+
+    def test_a_path_that_is_not_a_report_is_refused_by_every_verb_that_would_write_to_it(self, repo, shot):
+        assert run(base_new(repo, shot)).returncode == 0
+        other = subprocess.run([sys.executable, str(PLUGIN_ROOT / "scripts" / "new_spec.py"), "--repo", str(repo), "--name", "policy lookup", "--json"],
+                               capture_output=True, text=True, encoding="utf-8")
+        spec_rel = json.loads(other.stdout)["path"]
+        before = (repo / spec_rel).read_bytes()
+        for argv in (["note", "--note", "a note that must not land in a spec", "--by", "Sam K"],
+                     ["triage", "--verdict", "confirmed", "--by", "Sam K"],
+                     ["set-status", "--status", "fixed", "--by", "Sam K"],
+                     ["show"], ["check"]):
+            proc = run([argv[0], "--repo", str(repo), "--issue", spec_rel, *argv[1:]])
+            assert proc.returncode == 1 and "is not an issue report" in proc.stdout, argv
+        assert (repo / spec_rel).read_bytes() == before
+        state = repo / ".sdlc" / "metrics" / "issue-log.jsonl"
+        assert run(["note", "--repo", str(repo), "--issue", str(state), "--note", "x", "--by", "Sam K"]).returncode == 1
 
     def test_check_names_an_unknown_issue(self, repo):
         proc = run(["check", "--repo", str(repo), "--issue", "ISS-0042"])
@@ -356,6 +405,28 @@ class TestTriage:
         assert run(base_new(repo, shot)).returncode == 0
         proc = run(["note", "--repo", str(repo), "--issue", "ISS-0001", "--note", "token was ghp_abcdefghijklmnopqrstuvwxyz012345", "--by", "Sam K"])
         assert proc.returncode == 2 and "GitHub token" in proc.stdout
+        reason = run(["triage", "--repo", str(repo), "--issue", "ISS-0001", "--verdict", "wont-fix", "--reason", "see sk-abcdefghijklmnopqrstuvwxyz0123456789 in the logs", "--by", "Sam K"])
+        assert reason.returncode == 2 and "API key" in reason.stdout
+
+    def test_a_refusal_names_only_the_actions_the_lifecycle_allows_from_here(self, repo, shot):
+        prioritized(repo, shot)
+        assert run(["promote", "--repo", str(repo), "--issue", "ISS-0001", "--risk", "MEDIUM", "--by", "Sam K"]).returncode == 0
+        proc = run(["triage", "--repo", str(repo), "--issue", "ISS-0001", "--verdict", "confirmed", "--by", "Sam K"])
+        assert proc.returncode == 1 and "the lifecycle allows:" in proc.stdout
+        allowed = proc.stdout.split("the lifecycle allows:")[1]
+        assert "prioritize" not in allowed and "promote" not in allowed and "set-status fixed" in allowed
+
+    def test_reopen_clears_the_review_and_the_priority_but_keeps_the_bugfix_spec_on_the_record(self, repo, shot):
+        prioritized(repo, shot, target=None)
+        assert run(["promote", "--repo", str(repo), "--issue", "ISS-0001", "--risk", "MEDIUM", "--by", "Sam K"]).returncode == 0
+        assert run(["set-status", "--repo", str(repo), "--issue", "ISS-0001", "--status", "fixed", "--by", "Sam K"]).returncode == 0
+        again = run(["set-status", "--repo", str(repo), "--issue", "ISS-0001", "--status", "fixed", "--by", "Sam K", "--json"])
+        assert json.loads(again.stdout) == {"ok": True, "issue": "ISS-0001", "status": "fixed", "changed": False, "message": "already fixed; nothing changed"}
+        ok = run(["reopen", "--repo", str(repo), "--issue", "ISS-0001", "--reason", "the total doubles again on test", "--by", "Priya N."])
+        assert ok.returncode == 0
+        text = next((repo / ".sdlc" / "issues").glob("ISS-0001-*.md")).read_text(encoding="utf-8")
+        assert 'priority: ""' in text and 'target_sprint: ""' in text and 'prioritized_by: ""' in text and 'bugfix_spec: "0001"' in text
+        assert "bugfix spec 0001 kept on the record" in text
 
 
 class TestPrioritize:
@@ -421,9 +492,13 @@ class TestFile:
         assert doc["dry_run"] is True and doc["host"] == "github"
         assert doc["argv"][:5] == ["gh", "issue", "create", "--title", TITLE]
         assert "--body-file" in doc["argv"] and doc["argv"][-2:] == ["--repo", "acme/claims"]
-        body = (repo / doc["body"]).read_text(encoding="utf-8")
+        body = Path(doc["body"]).read_text(encoding="utf-8")
         assert "### Steps to reproduce" in body and "ISS-0001" in body and "1 in the repository under" in body
         assert "seen on the web channel as a claims adjuster" in body
+        # A dry run writes NOTHING into the repository: the body is a temp file, named as such.
+        assert not Path(doc["body"]).resolve().is_relative_to(repo.resolve())
+        assert "temporary file" in doc["note"]
+        assert not (repo / ".sdlc" / "issues" / "ISS-0001" / "host-body.md").exists()
         text = next((repo / ".sdlc" / "issues").glob("ISS-0001-*.md")).read_text(encoding="utf-8")
         assert 'filed_url: ""' in text  # a dry run files nothing
 
@@ -442,6 +517,7 @@ class TestFile:
         assert run(base_new(repo, shot)).returncode == 0
         proc = run(["file", "--repo", str(repo), "--issue", "ISS-0001", "--dry-run", "--by", "Priya N."])
         assert proc.returncode == 1 and "no code host" in proc.stdout
+        assert not (repo / ".sdlc" / "issues" / "ISS-0001" / "host-body.md").exists()  # said before anything was written
 
     @pytest.mark.skipif(sys.platform == "win32", reason="the fake CLI is a shell script")
     def test_filing_records_the_url_gh_printed_and_the_ledger_event(self, repo, shot, tmp_path):

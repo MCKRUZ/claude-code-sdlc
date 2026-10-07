@@ -159,8 +159,20 @@ def next_status(action: str, current: str) -> str | None:
     return TRANSITIONS.get(action, {}).get(current)
 
 
+def allowed_from(current: str) -> list[str]:
+    """The actions the lifecycle allows from `current`, as the verbs a person types."""
+    out: list[str] = []
+    for action, table in TRANSITIONS.items():
+        if current in table:
+            verb = action.split(":")[0] if action.startswith("triage:") else ("set-status " + action if action in ("fixed", "wont-fix", "duplicate") else action)
+            if verb not in out:
+                out.append(verb)
+    return out
+
+
 def transition_refusal(action: str, current: str, issue_id: str = "the report") -> str:
-    """Why `action` is refused from `current`, in words that say what comes first."""
+    """Why `action` is refused from `current`, in words that say what comes first — and only ever
+    naming actions the lifecycle does allow from here."""
     if current in TERMINAL_STATUSES and action != "reopen":
         return f"{issue_id} is {current} — a closed report is not acted on; `reopen --reason` first"
     if action == "promote":
@@ -177,8 +189,8 @@ def transition_refusal(action: str, current: str, issue_id: str = "the report") 
     if action == "reopen":
         return f"{issue_id} is {current}, not closed — nothing to reopen"
     if action.startswith("triage:"):
-        return f"{issue_id} is {current} — triage decides a new or needs-info report; from {current} use prioritize, promote or set-status"
-    return f"{action} is not an action the lifecycle takes from {current}"
+        return f"{issue_id} is {current} — triage decides a new or needs-info report; from {current} the lifecycle allows: {', '.join(allowed_from(current))}"
+    return f"{action} is not an action the lifecycle takes from {current}; it allows: {', '.join(allowed_from(current))}"
 
 
 def proposed_priority(report: dict) -> str:
@@ -238,7 +250,8 @@ SECRET_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("a Slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")),
     ("a JSON web token", re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b")),
     ("an Azure DevOps personal access token", re.compile(r"\b[a-z2-7]{52}\b")),
-    ("a connection string with a password", re.compile(r"(?i)\b(password|pwd)\s*=\s*[^;\s]{6,}")),
+    # A masked value (`Password=********`, `pwd=xxxxxxxx`) is not a secret; a real one is.
+    ("a connection string with a password", re.compile(r"(?i)\b(password|pwd)\s*=\s*(?![*xX•#]+(?:[;\s]|$))[^;\s]{6,}")),
 )
 
 
@@ -449,7 +462,8 @@ def refusals(report: dict, by: str | None) -> list[str]:
         out.append("--by is required: the person reporting, by name — the fixer will have questions")
     elif is_ai_actor(clean):
         out.append(f"--by '{clean}' reads as an AI/automation, not a person; a bug report names who saw it")
-    text = "\n".join(str(report.get(k) or "") for k in _TEXT_FIELDS)
+    # Every string the report carries — the known fields AND any extra answer — one scan.
+    text = "\n".join(str(v) for v in report.values() if isinstance(v, str))
     for label in secrets_in(text):
         out.append(f"the report contains what looks like {label} — remove it; this file is shared with the code host and cannot be un-published")
     return out

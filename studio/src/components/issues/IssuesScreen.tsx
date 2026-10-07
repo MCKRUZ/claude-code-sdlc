@@ -7,13 +7,27 @@
 // and a confirm dialog otherwise. Nothing here computes a status: the plugin is the truth.
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Bug, RefreshCw } from 'lucide-react'
-import type { ActorInfo, CommandCenter, IssueDetail, IssueDetailRead, IssueLifecycleWords, IssueRow, IssueVerbResult } from '../../../shared/types'
-import { CAPABILITIES, NO_DATA, NO_ISSUES_YET, NOTHING_AWAITS_REVIEW, SELECT_A_REPORT, exitHeading, newerPlugin } from '../../../shared/reasons'
+import type { ActorInfo, CommandCenter, IssueDetail, IssueDetailRead, IssueLifecycleWords, IssueQuestion, IssueRow, IssueVerbResult } from '../../../shared/types'
+import { CAPABILITIES, NO_DATA, NO_ISSUES_YET, NOTHING_AWAITS_REVIEW, NOTHING_OPEN, SELECT_A_REPORT, exitHeading, newerPlugin } from '../../../shared/reasons'
 import { Button, Chip, DataTable, DefinitionList, Eyebrow, Notice, Segmented, cn } from '../../ui'
 import { IssueActionDialog } from './IssueActionDialog'
 import { ACTION_LABEL, ACTION_ORDER, actionReason, countsLine, dataImpactTone, severityTone, statusTone, visibleRows, type IssueActionKind } from './issuesModel'
 
 export const ISSUES_TITLE = 'Issues'
+
+/** `| Question | Answer |` rows of a section the plugin wrote as a table → [term, detail] pairs, the
+ * header and the rule skipped, an escaped pipe restored. Anything that is not such a table → []. */
+export function tablePairs(section: string | undefined): Array<[string, string]> {
+  if (!section) return []
+  const out: Array<[string, string]> = []
+  for (const line of section.split(/\r?\n/)) {
+    const m = /^\|\s*(.+?)\s*\|\s*(.*?)\s*\|\s*$/.exec(line)
+    if (!m) continue
+    if (/^-+$/.test(m[1]) || (m[1] === 'Question' && m[2] === 'Answer') || (m[1] === 'Fact' && m[2] === 'Value')) continue
+    out.push([m[1], m[2].replace(/\\\|/g, '|')])
+  }
+  return out
+}
 export const REPORT_AN_ISSUE = 'Report an issue…'
 export const SYNC_WITH_SPECS = 'Sync with the specs'
 
@@ -36,6 +50,7 @@ export function IssuesScreen({ projectPath, cc, onRefresh, onReport, onOpenSpec 
   const [detail, setDetail] = useState<IssueDetailRead | null>(null)
   const [shots, setShots] = useState<Record<string, string>>({})
   const [words, setWords] = useState<IssueLifecycleWords | null>(null)
+  const [questions, setQuestions] = useState<IssueQuestion[]>([])
   /** The open action dialog and the report AS IT WAS when it opened: the dialog keeps that
    * snapshot while the screen re-reads after Done, so it never unmounts under the person's eyes. */
   const [action, setAction] = useState<{ kind: IssueActionKind; detail: IssueDetail } | null>(null)
@@ -54,7 +69,7 @@ export function IssuesScreen({ projectPath, cc, onRefresh, onReport, onOpenSpec 
   useEffect(() => {
     if (!canList) return
     let live = true
-    window.studio.getIssueQuestions(projectPath).then((r) => { if (live && r.ok) setWords(r.plan.lifecycle) })
+    window.studio.getIssueQuestions(projectPath).then((r) => { if (live && r.ok) { setWords(r.plan.lifecycle); setQuestions(r.plan.questions) } })
     return () => { live = false }
   }, [projectPath, canList])
 
@@ -133,14 +148,14 @@ export function IssuesScreen({ projectPath, cc, onRefresh, onReport, onOpenSpec 
             rows={visible}
             rowKey={(r) => r.issue}
             rowProps={(r) => ({
-              'data-issue': r.issue, 'data-status': r.status, 'aria-selected': r.issue === selected, tabIndex: 0,
+              'data-issue': r.issue, 'data-status': r.status, 'data-selected': r.issue === selected ? '' : undefined, tabIndex: 0,
               className: cn('cursor-pointer', r.issue === selected && 'bg-accent-50 dark:bg-accent-900/20'),
               onClick: () => setSelected(r.issue),
               onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelected(r.issue) } },
             })}
-            empty={<span>{rows.length === 0 ? NO_ISSUES_YET : filter === 'queue' ? NOTHING_AWAITS_REVIEW : `${NO_DATA} — nothing open`}</span>}
+            empty={<span>{rows.length === 0 ? NO_ISSUES_YET : filter === 'queue' ? NOTHING_AWAITS_REVIEW : NOTHING_OPEN}</span>}
             columns={[
-              { id: 'issue', header: 'Report', mono: true, width: 'w-[5.5rem]', cell: (r) => r.issue },
+              { id: 'issue', header: 'Report', mono: true, width: 'w-[5.5rem]', cell: (r) => <span className="whitespace-nowrap">{r.issue}</span> },
               { id: 'title', header: 'Title', cell: (r) => <span className="text-ink-1">{r.title}</span> },
               { id: 'status', header: 'Status', cell: (r) => <Chip size="xs" tone={statusTone(r.status)} casing="state">{r.status}</Chip> },
               { id: 'priority', header: 'Priority', cell: (r) => (r.priority ? <span className="font-mono text-xs">{r.priority}{r.target_sprint ? ` → ${r.target_sprint}` : ''}</span> : <span className="text-ink-4" title={`the plugin proposes ${r.proposed_priority}`}>—</span>) },
@@ -195,12 +210,22 @@ export function IssuesScreen({ projectPath, cc, onRefresh, onReport, onOpenSpec 
                 ...(current.duplicate_of ? [{ term: 'Duplicate of', detail: current.duplicate_of }] : []),
               ]} />
 
-              {['What happened', 'What you expected', 'Steps to reproduce', 'Where', 'Environment'].map((heading) => current.sections[heading] ? (
+              {['What happened', 'What you expected', 'Steps to reproduce'].map((heading) => current.sections[heading] ? (
                 <section key={heading}>
                   <Eyebrow as="p">{heading}</Eyebrow>
                   <pre className="mt-1 whitespace-pre-wrap font-sans text-sm text-ink-1">{current.sections[heading]}</pre>
                 </section>
               ) : null)}
+              {/* The plugin writes Where and Environment as two-column tables; shown as pairs, the words untouched. */}
+              {['Where', 'Environment'].map((heading) => {
+                const pairs = tablePairs(current.sections[heading])
+                return pairs.length ? (
+                  <section key={heading}>
+                    <Eyebrow as="p">{heading}</Eyebrow>
+                    <DefinitionList columns={2} className="mt-1 text-xs" items={pairs.map(([term, detail]) => ({ term, detail }))} />
+                  </section>
+                ) : null
+              })}
 
               {current.screenshot_paths.length > 0 && (
                 <section>
@@ -231,6 +256,7 @@ export function IssuesScreen({ projectPath, cc, onRefresh, onReport, onOpenSpec 
           detail={action.detail}
           actor={actor}
           words={words}
+          questions={questions}
           sprints={sprints}
           others={rows.map((r) => ({ issue: r.issue, title: r.title }))}
           roster={roster}

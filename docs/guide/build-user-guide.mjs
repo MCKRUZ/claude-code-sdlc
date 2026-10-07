@@ -7,7 +7,7 @@
 // the conversion is macOS `sips` (resize to ≤ SHOT_WIDTH px on the long side, JPEG at
 // SHOT_QUALITY), so this runs on a Mac only.
 //
-//   node docs/guide/build-user-guide.mjs            # reads studio/test/screenshots/observatory-v20-<name>.png
+//   node docs/guide/build-user-guide.mjs            # reads studio/test/screenshots/observatory-v21-<name>.png
 //   SHOT_PREFIX=observatory-v13 node docs/guide/build-user-guide.mjs
 //   SHOT_WIDTH=1000 SHOT_QUALITY=65 node docs/guide/build-user-guide.mjs
 
@@ -23,7 +23,7 @@ const templatePath = join(here, 'togo-user-guide.template.html')
 const outputPath = join(here, 'togo-user-guide.html')
 const shotsDir = join(repoRoot, 'studio', 'test', 'screenshots')
 
-const prefix = process.env.SHOT_PREFIX || 'observatory-v20'
+const prefix = process.env.SHOT_PREFIX || 'observatory-v21'
 const width = Number(process.env.SHOT_WIDTH || 1440)
 const quality = Number(process.env.SHOT_QUALITY || 82)
 

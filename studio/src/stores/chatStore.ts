@@ -15,7 +15,8 @@ export const CHAT_COLLAPSED_STORAGE_KEY = 'studio.chat.collapsed'
 export const CHAT_RAIL_WIDTH = 40
 
 /** The areas whose chat starts collapsed. The lanes are the work there; the chat is a step away. */
-export const CHAT_COLLAPSED_BY_DEFAULT: ReadonlySet<Area> = new Set<Area>(['sprint', 'planning'])
+// Issues (plugin 1.8.0) joins them: the queue and the report in place want the width too.
+export const CHAT_COLLAPSED_BY_DEFAULT: ReadonlySet<Area> = new Set<Area>(['sprint', 'planning', 'issues'])
 
 type Stored = Partial<Record<Area, boolean>>
 type Listener = () => void

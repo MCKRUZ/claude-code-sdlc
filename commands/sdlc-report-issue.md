@@ -27,7 +27,7 @@ against any repository.
 | `triaged` | confirmed as a bug, severity and data impact corrected if needed | **someone other than the reporter** | `triage --verdict confirmed` |
 | `prioritized` | P1 fix now / P2 next sprint / P3 backlog, and a target sprint | a named human, confirming the proposal or not | `prioritize` |
 | `promoted` | a `type: bugfix` spec exists (and may be slated into the target sprint) | a named human, confirming the tier or not | `promote [--slate]` |
-| `fixed` | the bugfix spec merged (`sync`), or a named human says so | `sync` / a human | `sync`, `set-status fixed` |
+| `fixed` | the bugfix spec merged (`sync`), or a named human says so | `sync` / a human | `sync`, `set-status --status fixed` |
 | `wont-fix` · `duplicate` | closed with a reason the reporter will read | reviewer | `triage` or `set-status` |
 
 Filing the report on the code host (`file`) is orthogonal: it may happen at any status and never
@@ -196,7 +196,7 @@ report's `## History` and one event in `.sdlc/metrics/issue-log.jsonl`.
 - No arguments: the report interview (A) in workflow mode.
 - `--repo <path>`: standalone mode — any folder; `.sdlc/issues/` is created under it.
 - `show | list [--queue|--status S] | check | triage | prioritize | promote [--slate] | note | reopen | sync | file | set-status`
-  as above; every write takes `--by <name>`.
+  as above; every write but `sync` takes `--by <name>` (`sync` follows the specs and names no one).
 - `--spec NNNN`, `--product-version`, `--escaped-from "<check>"` on `new`.
 
 ## Important

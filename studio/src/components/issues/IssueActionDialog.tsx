@@ -4,8 +4,8 @@
 // (`data-write`), and the plugin's stdout / stderr verbatim under Done / Not done / Refused by the
 // plugin. Filing shows the dry run — the exact `gh` / `az` command — before a second Confirm sends
 // anything off this computer. On exit 0 the host re-reads; nothing here moves on its own.
-import { useMemo, useRef, useState } from 'react'
-import type { ActorInfo, IssueDetail, IssueLifecycleWords, IssueVerbResult } from '../../../shared/types'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ActorInfo, IssueDetail, IssueLifecycleWords, IssueQuestion, IssueVerbResult } from '../../../shared/types'
 import { describeIssueArgv } from '../../../shared/issueArgv'
 import { NO_ACTOR, NO_OPEN_SPRINT_TO_SLATE, exitHeading } from '../../../shared/reasons'
 import { Button, Dialog, Field, Input, Notice, Segmented, Select, Textarea } from '../../ui'
@@ -18,6 +18,8 @@ export interface IssueActionDialogProps {
   detail: IssueDetail
   actor: ActorInfo | null
   words: IssueLifecycleWords | null
+  /** The plugin's base question plan, for the severity and data-impact words; falls back to the fixed lists. */
+  questions?: readonly IssueQuestion[]
   /** Open sprints the plugin listed (`sprint.py list --json`), for the target-sprint picker. */
   sprints: readonly { id: string; state: string | null }[]
   /** The other reports, for the duplicate picker. */
@@ -31,7 +33,7 @@ export interface IssueActionDialogProps {
 const SEVERITIES = [{ value: 'blocks', label: 'Blocks the task' }, { value: 'degraded', label: 'Degraded' }, { value: 'cosmetic', label: 'Cosmetic' }]
 const IMPACTS = [{ value: 'none', label: 'None' }, { value: 'wrong-shown', label: 'Wrong data shown' }, { value: 'wrong-written', label: 'Wrong data written' }, { value: 'exposed', label: 'Data exposed' }]
 
-export function IssueActionDialog({ open, kind, projectPath, detail, actor, words, sprints, others, roster, onClose, onDone }: IssueActionDialogProps) {
+export function IssueActionDialog({ open, kind, projectPath, detail, actor, words, questions = [], sprints, others, roster, onClose, onDone }: IssueActionDialogProps) {
   const [form, setForm] = useState<ActionForm>(() => initialForm(kind, detail))
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<IssueVerbResult | null>(null)
@@ -41,15 +43,29 @@ export function IssueActionDialog({ open, kind, projectPath, detail, actor, word
 
   const request = useMemo(() => requestFor(kind, detail.issue, { ...form, dryRun: kind === 'file' ? !dry : form.dryRun }), [kind, detail.issue, form, dry])
   const preview = previewVerb(request, actor?.name ?? null)
-  const isReporter = Boolean(actor && detail.reported_by && actor.name.replace(/^@/, '').toLowerCase() === detail.reported_by.replace(/^@/, '').toLowerCase())
+  // The plugin's own comparison (`_same_person`: letters and digits only, case-insensitive), so the
+  // override control shows for the same names the plugin would refuse — and, should the plugin still
+  // refuse as "someone other than its reporter", it shows then too, with Confirm kept for the retry.
+  const norm = (s: string) => s.replace(/[^a-z0-9]/gi, '').toLowerCase()
+  const isReporter = Boolean(actor && detail.reported_by && norm(actor.name) === norm(detail.reported_by))
+  const refusedAsReporter = result !== null && result.exitCode === 1 && /someone other than its reporter/.test(result.stdout + result.stderr)
+  const showOverride = kind === 'triage' && (isReporter || refusedAsReporter)
   const slateReason = !form.slate ? null : detail.target_sprint ? null : sprints.some((s) => s.state !== 'closed') ? null : NO_OPEN_SPRINT_TO_SLATE
   const reason = !actor ? NO_ACTOR : preview.errors.length ? preview.errors.join('; ') : slateReason
+  // Focus lands on Confirm only when it can be pressed; otherwise Radix takes the first control.
+  const confirmAtOpen = useRef(reason === null)
+  // A dry run describes the form as it was: a changed label makes it stale.
+  useEffect(() => { setDry(null) }, [form.label])
 
   const run = async () => {
     setBusy(true)
     try {
       const r = await window.studio.runIssueVerb(projectPath, request)
-      if (kind === 'file' && !dry) { setDry(r); return }
+      if (kind === 'file' && !dry) {
+        // Only a dry run the plugin answered Done is a command worth confirming; a refusal is a result.
+        if (r.ok) setDry(r); else setResult(r)
+        return
+      }
       setResult(r)
       if (r.ok) onDone(r)
     } finally { setBusy(false) }
@@ -58,16 +74,22 @@ export function IssueActionDialog({ open, kind, projectPath, detail, actor, word
   const priorityLabel = (p: string) => words?.priority_labels[p] ?? p
   const verdictLabel = (v: string) => words?.triage_verdict_labels[v] ?? v
   const openSprints = sprints.filter((s) => s.state !== 'closed')
+  const optionsOf = (id: string, fallback: { value: string; label: string }[]) => questions.find((q) => q.id === id)?.options ?? fallback
+  const severities = optionsOf('severity', SEVERITIES)
+  const impacts = optionsOf('data_impact', IMPACTS)
+  const sprintHint = openSprints.length ? 'the sprint the fix should land in'
+    : sprints.length ? 'every sprint record is closed — create the next sprint first; the plugin refuses a closed one'
+    : 'no sprint record yet — the id is recorded as typed'
 
   return (
-    <Dialog open={open} onClose={onClose} title={actionTitle(kind, detail.issue)} size="lg" initialFocus={confirmRef} data-testid="issue-action-dialog"
+    <Dialog open={open} onClose={busy ? () => {} : onClose} title={actionTitle(kind, detail.issue)} size="lg" initialFocus={confirmAtOpen.current ? confirmRef : undefined} data-testid="issue-action-dialog"
       description={<span className="font-mono text-xs">{detail.title}</span>}
       footer={(
         <div className="flex w-full items-center justify-between gap-3">
           <p className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink-3" title={preview.line} data-testid="issue-action-argv">{preview.line}</p>
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="ghost" onClick={onClose}>{result ? 'Close' : 'Cancel'}</Button>
-            {!result && (
+            <Button variant="ghost" onClick={onClose} disabled={busy} disabledReason={busy ? 'the plugin is answering' : undefined}>{result?.ok ? 'Close' : 'Cancel'}</Button>
+            {!result?.ok && (
               <Button ref={confirmRef} variant="primary" data-write="" loading={busy} loadingLabel="Running…" disabled={reason !== null} disabledReason={reason ?? undefined} onClick={run}>
                 {kind === 'file' ? (dry ? 'Confirm — file it' : 'Show the command') : 'Confirm'}
               </Button>
@@ -79,8 +101,8 @@ export function IssueActionDialog({ open, kind, projectPath, detail, actor, word
       <div className="space-y-3 text-sm">
         {kind === 'triage' && (
           <>
-            {isReporter && (
-              <Notice tone="warn" title="You reported this">
+            {showOverride && (
+              <Notice tone="warn" title={isReporter ? 'You reported this' : 'The plugin counts you as the reporter'}>
                 <p className="text-xs">A report is reviewed by someone other than its reporter. A team of one may override, with a reason the record keeps.</p>
                 <label className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={form.override} onChange={(e) => set('override', e.target.checked)} /> Override — I am reviewing my own report</label>
               </Notice>
@@ -90,8 +112,8 @@ export function IssueActionDialog({ open, kind, projectPath, detail, actor, word
             </Field>
             {form.verdict === 'confirmed' && (
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Severity" hint={`the report says ${detail.severity}`}><Select value={form.severity} onChange={(v) => set('severity', v)} aria-label="Severity" options={SEVERITIES} /></Field>
-                <Field label="Data impact" hint={`the report says ${detail.data_impact}`}><Select value={form.dataImpact} onChange={(v) => set('dataImpact', v)} aria-label="Data impact" options={IMPACTS} /></Field>
+                <Field label="Severity" hint={`the report says ${detail.severity}`}><Select value={form.severity} onChange={(v) => set('severity', v)} aria-label="Severity" options={severities} /></Field>
+                <Field label="Data impact" hint={`the report says ${detail.data_impact}`}><Select value={form.dataImpact} onChange={(v) => set('dataImpact', v)} aria-label="Data impact" options={impacts} /></Field>
               </div>
             )}
             {form.verdict === 'needs-info' && (
@@ -113,7 +135,7 @@ export function IssueActionDialog({ open, kind, projectPath, detail, actor, word
               <Segmented label="Priority" value={form.priority} onChange={(v) => set('priority', v as ActionForm['priority'])} size="sm" tone="neutral" className="flex-wrap"
                 options={['P1', 'P2', 'P3'].map((p) => ({ value: p, label: p === detail.proposed_priority ? `${priorityLabel(p)} · proposed` : priorityLabel(p) }))} />
             </Field>
-            <Field label="Target sprint" hint={openSprints.length ? 'the sprint the fix should land in' : 'no open sprint record yet — the id is recorded as typed'}>
+            <Field label="Target sprint" hint={sprintHint}>
               {openSprints.length
                 ? <Select value={form.targetSprint} onChange={(v) => set('targetSprint', v)} aria-label="Target sprint" options={[{ value: '', label: 'none yet' }, ...openSprints.map((s) => ({ value: s.id, label: s.id }))]} />
                 : <Input value={form.targetSprint} onChange={(e) => set('targetSprint', e.target.value.toUpperCase())} placeholder="S08" />}
@@ -187,7 +209,7 @@ export function IssueActionDialog({ open, kind, projectPath, detail, actor, word
               ? <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-ink-1">{[result.stdout, result.stderr].filter((s) => s.trim()).join('\n').trim()}</pre>
               : <p className="mt-1 text-xs text-ink-3">The plugin printed nothing.</p>}
             {result.ok && typeof result.doc?.url === 'string' && result.doc.url && (
-              <p className="mt-1 text-xs"><a href={String(result.doc.url)} target="_blank" rel="noreferrer" className="text-accent-600 underline">{String(result.doc.url)}</a></p>
+              <p className="mt-1 text-xs"><a href={String(result.doc.url)} target="_blank" rel="noreferrer" className="underline">{String(result.doc.url)}</a></p>
             )}
           </Notice>
         )}

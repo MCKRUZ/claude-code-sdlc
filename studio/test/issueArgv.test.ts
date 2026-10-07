@@ -52,7 +52,7 @@ describe('buildIssueArgv — the golden line for `new`', () => {
     expect(gaps).toEqual(expect.arrayContaining([
       "channel 'mainframe' is not one the plugin knows", 'title is required', "environment 'moon' is not one the plugin knows",
       "data impact 'bad' is not one the plugin knows", "role 'tester' is not one the plugin knows", 'a screenshot is required',
-      'the privacy confirmation is required', 'environment facts is required', "spec '7' is not a spec id (expected four digits)",
+      'the privacy confirmation is required', "spec '7' is not a spec id (expected four digits)",
     ]))
     expect(buildIssueArgv({ ...REQ, screenshots: [] }, '@arjun-m')).toEqual({ ok: false, errors: ['a screenshot is required'] })
     expect(buildIssueArgv(REQ, '')).toEqual({ ok: false, errors: ['no actor'] })
@@ -64,12 +64,29 @@ describe('buildIssueArgv — the golden line for `new`', () => {
     expect(validateIssueRequest({ ...REQ, channel: 'api', answers: { response_excerpt: '{\n  "error": 1\n}' } })).toEqual([])
   })
 
+  it('the environment document is optional: without it the line simply has no --env-json (the report stands on the environment answer)', () => {
+    const built = buildIssueArgv({ ...REQ, environmentPath: '' }, '@arjun-m')
+    expect(built.ok).toBe(true)
+    if (built.ok) expect(built.argv).not.toContain('--env-json')
+    expect(validateIssueRequest({ ...REQ, environmentPath: '' })).toEqual([])
+    expect(sketchIssueArgv({ ...REQ, environmentPath: '' }, '@arjun-m')).not.toContain('--env-json')
+  })
+
+  it('a value that starts with "-" is refused in words, and an answer may not re-set one of the report’s own fields', () => {
+    expect(validateIssueRequest({ ...REQ, title: '--by somebody' })).toContain("title may not start with '-'")
+    expect(validateIssueRequest({ ...REQ, steps: ['-rf everything'] })).toContain("a step may not start with '-'")
+    expect(validateIssueRequest({ ...REQ, answers: { no_client_data: '1' } })).toContain("answer 'no_client_data' is one of the report's own fields")
+    expect(validateIssueRequest({ ...REQ, answers: { title: 'x' } })).toContain("answer 'title' is one of the report's own fields")
+    expect(validateIssueRequest({ ...REQ, answers: { url: '-' } })).toContain("answer 'url' may not start with '-'")
+    expect(validateIssueVerbRequest({ verb: 'note', issue: 'ISS-0001', note: '--override' })).toContain("note may not start with '-'")
+    expect(validateIssueVerbRequest({ verb: 'triage', issue: 'ISS-0001', verdict: 'wont-fix', reason: '-' })).toContain("reason may not start with '-'")
+  })
+
   it('the sketch shows what IS known of the line and <flag?> for the gaps — never a guess', () => {
     const sketch = sketchIssueArgv({ ...REQ, title: '', screenshots: [], noClientData: false, environmentPath: '' }, '')
     expect(sketch).toContain('<title?>')
     expect(sketch).toContain('<screenshot?>')
     expect(sketch).toContain('<--no-client-data?>')
-    expect(sketch).toContain('<environment?>')
     expect(sketch.slice(-3)).toEqual(['--by', '<you>', '--json'])
   })
 })

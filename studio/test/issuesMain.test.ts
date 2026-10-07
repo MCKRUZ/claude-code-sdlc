@@ -14,8 +14,9 @@ import { join } from 'node:path'
 import { deflateSync } from 'node:zlib'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  fileCapture, getIssue, getIssueEnvironment, getIssueQuestions, listIssues, readIssueScreenshot, rememberIssued, reportIssue, runIssueVerb,
+  fileCapture, getIssue, getIssueEnvironment, getIssueQuestions, ISSUE_TEMP_DIR, issuedPaths, listIssues, readIssueScreenshot, rememberIssued, reportIssue, runIssueVerb,
 } from '../electron/main/issues'
+import { copyFileSync, existsSync, statSync } from 'node:fs'
 import { invalidateCommandCenter } from '../electron/main/commandCenter'
 import type { IssueReportRequest } from '../shared/types'
 import { requirePlugin } from './pluginRoot'
@@ -137,6 +138,29 @@ describe('reportIssue', () => {
     expect(detail.data.screenshot_paths).toEqual(['.sdlc/issues/ISS-0001/screenshot-1.png'])
     const img = readIssueScreenshot(project, detail.data.screenshot_paths[0])
     expect(img.ok && img.dataUrl.startsWith('data:image/png;base64,')).toBe(true)
+  })
+
+  it('once the report is written the temp copies under our own folder go, owner-only while they live; a file the person picked stays', async () => {
+    const env = await getIssueEnvironment(project, PLUGIN.scriptsDir, { appVersion: '0.1.0' })
+    if (!env.ok) throw new Error(env.error)
+    if (process.platform !== 'win32') expect(statSync(env.envPath).mode & 0o777).toBe(0o600)
+    // A "pasted" screenshot: a file in the temp folder main hands out, as pasteScreenshot would.
+    const pasted = join(ISSUE_TEMP_DIR, `pasted-test-${Date.now()}.png`)
+    copyFileSync(shot, pasted)
+    rememberIssued(pasted)
+    const picked = fileCapture(shot)
+    if (!picked.ok) throw new Error(picked.error)
+    const req = await request({ screenshots: [pasted, picked.path], environmentPath: env.envPath })
+    const r = await reportIssue(project, PLUGIN.scriptsDir, req, ACTOR, CAPS)
+    expect(r.exitCode, r.stdout + r.stderr).toBe(0)
+    expect(existsSync(pasted)).toBe(false)
+    expect(existsSync(env.envPath)).toBe(false)
+    expect(existsSync(shot)).toBe(true)
+    expect(issuedPaths().has(pasted)).toBe(false)
+    expect(issuedPaths().has(shot)).toBe(false)
+    // The plugin has its own copies.
+    expect(existsSync(join(project, '.sdlc', 'issues', 'ISS-0001', 'screenshot-1.png'))).toBe(true)
+    expect(existsSync(join(project, '.sdlc', 'issues', 'ISS-0001', 'screenshot-2.png'))).toBe(true)
   })
 
   it('exit 1 hands back the plugin’s gaps by field; exit 2 the refusal — nothing written either way', async () => {
