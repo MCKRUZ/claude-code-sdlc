@@ -100,8 +100,20 @@ export async function exportPhaseReport(
 
 export type OpenPath = (path: string) => Promise<string>
 
-/** Electron is loaded on first use: the path check must run, and be testable, without it. */
-const openWithSystem: OpenPath = async (path) => (await import('electron')).shell.openPath(path)
+/** Electron is loaded on first use: the path check must run, and be testable, without it.
+ *
+ * `TOGO_NO_SYSTEM_OPEN=1` (set by playwright.config.ts) keeps the operating system's opener out
+ * of the e2e suite: on the Linux runner `shell.openPath` on an .html runs xdg-open, xdg-open
+ * starts a browser and waits for it, and Electron's shutdown waits for that task — the app
+ * launched by close.spec never exited and the worker teardown timed out after every test
+ * passed. The path check above this still runs; only the final hand-over is skipped. */
+const openWithSystem: OpenPath = async (path) => {
+  if (process.env.TOGO_NO_SYSTEM_OPEN === '1') {
+    console.log(`[togo] system open skipped under TOGO_NO_SYSTEM_OPEN: ${path}`)
+    return ''
+  }
+  return (await import('electron')).shell.openPath(path)
+}
 
 const inside = (parent: string, child: string) => child.startsWith(parent + sep)
 

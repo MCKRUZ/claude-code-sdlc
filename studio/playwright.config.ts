@@ -2,6 +2,9 @@
 // the specs set their own viewports and read CSS-pixel geometry, so it is off here (inherited by
 // every Electron the specs launch through process.env).
 process.env.TOGO_AUTO_ZOOM = '0'
+// And nothing reaches the operating system's opener (activityRuns.ts openWithSystem): on the Linux
+// runner xdg-open starts a browser and Electron's shutdown waits for it.
+process.env.TOGO_NO_SYSTEM_OPEN = '1'
 import { defineConfig } from '@playwright/test'
 
 export default defineConfig({

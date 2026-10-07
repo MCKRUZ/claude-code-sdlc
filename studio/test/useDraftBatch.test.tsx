@@ -184,9 +184,13 @@ describe('useDraftBatch: elapsed time', () => {
     act(() => pushBatchState('/p', { job: batchJob({ phase: 'finished', startedAt }), candidates: [] }))
     // The interval is cleared in an effect cleanup of the commit above; under load (the Windows
     // runner) that cleanup lands a few microtasks later — flush until it has, same assertion.
-    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await Promise.resolve() })
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(result.current.elapsedMs).toBe(0)
     unmount()
+    // React's scheduler may still hold a zero-delay timer of its own (the ubuntu runner read 1
+    // here with every assertion above green): advance by 0 to run those; an interval of ours
+    // would survive this and still fail the count.
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(vi.getTimerCount()).toBe(0)
   })
 })

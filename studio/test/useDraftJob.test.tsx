@@ -181,9 +181,11 @@ describe('useDraftJob: progress and cancel', () => {
     const { result } = setup()
     await act(async () => { await result.current.start(ENHANCE) })
     // The clearInterval runs in the effect cleanup of the commit that moves phase off 'running';
-    // under load (the CI runners) that commit lands a few microtasks after the act above, so
-    // flush until the timer is gone or twenty cycles have passed — the assertion is the same.
-    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await Promise.resolve() })
+    // under load (the CI runners) that commit lands a few microtasks after the act above, and
+    // React's scheduler may hold a zero-delay timer of its own — so advance the fake clock by 0
+    // (zero-delay timers and microtasks run, our 1 s interval would not) until the count is
+    // clear or twenty cycles have passed. The assertion is the same.
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await vi.advanceTimersByTimeAsync(0) })
     expect(vi.getTimerCount()).toBe(0)
   })
 
