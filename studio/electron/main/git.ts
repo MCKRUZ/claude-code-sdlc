@@ -61,6 +61,18 @@ export async function ghJson<T>(args: string[], cwd: string): Promise<T> {
   }
 }
 
+/** Does this project have a shared repository (an `origin`) to talk to? Asked with `git remote`, which
+ * lists the remotes and succeeds when there are none, rather than by using one and reading the failure:
+ * every new project has no `origin` yet, and a command bound to fail shows up as a red error on every
+ * screen and in the Console. */
+export async function hasOriginRemote(cwd: string): Promise<boolean> {
+  try {
+    return (await runGit(['remote'], cwd)).split(/\s+/).includes('origin')
+  } catch {
+    return false
+  }
+}
+
 /** Is there a fetched copy of `origin/<branch>` here? Asked with `for-each-ref`, which prints
  * nothing and succeeds when the answer is no, so a project with no shared repository does not put
  * a failed command in the Console just to learn that. */

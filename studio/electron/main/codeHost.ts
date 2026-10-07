@@ -17,7 +17,7 @@ import {
 } from '../../shared/codeHostModel'
 import { azJson as defaultAzJson, AzError } from './az'
 import { CodeHostUnavailable, type CodeHost, type CreatePullRequestResult, type Identity, type Memo, type PrListEntry, type RepoView } from './codeHostTypes'
-import { runGh as defaultRunGh, runGit as defaultRunGit } from './git'
+import { hasOriginRemote, runGh as defaultRunGh, runGit as defaultRunGit } from './git'
 import { AzureDevOpsHost } from './hosts/azureDevOpsHost'
 import { GitHubHost, type GitHubHostDeps } from './hosts/githubHost'
 
@@ -102,7 +102,11 @@ export async function resolveCodeHost(projectPath: string, deps: ResolveCodeHost
   const readFile = deps.readFile ?? readLocal
   const memo = deps.memo ?? memoFor(projectPath, deps.now)
 
-  const remoteUrl = await runGit(['remote', 'get-url', 'origin'], projectPath).then((s) => s.trim() || null, () => null)
+  // No remote is a state, not a failure: ask `git remote` (which succeeds when empty) before reading an
+  // address that cannot exist, so a new project does not log a failed command on every screen. A caller
+  // that injects its own `runGit` (the unit tests) keeps exactly the call it always made.
+  const noRemote = !deps.runGit && !(await hasOriginRemote(projectPath))
+  const remoteUrl = noRemote ? null : await runGit(['remote', 'get-url', 'origin'], projectPath).then((s) => s.trim() || null, () => null)
   const fileText = readFile(join(projectPath, CODE_HOST_FILE))
   const file = fileText === null ? { settings: null, error: null } : parseCodeHostYaml(fileText)
   const detection = detectHostFromInputs({

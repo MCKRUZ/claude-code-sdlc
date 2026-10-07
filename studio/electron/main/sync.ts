@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
 import { hostFeatureReason } from '../../shared/codeHostModel'
 import { CodeHostUnavailable, resolveCodeHost as defaultResolveCodeHost, type CodeHost, type Identity, type ResolveCodeHostDeps, type ResolvedCodeHost } from './codeHost'
-import { runGit, runGitTolerant } from './git'
+import { runGit, runGitTolerant, hasOriginRemote } from './git'
 import { recordVersion } from './history'
 import { runPluginScript } from './project'
 import { isAllowlisted, isSafeInProject, resolveInProject } from './projectPaths'
@@ -120,14 +120,7 @@ async function currentBranch(projectPath: string): Promise<string> {
   return (await runGit(['branch', '--show-current'], projectPath)).trim()
 }
 
-/** Does this project have a shared repository to sync with? Asked with `git remote`, which lists
- * the remotes and succeeds when there are none, rather than by trying to use one and reading the
- * failure: every new project has no `origin` yet, and a command bound to fail would show up as a
- * red error on every screen and in the Console. */
-async function hasOrigin(projectPath: string): Promise<boolean> {
-  const remotes = (await runGit(['remote'], projectPath)).split(/\r?\n/).map((r) => r.trim())
-  return remotes.includes('origin')
-}
+const hasOrigin = hasOriginRemote
 
 const NOT_CONNECTED =
   'This project is not connected to a shared repository yet, so there is nowhere to save changes for your team. '
@@ -351,13 +344,11 @@ export async function getConnectionInfo(projectPath: string, pluginScriptsDir: s
   // push gets rejected (finding 9); this is purely for the connection screen to show
   // something before the person ever saves. Null is "couldn't read", not "no".
   let branchProtected: boolean | null = null
-  // With no shared repository there is nothing to ask the code host about.
-  if (connected) {
-    try {
-      branchProtected = await resolved.provider.isBranchProtected(branch)
-    } catch {
-      branchProtected = null
-    }
+  // With no shared repository no host is detected, and the provider is then the null one, which asks nothing.
+  try {
+    branchProtected = await resolved.provider.isBranchProtected(branch)
+  } catch {
+    branchProtected = null
   }
 
   const state = getProjectSyncState(projectPath)
@@ -1001,7 +992,7 @@ export async function save(
       const created = await resolved.provider.createPullRequest({
         base: branch, head: branchName,
         title: (changeNote.split('\n')[0] || `Studio save ${branchName}`).slice(0, 72),
-        body: `Saved from Tōgō.\n\n${changeNote}`,
+        body: `Saved from SDLC Studio.\n\n${changeNote}`,
         reviewer: review.reviewer,
       })
       prUrl = created.url
