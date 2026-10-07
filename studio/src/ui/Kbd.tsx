@@ -17,6 +17,13 @@ const GLYPH: Record<string, string> = {
   Backspace: '⌫',
 }
 
+/** The keycap ON A TOOLTIP PLATE. The plate is the theme's inverse (`bg-slate-900 text-white`
+ * in light; dark.css flips that pair to a pale plate with dark ink), so the keycap reads its
+ * ink, edge and fill from `ink-inverse` — the one token that is light on the dark plate and dark
+ * on the pale one — never from `white`, which dark.css deliberately does not remap (v14: the
+ * Settings tooltip's ⌘, drew white on a pale plate — a blank box). */
+export const KBD_ON_PLATE_CLASS = 'border-ink-inverse/20 bg-ink-inverse/10 text-ink-inverse shadow-none'
+
 export function isMacPlatform(): boolean {
   if (typeof navigator === 'undefined') return false
   const platform = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ?? navigator.platform ?? ''

@@ -5,7 +5,7 @@
  * disabled with its reason. No IPC of its own — every action is a callback. */
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { TodayColumn, prUrlFor, stampText, streamSentence, TEAM_WAITING_CAPTION } from '../src/components/today/TodayColumn'
+import { TodayColumn, moreLabel, prUrlFor, stampText, streamSentence, STRIP_ROWS, TEAM_WAITING_CAPTION } from '../src/components/today/TodayColumn'
 import { SIGN_IN_TO_SEE, STANDUP_NOTES, STREAM_ARRIVES, UNDATED } from '../shared/reasons'
 import type { SprintVerbResult } from '../shared/types'
 import { CC, EMPTY_CC, withCc } from './sprintHomeFixture'
@@ -160,5 +160,56 @@ describe('since yesterday reads whole sentences (owner\'s v12 item 5)', () => {
       expect(text.getAttribute('title')).toBe(text.textContent)
     }
     expect(screen.getByTestId('today').hasAttribute('data-today-rail')).toBe(true)
+  })
+})
+
+/** v14 (sprint-home@1280 shot): as the strip above the lanes, Today was a 120 px scroller that
+ * sliced "0005 data · today" mid-row behind a fade that read as a cut. The strip is now sized to
+ * WHOLE rows: needs-you shows `STRIP_ROWS` in full and folds the rest behind one "N more"
+ * disclosure — a last `<li>` of the same list, so every row is still in the list and a count of
+ * them is unchanged — and the other groups keep their header and fold every row behind "N rows"
+ * (at 1280×800 the strip has ≈ 108 px before the lanes' floor leaves the fold; a stream row is
+ * ≈ 80). The rail (the default) draws every row and scrolls. */
+describe('the strip folds each group to whole rows', () => {
+  it('strip: two needs-you rows whole, the rest behind a closed "N more" in the same list; the other groups fold every row behind "N rows"; the rail folds nothing', () => {
+    mount(CC, { strip: true })
+    expect(STRIP_ROWS).toBe(2)
+    expect(moreLabel(1)).toBe('1 more')
+    expect(moreLabel(3, 0)).toBe('3 rows')
+    expect(moreLabel(1, 0)).toBe('1 row')
+    const list = screen.getByTestId('needs-you-list')
+    // Every row is still in the list …
+    expect(list.querySelectorAll('[data-needs-you-item]')).toHaveLength(3)
+    // … but only two sit on its own line; the third is behind the fold, which is a <details>.
+    expect(list.querySelectorAll(':scope > li[data-needs-you-item]')).toHaveLength(2)
+    const more = screen.getByTestId('needs-you-more') as HTMLDetailsElement
+    expect(more.tagName).toBe('DETAILS')
+    expect(more.open).toBe(false)
+    expect(more.parentElement?.tagName).toBe('LI')
+    expect(more.parentElement?.parentElement).toBe(list)
+    expect(more.querySelector('summary')?.textContent).toBe('1 more')
+    expect(more.querySelectorAll('[data-needs-you-item]')).toHaveLength(1)
+    expect(more.querySelector('[data-needs-you-item]')?.getAttribute('data-kind')).toBe('confirm-tier')
+    // The stream keeps its header, window filter and caption, and folds EVERY row (three).
+    const stream = screen.getByTestId('stream')
+    expect(stream.querySelectorAll('[data-stream-key]')).toHaveLength(3)
+    expect(stream.querySelectorAll(':scope > li[data-stream-key]')).toHaveLength(0)
+    const streamMore = screen.getByTestId('stream-more') as HTMLDetailsElement
+    expect(streamMore.open).toBe(false)
+    expect(streamMore.querySelector('summary')?.textContent).toBe('3 rows')
+    expect(streamMore.querySelectorAll('[data-stream-key]')).toHaveLength(3)
+    expect(screen.getByRole('button', { name: '3 business days' })).toBeTruthy()
+    // Team is waiting on: its one row folds too, under its caption.
+    const team = screen.getByTestId('team-waiting')
+    expect(team.querySelectorAll(':scope > li:not([data-fold])')).toHaveLength(0)
+    expect(screen.getByTestId('team-waiting-more').querySelector('summary')?.textContent).toBe('1 row')
+    expect(screen.getByTestId('team-waiting-caption')).toBeTruthy()
+    // No height cap and no mask on the column: whole rows, never a slice.
+    expect(screen.getByTestId('today').className).not.toMatch(/max-h-|mask-image|overflow-y-auto/)
+    cleanup()
+    mount()
+    expect(screen.getByTestId('needs-you-list').querySelectorAll(':scope > li[data-needs-you-item]')).toHaveLength(3)
+    expect(screen.getByTestId('stream').querySelectorAll(':scope > li[data-stream-key]')).toHaveLength(3)
+    expect(document.querySelector('[data-fold]')).toBeNull()
   })
 })

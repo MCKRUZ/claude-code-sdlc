@@ -16,6 +16,7 @@ import { CAPABILITIES, NO_ACTOR, NO_DATA, NO_PR_YET, VAGUE_LINE_REWRITE } from '
 import { slateToBoardRow } from '../../../shared/sprintModel'
 import { BackLink, Button, Card, Chip, Disclosure, Eyebrow, Icon, Notice } from '../../ui'
 import { backlogStore } from '../../stores/backlogStore'
+import { MarkdownView } from '../MarkdownView'
 import { SpecFactsRail } from '../SpecFactsRail'
 import { SpecNeighbourhood } from '../SpecNeighbourhood'
 import { useEnter } from '../../motion/useEnter'
@@ -243,7 +244,12 @@ function Doc({ label, text }: { label: string; text: string | null }) {
   return (
     <div className="mt-2" data-doc={label}>
       <p className="text-xs font-medium text-ink-2">{label}</p>
-      {text ? <pre className="mt-0.5 whitespace-pre-wrap font-sans text-xs text-ink-1">{text}</pre> : <p className="mt-0.5 text-xs text-ink-3" data-doc-empty={text === null ? 'absent' : 'empty'}>{text === null ? SECTION_ABSENT : SECTION_EMPTY}</p>}
+      {text ? (
+        // The document's own markdown, TYPESET (v14 at 1680: a `<pre>` drew "### In scope" and a
+        // lone "-" as literal text) — through the same `MarkdownView` the Documents tab reads
+        // with, which drops raw HTML, so a template comment can never surface here either.
+        <div className="mt-0.5" data-doc-body=""><MarkdownView source={text} /></div>
+      ) : <p className="mt-0.5 text-xs text-ink-3" data-doc-empty={text === null ? 'absent' : 'empty'}>{text === null ? SECTION_ABSENT : SECTION_EMPTY}</p>}
     </div>
   )
 }

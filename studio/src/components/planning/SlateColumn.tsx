@@ -3,8 +3,10 @@
 // line per row — the build-order numeral in `--text-ident`, the id and name (never truncated to
 // nothing: the name track is `minmax(12rem,1fr)`, a FLOOR, and the name wraps at its own
 // hyphens — `break-word`, never `anywhere`, which lets the grid shrink a word to one letter per
-// line), the DoR and risk chips, the Builder / Checker pickers (`RolePicker` → `assignRoles`, each
-// a fixed `w-44`) inline when the column is ≥ 820 px wide, else on a second line under the name
+// line), the DoR and risk chips, the Builder / Checker pickers (`RolePicker` → `assignRoles`) —
+// a fixed `w-44` each inline when the column is ≥ 820 px wide, else on their own line under the
+// name where the two share the row (`flex-1` over a 0 basis, ≥ 10 rem each) and a long value
+// ellipsises with its full text in the title (v14: "Sam Kowalski (@sam-k" cut with no cue)
 // — and the rest of
 // the row (the HIGH line quoted verbatim from `ladder.rungs`, the people, `depends_on`, the
 // Security signer slot that is always disabled with its reason, "Remove from slate" with the
@@ -34,6 +36,9 @@ export const SLATE_INLINE_PX = 820
 export const SLATE_NAME_TRACK = 'minmax(12rem,1fr)'
 export const SLATE_LINE_CLASS = `grid grid-cols-[2rem_${SLATE_NAME_TRACK}_auto] items-start gap-x-3 gap-y-1.5 @min-[${SLATE_INLINE_PX}px]:grid-cols-[2rem_${SLATE_NAME_TRACK}_auto_auto] @min-[${SLATE_INLINE_PX}px]:items-center`
 export const SLATE_PICKERS_CLASS = `col-span-3 col-start-1 flex min-w-0 flex-wrap items-end gap-2 @min-[${SLATE_INLINE_PX}px]:col-span-1 @min-[${SLATE_INLINE_PX}px]:col-start-auto @min-[${SLATE_INLINE_PX}px]:flex-nowrap`
+/** Each picker's SLOT once the pickers join the name's line: the fixed 11 rem the threshold is
+ * derived from (`RolePicker`'s `COMPACT_SLOT_CLASS` makes it `flex-1` on its own line). */
+export const SLATE_PICKER_SLOT_CLASS = `@min-[${SLATE_INLINE_PX}px]:w-44 @min-[${SLATE_INLINE_PX}px]:flex-none`
 
 export interface SlateColumnProps {
   view: SprintView
@@ -80,8 +85,8 @@ export function SlateColumn(props: SlateColumnProps) {
             <Chip tone={riskTone(l.row.risk)} casing="identifier">{l.row.risk}</Chip>
           </span>
           <span className={SLATE_PICKERS_CLASS} data-slate-pickers="">
-            <RolePicker role="developer" spec={l.row.id} value={row.developer} people={people} canAssign={canAssign} busy={busy} compact onChange={(h) => onAssign(row, { developer: h })} />
-            <RolePicker role="checker" spec={l.row.id} value={row.checker} people={people} developer={row.developer} canAssign={canAssign} busy={busy} compact onChange={(h) => onAssign(row, { checker: h })} />
+            <RolePicker role="developer" spec={l.row.id} value={row.developer} people={people} canAssign={canAssign} busy={busy} compact className={SLATE_PICKER_SLOT_CLASS} onChange={(h) => onAssign(row, { developer: h })} />
+            <RolePicker role="checker" spec={l.row.id} value={row.checker} people={people} developer={row.developer} canAssign={canAssign} busy={busy} compact className={SLATE_PICKER_SLOT_CLASS} onChange={(h) => onAssign(row, { checker: h })} />
           </span>
         </div>
         <Disclosure summary={<span className="text-xs text-ink-3">{ROW_MORE}</span>} className="mt-1" data-testid="slate-row-more">

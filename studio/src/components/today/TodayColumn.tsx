@@ -6,12 +6,12 @@
 // one labelled line of Tōgō's own record, and a Standup notes button that is present, disabled,
 // with its reason. The list main built is shown as it came: the chip in the TopBand is its length
 // and nothing here re-counts it. A later row rises alone by its identity key, never a re-stagger.
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Bell, Check, GitPullRequest, Hand, Scale } from 'lucide-react'
 import type { CommandCenter, ConfirmTierResult, DecideDecisionResult, NeedsYouItem, SinceWindow, SprintVerbRequest, SprintVerbResult, StreamRow } from '../../../shared/types'
 import { CAPABILITIES, exitHeading, LOOP_EVENTS_TOTALS_ONLY, NO_DATA, NOTHING_NEEDS_YOU, STANDUP_NOTES, STREAM_ARRIVES, UNDATED } from '../../../shared/reasons'
 import { businessDays, groupVerdicts } from '../../../shared/sprintModel'
-import { Button, Chip, cn, Eyebrow, Input, Segmented } from '../../ui'
+import { Button, Chip, cn, Disclosure, Eyebrow, Input, Segmented } from '../../ui'
 import { TODAY_ROW_RISE } from '../../motion/presets'
 import { enabled as motionEnabled, reduced as motionReduced } from '../../motion/motion'
 import { engineFor } from '../../motion/useStudioGSAP'
@@ -27,12 +27,43 @@ export interface TodayColumnProps {
   onActed: () => void
   /** Tōgō's own record of Claude's work this session, labelled as such; null → nothing drafted. */
   claudeLine: string | null
+  /** Drawn as the STRIP above the lanes (the home under 1240 px): needs-you shows `STRIP_ROWS`
+   * whole and folds the rest behind "N more"; the other groups keep their header and fold every
+   * row behind "N rows". The rail (default) draws every row and scrolls. */
+  strip?: boolean
   className?: string
 }
 
 const ICON: Record<NeedsYouItem['kind'], typeof Bell> = { ack: Hand, review: GitPullRequest, decide: Scale, 'confirm-tier': Check }
 export const TEAM_WAITING_CAPTION = "a lane, not a person — the verdict is the team's"
 const WINDOWS: { value: '1' | '3'; label: string }[] = [{ value: '1', label: '1 business day' }, { value: '3', label: '3 business days' }]
+
+/** In the strip, needs-you shows this many rows whole; the rest fold. The OTHER groups keep their
+ * header and fold every row (`shown` 0): at 1280×800 the strip has ≈ 108 px before the four
+ * lanes' 240 px floor leaves the fold (372 top + 16 + 40 filter + 240 + 24), so a second whole
+ * stream row (≈ 80 px each) cannot be afforded — needs-you is the group a person acts on. */
+export const STRIP_ROWS = 2
+/** The fold's summary — a count of rows on THIS screen, never a plugin number re-counted: "N
+ * more" under rows that are shown, "N rows" when the group shows none. */
+export const moreLabel = (hidden: number, shown = STRIP_ROWS): string => (shown > 0 ? `${hidden} more` : `${hidden} ${hidden === 1 ? 'row' : 'rows'}`)
+
+/** A list's rows as the strip draws them: the first `shown` whole, the rest behind one
+ * disclosure in a last `<li>` — so the list stays ONE list (every row is still a descendant of
+ * the same `<ul>`, so a count of its rows is unchanged), nothing is cut mid-sentence and nothing
+ * scrolls under a fade (v14 at 1280×800: the 120 px cap sliced "0005 data · today" and the fade
+ * read as a cut). Off the strip the rows are returned as given. */
+export function foldRows(rows: ReactNode[], strip: boolean, testId: string, listClass = 'mt-1 space-y-1', shown = STRIP_ROWS): ReactNode[] {
+  if (!strip || rows.length <= shown) return rows
+  const rest = rows.slice(shown)
+  return [
+    ...rows.slice(0, shown),
+    <li key="more" data-fold="" className="list-none">
+      <Disclosure data-testid={testId} summary={<span className="text-xs text-ink-3">{moreLabel(rest.length, shown)}</span>}>
+        <ul className={listClass}>{rest}</ul>
+      </Disclosure>
+    </li>,
+  ]
+}
 
 /** The PR url for a needs-you row, looked up on the board by exact spec id. */
 export function prUrlFor(cc: CommandCenter, spec: string | undefined): string | null {
@@ -57,7 +88,7 @@ export function streamSentence(r: Pick<StreamRow, 'text'>): string | null {
   return t.length > 0 ? t : null
 }
 
-export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onActed, claudeLine, className }: TodayColumnProps) {
+export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onActed, claudeLine, strip = false, className }: TodayColumnProps) {
   const sprint = cc.sprint.data
   const verdictGroups = sprint ? groupVerdicts(sprint.verdictsPending) : []
   const hasLog = cc.capabilities.includes(CAPABILITIES.sprintLog)
@@ -77,9 +108,9 @@ export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onAct
           </div>
         ) : (
           <ul className="space-y-2" data-testid="needs-you-list">
-            {cc.needsYou.map((item) => (
+            {foldRows(cc.needsYou.map((item) => (
               <NeedsYouRow key={`${item.kind}:${item.spec ?? ''}:${item.id ?? ''}`} item={item} cc={cc} onRun={onRun} onDecide={onDecide} onConfirmTier={onConfirmTier} onActed={onActed} />
-            ))}
+            )), strip, 'needs-you-more', 'mt-2 space-y-2')}
           </ul>
         )}
       </section>
@@ -91,14 +122,14 @@ export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onAct
             {/* Said ONCE for the group, not under every row (v13: two identical captions). */}
             <p className="text-[11px] text-ink-3" data-testid="team-waiting-caption">{TEAM_WAITING_CAPTION}</p>
             <ul className="space-y-1" title="sprint.py status --json · verdicts_pending" data-testid="team-waiting">
-              {verdictGroups.map((g) => (
+              {foldRows(verdictGroups.map((g) => (
                 <li key={g.spec} className="flex min-h-[44px] flex-wrap items-center gap-x-2 rounded-[10px] border-l-2 border-line-2 bg-surface-1 px-3 py-2 text-xs">
                   <span className="font-mono text-ident tabular-nums text-ink-1">{g.spec}</span>
                   {g.lanes.map((v) => (
                     <span key={v.lane} className="font-mono text-ident text-ink-2">{v.lane} · {businessDays(v.sinceBusinessDays)}</span>
                   ))}
                 </li>
-              ))}
+              )), strip, 'team-waiting-more', 'mt-1 space-y-1', 0)}
             </ul>
           </>
         )}
@@ -109,7 +140,7 @@ export function TodayColumn({ cc, onRun, onDecide, onConfirmTier, onSince, onAct
           <Eyebrow as="h3" id="since-title">Since yesterday</Eyebrow>
           <Segmented<'1' | '3'> label="Window" tone="neutral" size="sm" options={WINDOWS} value={String(cc.since) as '1' | '3'} onChange={(v) => onSince(Number(v) as SinceWindow)} />
         </div>
-        <Stream rows={cc.sinceYesterday} hasLog={hasLog} logError={cc.log.ok ? null : cc.log.error} />
+        <Stream rows={cc.sinceYesterday} hasLog={hasLog} logError={cc.log.ok ? null : cc.log.error} strip={strip} />
         <p className="text-[11px] text-ink-3" title={LOOP_EVENTS_TOTALS_ONLY}>the window is a filter, not a number · {LOOP_EVENTS_TOTALS_ONLY}</p>
       </section>
 
@@ -183,7 +214,7 @@ function NeedsYouRow({ item, cc, onRun, onDecide, onConfirmTier, onActed }: { it
 }
 
 /** The stream, each row tagged by origin; a row that arrives after the first paint rises alone. */
-function Stream({ rows, hasLog, logError }: { rows: StreamRow[]; hasLog: boolean; logError: string | null }) {
+function Stream({ rows, hasLog, logError, strip }: { rows: StreamRow[]; hasLog: boolean; logError: string | null; strip: boolean }) {
   const seen = useRef<Set<string> | null>(null)
   const list = useRef<HTMLUListElement>(null)
   useLayoutEffect(() => {
@@ -207,7 +238,7 @@ function Stream({ rows, hasLog, logError }: { rows: StreamRow[]; hasLog: boolean
   if (rows.length === 0) return <p className="text-xs text-ink-3">nothing in the window</p>
   return (
     <ul ref={list} className="space-y-1" data-testid="stream">
-      {rows.map((r) => {
+      {foldRows(rows.map((r) => {
         const sentence = streamSentence(r)
         return (
           // Owner's v12 item 5: the row's sentence WHOLE, on its own line, two lines allowed —
@@ -224,7 +255,7 @@ function Stream({ rows, hasLog, logError }: { rows: StreamRow[]; hasLog: boolean
             {r.by && <p className="text-ink-3" data-stream-by="">by {r.by}</p>}
           </li>
         )
-      })}
+      }), strip, 'stream-more', 'mt-1 space-y-1', 0)}
     </ul>
   )
 }

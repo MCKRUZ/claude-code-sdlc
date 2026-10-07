@@ -22,10 +22,14 @@ import { distinctPeople, waitIsLong, type LaneRow } from './laneModel'
  * table in `shared/sprintModel`, re-exported for the callers that import it from here. */
 export { riskTone }
 
-/** Rings overlap by 4 px only when a row names more than two people (visual §4); two or fewer
- * sit side by side with a 4 px gap, so a pair never reads as one run of letters. */
+/** Rings stack only when a row names FOUR or more people; up to three sit in a plain row with a
+ * 4 px gap (v14: the common owner · builder · checker trio stacked, and "PN" lost its N under
+ * "SK" and the you-ring — a 20 px disc has ≈ 3.5 px of letter-free edge, so any overlap plus the
+ * 2 px surface gap nicks a letter; three whole rings fit a card, so they never overlap). */
+export const RINGS_STACK_FROM = 4
+
 export function ringsOverlap(count: number): boolean {
-  return count > 2
+  return count >= RINGS_STACK_FROM
 }
 
 /** The people of a row for the ring strip: the signed-in person LAST. In a stack later rings sit
@@ -36,15 +40,18 @@ export function ringOrder(people: readonly string[], me: string | null): string[
   return [...people.filter((h) => !samePerson(h, me)), ...people.filter((h) => samePerson(h, me))]
 }
 
-/** The margin a ring in a STACK takes (v13 fixer round: "PN ƧK" — the first ring sat above the
- * second and clipped its first letter). Later rings sit above earlier ones (`zIndex: i + 1`, the
- * standard avatar stack), so each ring's left letter stays whole and the 4 px overlap covers only
- * the previous disc's letter-free right edge (letters span ≈ 5–15 px of the 20 px disc). The
- * you-ring draws a 4 px halo OUTSIDE its disc, so it overlaps by 0 instead: the halo, not the
- * disc, then sits on those last 4 px. */
+/** The margin a ring in a STACK (four or more people) takes. Later rings sit above earlier ones
+ * (`zIndex: i + 1`, the standard avatar stack — v13: "PN ƧK", the first ring over the second
+ * clipped its first letter), so each ring's left letter stays whole and the 4 px overlap covers
+ * only the previous disc's right edge. Two rings are exempt from the overlap: the FIRST ring is
+ * never overlapped — the second starts 2 px after it, the width of its own `surface-1` gap ring,
+ * so that gap is drawn in the gap and nothing paints over the first disc (v14: "PN" lost its N);
+ * and the you-ring (always last) overlaps by 0, because its 4 px halo is drawn OUTSIDE its disc
+ * and that halo, not the disc, then sits on the previous ring's last 4 px. */
 export function stackedRingMargin(index: number, you: boolean): string | null {
   if (index === 0) return null
-  return you ? 'ml-0' : '-ml-1'
+  if (you) return 'ml-0'
+  return index === 1 ? 'ml-0.5' : '-ml-1'
 }
 
 /** The two letters a ring shows, from the roster NAME when the roster knows the handle (never a

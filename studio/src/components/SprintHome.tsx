@@ -29,7 +29,7 @@ import { SprintHeader } from './SprintHeader'
 import { InTheRoom } from './InTheRoom'
 import { Refining } from './Refining'
 import { LaneBoard } from './lanes/LaneBoard'
-import { useCockpitChrome } from './lanes/useCockpitChrome'
+import { useCockpitChrome, useTodayBranch } from './lanes/useCockpitChrome'
 import { VerdictDialog } from './lanes/VerdictDialog'
 import type { LaneFilterMode, LaneRow } from './lanes/laneModel'
 import { TodayColumn } from './today/TodayColumn'
@@ -65,14 +65,18 @@ export function focusBackSelector(back: NonNullable<SprintHomeProps['focusBack']
  * starts under it. Lanes and the rail each scroll inside. `--cockpit-chrome` is the grid's own
  * top plus `<main>`'s bottom padding (`cockpitLayout.ts`; measured live by `useCockpitChrome`). */
 export const COCKPIT_ROW_CLASS = '@min-[1240px]:grid-rows-[max(280px,calc(100dvh-var(--cockpit-chrome,396px)))]'
-/** The strip (under 1240 px): capped at 120 px, scrolling inside, four groups in a row. */
-export const TODAY_STRIP_CLASS = '@min-[700px]:grid-cols-2 @min-[1000px]:grid-cols-4 @max-[1239px]:max-h-[120px] @max-[1239px]:overflow-y-auto @max-[1239px]:overscroll-contain @max-[1239px]:pr-1 @max-[1239px]:pb-2'
+/** The strip (under 1240 px): four groups in a row, sized to WHOLE rows — no height cap and no
+ * scroller (v14 at 1280×800: a 120 px `max-h` sliced rows mid-sentence and its fade read as a
+ * cut). Needs-you shows `TodayColumn`'s `STRIP_ROWS` whole and folds the rest behind "N more";
+ * the other groups keep their header and fold every row (`strip` prop, from `useTodayBranch`);
+ * `useCockpitChrome` measures the strip's real height into the wells' cap. */
+export const TODAY_STRIP_CLASS = '@min-[700px]:grid-cols-2 @min-[1000px]:grid-cols-4'
 /** The rail (from 1240 px): one column, the grid row's height, scrolling inside. */
 export const TODAY_RAIL_CLASS = '@min-[1240px]:order-1 @min-[1240px]:grid-cols-1 @min-[1240px]:content-start @min-[1240px]:min-h-0 @min-[1240px]:overflow-y-auto @min-[1240px]:overscroll-contain @min-[1240px]:pr-1 @min-[1240px]:pb-2'
-/** Both branches scroll inside a capped box, so the last 16 px fade: a clipped row reads as "more
- * below", never as a slice (v13 probe at 1280×800: "0005 data · today" cut mid-row with no cue).
- * Plain CSS in a class — nothing inline, nothing the CSP cares about. */
-export const TODAY_SCROLL_MASK_CLASS = '[mask-image:linear-gradient(to_bottom,#000_calc(100%-16px),transparent)]'
+/** The RAIL scrolls inside a capped box, so its last 16 px fade: a clipped row reads as "more
+ * below", never as a slice. Rail only — the strip has nothing to clip (v14). Plain CSS in a
+ * class — nothing inline, nothing the CSP cares about. */
+export const TODAY_SCROLL_MASK_CLASS = '@min-[1240px]:[mask-image:linear-gradient(to_bottom,#000_calc(100%-16px),transparent)]'
 
 /** The board row the spec view takes: the board's row by exact id, else the slate row's shape. */
 export function boardRowFor(row: LaneRow): BoardRow {
@@ -98,6 +102,8 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
   const connection = useConnection()
   const hasSprint = Boolean(cc?.sprint.data?.sprint)
   useCockpitChrome(root, gridRef, hasSprint)
+  // Which branch Today is drawn in — the strip folds its groups to whole rows (v14).
+  const todayIs = useTodayBranch(root, cc !== null)
   // After a verb's exit 0 the control that changed takes focus — once the refreshed read (a new
   // `cc`) has landed, never before (plan §10; `motion/focusReturn`). Keyed on the document
   // itself: `fetchedAt` is the STALEST block's stamp and can survive a write (the host block's TTL).
@@ -248,12 +254,13 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
       >
         {/* Today first in DOM — needs-you is the first thing to act on — and `order-1` from 1240 px
             so auto-placement seats the lanes in the 1fr column and Today in the rail. As a strip
-            (under 1240) its four groups sit in a row and it caps at 120 px (`STRIP_MAX_PX`),
-            scrolling inside. As the RAIL it is a grid item of the cockpit row — `min-h-0` so it
-            may be shorter than its content — and scrolls inside, so the cockpit (four lanes AND the
-            rail) fits the first screen; v13's probe measured the uncapped rail at 1467 px. */}
+            (under 1240) its four groups sit in a row, each cut to WHOLE rows — `STRIP_ROWS` shown,
+            the rest behind "N more" — never to a height (v14: the 120 px cap sliced text). As the
+            RAIL it is a grid item of the cockpit row — `min-h-0` so it may be shorter than its
+            content — and scrolls inside, so the cockpit (four lanes AND the rail) fits the first
+            screen; v13's probe measured the uncapped rail at 1467 px. */}
         <TodayColumn cc={cc} onRun={runVerb} onDecide={decide} onConfirmTier={(id) => confirmTier(specPathFor(id))} onSince={setSince} onActed={reload} claudeLine={claudeLine}
-          className={cn(TODAY_STRIP_CLASS, TODAY_RAIL_CLASS, TODAY_SCROLL_MASK_CLASS)} />
+          strip={todayIs === 'strip'} className={cn(TODAY_STRIP_CLASS, TODAY_RAIL_CLASS, TODAY_SCROLL_MASK_CLASS)} />
         {view && view.sprint ? (
           // In the rail branch the wrapper is a flex column of the row's height, so the lane board
           // can hand its wells the height left under the filter row (`LaneBoard`: `flex-1 min-h-0`).

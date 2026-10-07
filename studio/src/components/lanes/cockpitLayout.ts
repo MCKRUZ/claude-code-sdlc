@@ -52,9 +52,13 @@ export const LANE_FLOOR_PX = 240
 export const COCKPIT_CHROME_PX = COCKPIT_TOP_PX + MAIN_PADDING_PX
 /** Under the rail threshold the grid's gap tightens from 24 to 16. */
 export const STRIP_GAP_PX = 16
-/** The Today strip's cap ABOVE the lanes (the owner allowed "a compact strip"). 1280×800 budget:
- * 372 + 120 + 16 + the filter row 40 = 548 → the wells get 800 − 572 = 228 → the 240 floor wins
- * → they end at 788, on screen. 160 would push the wells 40 px under the fold. */
+/** The Today strip's NOMINAL height ABOVE the lanes at first paint: an eyebrow row and two whole
+ * 44 px rows with their 8 px gaps (the owner allowed "a compact strip"). Not a cap — v14 at
+ * 1280×800 a 120 px `max-h` sliced rows mid-sentence and its fade read as a cut, so the strip is
+ * now sized to whole rows (needs-you shows `TodayColumn`'s `STRIP_ROWS` and folds the rest behind
+ * "N more"; the other groups fold every row) and `useCockpitChrome` measures the real strip into the arithmetic
+ * (`cockpitChromeFor`'s `stripHeight`). 1280×800 budget with the nominal: 372 + 120 + 16 + the
+ * filter row 40 = 548 → the wells get 800 − 572 = 228 → the 240 floor wins → they end at 788. */
 export const STRIP_MAX_PX = 120
 /** STRIP branch: the strip, its gap and the filter row join the chrome, so a well's `max-h`
  * (`100dvh − chrome`, floor `LANE_FLOOR_PX`) ends at the fold minus 24 when the floor allows. */
@@ -91,11 +95,12 @@ export function laneWidthFor(lanesWidth: number): number {
 
 /** The chrome for a home of `homeWidth` whose grid top sits at `gridTop` in the window — the one
  * number the CSS subtracts from `100dvh`. The branch decides what else sits between the grid's
- * top and the wells (the strip and the filter row), and `<main>`'s bottom padding always counts. */
-export function cockpitChromeFor(homeWidth: number, gridTop: number = COCKPIT_TOP_PX): number {
+ * top and the wells (the strip — its measured height when the caller has one, the nominal
+ * otherwise — and the filter row), and `<main>`'s bottom padding always counts. */
+export function cockpitChromeFor(homeWidth: number, gridTop: number = COCKPIT_TOP_PX, stripHeight: number = STRIP_MAX_PX): number {
   return todayBranch(homeWidth) === 'rail'
     ? gridTop + MAIN_PADDING_PX
-    : gridTop + STRIP_MAX_PX + STRIP_GAP_PX + FILTER_ROW_PX + MAIN_PADDING_PX
+    : gridTop + stripHeight + STRIP_GAP_PX + FILTER_ROW_PX + MAIN_PADDING_PX
 }
 
 /** RAIL branch: the cockpit row's height on a window `viewportHeight` tall — what the lanes and
@@ -115,6 +120,6 @@ export function belowFoldTopFor(viewportHeight: number, gridTop: number = COCKPI
 }
 
 /** STRIP branch: a well's height under its cap — `100dvh − chrome`, never under the floor. */
-export function stripLaneHeightFor(viewportHeight: number, gridTop: number = COCKPIT_TOP_PX): number {
-  return Math.max(LANE_FLOOR_PX, viewportHeight - cockpitChromeFor(RAIL_THRESHOLD_PX - 1, gridTop))
+export function stripLaneHeightFor(viewportHeight: number, gridTop: number = COCKPIT_TOP_PX, stripHeight: number = STRIP_MAX_PX): number {
+  return Math.max(LANE_FLOOR_PX, viewportHeight - cockpitChromeFor(RAIL_THRESHOLD_PX - 1, gridTop, stripHeight))
 }

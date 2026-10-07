@@ -152,20 +152,31 @@ describe('the classes SprintHome and LaneBoard spell are those numbers', () => {
     expect(LANE_MAX_HEIGHT_CLASS).toContain(`max(${LANE_FLOOR_PX}px,`)
   })
 
-  it('1280×800 → the strip branch: Today sits before the lanes in DOM, capped at 120 px, fading at its foot, and the chrome grows by the strip and the filter row', async () => {
+  /** v14 (sprint-home@1280 shot): the strip is sized to WHOLE rows, never to a height — the
+   * 120 px cap sliced rows mid-sentence and its fade read as a cut. Under the threshold there is
+   * no `max-h`, no scroller and no mask; the fade stays on the RAIL, which does scroll. The
+   * nominal 120 is only the chrome's first-paint default — `cockpitChromeFor` takes the measured
+   * strip, so a taller strip moves the wells' cap with it. */
+  it('1280×800 → the strip branch: Today sits before the lanes in DOM, uncapped and unmasked, and the chrome grows by the strip (nominal, or measured) and the filter row', async () => {
     windowStub(1280, 800)
     const { grid, today } = await mountHome()
     expect(grid.firstElementChild).toBe(today)
     expect(today.className).toContain(TODAY_STRIP_CLASS)
-    expect(TODAY_STRIP_CLASS).toContain(`@max-[${RAIL_THRESHOLD_PX - 1}px]:max-h-[${STRIP_MAX_PX}px]`)
-    expect(TODAY_STRIP_CLASS).toContain(`@max-[${RAIL_THRESHOLD_PX - 1}px]:overflow-y-auto`)
-    expect(TODAY_STRIP_CLASS).toContain(`@max-[${RAIL_THRESHOLD_PX - 1}px]:pb-2`)
+    expect(TODAY_STRIP_CLASS).not.toMatch(/max-h-|overflow-y-auto|overscroll|mask-image/)
+    expect(today.className).not.toMatch(/@max-\[\d+px\]:(max-h-|overflow-y-auto|\[mask-image)/)
     expect(today.className).toContain('@min-[1000px]:grid-cols-4')
-    // v13 fixer round: a clipped row reads as "more below" — the scroller's last 16 px fade.
+    // The rail's last 16 px fade (a scroller's "more below") is the rail's alone.
     expect(today.className).toContain(TODAY_SCROLL_MASK_CLASS)
-    expect(TODAY_SCROLL_MASK_CLASS).toMatch(/^\[mask-image:linear-gradient\(to_bottom,#000_calc\(100%-16px\),transparent\)\]$/)
+    expect(TODAY_SCROLL_MASK_CLASS).toBe(`@min-[${RAIL_THRESHOLD_PX}px]:[mask-image:linear-gradient(to_bottom,#000_calc(100%-16px),transparent)]`)
     expect(grid.className).toContain(`@max-[${RAIL_THRESHOLD_PX - 1}px]:[--cockpit-chrome:${COCKPIT_CHROME_WITH_STRIP_PX}px]`)
     expect(grid.className).toContain(`@max-[${RAIL_THRESHOLD_PX - 1}px]:gap-4`)
+    // The measured strip replaces the nominal in the arithmetic: a 150 px strip at 1280 → 602;
+    // the rail branch ignores it; a well under a 150 px strip on a 1000 px window ends at 976.
+    expect(cockpitChromeFor(1192, COCKPIT_TOP_PX, 150)).toBe(COCKPIT_TOP_PX + 150 + STRIP_GAP_PX + FILTER_ROW_PX + MAIN_PADDING_PX)
+    expect(cockpitChromeFor(1192, COCKPIT_TOP_PX, 150)).toBe(602)
+    expect(cockpitChromeFor(1352, COCKPIT_TOP_PX, 150)).toBe(COCKPIT_CHROME_PX)
+    expect(stripLaneHeightFor(1000, COCKPIT_TOP_PX, 150)).toBe(1000 - 602)
+    expect(cockpitChromeFor(1192)).toBe(COCKPIT_CHROME_WITH_STRIP_PX)
   })
 
   it('every lane is a scroller under a static header, and the baton overlay follows the same 916 threshold', async () => {

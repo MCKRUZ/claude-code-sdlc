@@ -24,19 +24,40 @@ export function scopeSections(sections: readonly DocumentSection[]): ScopeText {
   }
 }
 
-/** A section's text without its own heading line and without the template's HTML comments
- * (`<!-- What the change must not touch … -->` is guidance to the author, not the spec's scope —
- * v13: the card showed it as the "In" text). An empty body reads as `''`: the section exists,
- * says nothing, and the card says "no data" — the DoR already names the gap. */
+/** A section's text without its own heading line and without the template's SCAFFOLDING: its
+ * HTML comments (`<!-- What the change must not touch … -->` is guidance to the author, not the
+ * spec's scope — v13: the card showed it as the "In" text) and its empty list markers (a `- `
+ * with nothing after it is the template's stand-in bullet — v14: the card drew a lone "-"). A
+ * body left with nothing but sub-headings (`### In scope` over that empty bullet) reads as `''`
+ * too: the section exists, says nothing, and the card says "no data" — the DoR already names
+ * the gap. Everything else is the document's own markdown, kept verbatim for the renderer. */
 function bodyOf(section: DocumentSection): string {
-  const lines = stripHtmlComments(section.text.replace(/\r\n/g, '\n')).split('\n')
+  const lines = stripScaffold(section.text.replace(/\r\n/g, '\n')).split('\n')
   if (lines[0]?.trim().startsWith('#')) lines.shift()
-  return lines.join('\n').trim()
+  const body = lines.join('\n').trim()
+  return headingsOnly(body) ? '' : body
 }
 
 /** `<!-- … -->` removed, across lines; the text between comments is kept byte-for-byte. */
 export function stripHtmlComments(text: string): string {
   return text.replace(/<!--[\s\S]*?-->/g, '')
+}
+
+/** A list marker with nothing after it — `-`, `*`, `+`, `1.` alone on its line — is the
+ * template's unfilled bullet, not a list; the line is dropped and every other line is kept. */
+export function stripEmptyListMarkers(text: string): string {
+  return text.split('\n').filter((line) => !/^\s*(?:[-*+]|\d+[.)])\s*$/.test(line)).join('\n')
+}
+
+/** Both scaffold rules, in the order the template lays them down (a comment may hold a dash). */
+export function stripScaffold(text: string): string {
+  return stripEmptyListMarkers(stripHtmlComments(text))
+}
+
+/** True when the body has lines and every one of them is a markdown heading — titles over nothing. */
+export function headingsOnly(body: string): boolean {
+  const lines = body.split('\n').map((l) => l.trim()).filter((l) => l.length > 0)
+  return lines.length > 0 && lines.every((l) => /^#{1,6}\s/.test(l))
 }
 
 /** `harness_context` — the ONE reused pattern. A section or field whose heading / label names it;

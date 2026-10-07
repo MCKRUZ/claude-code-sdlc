@@ -5,7 +5,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { newerPlugin, SECURITY_SIGNER } from '../shared/reasons'
-import { COMPACT_SELECT_CLASS, PLACEHOLDER, RolePicker, SELF_CHECK_NOTE } from '../src/components/planning/RolePicker'
+import { COMPACT_SELECT_CLASS, COMPACT_SLOT_CLASS, PLACEHOLDER, RolePicker, SELF_CHECK_NOTE } from '../src/components/planning/RolePicker'
 
 const PEOPLE = [
   { handle: '@sam-k', name: 'Sam K', roles: ['owner', 'developer'] },
@@ -16,18 +16,38 @@ const PEOPLE = [
 afterEach(cleanup)
 
 describe('RolePicker', () => {
-  /** v13 fixer round: on a slate row the select is a FIXED 11 rem (`w-44`), never its natural
-   * width — "Sam Kowalski (@sam-k)" grew to ≈ 190 px and took the name's track. Off the slate the
-   * select keeps the kit's natural width. */
-  it('compact: the select is a fixed w-44 with the label visually hidden; otherwise natural width', () => {
-    render(<RolePicker role="developer" spec="0001" value="" people={PEOPLE} compact onChange={vi.fn()} />)
+  /** v13 fixer round: on a slate row the select never takes its natural width — "Sam Kowalski
+   * (@sam-k)" grew to ≈ 190 px and took the name's track. v14: a FIXED 11 rem then cut that value
+   * with no cue ("Sam Kowalski (@sam-k"), so the compact select fills a `flex-1` slot over a 0
+   * basis (two share a line as `minmax(0,1fr)` each), never under 10 rem, ellipsises, and
+   * carries the full value in its title; the slate pins the slot's inline width through
+   * `className`. Off the slate the select keeps the kit's natural width. */
+  it('compact: the slot is flex-1 over a 0 basis, the select fills it ≥ 10 rem and ellipsises with the full value in its title; otherwise natural width', () => {
+    render(<RolePicker role="developer" spec="0001" value="@sam-k" people={PEOPLE} compact className="slot-extra" onChange={vi.fn()} />)
     const compact = screen.getByLabelText('Builder for 0001') as HTMLSelectElement
-    expect(compact.className).toContain('w-44')
     expect(compact.className).toContain(COMPACT_SELECT_CLASS)
+    expect(COMPACT_SELECT_CLASS).toContain('w-full')
+    expect(COMPACT_SELECT_CLASS).toContain('min-w-[10rem]')
+    expect(COMPACT_SELECT_CLASS).toContain('truncate')
+    expect(compact.className).not.toContain('w-44')
+    expect(compact.getAttribute('title')).toBe('Sam K (@sam-k)')
+    const slot = compact.closest('[data-slot]') as HTMLElement
+    expect(slot.className).toContain(COMPACT_SLOT_CLASS)
+    expect(COMPACT_SLOT_CLASS).toContain('flex-1')
+    expect(COMPACT_SLOT_CLASS).toContain('basis-0')
+    expect(COMPACT_SLOT_CLASS).toContain('min-w-0')
+    expect(slot.className).toContain('slot-extra')
     expect(document.querySelector('label[for]')?.className).toContain('sr-only')
     cleanup()
+    // Nobody chosen: the title is the invitation the select shows, whole.
+    render(<RolePicker role="developer" spec="0001" value="" people={PEOPLE} compact onChange={vi.fn()} />)
+    expect((screen.getByLabelText('Builder for 0001') as HTMLSelectElement).getAttribute('title')).toBe(PLACEHOLDER.developer)
+    cleanup()
     render(<RolePicker role="developer" spec="0001" value="" people={PEOPLE} onChange={vi.fn()} />)
-    expect((screen.getByLabelText('Builder for 0001') as HTMLSelectElement).className).not.toContain('w-44')
+    const natural = screen.getByLabelText('Builder for 0001') as HTMLSelectElement
+    expect(natural.className).not.toContain('truncate')
+    expect(natural.className).not.toContain('w-full')
+    expect(natural.closest('[data-slot]')?.className).not.toContain('flex-1')
   })
 
   it('lists only the roster people holding the role, the invitation first (never "nobody" as a value), and yields the handle', () => {

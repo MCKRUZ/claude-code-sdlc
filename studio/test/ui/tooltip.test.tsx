@@ -100,4 +100,53 @@ describe('Tooltip on Radix', () => {
     expect(tips.map((t) => t.textContent)).toContain('Two')
     expect(tips.length).toBeLessThanOrEqual(2)
   })
+
+  /** v14 (observatory settings-dark shot): the band's Settings button was clicked INSIDE the
+   * 500 ms intent window — Radix's pointerdown close only closes an open plate, the kit's own
+   * timer still fired, and the plate then sat over the strip with the click's focus already on
+   * the new screen's heading. A press now ends the intent synchronously, and nothing re-arms it
+   * — not the wrapper's enter, not Radix's focus open — until the pointer has left the trigger.
+   * A keyboard user never presses the pointer, so the focus-opens-it test above is unchanged. */
+  it('a click inside the intent window cancels it; an open plate closes at once on pointerdown and does not reopen on focus or re-enter until the pointer has left', () => {
+    render(<Tooltip label="Settings" kbd={['Mod', ',']}><button type="button">S</button></Tooltip>)
+    const button = screen.getByRole('button')
+    const wrap = button.parentElement!
+    // The root cause: enter, press before the delay, wait past it — no plate.
+    fireEvent.mouseEnter(wrap)
+    act(() => {
+      vi.advanceTimersByTime(100)
+    })
+    fireEvent.pointerDown(button)
+    fireEvent.pointerUp(button)
+    fireEvent.click(button)
+    act(() => {
+      vi.advanceTimersByTime(TOOLTIP_DELAY + 100)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    // Focus after the click (Radix opens on focus) arms nothing …
+    button.focus()
+    fireEvent.focus(button)
+    act(() => {
+      vi.advanceTimersByTime(TOOLTIP_DELAY + 1)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    // … nor does a second enter while the pointer never left.
+    fireEvent.mouseEnter(wrap)
+    act(() => {
+      vi.advanceTimersByTime(TOOLTIP_DELAY + 1)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    // Leave and come back: the tooltip owes its 500 ms again.
+    fireEvent.mouseLeave(wrap)
+    hoverOpen(wrap)
+    expect(screen.getByRole('tooltip').textContent).toContain('Settings')
+    // An OPEN plate: pointerdown closes it at once — no fade, no timer left to bring it back.
+    fireEvent.pointerDown(button)
+    expect(screen.queryByRole('tooltip')).toBeNull()
+    expect(wrap.hasAttribute('aria-describedby')).toBe(false)
+    act(() => {
+      vi.advanceTimersByTime(TOOLTIP_DELAY + 100)
+    })
+    expect(screen.queryByRole('tooltip')).toBeNull()
+  })
 })

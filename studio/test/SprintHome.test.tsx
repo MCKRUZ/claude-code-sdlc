@@ -7,11 +7,11 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SprintHome } from '../src/components/SprintHome'
-import { ringOrder, stackedRingMargin } from '../src/components/lanes/LaneCard'
+import { RINGS_STACK_FROM, ringOrder, ringsOverlap, stackedRingMargin } from '../src/components/lanes/LaneCard'
 import { resetRoomStore } from '../src/stores/roomStore'
 import { FORBIDDEN_METRIC_WORDS, NOTHING_NEEDS_YOU, OWN_BUILD_VERDICT, SIGN_IN_TO_SEE } from '../shared/reasons'
 import type { SprintVerbResult } from '../shared/types'
-import { CC, EMPTY_CC, ME, withCc } from './sprintHomeFixture'
+import { CC, EMPTY_CC, ME, SLATE, SPRINT, withCc } from './sprintHomeFixture'
 
 const ok: SprintVerbResult = { ok: true, exitCode: 0, refused: false, stdout: 'verdict recorded', stderr: '', argv: [], verb: 'verdict' }
 
@@ -237,38 +237,68 @@ describe('SprintHome: the baton is one overlay on the gutter; rings never read a
     expect(document.querySelector('[data-baton-reserve]')).toBeNull()
   })
 
-  /** v13 fixer round ("PN ƧK"): in a stack LATER rings sit above earlier ones — the standard
-   * avatar stack — so each ring's left letter stays whole and the 4 px overlap lands on the
-   * previous disc's letter-free right edge; the you-ring comes LAST and overlaps by 0, so its 4 px
-   * halo (drawn outside its disc) sits on those last 4 px and nothing paints over the halo. The
-   * earlier rule (descending z) put the first ring over the second's first letter. */
-  it('a row with more than two people stacks its rings with a surface gap, later rings above, the you-ring last and un-overlapped; a pair sits spaced', async () => {
+  /** v14 (observatory sprint-home shot: "PN" lost its N under "SK" and the you-ring): up to THREE
+   * people sit in a plain row with a 4 px gap and no surface ring — the owner · builder · checker
+   * trio is the common card and three whole rings fit it. Only FOUR or more stack, and in a stack
+   * (v13: "PN ƧK") LATER rings sit above earlier ones so each ring's left letter stays whole,
+   * the FIRST ring is never overlapped (the second starts 2 px after it, the width of its own
+   * surface gap, so nothing paints over the first disc), and the you-ring comes LAST and
+   * overlaps by 0, so its 4 px halo (drawn outside its disc) is what sits on the previous ring. */
+  it('up to three people sit spaced with no overlap; four or more stack with the first ring whole, later rings above, the you-ring last and un-overlapped', async () => {
     install()
     mount()
     await screen.findByTestId('lane-board')
     const checking = screen.getByTestId('lane-checking').querySelector('[data-lane-card]')! // owner, developer, checker (me)
     const rings = Array.from(checking.querySelectorAll<HTMLElement>('[data-person]'))
     expect(rings.length).toBe(3)
-    expect(checking.querySelector('[data-rings]')?.getAttribute('data-rings')).toBe('stacked')
-    expect(rings.map((r) => r.style.zIndex)).toEqual(['1', '2', '3'])
+    const strip = checking.querySelector('[data-rings]') as HTMLElement
+    expect(strip.getAttribute('data-rings')).toBe('spaced')
+    expect(strip.className).toContain('gap-1')
+    for (const r of rings) {
+      expect(r.className).not.toMatch(/\bml-|-ml-/)
+      expect(r.className).not.toContain('ring-surface-1')
+    }
     expect(rings[2].hasAttribute('data-you')).toBe(true)
-    expect(rings[2].className).toContain('ml-0')
-    expect(rings[2].className).not.toContain('-ml-1')
-    expect(rings[1].className).toContain('-ml-1')
-    expect(rings[0].className).not.toMatch(/\bml-/)
-    for (const r of rings) if (!r.hasAttribute('data-you')) expect(r.className).toContain('ring-surface-1')
     // Building card 0008: owner @priya-n, developer ME, checker @sam-k — the you-ring moves last.
     const building = screen.getByTestId('lane-building').querySelector('[data-lane-card]')!
     const buildingRings = Array.from(building.querySelectorAll<HTMLElement>('[data-person]'))
     expect(buildingRings.length).toBe(3)
     expect(buildingRings.findIndex((r) => r.hasAttribute('data-you'))).toBe(2)
+    expect(building.querySelector('[data-rings]')?.getAttribute('data-rings')).toBe('spaced')
     expect(ringOrder(['@a', ME, '@b'], ME)).toEqual(['@a', '@b', ME])
     expect(ringOrder(['@a', '@b'], null)).toEqual(['@a', '@b'])
-    expect(stackedRingMargin(0, true)).toBeNull()
-    expect(stackedRingMargin(1, false)).toBe('-ml-1')
-    expect(stackedRingMargin(2, true)).toBe('ml-0')
+    expect(RINGS_STACK_FROM).toBe(4)
+    expect(ringsOverlap(3)).toBe(false)
+    expect(ringsOverlap(4)).toBe(true)
+    expect(stackedRingMargin(0, false)).toBeNull()
+    expect(stackedRingMargin(1, false)).toBe('ml-0.5')
+    expect(stackedRingMargin(2, false)).toBe('-ml-1')
+    expect(stackedRingMargin(3, true)).toBe('ml-0')
     const ready = screen.getByTestId('lane-ready').querySelector('[data-lane-card]')! // the owner alone
     expect(ready.querySelector('[data-rings]')?.getAttribute('data-rings')).toBe('spaced')
+  })
+
+  it('a row naming four people stacks: the first ring untouched, the second 2 px after it, the rest overlapping by 4 px above the previous, the you-ring last at 0', async () => {
+    // 0009 (Checking): owner @priya-n, developer @sam-k, checker ME, plus a `next_owner` → four people.
+    const slate = SLATE.map((r) => (r.id === '0009' ? { ...r, nextOwner: '@lee-w' } : r))
+    install(withCc({ sprint: { ...CC.sprint, data: { ...SPRINT, slate } } }))
+    mount()
+    await screen.findByTestId('lane-board')
+    const checking = screen.getByTestId('lane-checking').querySelector('[data-lane-card]')!
+    const strip = checking.querySelector('[data-rings]') as HTMLElement
+    expect(strip.getAttribute('data-rings')).toBe('stacked')
+    expect(strip.className).not.toContain('gap-1')
+    const rings = Array.from(checking.querySelectorAll<HTMLElement>('[data-person]'))
+    expect(rings.map((r) => r.getAttribute('aria-label'))).toEqual(['@priya-n', '@sam-k', '@lee-w', `${ME} (you)`])
+    expect(rings.map((r) => r.style.zIndex)).toEqual(['1', '2', '3', '4'])
+    expect(rings[0].className).not.toMatch(/\bml-|-ml-/)
+    expect(rings[1].className).toContain('ml-0.5')
+    expect(rings[1].className).not.toContain('-ml-1')
+    expect(rings[2].className).toContain('-ml-1')
+    expect(rings[3].hasAttribute('data-you')).toBe(true)
+    expect(rings[3].className).toContain('ml-0')
+    expect(rings[3].className).not.toContain('-ml-1')
+    for (const r of rings) if (!r.hasAttribute('data-you')) expect(r.className).toContain('ring-surface-1')
   })
 
   /** Plan §10 / v13 fixer round: after a verb's exit 0 the control that changed takes focus —
@@ -321,9 +351,10 @@ describe('SprintHome: the cockpit — Today as a 300 px rail beside four full la
     expect(grid.firstElementChild).toBe(today)
     expect(today.className).toContain('@min-[1240px]:order-1')
     expect(today.className).toContain('@min-[1240px]:grid-cols-1')
-    // v13: the strip is 120 px (cockpitLayout.STRIP_MAX_PX) — 200 left the lane bottoms 178 px below
-    // the fold at 1280×800; the geometry test holds the arithmetic.
-    expect(today.className).toContain('@max-[1239px]:max-h-[120px]')
+    // v14: the strip is sized to whole rows and never capped (a 120 px `max-h` sliced text and
+    // its fade read as a cut); the geometry test holds the chrome arithmetic the nominal 120 seeds.
+    expect(today.className).not.toMatch(/max-h-\[120px\]/)
+    expect(today.className).not.toMatch(/@max-\[1239px\]:overflow-y-auto/)
     expect(document.querySelector('[data-lanes-grid]')?.className).toContain('@min-[916px]:grid-cols-4')
     // Each lane caps its height and scrolls inside; the header is a static band above the scroller.
     // v13 fixer round: the cap's fallback is the STRIP chrome (572) — in the rail branch the grid's

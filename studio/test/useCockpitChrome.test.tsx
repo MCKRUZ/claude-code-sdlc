@@ -40,6 +40,16 @@ describe('measureCockpitChrome', () => {
     // A wrapped header: the grid sits 24 px lower, so does the chrome.
     laidOut(grid, { top: COCKPIT_TOP_PX + 24 }); laidOut(home, {}, 1352)
     expect(measureCockpitChrome(home, grid)).toBe(COCKPIT_CHROME_PX + 24)
+    // v14: the strip is sized to whole rows, so its REAL height counts in the strip branch — a
+    // 150 px strip at 1192 → 372 + 150 + 16 + 40 + 24; the rail branch ignores the Today element.
+    const today = document.createElement('section')
+    today.setAttribute('data-today-rail', '')
+    Object.defineProperty(today, 'offsetHeight', { value: 150, configurable: true })
+    grid.appendChild(today)
+    laidOut(grid, { top: COCKPIT_TOP_PX }); laidOut(home, {}, 1192)
+    expect(measureCockpitChrome(home, grid)).toBe(COCKPIT_TOP_PX + 150 + 16 + 40 + 24)
+    laidOut(home, {}, 1352)
+    expect(measureCockpitChrome(home, grid)).toBe(COCKPIT_CHROME_PX)
   })
 
   it('reads the top AT REST: a scrolled <main> adds its scrollTop back, so the wells never move while scrolling', () => {

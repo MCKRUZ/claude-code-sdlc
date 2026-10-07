@@ -9,7 +9,7 @@
 import type { RosterPerson } from '../../../shared/types'
 import { samePerson } from '../../../shared/identity'
 import { newerPlugin, NO_ROSTER, SECURITY_SIGNER, WAITING_FOR_PLUGIN_ANSWER } from '../../../shared/reasons'
-import { Select } from '../../ui'
+import { cn, Select } from '../../ui'
 import { withRole } from './planningModel'
 
 export type SlotRole = 'developer' | 'checker' | 'security'
@@ -21,10 +21,14 @@ export const SELF_CHECK_NOTE = 'same person as the builder — the plugin refuse
 
 export const NOBODY = ''
 
-/** The compact picker's width on a slate row: 11 rem (176 px), the number `SlateColumn`'s inline
- * threshold is derived from. A long roster name ellipsises inside the native select, where the
- * full option list still reads it whole. */
-export const COMPACT_SELECT_CLASS = 'w-44 max-w-full'
+/** The compact select on a slate row fills its slot (`COMPACT_SLOT_CLASS`: the two slots share
+ * their line as `flex-1` over a 0 basis — `minmax(0,1fr)` each — so a long roster name can never
+ * take the name's track), never under 10 rem, and ELLIPSISES its value: v14 at 1440 the fixed
+ * 11 rem cut "Sam Kowalski (@sam-k" with no cue. The full text rides the select's `title`; the
+ * option list still reads it whole. `SlateColumn` pins the slot to 11 rem once the pickers join
+ * the name's line, through the slot's `className`. */
+export const COMPACT_SELECT_CLASS = 'w-full min-w-[10rem] truncate'
+export const COMPACT_SLOT_CLASS = 'min-w-0 flex-1 basis-0'
 
 /** The empty option's words: an INVITATION on a slot a person fills ("choose a builder"), and on
  * the Security signer — a slot no frontmatter field backs — the fact that there is no field,
@@ -41,14 +45,17 @@ export interface RolePickerProps {
   /** Whether the installed plugin declares `assign-roles`. Undefined = not yet known: drawn live. */
   canAssign?: boolean
   busy?: boolean
-  /** On a one-line slate row: the label rides as the select's accessible name only, and the
-   * select takes a FIXED width (`COMPACT_SELECT_CLASS`) so the slate's name track keeps its floor
-   * — a natural-width "Sam Kowalski (@sam-k)" select grew to ≈ 190 px and took it (v13). */
+  /** On a slate row: the label rides as the select's accessible name only, the slot shares its
+   * line (`COMPACT_SLOT_CLASS`) and the select fills it and ellipsises (`COMPACT_SELECT_CLASS`)
+   * so the slate's name track keeps its floor — a natural-width "Sam Kowalski (@sam-k)" select
+   * grew to ≈ 190 px and took it (v13); a fixed 11 rem then clipped it with no cue (v14). */
   compact?: boolean
+  /** Classes for the slot (the wrapper), e.g. the slate's fixed width once the pickers go inline. */
+  className?: string
   onChange: (handle: string) => void
 }
 
-export function RolePicker({ role, spec, value, people, developer, canAssign, busy = false, compact = false, onChange }: RolePickerProps) {
+export function RolePicker({ role, spec, value, people, developer, canAssign, busy = false, compact = false, className, onChange }: RolePickerProps) {
   const id = `role-${role}-${spec}`
   if (role === 'security') {
     return (
@@ -68,8 +75,14 @@ export function RolePicker({ role, spec, value, people, developer, canAssign, bu
   // A handle on the row that the roster filter does not list (a person who lost the role) stays
   // selectable as itself so the row reads what the spec says, never a blank.
   if (value !== NOBODY && !options.some((o) => o.value === value)) options.push({ value, label: value })
+  // The value's full text, for the pointer: an ellipsised "Sam Kowalski (@sam-k…" reads whole on
+  // hover. A DISABLED select's title is its reason (`disabledReasonProps`), never overridden here
+  // — so the key is absent, not `undefined`, when there is a reason (a spread `title: undefined`
+  // would still win over the reason's).
+  const shown = options.find((o) => o.value === value)?.label
+  const titled = reason ? {} : { title: shown }
   return (
-    <div className="flex flex-col gap-0.5" data-slot={role}>
+    <div className={cn('flex flex-col gap-0.5', compact && COMPACT_SLOT_CLASS, className)} data-slot={role}>
       <label htmlFor={id} className={compact ? 'sr-only' : 'text-[11px] text-ink-3'}>{SLOT_LABEL[role]}</label>
       <Select
         id={id}
@@ -81,6 +94,7 @@ export function RolePicker({ role, spec, value, people, developer, canAssign, bu
         options={options}
         data-write=""
         className={compact ? COMPACT_SELECT_CLASS : undefined}
+        {...titled}
         aria-label={`${SLOT_LABEL[role]} for ${spec}`}
       />
       {selfCheck && <p className={compact ? 'max-w-[14rem] text-[11px] text-status-warn-ink' : 'text-[11px] text-status-warn-ink'} data-self-check="">{SELF_CHECK_NOTE}</p>}

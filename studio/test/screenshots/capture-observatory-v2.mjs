@@ -606,6 +606,15 @@ try {
   await page.getByTestId('lifecycle-home').waitFor({ timeout: 60_000 })
   await page.waitForTimeout(2_500) // readiness poll lands; StageHome shows rows, not its skeleton
   const spine = page.getByTestId('spine-band')
+  // The band's collapsed state persists (localStorage) and an earlier step may have left it
+  // folded — v14's stage-dark-hover shot found no figure to hover. `StageHome` marks the folded
+  // band with `data-collapsed` and names the chevron "Expand the lifecycle view"; open it first
+  // and let the height row settle before any stage shot.
+  if ((await spine.getAttribute('data-collapsed')) !== null) {
+    await spine.getByRole('button', { name: 'Expand the lifecycle view' }).click()
+    await settle(page, 800)
+    notes.push('stage: the Lifecycle band was collapsed; expanded it before the stage shots')
+  }
   await ensureGraph(spine)
   await settle(page)
   await shot(page, 'stage-light')

@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { BoardRow, DocumentSection, SourcedBlock, SpecCard as SpecCardRead } from '../shared/types'
 import { NO_CHANNEL_BOUND, NO_PR_YET, TIER_RULE, VAGUE_LINE_REWRITE, newerPlugin } from '../shared/reasons'
 import { SECTION_ABSENT, SECTION_EMPTY, SpecCard } from '../src/components/SpecCard/SpecCard'
-import { harnessContext, scopeSections, stripHtmlComments, whyTierNotes } from '../src/components/SpecCard/specDocument'
+import { harnessContext, headingsOnly, scopeSections, stripEmptyListMarkers, stripHtmlComments, whyTierNotes } from '../src/components/SpecCard/specDocument'
 
 const ROW: BoardRow = {
   spec: '0008', name: 'claim-export', path: 'specs/0008-claim-export.md', title: 'Claim export', status: 'draft',
@@ -200,6 +200,41 @@ describe('SpecCard', () => {
     const harness = document.querySelector('[data-doc="harness_context"]') as HTMLElement
     expect(harness.querySelector('[data-doc-empty]')?.getAttribute('data-doc-empty')).toBe('absent')
     expect(within(harness).getByText(SECTION_ABSENT)).toBeTruthy()
+  })
+
+  /** v14 (spec-card@1680): the Scope card drew "### In scope" and a lone "-" as literal text. The
+   * body is the document's own markdown, TYPESET through `MarkdownView` (a sub-heading and a list
+   * as such; raw HTML dropped, so a template placeholder comment can never surface), and the
+   * template's scaffolding — an empty bullet, a sub-heading over nothing — is not content: it
+   * reads as "no data — the section is empty", the fact the DoR already names. */
+  it('the scope body is typeset markdown — a sub-heading and a list, never the marks; a placeholder comment stays hidden; an empty bullet under a bare sub-heading is "no data"', async () => {
+    const sections: DocumentSection[] = [
+      { kind: 'section', key: 'Scope', heading: 'Scope', start: 0, end: 10, text: '## Scope\n### In scope\n- the export endpoint\n- its retry policy\n<!-- what -->\n', fields: {} },
+      { kind: 'section', key: 'Scope Out', heading: 'Scope Out', start: 10, end: 20, text: '## Scope Out\n### Out of scope\n- \n<!-- what -->\n', fields: {} },
+    ]
+    expect(stripEmptyListMarkers('- \n- kept\n*\n1.\n')).toBe('- kept\n')
+    expect(headingsOnly('### In scope\n\n#### Also')).toBe(true)
+    expect(headingsOnly('### In scope\n- x')).toBe(false)
+    expect(headingsOnly('')).toBe(false)
+    expect(scopeSections(sections)).toEqual({ scopeIn: '### In scope\n- the export endpoint\n- its retry policy', scopeOut: '' })
+    install({ openDocument: vi.fn().mockResolvedValue({ ok: true, path: ROW.path, shaped: true, warnings: [], sections }) })
+    await renderCard()
+    const inDoc = document.querySelector('[data-doc="In"]') as HTMLElement
+    const body = inDoc.querySelector('[data-doc-body]') as HTMLElement
+    expect(body).not.toBeNull()
+    expect(body.querySelector('pre')).toBeNull()
+    expect(body.querySelector('h1, h2, h3, h4, h5, h6')?.textContent).toBe('In scope')
+    expect(Array.from(body.querySelectorAll('li')).map((li) => li.textContent)).toEqual(['the export endpoint', 'its retry policy'])
+    expect(body.textContent).not.toContain('###')
+    expect(body.textContent).not.toContain('<!--')
+    expect(body.textContent).not.toContain('what')
+    const outDoc = document.querySelector('[data-doc="Out"]') as HTMLElement
+    expect(outDoc.querySelector('[data-doc-body]')).toBeNull()
+    expect(outDoc.querySelector('li')).toBeNull()
+    expect(outDoc.textContent).not.toContain('###')
+    expect(outDoc.textContent).not.toContain('what')
+    expect(outDoc.querySelector('[data-doc-empty]')?.getAttribute('data-doc-empty')).toBe('empty')
+    expect(within(outDoc).getByText(SECTION_EMPTY)).toBeTruthy()
   })
 
   /** v12 critique #3: the body's padding-bottom equals the sticky foot's height (64 px), so its

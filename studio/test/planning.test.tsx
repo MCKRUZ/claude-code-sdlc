@@ -9,8 +9,8 @@ import type { BoardRow, CommandCenter, ReadinessAll, SlateProposal, SourcedBlock
 import { NO_ACTOR, ORDER_ARRIVES_ON_COMMIT, ORDER_NOT_GIVEN, REASONED_SLATE, SECURITY_SIGNER, newerPlugin } from '../shared/reasons'
 import { Planning } from '../src/components/planning/Planning'
 import { groupGaps } from '../src/components/planning/PluginSaysColumn'
-import { COMPACT_SELECT_CLASS } from '../src/components/planning/RolePicker'
-import { SLATE_INLINE_PX, SLATE_LINE_CLASS, SLATE_NAME_TRACK, SLATE_PICKERS_CLASS } from '../src/components/planning/SlateColumn'
+import { COMPACT_SELECT_CLASS, COMPACT_SLOT_CLASS } from '../src/components/planning/RolePicker'
+import { SLATE_INLINE_PX, SLATE_LINE_CLASS, SLATE_NAME_TRACK, SLATE_PICKER_SLOT_CLASS, SLATE_PICKERS_CLASS } from '../src/components/planning/SlateColumn'
 import { COMMIT_CONFIRM, commitPreview } from '../src/components/planning/CommitDialog'
 
 const block = <T,>(data: T | null, source: string, error: string | null = null): SourcedBlock<T> => ({ source, fetchedAt: '2026-10-06T10:00:00Z', ok: data !== null, data, error })
@@ -284,9 +284,12 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
    * proposes" truncated ids and names. The slate must name what is slated on every row.
    * v13 fixer round (re-opened at ≥ 1600 px: "0001 dupl / icate- / claim-409"): the name track has
    * a 12 rem FLOOR, the name wraps at word seams only (`break-word`, never `anywhere`, which lets a
-   * grid shrink a word to one letter per line), the pickers are a fixed 11 rem each, and they join
-   * the line only from 820 px of column width — the arithmetic of those parts. */
-  it('every slate row names its spec — the name track has a 12 rem floor, wraps at word seams only, with 11 rem pickers on their own line under 820 px of column width', async () => {
+   * grid shrink a word to one letter per line), the pickers are a fixed 11 rem each INLINE, and
+   * they join the line only from 820 px of column width — the arithmetic of those parts.
+   * v14 (planning shot at 1440: "Sam Kowalski (@sam-k" cut with no cue): on their own line the two
+   * pickers share the row as `minmax(0,1fr)` each, ≥ 10 rem, and a long value ellipsises with the
+   * full text in the select's title. */
+  it('every slate row names its spec — the name track has a 12 rem floor, wraps at word seams only, with the pickers sharing their own line (ellipsising, titled) under 820 px of column width and fixed at 11 rem inline', async () => {
     install()
     await renderPlanning()
     const slate = screen.getByTestId('planning-slate')
@@ -296,7 +299,9 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
     // pickers + three 12 px gaps — anything narrower puts the pickers under the name.
     const rem = 16
     expect(SLATE_INLINE_PX).toBeGreaterThanOrEqual(2 * rem + 12 * rem + 140 + 2 * 11 * rem + 3 * 12)
-    expect(COMPACT_SELECT_CLASS).toContain('w-44')
+    expect(COMPACT_SELECT_CLASS).toContain('w-full')
+    expect(SLATE_PICKER_SLOT_CLASS).toContain(`@min-[${SLATE_INLINE_PX}px]:w-44`)
+    expect(SLATE_PICKER_SLOT_CLASS).toContain(`@min-[${SLATE_INLINE_PX}px]:flex-none`)
     for (const row of slate.querySelectorAll('li[data-spec]')) {
       const line = row.querySelector('[data-slate-line]') as HTMLElement
       expect(line.className).toBe(SLATE_LINE_CLASS)
@@ -310,16 +315,31 @@ describe('Planning: three columns, the plugin\'s order, the plugin\'s words', ()
       expect(nameButton.className).not.toContain('anywhere')
       expect(nameButton.textContent).toContain(row.getAttribute('data-spec')!)
       expect(nameButton.getAttribute('title')).toContain(row.getAttribute('data-spec')!)
-      // Pickers: a full-width second line by default, joining the line only at ≥ 820 px, each a
-      // fixed width so a long roster name can never take the name's track.
+      // Pickers: their own line by default, where the two SHARE the row — each slot `flex-1` over
+      // a 0 basis (`minmax(0,1fr)`), the select filling it, never under 10 rem, ellipsising with
+      // the full value in its title — joining the name's line only at ≥ 820 px, where each slot
+      // is the fixed 11 rem the threshold is derived from, so a long roster name can never take
+      // the name's track in either branch.
       const pickers = line.querySelector('[data-slate-pickers]') as HTMLElement
       expect(pickers.className).toBe(SLATE_PICKERS_CLASS)
       expect(pickers.className).toContain('col-span-3')
       expect(pickers.className).toContain(`@min-[${SLATE_INLINE_PX}px]:col-span-1`)
       expect(pickers.className).toContain('flex-wrap')
+      const slots = pickers.querySelectorAll<HTMLElement>('[data-slot]')
+      expect(slots).toHaveLength(2)
+      for (const slot of slots) {
+        expect(slot.className).toContain(COMPACT_SLOT_CLASS)
+        expect(slot.className).toContain(SLATE_PICKER_SLOT_CLASS)
+      }
       const selects = pickers.querySelectorAll('select')
       expect(selects).toHaveLength(2)
-      for (const s of selects) expect(s.className).toContain('w-44')
+      for (const s of selects) {
+        expect(s.className).toContain(COMPACT_SELECT_CLASS)
+        expect(s.className).toContain('truncate')
+        expect(s.className).toContain('min-w-[10rem]')
+        expect(s.className).not.toContain('w-44')
+        expect(s.getAttribute('title')).toBe(s.selectedOptions[0]?.textContent)
+      }
     }
     // "The plugin proposes" wraps an id + name rather than cutting it.
     const proposed = screen.getByRole('list', { name: 'Proposed slate' }).querySelector('[data-proposed] > span') as HTMLElement
