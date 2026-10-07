@@ -88,7 +88,7 @@ test.describe('[command center P7] the lifecycle home in the real window', () =>
     await expect(today).toBeVisible()
     await expect(today).toContainText(TEXT.noDecisionLog)
     // No actor on a bare runner → the sentence; an identified person → "nothing needs you".
-    await expect(today).toContainText(/nothing needs you|sign in or type your name to see what needs you/)
+    await expect(today).toContainText(/nothing needs you|Sign in or type your name/)
     // No fabricated zero anywhere in a stat on the empty fixture (§8 honesty check 2).
     const stats = await page.locator(SEL.stat).allTextContents()
     for (const text of stats) expect(text).not.toMatch(/\b0\b/)

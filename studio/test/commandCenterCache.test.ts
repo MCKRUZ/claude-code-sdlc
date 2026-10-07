@@ -58,7 +58,12 @@ beforeEach(() => {
   writeFileSync(join(project, '.sdlc', 'state.yaml'), 'current_phase: build\n')
   invalidateCommandCenter(project, 'all')
 })
-afterEach(() => { vi.useRealTimers(); rmSync(project, { recursive: true, force: true }) })
+afterEach(() => {
+  vi.useRealTimers()
+  // Windows reported EBUSY on the rmdir while a just-finished child still held the directory;
+  // retry briefly and never fail a test on a temp-dir cleanup.
+  try { rmSync(project, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }) } catch { /* temp dir left behind — untidy, not a failure */ }
+})
 
 describe('one fan-out at a time', () => {
   it('a second caller joins the in-flight read: the same promise, one set of spawns', async () => {

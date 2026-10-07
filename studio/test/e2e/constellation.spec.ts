@@ -147,7 +147,10 @@ test.describe('[observatory S2] the dependency constellation on the Sprint scree
 
   test('toggling back to Table shows the slate again', async () => {
     const figure = page.getByTestId('constellation-sprint')
-    await figure.getByRole('button', { name: /^Table/ }).click()
+    const table = figure.getByRole('button', { name: /^Table/ })
+    // Without hardware graphics (the ubuntu runner) the whole toggle is disabled and the figure
+    // never left the table — nothing to click, the assertions below still hold.
+    if (!(await table.isDisabled())) await table.click()
     await expect(figure).toHaveAttribute('data-surface', 'table')
     await expect(page.getByTestId('sprint-slate')).toBeVisible()
     await expect(figure.locator('canvas')).toHaveCount(0)

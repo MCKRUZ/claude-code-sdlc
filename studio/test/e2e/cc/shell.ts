@@ -78,7 +78,7 @@ export const TEXT = {
   refused: 'Refused by the plugin',
   done: 'Done',
   notDone: 'Not done',
-  omnibarHint: '⌘K · a spec id, a verb, or a place',
+  omnibarHint: /(⌘|Ctrl)K · a spec id, a verb, or a place/, // the keycap follows the platform: ⌘ on macOS, Ctrl on the Linux and Windows runners
   refineInPlace: 'refine in place →',
   noDecisionLog: 'no data — no decision-log',
   backToBoard: '← Back to the board',

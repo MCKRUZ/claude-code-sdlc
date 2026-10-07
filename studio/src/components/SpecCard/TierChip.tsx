@@ -71,8 +71,12 @@ export function TierChip({ projectPath, specPath, risk, whyNotes, canConfirm, wr
           data-write=""
           tone="inverse"
           value={current}
-          disabled={busy || Boolean(writeReason)}
-          disabledReason={writeReason ?? busyReason}
+          // The plugin's own rule, not a Tōgō one: raising a tier is free, and lowering asks for
+          // the name through the refusal flow above (`authorisedBy`). A missing signed-in person
+          // gates the verbs that carry --by (Confirm tier), never this control — the CI runner has
+          // no identity and board.spec pins that a raise still takes effect there.
+          disabled={busy}
+          disabledReason={busyReason}
           options={TIERS.map((tier) => ({ value: tier, label: tier }))}
           onChange={(tier) => act(() => window.studio.setSpecRisk(projectPath, specPath, tier, authorisedBy?.trim() || undefined))}
         />

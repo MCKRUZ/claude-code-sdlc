@@ -1,4 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { MIN_HEIGHT, MIN_WIDTH, firstOpenBounds, fitSavedBounds, readSavedBounds, writeSavedBounds, zoomFor } from './windowBounds'
+
+// A device scale forced for the production screenshot capture (`SHOT_SCALE=2` → the guide's
+// images render at two device pixels per CSS pixel). Chromium reads this switch before the app
+// is ready, so it is appended here, at load; macOS ignores the same switch on the command line.
+if (process.env.TOGO_DEVICE_SCALE) app.commandLine.appendSwitch('force-device-scale-factor', process.env.TOGO_DEVICE_SCALE)
 import { writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -930,10 +936,17 @@ function registerIpcHandlers() {
 }
 
 async function createWindow() {
+  // Size: what the person left last time if it still lands on a connected display, else a first
+  // open that fits the display's work area (up to 1680×1050, never under 1180×720, centred).
+  // A fixed 1280×800 was small on a desktop display and cramped the command center's lanes.
+  const userData = app.getPath('userData')
+  const areas = screen.getAllDisplays().map((d) => d.workArea)
+  const bounds = fitSavedBounds(readSavedBounds(userData), areas) ?? firstOpenBounds(screen.getPrimaryDisplay().workArea)
   win = new BrowserWindow({
     title: 'Tōgō',
-    width: 1280,
-    height: 800,
+    ...bounds,
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
     icon: path.join(process.env.VITE_PUBLIC!, 'favicon.ico'), // set unconditionally above, before createWindow() can run
     webPreferences: {
       preload,
@@ -942,6 +955,25 @@ async function createWindow() {
       sandbox: true,
     },
   })
+
+  // Remember the size and place (debounced) so the next open restores them.
+  let saveTimer: NodeJS.Timeout | null = null
+  const remember = () => {
+    if (!win || win.isMinimized() || win.isFullScreen()) return
+    const b = win.getNormalBounds()
+    writeSavedBounds(userData, b)
+  }
+  const scheduleRemember = () => { if (saveTimer) clearTimeout(saveTimer); saveTimer = setTimeout(remember, 400) }
+  // Rendering scale follows the window width (windowBounds.zoomFor): the layout is drawn for
+  // ~1440 px and reads small on a wide display. Off under the tests and the capture, which set
+  // their own viewports and read CSS-pixel geometry.
+  const autoZoom = process.env.TOGO_AUTO_ZOOM !== '0'
+  const applyZoom = () => { if (win && autoZoom) win.webContents.setZoomFactor(zoomFor(win.getContentBounds().width)) }
+  win.webContents.on('did-finish-load', applyZoom)
+  win.on('resize', applyZoom)
+  win.on('resize', scheduleRemember)
+  win.on('move', scheduleRemember)
+  win.on('close', () => { if (saveTimer) clearTimeout(saveTimer); remember() })
 
   if (VITE_DEV_SERVER_URL) { // #298
     win.loadURL(VITE_DEV_SERVER_URL)

@@ -141,6 +141,13 @@ ownership, reviewed adversarially and verified end to end. What a team sees:
 - **Found, not hidden.** The 1 px ghost strip over the Sprint title was measured with a probe
   (`SHOT_PROBE=ghost`) and bisected to its cause; sticky headers are now transparent at rest and
   solid only once content has scrolled under them.
+- **A window that fits the display.** The app opens at the person's last size and place when that
+  still lands on a connected display, else sized to the work area (up to 1680×1050, never under
+  1180×720) instead of a fixed 1280×800, and its rendering scales with the window's width (1.0
+  at 1440, 1.3 at 2560) so a wide display is not a field of small type; the guide's screenshots
+  are embedded at their full 1440-px width as high-quality JPEGs (2× on the Linux and Windows
+  runners via `SHOT_SCALE=2`; macOS fixes the device scale to the display). Steering mode is one board: Outcomes, Delivery and the actions on the
+  first screen at 1440×900.
 - **Not adopted: MUI.** A second component system would fork the one token set the app just
   gained and add ~300 KB to a main chunk with 188 KB of room; three.js and GSAP carry the round.
 

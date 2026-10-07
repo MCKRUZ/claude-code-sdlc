@@ -197,7 +197,7 @@ close → steering) and `steering.spec.ts` (the room pages; no tile straddles th
 script has the same probe: `SHOT_OVERLAP=1 SHOT_WIDTHS="1280x800,1440x900,1680x1000"` measures
 every shot and exits 3 on a violation; `SHOT_PROBE=ghost` measures the band above the header at
 1.2 / 1.6 / 2.0 / 2.5 s; a GPU console line fails the run. The series the guide ships on is
-`observatory-v17`.
+`observatory-v20`.
 
 ## Releases — the .dmg and the .exe
 
@@ -218,6 +218,20 @@ without them the builds are unsigned and the first launch needs right-click → 
 SmartScreen's "run anyway" on Windows. There is no auto-update channel: people install the new
 release. A packaged Tōgō finds the plugin in Claude Code's marketplace cache
 (`/plugin install claude-code-sdlc@togo`), or at the path set in Settings.
+
+## Window
+
+The window opens sized to the display: the person's last size and place when it still lands on
+a connected display (`electron/main/windowBounds.ts`, remembered in `window-bounds.json` under
+the user-data folder), else the largest window up to 1680×1050 that fits the work area with a
+margin, never under 1180×720. The rendering scale follows the window's width (`zoomFor`: 1.0 at
+or under 1440 px, rising to 1.3 at 2560 — the layout is drawn for ~1440 and read small on a wide
+display); `TOGO_AUTO_ZOOM=0` turns that off, which the tests and the capture do. The capture can take
+the guide's screenshots at `SHOT_SCALE=2` (Chromium's force-device-scale-factor, appended by
+main from `TOGO_DEVICE_SCALE`) — honoured on the Linux and Windows runners; macOS fixes the
+scale to the display, so a Mac capture stays at 1× and the guide embeds the 1440-px PNGs as
+high-quality JPEGs instead. `SHOT_WINDOW=1` resizes the real window rather than emulating the
+viewport, which is how the rendering scale is probed.
 
 ## Appearance
 

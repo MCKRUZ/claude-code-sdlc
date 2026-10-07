@@ -153,7 +153,8 @@ test.describe('[cockpit QA] the command center walked end to end', () => {
     const dialog = page.locator(ASSUMED.verbDialog)
     await expect(dialog).toBeVisible({ timeout: 10_000 })
     await expect(dialog.locator(VERB_PREVIEW)).toContainText(line)
-    await expect(dialog.locator(VERB_PREVIEW)).toContainText(`--by ${actor}`)
+    // The preview shows the argv as it runs: a name with whitespace is quoted ("Priya N.").
+    await expect(dialog.locator(VERB_PREVIEW)).toContainText(`--by ${/\s/.test(actor) ? `"${actor}"` : actor}`)
     await dialog.locator(SEL.writeControl).click()
     await expect(dialog.locator(ASSUMED.verbResult)).toContainText(TEXT.done, { timeout: 60_000 })
     await page.keyboard.press('Escape')

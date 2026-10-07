@@ -9,6 +9,7 @@
 //   SKIP_BUILD=1 node test/screenshots/capture-observatory-v2.mjs  # reuse dist/
 //   SHOT_PREFIX=observatory-v11 node test/screenshots/capture-observatory-v2.mjs  # a new series
 //   SHOT_SETTLE=1800 …                                                 # longer settle per shot (ms)
+//   SHOT_SCALE=2 …                                                     # 2× device pixels (for the guide's images)
 //
 // Writes test/screenshots/<prefix>-<name>.png (prefix defaults to observatory-v2) and prints DPR +
 // canvas size for sprint-graph. The v8 run (studio-upgrade-2 §4 P7) added five shots to the twelve
@@ -450,16 +451,35 @@ async function ghostProbe(page) {
 }
 
 // --- the walk ----------------------------------------------------------------------------------
+// SHOT_SCALE=2 renders at two device pixels per CSS pixel (main appends Chromium's
+// force-device-scale-factor switch from TOGO_DEVICE_SCALE before the app is ready — the same
+// switch on the command line is ignored on macOS) — the guide's screenshots come out crisp when
+// downsampled; the probes read CSS-pixel geometry and stay unaffected, but the ghost probe's
+// band crop is in device pixels, so run the probes at the default scale of 1.
+const SCALE = Number(process.env.SHOT_SCALE ?? 1)
 const app = await electron.launch({
   args: ['.', '--no-sandbox', `--user-data-dir=${userData}`],
   cwd: root,
-  env: { ...process.env, NODE_ENV: 'development' },
+  env: { ...process.env, NODE_ENV: 'development', TOGO_AUTO_ZOOM: process.env.TOGO_AUTO_ZOOM ?? '0', ...(SCALE !== 1 ? { TOGO_DEVICE_SCALE: String(SCALE) } : {}) },
 })
 const notes = []
 const consoleLines = []
 const GPU_ERROR = /GLSL|shader|useProgram|WebGL|THREE\.WebGL|program not valid|CONTEXT_LOST/i
 try {
   const page = await app.firstWindow()
+  // SHOT_WINDOW=1 resizes the real BrowserWindow (so main's width-driven rendering scale and the
+  // remembered bounds are exercised); the default emulates the viewport, which leaves the window
+  // alone and is what the layout probes want.
+  const setView = async (width, height) => {
+    if (process.env.SHOT_WINDOW === '1') {
+      await app.evaluate(({ BrowserWindow }, size) => { const w = BrowserWindow.getAllWindows()[0]; w.setContentSize(size.width, size.height); }, { width, height })
+      await page.waitForTimeout(400)
+      const zoom = await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return { zoom: w.webContents.getZoomFactor(), content: w.getContentBounds() } })
+      notes.push(`window ${zoom.content.width}x${zoom.content.height} · zoom ${zoom.zoom}`)
+      return
+    }
+    await page.setViewportSize({ width, height })
+  }
   // GPU-side smoke test: a shader that fails to compile reports itself only on the renderer's
   // console (three logs the GLSL error, then `useProgram: program not valid` every frame) and the
   // scene silently draws nothing — the ground grid did exactly that for a reserved word. Every
@@ -469,7 +489,7 @@ try {
     if (type === 'error' || type === 'warning') consoleLines.push(`[${type}] ${msg.text().split('\n')[0].slice(0, 220)}`)
   })
   page.on('pageerror', (err) => consoleLines.push(`[pageerror] ${String(err.message ?? err).split('\n')[0].slice(0, 220)}`))
-  await page.setViewportSize({ width: 1440, height: 900 })
+  await setView(1440, 900)
   await page.getByRole('heading', { level: 1, name: 'Tōgō' }).waitFor({ timeout: 30_000 })
   await settle(page)
   await shot(page, 'welcome')
@@ -760,7 +780,7 @@ try {
   // The four screens the owner judges the cockpit by, each at rest (<main> scrolled to the top) so
   // the overlap probe's viewport rule applies in full. Files: <prefix>-<name>[-dark]@<w>.png.
   for (const { w, h } of WIDTHS) {
-    await page.setViewportSize({ width: w, height: h })
+    await setView(w, h)
     await page.waitForTimeout(400)
     for (const theme of ['Light', 'Dark']) {
       await setTheme(theme)
