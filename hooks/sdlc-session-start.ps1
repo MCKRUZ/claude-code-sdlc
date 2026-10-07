@@ -4,6 +4,10 @@
 
 param()
 
+# Claude Code reads this output as UTF-8. On Windows the console default is an OEM code page, which turns the
+# em dash and arrow in the [SDLC-SPRINT] line into "-" and a control character; say what the output is.
+try { [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false) } catch { }
+
 $sdlcDir = Join-Path $PWD ".sdlc"
 $stateFile = Join-Path $sdlcDir "state.yaml"
 
