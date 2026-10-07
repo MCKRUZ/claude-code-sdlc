@@ -63,37 +63,33 @@ test.describe('[command center P7] steering mode in the real window', () => {
     await expect(steering).toContainText('window is a label only')
   })
 
-  /** v13 fixer round: a committee screen pages cleanly. At rest no tile straddles the fold (the
-   * v13 shot cut the Delivery titles at y ≈ 866 on a 900 px window); the pages container is the
-   * one scroller and a scroll of one room-height snaps the Delivery page's top to the top, with
-   * no tile straddling the fold there either; <main> itself never scrolls. */
-  test('the room pages cleanly: at rest and after one page down, no tile straddles the fold and <main> never scrolls', async () => {
+  /** v15 (owner's note, recorded pin change — plan §8): the room is one board. At 1440×900 every
+   * tile of Outcomes AND Delivery is fully above the fold at rest, nothing straddles it, the
+   * Delivery row is on screen without a scroll, and <main> itself never scrolls (the pages
+   * container is the one scroller). The v13 two-page assertion is retired with this evidence:
+   * the second page left ~120 px of empty room under Outcomes and hid half the standard. */
+  test('one board: Outcomes and Delivery both fully on screen at rest; <main> never scrolls', async () => {
     const steering = page.locator(ASSUMED.steering)
     await expect(steering.locator('[data-steer-pages]')).toBeVisible({ timeout: 60_000 })
-    const measure = () => page.evaluate(() => {
+    const atRest = await page.evaluate(() => {
       const vh = window.innerHeight
-      const pages = document.querySelector('[data-steer-pages]') as HTMLElement
       const tiles = Array.from(document.querySelectorAll('[data-steer-tile]')).map((t) => t.getBoundingClientRect())
       const straddling = tiles.filter((r) => r.top < vh - 1 && r.bottom > vh + 1).length
+      const below = tiles.filter((r) => r.bottom > vh + 1).length
       const main = document.getElementById('main')
-      const delivery = document.querySelector('[data-steer-page="delivery"]')!.getBoundingClientRect()
-      return { vh, straddling, tiles: tiles.length, mainScrollTop: main?.scrollTop ?? 0, mainOverflows: (main?.scrollHeight ?? 0) > (main?.clientHeight ?? 0) + 1, pagesTop: pages.getBoundingClientRect().top, deliveryTop: delivery.top, pagesHeight: pages.clientHeight }
+      const delivery = document.querySelector('[data-steer-group="delivery"]')!.getBoundingClientRect()
+      const actions = document.querySelector('[data-steer-actions]')!.getBoundingClientRect()
+      return { vh, straddling, below, tiles: tiles.length, mainScrollTop: main?.scrollTop ?? 0, mainOverflows: (main?.scrollHeight ?? 0) > (main?.clientHeight ?? 0) + 1, deliveryTop: delivery.top, deliveryBottom: delivery.bottom, actionsBottom: actions.bottom }
     })
-    const atRest = await measure()
     expect(atRest.tiles).toBeGreaterThanOrEqual(10)
-    expect(atRest.straddling, `tiles straddling the fold at rest: ${atRest.straddling}`).toBe(0)
+    expect(atRest.straddling, `tiles straddling the fold: ${atRest.straddling}`).toBe(0)
+    expect(atRest.below, `tiles entirely below the fold: ${atRest.below}`).toBe(0)
+    expect(atRest.deliveryTop).toBeLessThan(atRest.vh)
+    expect(atRest.deliveryBottom).toBeLessThanOrEqual(atRest.vh + 1)
+    // The actions (Open the review page, companions) are on the board too — whole, not at the fold.
+    expect(atRest.actionsBottom, `actions bottom ${Math.round(atRest.actionsBottom)} vs viewport ${atRest.vh}`).toBeLessThanOrEqual(atRest.vh + 1)
     expect(atRest.mainScrollTop).toBe(0)
     expect(atRest.mainOverflows, '<main> has nothing to scroll in steering — the pages container scrolls').toBe(false)
-    // The Delivery page begins at or under the fold: nothing of it shows under the first page.
-    expect(atRest.deliveryTop).toBeGreaterThanOrEqual(atRest.vh - 1)
-    await page.evaluate(() => { const pages = document.querySelector('[data-steer-pages]') as HTMLElement; pages.scrollTo({ top: pages.clientHeight, behavior: 'auto' }) })
-    await page.waitForTimeout(400)
-    const pagedDown = await measure()
-    expect(Math.abs(pagedDown.deliveryTop - pagedDown.pagesTop), `Delivery page top ${Math.round(pagedDown.deliveryTop)} vs pages top ${Math.round(pagedDown.pagesTop)}`).toBeLessThanOrEqual(1.5)
-    expect(pagedDown.straddling, `tiles straddling the fold on page 2: ${pagedDown.straddling}`).toBe(0)
-    expect(pagedDown.mainScrollTop).toBe(0)
-    await page.evaluate(() => { (document.querySelector('[data-steer-pages]') as HTMLElement).scrollTo({ top: 0, behavior: 'auto' }) })
-    await page.waitForTimeout(300)
   })
 
   test('Escape leaves steering mode and returns to the sprint home', async () => {

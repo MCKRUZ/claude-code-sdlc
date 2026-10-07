@@ -40,14 +40,14 @@ export const NARRATIVE_SUFFIX = '.narrative.md'
  * (`PAGE_CLASS`). From 1680 the five are ≥ 280 again. */
 export const TILE_GRID_CLASS = 'grid gap-6 grid-cols-2 min-[1280px]:grid-cols-3 min-[1440px]:grid-cols-5'
 
-/** The room pages (v13 fixer round): the pages container is the ONE scroller, `snap-y
- * snap-mandatory`, and every labelled row is a page — `snap-start`, at least the room's height —
- * so at rest a page's top edge sits at the top and the next page begins at the fold; a partial
- * row never shows under a settled scroll (v13: the Delivery row's titles were cut at y ≈ 866 on a
- * 900 px window). Page 1 = the lockup, the sentence and Outcomes; page 2 = Delivery and the
- * actions; a companion, when opened, is page 3. Each page carries the visual's 48 px padding. */
+/** The room is ONE board (v15 owner's note: "the first page leaves room under Outcomes" — paging
+ * the Delivery row onto a second screen hid half the standard behind a scroll nobody expected).
+ * Both labelled rows and the actions sit on the first page, and the tiles are sized so the whole
+ * board fits a 1440×900 window (measured ≈ 830 px tall) — at a smaller window the pages container
+ * is the one scroller and the board scrolls as a unit. A companion, when opened, is its own page
+ * the room snaps to. Each page carries a 40 / 32 px padding. */
 export const PAGES_CLASS = 'min-h-0 flex-1 overflow-y-auto overscroll-contain snap-y snap-mandatory'
-export const PAGE_CLASS = 'flex min-h-full snap-start flex-col p-12'
+export const PAGE_CLASS = 'flex min-h-full snap-start flex-col px-10 py-8'
 
 /** A `scorecard.py` field split at its own seams — after each `_` and `.` — so a long name like
  * `security_review_wait_median_hours` breaks between words first. The pieces joined are the field
@@ -58,9 +58,10 @@ export { fieldPieces }
 
 /** The two provenance lines a tile ends with: the script and verb, then the field on a line of its own. */
 function Provenance({ field }: { field: string }) {
+  // The script and verb are said once under the title (`steering-source`); the tile carries the
+  // field alone, on one mono line that breaks at its own seams.
   return (
-    <p className="mt-2 font-mono text-[20px] leading-7 text-steer-nodata-ink [overflow-wrap:anywhere]" aria-label="source">
-      <span className="block">{SOURCE_SHORT}</span>
+    <p className="mt-2 font-mono text-[13px] leading-5 text-steer-nodata-ink [overflow-wrap:anywhere]" aria-label="source">
       <span className="block" data-field-name={field}><BreakableField field={field} /></span>
     </p>
   )
@@ -123,45 +124,44 @@ export function SteeringMode({ projectPath, sprintId, onExit }: SteeringModeProp
     // has nothing to scroll — and each page snaps whole to the top.
     <section ref={root} data-testid="steering-mode" aria-label="Steering mode" className="flex h-full min-h-full flex-col bg-steer-bg text-steer-label text-steer-label-ink">
       <div className={PAGES_CLASS} data-testid={card ? 'steering-tiles' : undefined} data-steer-pages="">
-        <div className={PAGE_CLASS} data-steer-page="outcomes">
-          <header className="flex h-16 shrink-0 items-center justify-between gap-6">
+        <div className={PAGE_CLASS} data-steer-page="board">
+          <header className="flex h-12 shrink-0 items-center justify-between gap-6">
             <SteeringLockup />
             {sprintId && <span className="font-mono tabular-nums text-steer-label-ink" data-testid="steering-sprint">{sprintId}</span>}
           </header>
-          <p className="mt-6 text-steer-label text-steer-nodata-ink">
+          <p className="mt-3 text-[20px] leading-7 text-steer-nodata-ink">
             The standard's numbers, as the plugin reports them. Window {STEERING_WINDOW_DAYS} days — {WINDOW_IS_A_LABEL}.
           </p>
-          <p className="mt-1 font-mono text-[20px] leading-7 text-steer-nodata-ink [overflow-wrap:anywhere]" data-testid="steering-source">{SOURCE}</p>
+          <p className="mt-1 font-mono text-[15px] leading-6 text-steer-nodata-ink [overflow-wrap:anywhere]" data-testid="steering-source">{SOURCE}</p>
           {card === undefined ? (
             <p role="status" aria-busy="true" className="mt-12 text-steer-label text-steer-nodata-ink">Reading the scorecard…</p>
           ) : card === null ? (
             <p role="alert" className="mt-12 text-steer-label text-steer-nodata-ink">The scorecard could not be read — these are not zeros, there are no numbers to show.</p>
           ) : (
-            <TileRow label="Outcomes" group="outcomes" className="mt-10">
+            <TileRow label="Outcomes" group="outcomes" className="mt-5">
               {scorecardMeasures(card).filter((m) => !isDora(m)).map((m) => <SteerTile key={m.id} measure={m} />)}
             </TileRow>
           )}
-        </div>
 
         {card && (
-          <div className={PAGE_CLASS} data-steer-page="delivery">
-            <TileRow label="Delivery" group="delivery">
+          <>
+            <TileRow label="Delivery" group="delivery" className="mt-5">
               {scorecardMeasures(card).filter(isDora).map((m) => <SteerTile key={m.id} measure={m} />)}
-              <div className="rounded-[14px] border border-steer-tile-line bg-steer-tile p-6" data-steer-tile="escaped-bugs">
-                <p className="text-steer-label text-steer-label-ink">Bugs that got through</p>
+              <div className={TILE_CLASS} data-steer-tile="escaped-bugs">
+                <p className={TILE_LABEL_CLASS}>Bugs that got through</p>
                 {card.escaped_bugs.length === 0 ? (
-                  <p className="mt-2 text-steer-label text-steer-nodata-ink">none recorded in this window</p>
+                  <p className="mt-2 text-[20px] leading-7 text-steer-nodata-ink">none recorded in this window</p>
                 ) : (
-                  <ul className="mt-2 space-y-1 text-steer-label text-steer-number-ink">
+                  <ul className="mt-2 space-y-1 text-[17px] leading-6 text-steer-number-ink">
                     {card.escaped_bugs.map((b, i) => <li key={i}>{String(b.summary ?? b.which_check ?? 'a bug')}</li>)}
                   </ul>
                 )}
-                <p className="mt-3 text-steer-label text-steer-nodata-ink [text-wrap:pretty]" data-produces="">a bug recorded after its change had merged</p>
+                <p className={TILE_PRODUCES_CLASS} data-produces="">a bug recorded after its change had merged</p>
                 <Provenance field="escaped_bugs[]" />
               </div>
             </TileRow>
 
-            <div className="mt-12 flex flex-wrap items-center gap-6" data-steer-actions="">
+            <div className="mt-5 flex flex-wrap items-center gap-6" data-steer-actions="">
               <Button variant="secondary" className="h-12 px-5 text-xl" disabled={!sprintId} disabledReason={sprintId ? undefined : NO_DATA} onClick={openReview}>Open the review page</Button>
               {reportError && <p role="alert" className="text-steer-label text-status-error-ink">{reportError}</p>}
               {companions.length === 0 ? (
@@ -170,8 +170,9 @@ export function SteeringMode({ projectPath, sprintId, onExit }: SteeringModeProp
                 <Button key={c.path} variant="ghost" className="h-12 px-5 text-xl" onClick={() => openCompanion(c)}>{c.name.replace(/\.md$/, '')} narrative</Button>
               ))}
             </div>
-          </div>
+          </>
         )}
+        </div>
 
         {card && open && (
           <div className={PAGE_CLASS} data-steer-page="companion">
@@ -204,26 +205,33 @@ function TileRow({ label, group, className, children }: { label: string; group: 
   )
 }
 
+/** Tile sizes (v15): label 20/28, number 44/48, denominator and field in 13–14 px mono, the
+ * sentence 17/24 — a tile is ≈ 240 px tall, so Outcomes and Delivery both sit on one board at
+ * 1440×900 with nothing under a fold. */
+export const TILE_CLASS = 'rounded-[14px] border border-steer-tile-line bg-steer-tile p-5'
+export const TILE_LABEL_CLASS = 'text-[20px] leading-7 font-medium text-steer-label-ink'
+export const TILE_PRODUCES_CLASS = 'mt-3 text-[17px] leading-6 text-steer-nodata-ink [text-wrap:pretty]'
+
 function SteerTile({ measure }: { measure: ScorecardMeasure }) {
   const { shown, unit, words } = shownValue(measure)
   const counted = useCountUp(`steering.${measure.id}`, shown, { snap: measure.kind === 'percent' || measure.kind === 'count' ? 1 : 0.1 })
   const base = denominatorText(measure.denominator)
   return (
-    <div className="rounded-[14px] border border-steer-tile-line bg-steer-tile p-6" data-steer-tile={measure.id} data-field={measure.field}>
-      <p className="text-steer-label text-steer-label-ink">{measure.label}</p>
+    <div className={TILE_CLASS} data-steer-tile={measure.id} data-field={measure.field}>
+      <p className={TILE_LABEL_CLASS}>{measure.label}</p>
       {shown === null ? (
-        <p className="mt-2 text-steer-label text-steer-nodata-ink" data-no-data="">{words ?? 'no data'}</p>
+        <p className="mt-2 text-[20px] leading-7 text-steer-nodata-ink" data-no-data="">{words ?? 'no data'}</p>
       ) : (
         <>
-          <p className="mt-2 text-steer-number tabular-nums text-steer-number-ink" data-stat={measure.field}>
-            <span ref={counted.ref}>{counted.text}</span>{unit && <span className="ml-2 text-steer-label text-steer-label-ink">{unit}</span>}
+          <p className="mt-1 text-[44px] leading-[48px] font-[650] tracking-[-0.02em] tabular-nums text-steer-number-ink" data-stat={measure.field}>
+            <span ref={counted.ref}>{counted.text}</span>{unit && <span className="ml-2 text-[20px] font-medium text-steer-label-ink">{unit}</span>}
           </p>
-          {base && <p className="font-mono text-[20px] leading-7 text-steer-nodata-ink" data-denominator={measure.denominator!.field}>{base}</p>}
+          {base && <p className="font-mono text-[14px] leading-5 text-steer-nodata-ink" data-denominator={measure.denominator!.field}>{base}</p>}
         </>
       )}
       {/* The sentence in full — what one unit of this number is — wrapping to as many lines as it
           needs; a committee view never ends a meaning in an ellipsis. */}
-      <p className="mt-3 text-steer-label text-steer-nodata-ink [text-wrap:pretty]" data-produces="">{measure.produces}</p>
+      <p className={TILE_PRODUCES_CLASS} data-produces="">{measure.produces}</p>
       <Provenance field={measure.field} />
     </div>
   )

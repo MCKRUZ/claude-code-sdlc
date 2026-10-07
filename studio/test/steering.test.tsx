@@ -64,7 +64,8 @@ describe('SteeringMode', () => {
     expect(security.querySelector('[data-no-data]')?.textContent).toBe('no data')
     expect(security.querySelector('[data-stat]')).toBeNull()
     expect(security.textContent).toContain('security_review_wait_median_hours')
-    for (const tile of tiles.querySelectorAll('[data-steer-tile]')) expect(tile.textContent).toContain('scorecard.py report')
+    // v15: the script and verb are said once under the title; every tile still carries its field.
+    for (const tile of tiles.querySelectorAll('[data-steer-tile]')) expect(tile.querySelector('[data-field-name]')).toBeTruthy()
     expect(tiles.querySelector('[data-steer-tile="escaped-bugs"]')?.textContent).toContain('none recorded in this window')
     expect(tiles.querySelectorAll('[data-stat]')).toHaveLength(3)
     expect(screen.getByTestId('steering-sprint').textContent).toBe('S08')
@@ -114,12 +115,11 @@ describe('SteeringMode', () => {
     expect(screen.getByTestId('no-companions')).toBeTruthy()
   })
 
-  /** v13 fixer round: a committee screen pages cleanly. The pages container is the one scroller
-   * (`snap-y snap-mandatory`), each labelled row a `snap-start` page at least the room's height;
-   * the lockup and sentence ride page 1 with Outcomes, Delivery and the actions are page 2, and a
-   * companion opens as page 3 — so a settled scroll never shows half a row (the v13 shot cut the
-   * Delivery titles at the fold). The room itself never scrolls past <main>. */
-  it('each labelled row is a snap page the room scrolls to; the lockup rides the first, the actions the second, a companion the third', async () => {
+  /** v15 (owner's note): the room is ONE board — Outcomes, Delivery and the actions on the first
+   * page, sized to fit 1440×900 — because paging Delivery onto a second screen left room under
+   * Outcomes and hid half the standard behind a scroll. The pages container stays the one
+   * scroller (`snap-y snap-mandatory`); a companion still opens as its own page. */
+  it('one board holds both rows and the actions; a companion opens as a second page', async () => {
     const studio = install(); await renderSteering()
     const root = screen.getByTestId('steering-mode')
     expect(root.className).toContain('h-full')
@@ -127,30 +127,27 @@ describe('SteeringMode', () => {
     const pages = root.querySelector('[data-steer-pages]') as HTMLElement
     expect(pages.className).toBe(PAGES_CLASS)
     expect(PAGES_CLASS).toContain('snap-y')
-    expect(PAGES_CLASS).toContain('snap-mandatory')
     expect(PAGES_CLASS).toContain('overflow-y-auto')
     expect(pages.getAttribute('data-testid')).toBe('steering-tiles')
     const pageIds = () => Array.from(pages.querySelectorAll('[data-steer-page]')).map((p) => p.getAttribute('data-steer-page'))
-    expect(pageIds()).toEqual(['outcomes', 'delivery'])
-    for (const page of pages.querySelectorAll('[data-steer-page]')) {
-      expect(page.className).toBe(PAGE_CLASS)
-      expect(page.className).toContain('snap-start')
-      expect(page.className).toContain('min-h-full')
-      expect(page.className).toContain('p-12')
-    }
-    const first = pages.querySelector('[data-steer-page="outcomes"]')!
-    expect(first.querySelector('[data-steering-lockup]')).toBeTruthy()
-    expect(first.querySelector('[data-testid="steering-source"]')).toBeTruthy()
-    expect(first.querySelector('[data-steer-group="outcomes"]')).toBeTruthy()
-    expect(first.querySelector('[data-steer-group="delivery"]')).toBeNull()
-    const second = pages.querySelector('[data-steer-page="delivery"]')!
-    expect(second.querySelector('[data-steer-group="delivery"]')).toBeTruthy()
-    expect(second.querySelector('[data-steer-actions]')).toBeTruthy()
-    expect(within(second as HTMLElement).getByRole('button', { name: 'Open the review page' })).toBeTruthy()
+    expect(pageIds()).toEqual(['board'])
+    const board = pages.querySelector('[data-steer-page="board"]') as HTMLElement
+    expect(board.className).toBe(PAGE_CLASS)
+    expect(board.className).toContain('snap-start')
+    expect(board.querySelector('[data-steering-lockup]')).toBeTruthy()
+    expect(board.querySelector('[data-testid="steering-source"]')).toBeTruthy()
+    expect(board.querySelector('[data-steer-group="outcomes"]')).toBeTruthy()
+    expect(board.querySelector('[data-steer-group="delivery"]')).toBeTruthy()
+    expect(board.querySelector('[data-steer-actions]')).toBeTruthy()
+    expect(within(board).getByRole('button', { name: 'Open the review page' })).toBeTruthy()
+    // The script and verb are said once under the title; a tile carries its field alone.
+    const sources = Array.from(board.querySelectorAll('[aria-label="source"]')).map((n) => n.textContent ?? '')
+    expect(sources.length).toBeGreaterThan(0)
+    for (const s of sources) expect(s).not.toContain('scorecard.py')
     fireEvent.click(await screen.findByRole('button', { name: 'build-handoff narrative' }))
     await screen.findByTestId('steering-companion')
     expect(studio.openDocument).toHaveBeenCalled()
-    expect(pageIds()).toEqual(['outcomes', 'delivery', 'companion'])
+    expect(pageIds()).toEqual(['board', 'companion'])
   })
 
   it('the lazy chunk resolves', async () => {
@@ -173,7 +170,7 @@ describe('SteeringMode', () => {
     for (const tile of tiles.querySelectorAll('[data-steer-tile]')) {
       const produces = tile.querySelector('[data-produces]') as HTMLElement
       expect(produces.className).not.toMatch(/line-clamp/)
-      expect(produces.className).toContain('text-steer-label')
+      expect(produces.className).toContain('text-[17px]') // v15 compact tile: the sentence at 17/24, still in full, never clamped
       expect(produces.textContent!.length).toBeGreaterThan(10)
       // The field name: its own line, the full name as text (the <wbr> seams carry no characters).
       const field = tile.querySelector('[data-field-name]') as HTMLElement
