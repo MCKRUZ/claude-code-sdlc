@@ -173,11 +173,11 @@ az account show</code></pre>
 <!-- 2 ------------------------------------------------------------------ -->
 <h2 id="install">2. Install the plugin</h2>
 <p>From inside Claude Code, one marketplace add and one install. This brings the orchestration commands and the delivery harness payload.</p>
-<pre><code>/plugin marketplace add splashthree/claude-code-sdlc
-/plugin install claude-code-sdlc@togo</code></pre>
-<p>The marketplace is named <code>togo</code>; the plugin keeps its id <code>claude-code-sdlc</code>, so existing <code>/sdlc-*</code> commands and project state are unchanged.</p>
+<pre><code>/plugin marketplace add MCKRUZ/claude-code-sdlc
+/plugin install claude-code-sdlc@mckruz</code></pre>
+<p>The marketplace is named <code>mckruz</code>; the plugin keeps its id <code>claude-code-sdlc</code>, so existing <code>/sdlc-*</code> commands and project state are unchanged.</p>
 <p>Developers working on the plugin itself clone it and symlink it as a skill instead:</p>
-<pre><code>git clone https://github.com/splashthree/claude-code-sdlc.git
+<pre><code>git clone https://github.com/MCKRUZ/claude-code-sdlc.git
 ln -s /path/to/claude-code-sdlc ~/.claude/skills/claude-code-sdlc   <span class="c"># macOS / Linux</span>
 mklink /D "%USERPROFILE%\.claude\skills\claude-code-sdlc" "path\to\claude-code-sdlc"   <span class="c"># Windows</span>
 cd claude-code-sdlc/scripts &amp;&amp; uv sync   <span class="c"># optional warm-up; uv run syncs on first use anyway</span></code></pre>

@@ -1,6 +1,6 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.splashthree.togo",
+  "appId": "com.mckruz.togo",
   "productName": "Tōgō",
   "asar": true,
   "directories": {

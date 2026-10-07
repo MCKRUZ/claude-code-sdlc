@@ -50,8 +50,8 @@ No existing tool combines specification-driven development + quality enforcement
 One marketplace add, one install — brings the orchestration commands **and** the delivery harness:
 
 ```
-/plugin marketplace add splashthree/claude-code-sdlc
-/plugin install claude-code-sdlc@togo
+/plugin marketplace add MCKRUZ/claude-code-sdlc
+/plugin install claude-code-sdlc@mckruz
 ```
 
 Then, per project: `/sdlc-setup` initializes `.sdlc/` **and installs the full delivery harness**
@@ -65,7 +65,7 @@ harness in an existing repo, use `/sdlc-harness`. Requires Claude Code v2.1.196+
 
 ```bash
 # Clone the repo
-git clone https://github.com/splashthree/claude-code-sdlc.git
+git clone https://github.com/MCKRUZ/claude-code-sdlc.git
 
 # Symlink to your Claude Code skills directory
 # Windows

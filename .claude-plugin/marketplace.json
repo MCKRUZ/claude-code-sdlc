@@ -1,9 +1,9 @@
 {
-  "name": "togo",
+  "name": "mckruz",
   "description": "Tōgō (統合) — SDLC orchestration for Claude Code, the one-command delivery harness, and the Tōgō desktop app.",
   "owner": {
-    "name": "splashthree",
-    "url": "https://github.com/splashthree"
+    "name": "MCKRUZ",
+    "url": "https://github.com/MCKRUZ"
   },
   "plugins": [
     {

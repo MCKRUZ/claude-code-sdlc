@@ -204,7 +204,7 @@ every shot and exits 3 on a violation; `SHOT_PROBE=ghost` measures the band abov
 Installers are never committed: `studio/release/` is gitignored and the artifacts live on GitHub
 Releases. `.github/workflows/release.yml` builds them on a version tag — the `.dmg` (and `.zip`)
 on a macOS runner, the `.exe` installer on a Windows runner, both from `electron-builder.json`
-with the Tōgō icon and bundle id `com.splashthree.togo` — and attaches them to one Release with
+with the Tōgō icon and bundle id `com.mckruz.togo` — and attaches them to one Release with
 install notes. The tag must match `.claude-plugin/plugin.json`'s version:
 
 ```bash
@@ -217,7 +217,7 @@ on by secrets alone (macOS: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
 without them the builds are unsigned and the first launch needs right-click → Open on macOS or
 SmartScreen's "run anyway" on Windows. There is no auto-update channel: people install the new
 release. A packaged Tōgō finds the plugin in Claude Code's marketplace cache
-(`/plugin install claude-code-sdlc@togo`), or at the path set in Settings.
+(`/plugin install claude-code-sdlc@mckruz`), or at the path set in Settings.
 
 ## Window
 

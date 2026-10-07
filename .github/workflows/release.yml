@@ -122,7 +122,7 @@ jobs:
             echo "- Windows: the .exe installer (choose the folder; settings survive uninstall). Unsigned builds: SmartScreen → More info → Run anyway."
             echo
             echo "The app needs Claude Code, uv and git on the machine, and the plugin installed in Claude Code:"
-            echo '`/plugin marketplace add splashthree/claude-code-sdlc` then `/plugin install claude-code-sdlc@togo`.'
+            echo '`/plugin marketplace add MCKRUZ/claude-code-sdlc` then `/plugin install claude-code-sdlc@mckruz`.'
             echo "gh or az are optional (pull-request features only). See docs/guide/togo-setup-guide.html."
           } > notes.md
       - uses: softprops/action-gh-release@v2
