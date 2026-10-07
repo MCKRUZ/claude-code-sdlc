@@ -95,11 +95,12 @@ describe('SpineTable', () => {
     expect(document.querySelector('[aria-current]')).toBeNull()
   })
 
-  it('lists the five Build views under the Build row and hands the stage id to onActivate on click', () => {
+  it('lists the Build views under the Build row and hands the stage id to onActivate on click', () => {
     const onActivate = vi.fn()
     render(<SpineTable data={data()} onActivate={onActivate} />)
     const build = screen.getByRole('button', { name: /Phase build/ })
-    expect(build.closest('li')?.textContent ?? "").toContain('Home · Planning · Board · How it is going · Closing · Documents')
+    // Re-recorded (plugin 1.8.0): Issues joined the Build views after the Board (/sdlc-report-issue).
+    expect(build.closest('li')?.textContent ?? "").toContain('Home · Planning · Board · Issues · How it is going · Closing · Documents')
     fireEvent.click(build)
     fireEvent.click(screen.getByRole('button', { name: /Phase 9/ }))
     expect(onActivate.mock.calls).toEqual([['build'], ['9']])

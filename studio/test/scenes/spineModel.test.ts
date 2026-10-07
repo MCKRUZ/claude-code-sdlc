@@ -150,7 +150,8 @@ describe('spineModel: words', () => {
     // A later station the plugin does count files for still reports them: that number is data.
     expect(plateLines({ ...data.stations[5], artifact_count: 2 })).toEqual(['Not started', '2 artifacts'])
     // Build is a loop that may already hold specs, so its line is the sidebar's, not "Not started".
-    expect(plateLines(data.stations[4])).toEqual(['Specs, checks and close-out', 'Home · Planning · Board · How it is going · Closing · Documents'])
+    // Re-recorded (plugin 1.8.0): Issues joined the Build views after the Board (/sdlc-report-issue).
+    expect(plateLines(data.stations[4])).toEqual(['Specs, checks and close-out', 'Home · Planning · Board · Issues · How it is going · Closing · Documents'])
   })
   it('reads the current station as the sidebar does: "0 of 5 documents complete" when readiness is known, "In progress" when not', () => {
     const known = buildSpineData({ stages: nineStages(), currentPhaseId: '3', currentDocs: { complete: 0, total: 5 } })

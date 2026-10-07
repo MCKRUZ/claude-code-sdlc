@@ -12,7 +12,7 @@
 // process addressed to this person by exact handle — never a count Studio made; with no actor
 // it is disabled with `reasons.SIGN_IN_TO_SEE`; with nothing addressed it says so in words.
 import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
-import { Bell, Command, MessageSquare, Settings, SunMoon, Terminal, type LucideIcon } from 'lucide-react'
+import { Bell, Bug, Command, MessageSquare, Settings, SunMoon, Terminal, type LucideIcon } from 'lucide-react'
 import type { ProjectStatus, SyncState } from '../../shared/types'
 import { targetForHome, type Area, type NavTarget } from '../../shared/nav'
 import { NOTHING_NEEDS_YOU } from '../../shared/reasons'
@@ -52,6 +52,12 @@ export interface TopBandProps {
    * row. Absent → no button (a test that mounts the band alone). */
   chatOpen?: boolean
   onToggleChat?: () => void
+  /** Report an issue (/sdlc-report-issue in the app, CLAUDE.md's tooling-reaches-the-UI rule): the
+   * band's Bug control captures the window first, then opens the dialog. `reportIssueReason` is
+   * the one reason it is disabled — an older plugin without `issue-report` — present, never hidden.
+   * Absent callback → no control (a test that mounts the band alone). */
+  onReportIssue?: () => void
+  reportIssueReason?: string | null
   /** Steering mode (togo-command-center.md §3.5, visual §4): the band steps back to a
    * presentation — the mark and the project name (still the one `<h1>`) and ONE "Leave steering
    * (Esc)" — no omnibar, no needs-you chip, no console or settings controls: the committee's
@@ -60,10 +66,11 @@ export interface TopBandProps {
 }
 
 export const LEAVE_STEERING = 'Leave steering (Esc)'
+export const REPORT_ISSUE_LABEL = 'Report an issue'
 
 export const TopBand = memo(function TopBand({
   status, syncState, area, consoleOpen, onToggleConsole, onOpenPalette, onNavigate, needsYou = null, home, currentStageId, overflow, presentation,
-  chatOpen, onToggleChat,
+  chatOpen, onToggleChat, onReportIssue, reportIssueReason = null,
 }: TopBandProps) {
   const toLifecycle = () => onNavigate(targetForHome('lifecycle', currentStageId))
   if (presentation) {
@@ -120,6 +127,7 @@ export const TopBand = memo(function TopBand({
         <div className="hidden max-w-[14rem] sm:block"><SyncChip syncState={syncState} /></div>
         <BandButton label="Console" icon={Terminal} kbd={['Mod', 'J']} pressed={consoleOpen} onClick={onToggleConsole} />
         {onToggleChat && <BandButton label="Chat" icon={MessageSquare} kbd={['Mod', '\\']} pressed={chatOpen === true} onClick={onToggleChat} />}
+        {onReportIssue && <BandButton label={REPORT_ISSUE_LABEL} icon={Bug} onClick={onReportIssue} disabled={reportIssueReason !== null} disabledReason={reportIssueReason ?? undefined} testId="report-issue" />}
         <AppearanceButton />
         <BandButton label="Settings" icon={Settings} kbd={['Mod', ',']} current={area === 'settings'} onClick={() => onNavigate({ area: 'settings' })} />
         <OverflowMenu actions={overflow} />
@@ -164,7 +172,7 @@ const CHIP_BASE = 'inline-flex h-6 items-center gap-1.5 rounded-full px-2.5 text
 /** A 32 × 32 band control: a glyph, a visually hidden label (so its text content IS its name —
  * the documents e2e reads the lit entry's text), a tooltip with the key, and the one aria state
  * the control has (pressed · expanded · current). */
-function BandButton({ label, icon, kbd, pressed, expanded, controls, current, onClick, children }: {
+function BandButton({ label, icon, kbd, pressed, expanded, controls, current, onClick, children, disabled, disabledReason, testId }: {
   label: string
   icon: LucideIcon
   kbd?: string[]
@@ -174,25 +182,34 @@ function BandButton({ label, icon, kbd, pressed, expanded, controls, current, on
   current?: boolean
   onClick: () => void
   children?: ReactNode
+  /** Disabled means a reason (§2.7): the sentence rides on `title` and `aria-describedby`. */
+  disabled?: boolean
+  disabledReason?: string
+  testId?: string
 }) {
   const lit = Boolean(pressed || expanded || current)
   return (
-    <Tooltip label={label} kbd={kbd}>
+    <Tooltip label={disabled && disabledReason ? `${label} — ${disabledReason}` : label} kbd={kbd}>
       <button
         type="button"
         data-pressable=""
+        data-testid={testId}
         aria-pressed={pressed}
         aria-expanded={expanded}
         aria-controls={controls}
         aria-current={current ? 'page' : undefined}
+        disabled={disabled}
+        {...disabledReasonProps(disabledReason, disabled)}
         onClick={onClick}
         className={cn(
           'inline-flex h-8 w-8 items-center justify-center rounded-lg text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink-1',
           lit && 'bg-surface-2 text-ink-1',
+          disabled && 'opacity-50 hover:bg-transparent hover:text-ink-2',
         )}
       >
         <Icon icon={icon} size={18} />
         <VisuallyHidden>{label}</VisuallyHidden>
+        <DisabledReason reason={disabledReason} disabled={disabled} />
         {children}
       </button>
     </Tooltip>

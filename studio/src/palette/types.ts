@@ -51,7 +51,7 @@ export type SettingsAnchor =
  * re-runs the current screen's own P-class read and never `openProject` or `pull`. */
 export type PaletteActionId =
   | 'theme' | 'density' | 'motion' | 'console' | 'chat' | 'spine'
-  | 'surface' | 'fit-graph' | 'focus-next-up' | 'refresh' | 'copy-path' | 'shortcuts' | 'steering' | 'back' | 'new-project' | 'open-folder'
+  | 'surface' | 'fit-graph' | 'focus-next-up' | 'refresh' | 'copy-path' | 'shortcuts' | 'steering' | 'report-issue' | 'back' | 'new-project' | 'open-folder'
 
 /** What the actions group needs from the host: current values (to label "Theme: Dark →
  * System") and the callbacks that apply them. Absent callback → the entry is omitted, so an
@@ -77,6 +77,8 @@ export interface PaletteActionHooks {
   openShortcuts?: () => void
   /** Steering mode (togo-command-center.md §3.5) — a navigation, present only inside a project. */
   steering?: () => void
+  /** Report an issue (/sdlc-report-issue in the app): captures the window, then opens the dialog. */
+  reportIssue?: () => void
   back?: () => void
   newProject?: () => void
   openFolder?: () => void

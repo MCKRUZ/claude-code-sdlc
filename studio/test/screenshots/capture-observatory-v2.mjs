@@ -23,7 +23,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
-import { inflateSync } from 'node:zlib'
+import { deflateSync, inflateSync } from 'node:zlib'
 import { fileURLToPath } from 'node:url'
 import { _electron as electron } from '@playwright/test'
 
@@ -94,6 +94,20 @@ const py = (label, args) => {
   catch (e) { failures.push(`${label}: ${String(e.stderr ?? e.stdout ?? e.message).trim().split('\n').slice(-3).join(' | ')}`) }
 }
 const git = (args, cwd) => execFileSync('git', args, { cwd, stdio: 'pipe' })
+/** A real 2×2 PNG — the plugin reads a screenshot's bytes, never its name. */
+function tinyPng() {
+  const table = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
+  const crc = (buf) => { let c = 0xffffffff; for (const b of buf) c = table[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0 }
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
+    const td = Buffer.concat([Buffer.from(type, 'ascii'), data]); const c = Buffer.alloc(4); c.writeUInt32BE(crc(td))
+    return Buffer.concat([len, td, c])
+  }
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(2, 0); ihdr.writeUInt32BE(2, 4); ihdr[8] = 8; ihdr[9] = 6
+  const raw = Buffer.from([0, 15, 124, 134, 255, 15, 124, 134, 255, 0, 15, 124, 134, 255, 15, 124, 134, 255])
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+}
+
 const shot = async (page, name) => {
   await page.screenshot({ path: join(here, `${PREFIX}-${name}.png`) })
   if (OVERLAP) await probeOverlap(page, name)
@@ -285,6 +299,23 @@ writeFileSync(join(project, '.sdlc', 'team.yaml'), roster)
 py('sprint new', [sprintPy, 'new', '--repo', project, '--sprint', 'S07', '--goal', 'Adjusters file without a phone call',
   '--start', '2026-09-28', '--target', '6', '--mix', 'HIGH:2,MEDIUM:2,LOW:2', '--by', 'Pod Lead'])
 py('sprint slate', [sprintPy, 'slate', '--repo', project, '--sprint', 'S07', '--by', 'Pod Lead', ...ids.slice(0, 5).flatMap((id) => ['--spec', id])])
+
+// Two bug reports in the product (/sdlc-report-issue; plugin 1.8.0), through the plugin's own CLI
+// with a real PNG: one reviewed and prioritized into S07 (Promote is the next step), one still new
+// (the sprint home's Today column reads "1 awaiting review").
+const issuePy = join(SCRIPTS_DIR, 'report_issue.py')
+const shotPng = join(workspace, 'product-shot.png')
+writeFileSync(shotPng, tinyPng())
+const reportArgs = (title, what, channel, answers) => [issuePy, 'new', '--repo', project, '--title', title, '--channel', channel, '--what', what,
+  '--expected', 'The claim total is the sum of its line items', '--steps', 'open claim 1042', '--steps', 'add a line item of 100', '--steps', 'add a second of 50',
+  '--environment', 'test', '--severity', 'degraded', '--frequency', 'always', '--data-impact', 'wrong-shown', '--persona', 'a claims adjuster',
+  '--reporter-role', 'end-user', ...answers.flatMap((a) => ['--answer', a]), '--screenshot', shotPng, '--no-client-data', '--by', 'Matt K.']
+py('issue 1', reportArgs('Claim total doubles after adding a second line item', 'Adding a second line item shows the claim total as twice the sum of the two lines.', 'web',
+  ['browser_device=Chrome 130 on Windows 11', 'last_action=clicked Add line item', 'url=https://test.claims.example/claims/1042']))
+py('issue 2', reportArgs('Export job writes last month twice', 'The monthly export carries every September row twice; the totals page agrees with the duplicate.', 'data',
+  ['dataset=monthly-claims-export', 'expected_vs_actual=1 042 rows expected, 2 084 written']))
+py('triage 1', [issuePy, 'triage', '--repo', project, '--issue', 'ISS-0001', '--verdict', 'confirmed', '--reason', 'reproduced on test with claim 1042', '--by', 'Sam K'])
+py('prioritize 1', [issuePy, 'prioritize', '--repo', project, '--issue', 'ISS-0001', '--priority', 'P2', '--target-sprint', 'S07', '--by', 'Sam K'])
 const demo = {
   '0001': { status: 'merged' },
   '0002': { status: 'ready', depends_on: '0001' },
@@ -694,6 +725,25 @@ try {
   await settle(page, 600)
   await shot(page, 'omnibar')
   await page.keyboard.press('Escape')
+
+  // --- Issues: the Report dialog over the sprint home, then the Issues view in both themes --------
+  await openBuild('Home')
+  await page.getByTestId('sprint-home').waitFor({ timeout: 60_000 })
+  await page.getByTestId('report-issue').click()
+  await page.getByTestId('report-issue-dialog').waitFor({ timeout: 10_000 })
+  await page.getByTestId('report-issue-dialog').getByLabel('Browser and device').waitFor({ timeout: 60_000 })
+  await settle(page)
+  await shot(page, 'report-issue')
+  await page.keyboard.press('Escape')
+  await openBuild('Issues')
+  await page.getByTestId('issue-card').waitFor({ timeout: 60_000 })
+  await settle(page)
+  await shot(page, 'issues')
+  await setTheme('Dark')
+  await settle(page)
+  await shot(page, 'issues-dark')
+  await setTheme('Light')
+  await settle(page)
 
   // --- Settings, the spec view, the dark twins -------------------------------------------------
   await sidebar.getByRole('button', { name: 'Settings' }).click()

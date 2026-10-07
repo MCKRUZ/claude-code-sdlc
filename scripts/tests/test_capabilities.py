@@ -122,3 +122,32 @@ def test_the_command_center_capabilities_are_declared_with_the_agreed_shape():
     assert caps.CAPABILITIES["readiness-all"] == {"script": "spec_readiness.py", "flags": ["--all", "--json"]}
     assert {"sprint-list", "sprint-log", "sprint-carry", "sprint-edit", "sprint-write", "confirm-tier",
             "assign-roles", "handoff-check", "findings-json", "readiness-all"} <= set(caps.list_capabilities())
+
+
+def test_the_issue_report_capabilities_are_declared_with_the_agreed_shape():
+    """/sdlc-report-issue (1.8.0): the app's Issues view keys on these names — the form's questions,
+    the build facts, the write, the queue, one report with its allowed actions, the three lifecycle
+    decisions, the sync and the filing each disable with the reason `arrives with a newer plugin:
+    lacks <name>` on a plugin without them."""
+    assert caps.CAPABILITIES["issue-questions"] == {
+        "script": "report_issue.py", "argv": ["questions"], "flags": ["--channel", "--json"]}
+    assert caps.CAPABILITIES["issue-env"] == {
+        "script": "report_issue.py", "argv": ["env"], "flags": ["--repo", "--state", "--app-version", "--json"]}
+    assert caps.CAPABILITIES["issue-report"]["script"] == "report_issue.py"
+    assert caps.CAPABILITIES["issue-report"]["argv"] == ["new"]
+    assert {"--title", "--channel", "--environment", "--data-impact", "--persona", "--reporter-role", "--screenshot",
+            "--no-client-data", "--by", "--json"} <= set(caps.CAPABILITIES["issue-report"]["flags"])
+    assert caps.CAPABILITIES["issue-list"] == {
+        "script": "report_issue.py", "argv": ["list"], "flags": ["--repo", "--state", "--status", "--queue", "--json"]}
+    assert caps.CAPABILITIES["issue-show"] == {"script": "report_issue.py", "argv": ["show"], "flags": ["--issue", "--json"]}
+    assert caps.CAPABILITIES["issue-triage"]["argv"] == ["triage"]
+    assert {"--issue", "--verdict", "--question", "--of", "--reason", "--override", "--by"} <= set(caps.CAPABILITIES["issue-triage"]["flags"])
+    assert caps.CAPABILITIES["issue-prioritize"] == {
+        "script": "report_issue.py", "argv": ["prioritize"], "flags": ["--issue", "--priority", "--target-sprint", "--reason", "--by"]}
+    assert caps.CAPABILITIES["issue-promote"] == {
+        "script": "report_issue.py", "argv": ["promote"], "flags": ["--issue", "--risk", "--owner", "--team", "--slate", "--by"]}
+    assert caps.CAPABILITIES["issue-sync"] == {"script": "report_issue.py", "argv": ["sync"], "flags": ["--repo", "--state", "--json"]}
+    assert caps.CAPABILITIES["issue-file"] == {
+        "script": "report_issue.py", "argv": ["file"], "flags": ["--issue", "--host", "--label", "--dry-run", "--by", "--json"]}
+    assert {"issue-questions", "issue-env", "issue-report", "issue-list", "issue-show", "issue-triage", "issue-prioritize",
+            "issue-promote", "issue-sync", "issue-file"} <= set(caps.list_capabilities())

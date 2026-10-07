@@ -57,6 +57,10 @@ export interface FrameShellHooks {
   refreshScreen?: () => void
   /** The omnibar matched a verb (togo-command-center.md §3.6): App opens the VerbDialog. */
   openIntent?: (match: IntentMatch) => void
+  /** Report an issue (/sdlc-report-issue in the app): App captures the window, then opens the
+   * dialog. `reportIssueReason` is the band control's one disabled reason (an older plugin). */
+  reportIssue?: () => void
+  reportIssueReason?: string | null
   /** The `…` menu's two project-switching rows. */
   newProject?: () => void
   openFolder?: () => void
@@ -183,7 +187,7 @@ function FrameBody({
   const needsYou = useMemo(() => (commandCenter ? { count: commandCenter.needsYou.length, reason: commandCenter.needsYouReason } : null), [commandCenter])
   // Guarded: a test fixture may omit `current_phase`; the real status always carries it.
   const home = homeFor(status.current_phase ? status : null, null, commandCenter?.capabilities ?? null)
-  const { newProject, openFolder, back } = shell
+  const { newProject, openFolder, back, reportIssue, reportIssueReason = null } = shell
   // Esc's own path out of steering (App's `back` returns to the screen it was entered from); a
   // test that mounts Frame without the hook leaves through the sprint home.
   const leaveSteering = useCallback(() => { if (back) back(); else onNavigate({ area: 'sprint' }) }, [back, onNavigate])
@@ -192,9 +196,10 @@ function FrameBody({
     toggleChat,
     openShortcuts: onOpenShortcuts,
     steering: () => onNavigate({ area: 'steering' }),
+    reportIssue: reportIssue && reportIssueReason === null ? reportIssue : undefined,
     newProject,
     openFolder,
-  }), [toggleChat, onOpenShortcuts, onNavigate, newProject, openFolder])
+  }), [toggleChat, onOpenShortcuts, onNavigate, reportIssue, reportIssueReason, newProject, openFolder])
 
   // The Frame root carries `--chat-width` / `--console-height` and `data-chat-hidden` (the
   // round-2 shell contract, read by screens that lay out beside the chat or above the console).
@@ -250,6 +255,8 @@ function FrameBody({
           presentation={presentation}
           chatOpen={!chatCollapsed}
           onToggleChat={toggleChat}
+          onReportIssue={reportIssue}
+          reportIssueReason={reportIssueReason}
         />
         {/* The strip (and the Build views under it) is navigation; steering mode draws none. */}
         {!steering && <MemoStrip status={status} projectPath={projectPath} area={area} viewedStageId={viewedStageId} sprint={sprintFacts} onNavigate={onNavigate} />}
@@ -384,7 +391,7 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
     return () => { openRef.current = null; openShortcutsRef.current = null }
   }, [openRef, openShortcutsRef, openPalette, openShortcuts])
 
-  const { openSpec, openDocument, openSettings, back, stageHomeShowing, sprintShowing, refreshScreen, openIntent } = shell
+  const { openSpec, openDocument, openSettings, back, stageHomeShowing, sprintShowing, refreshScreen, openIntent, reportIssue, reportIssueReason } = shell
   const readinessStageId = readiness?.ok ? readiness.stageId : undefined
   const actions = useMemo<PaletteActionHooks>(() => ({
     ...prefs.hooks,
@@ -398,8 +405,9 @@ function ShellPalette({ status, projectPath, currentStageId, viewedStageId, area
     copyProjectPath: () => copyProjectPath(projectPath),
     openShortcuts,
     steering: steering ? undefined : () => onNavigate({ area: 'steering' }),
+    reportIssue: reportIssue && !reportIssueReason ? reportIssue : undefined,
     back,
-  }), [prefs.hooks, toggleChat, stageHomeShowing, sprintShowing, refresh, refreshScreen, scene, projectPath, openShortcuts, steering, onNavigate, back])
+  }), [prefs.hooks, toggleChat, stageHomeShowing, sprintShowing, refresh, refreshScreen, scene, projectPath, openShortcuts, steering, onNavigate, reportIssue, reportIssueReason, back])
 
   const host = useMemo(() => ({
     stages: status.stages,

@@ -26,6 +26,17 @@ export const CAPABILITIES = {
   readinessAll: 'readiness-all',
   decisionOpen: 'decision-open',
   decisionDecide: 'decision-decide',
+  // /sdlc-report-issue (plugin 1.8.0): the Issues view and the Report-an-issue dialog.
+  issueQuestions: 'issue-questions',
+  issueEnv: 'issue-env',
+  issueReport: 'issue-report',
+  issueList: 'issue-list',
+  issueShow: 'issue-show',
+  issueTriage: 'issue-triage',
+  issuePrioritize: 'issue-prioritize',
+  issuePromote: 'issue-promote',
+  issueSync: 'issue-sync',
+  issueFile: 'issue-file',
 } as const
 
 export type CapabilityName = (typeof CAPABILITIES)[keyof typeof CAPABILITIES]
@@ -112,6 +123,19 @@ export const WAITING_FOR_PLUGIN_ANSWER = 'Waiting for the plugin to answer.'
 export const NAME_DEVELOPER_FIRST = 'Name the developer first.'
 export const REASON_REQUIRED_PAST_LIMIT = 'A reason is required to go past a limit.'
 
+// --- Report an issue (/sdlc-report-issue) -----------------------------------------------------
+
+/** The plugin refuses to write a report without an image; the dialog says so before asking it. */
+export const NO_SCREENSHOT = 'a screenshot of the product is required — paste one, choose a file, or capture this window'
+/** The reporter's own statement; the plugin records it with their name. Never pre-ticked. */
+export const CONFIRM_NO_CLIENT_DATA = 'confirm that nothing in the screenshot or the words is client data, personal data or a secret'
+export const PICK_CHANNEL = 'say where in the product you saw it first — the questions depend on it'
+export const ALREADY_FILED = 'already filed — the link is on the report'
+export const NO_ISSUES_YET = 'no issue reports yet — Report an issue writes the first'
+export const NOTHING_AWAITS_REVIEW = 'nothing awaits review'
+export const SELECT_A_REPORT = 'select a report to see it in full'
+export const NO_OPEN_SPRINT_TO_SLATE = 'no open sprint to slate into — prioritize with a target sprint first'
+
 export const REASON_SENTENCES: readonly string[] = [
   WAITING_FOR_PLUGIN_ANSWER, NAME_DEVELOPER_FIRST, REASON_REQUIRED_PAST_LIMIT,
   NO_ACTOR, SIGN_IN_TO_SEE, NO_ROSTER, OWN_BUILD_VERDICT, DATA_VERDICT_NO_DISCIPLINE,
@@ -120,6 +144,8 @@ export const REASON_SENTENCES: readonly string[] = [
   TWO_LEDGER_LINES, NO_DATA, CAP_NOT_SET, DATES_UNREADABLE, NOTHING_NEEDS_YOU, NO_PR_YET, NO_CHANNEL_BOUND,
   GATED_PATH_NOT_DECLARED, ORDER_NOT_GIVEN, ORDER_ARRIVES_ON_COMMIT, UNDATED, DEFERRED_REASON_RECORDED,
   NO_NAME_RECORDED, WINDOW_IS_A_LABEL, NEXT_UP, ONE_SPEC_ONE_BRANCH, TIER_RULE, PICK_RECIPIENT,
+  NO_SCREENSHOT, CONFIRM_NO_CLIENT_DATA, PICK_CHANNEL, ALREADY_FILED, NO_ISSUES_YET, NOTHING_AWAITS_REVIEW, SELECT_A_REPORT,
+  NO_OPEN_SPRINT_TO_SLATE,
 ]
 
 /** True for a fixed sentence, a `newerPlugin(cap)` line or a `createSprintFirst(id)` line. */

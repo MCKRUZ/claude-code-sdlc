@@ -20,6 +20,7 @@ import { useShortcuts } from './shortcuts/useShortcuts'
 import { escOwnedAbove } from './shortcuts/escOwners'
 import { CommandPalette } from './palette/CommandPalette'
 import { usePaletteIndex, usePreferenceActionHooks } from './palette/usePaletteIndex'
+import { CAPABILITIES, newerPlugin } from '../shared/reasons'
 import type { SettingsAnchor } from './palette/types'
 import { SceneSlot } from './scenes/core/SceneSlot'
 import { AMBIENT_ENABLED } from './scenes/core/sceneDefaults'
@@ -55,6 +56,10 @@ const Planning = lazy(() => import('./components/planning/Planning').then((m) =>
 const SpecCard = lazy(() => import('./components/SpecCard/SpecCard').then((m) => ({ default: m.SpecCard })))
 const SprintClose = lazy(() => import('./components/SprintClose').then((m) => ({ default: m.SprintClose })))
 const SteeringMode = lazy(() => import('./components/SteeringMode').then((m) => ({ default: m.SteeringMode })))
+// Issues (/sdlc-report-issue in the app): the Build view's screen and the Report dialog opened
+// from the band, the `…` menu or the palette — each its own chunk, never at rest.
+const ReportIssueDialog = lazy(() => import('./components/ReportIssueDialog').then((m) => ({ default: m.ReportIssueDialog })))
+const IssuesScreen = lazy(() => import('./components/issues/IssuesScreen').then((m) => ({ default: m.IssuesScreen })))
 
 /** The one read model (§2.3), when this build's bridge has it. The main process assembles it;
  * the renderer only asks. Null on a bridge without `getCommandCenter` (an older preload) or when
@@ -286,6 +291,8 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
   const [commandCenter, setCommandCenter] = useState<CommandCenter | null>(null)
   /** The omnibar verb awaiting Confirm (§3.6); the dialog is mounted only while one is. */
   const [verbIntent, setVerbIntent] = useState<IntentMatch | null>(null)
+  /** The Report-an-issue dialog (/sdlc-report-issue new): open or not. */
+  const [issueReport, setIssueReport] = useState(false)
   /** Every match the host builds itself carries the plugin's own `effect` sentence (intents.ts):
    * what the verb WRITES on Done, from the verbs' code — the dialog previews it before Confirm. */
   const withEffect = (m: Omit<IntentMatch, 'effect'>): IntentMatch => ({ ...m, effect: effectOf(m.intent) })
@@ -604,6 +611,11 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
   }, [inProject, area, handingOff, openSpec, openDoc, showHistory])
 
   const openIntent = useCallback((match: IntentMatch) => setVerbIntent(match), [])
+  // Report an issue: a bug in the product; the screenshot is pasted or chosen inside the dialog.
+  const openReportIssue = useCallback(() => setIssueReport(true), [])
+  // Present and disabled on a plugin without the verb (§2.7); nothing is disabled while the
+  // capabilities are still unknown.
+  const reportIssueReason = commandCenter?.capabilities && !commandCenter.capabilities.includes(CAPABILITIES.issueReport) ? newerPlugin(CAPABILITIES.issueReport) : null
   // "Refresh this screen" (the palette): the one explicit re-read — main drops its cache, then
   // every screen re-reads. On the stage home Frame routes the row to the readiness refresh instead.
   const refreshScreen = useCallback(() => { void refreshCommandCenter(true) }, [refreshCommandCenter])
@@ -616,9 +628,11 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     sprintShowing,
     refreshScreen,
     openIntent,
+    reportIssue: openReportIssue,
+    reportIssueReason,
     newProject: startNewProject,
     openFolder: handlePickFolder,
-  }), [openSpecByPath, openDocumentAt, openSettingsAt, back, stageHomeShowing, sprintShowing, refreshScreen, openIntent, startNewProject, handlePickFolder])
+  }), [openSpecByPath, openDocumentAt, openSettingsAt, back, stageHomeShowing, sprintShowing, refreshScreen, openIntent, openReportIssue, reportIssueReason, startNewProject, handlePickFolder])
 
   useShortcuts({
     handlers: {
@@ -804,6 +818,22 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             />
           </Suspense>
         )}
+        {/* Report an issue (/sdlc-report-issue new): mounted only while open; portalled, so `<main>`'s
+            first child stays the screen. After an exit 0 the command center is re-read. */}
+        {issueReport && (
+          <Suspense fallback={null}>
+            <ReportIssueDialog
+              open
+              projectPath={projectPath}
+              actor={commandCenter?.actor ?? null}
+              capabilities={commandCenter?.capabilities ?? null}
+              specs={(commandCenter?.board.data?.rows ?? []).map((r) => ({ id: r.spec, name: r.name }))}
+              onClose={() => setIssueReport(false)}
+              onReported={() => { void refreshCommandCenter() }}
+              onNavigate={handleNavigate}
+            />
+          </Suspense>
+        )}
         {/* Inline, never also a toast (§6.6): a hard error stays where the reader can re-read it.
             Rendered only while one stands, so the screen root is still `<main>`'s first child. */}
         {error && (
@@ -853,6 +883,12 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
           // has no write control of its own; `Esc` returns to the screen it was entered from.
           <Suspense fallback={OPENING}>
             <SteeringMode projectPath={projectPath} sprintId={commandCenter?.sprint.data?.sprint?.id ?? null} onExit={() => setArea(steeringFrom.current)} />
+          </Suspense>
+        ) : area === 'issues' ? (
+          // Issues (/sdlc-report-issue): the product's bug reports from report to a bugfix spec,
+          // read from the command center's `issues` block; every action is a confirm dialog.
+          <Suspense fallback={OPENING}>
+            <IssuesScreen projectPath={projectPath} cc={commandCenter} onRefresh={() => { void refreshCommandCenter() }} onReport={openReportIssue} onOpenSpec={openSpecByPath} />
           </Suspense>
         ) : area === 'explain' ? (
           <Suspense fallback={OPENING}><ExplainViews projectPath={projectPath} /></Suspense>
@@ -936,6 +972,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
                     handedOff={handedOff}
                     refreshKey={refreshKey}
                     focusBack={openSpec ? null : specOpener}
+                    onOpenIssues={() => handleNavigate({ area: 'issues' })}
                   />
                 )}
               </div>

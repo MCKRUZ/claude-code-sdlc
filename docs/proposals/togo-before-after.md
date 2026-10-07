@@ -19,6 +19,8 @@ A **command center** organised around the Build loop (`docs/proposals/togo-comma
 - **Plugin, additively:** `sprint.py list|log|carry|edit`, `spec_transition.py confirm-tier|assign`, `handoff.py --check`, `spec_readiness.py --all` + `ladder[]`, `record_findings.py report --json findings[]`, `spec_status.py` row + `deferred_reason`, ten `capabilities.py` entries — every existing verb's text and exit codes byte-identical.
 - **Kit:** Radix primitives under Dialog · Tooltip · HoverCard · Tabs · the `…` menu, `cmdk` under the palette; one Escape-owner list; 32 choreography rows that quieten with familiarity and whose end state equals a cold reload.
 
+- **Issues (plugin 1.8.0).** Bugs in the product the team builds, from report to fix: *Report an issue* asks the plugin's own questions (channel, environment, severity, data impact, the type of user, a real screenshot, a privacy statement) and writes through one line; the **Issues** view walks the lifecycle — triage by someone other than the reporter, prioritize into a sprint, promote to a `type: bugfix` spec slated into it — each a confirm dialog answered in the plugin's words, refused actions disabled with the plugin's own sentence. `/sdlc-report-issue` in Claude Code is the same record.
+
 ## The honesty rules kept (each one is a test)
 
 1. **The plugin is the only truth.** The renderer never spawns, never joins across sources, never derives a status. Main assembles one `CommandCenter` read model with per-block provenance (`source`, `fetchedAt`, `ok`, `data`); `noNewIpcInRenderer.test` fails if `ui/ motion/ palette/ scenes/ theme/ shortcuts/ stores/` ever reach `window.studio`.

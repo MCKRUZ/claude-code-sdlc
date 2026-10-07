@@ -9,7 +9,7 @@
 // never inert. Settings, Appearance and Console sit in the band itself as visible controls.
 import { useRef, useState } from 'react'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Ellipsis, FolderOpen, Keyboard, MessageSquare, Plus, Presentation, type LucideIcon } from 'lucide-react'
+import { Bug, Ellipsis, FolderOpen, Keyboard, MessageSquare, Plus, Presentation, type LucideIcon } from 'lucide-react'
 import { Icon, Kbd, cn, overlayRoot } from '../ui'
 import { kbdKeys } from '../shortcuts/shortcutMap'
 
@@ -18,6 +18,8 @@ export interface OverflowActions {
   openShortcuts?: () => void
   /** Steering mode (Area `steering`, `g t`). */
   steering?: () => void
+  /** Report an issue (/sdlc-report-issue): captures the window, then opens the dialog. */
+  reportIssue?: () => void
   newProject?: () => void
   openFolder?: () => void
 }
@@ -38,6 +40,7 @@ export function overflowRows(actions: OverflowActions): Row[] {
   if (actions.toggleChat) rows.push({ id: 'chat', label: 'Chat', icon: MessageSquare, keys: ['Mod+\\'], run: actions.toggleChat })
   if (actions.openShortcuts) rows.push({ id: 'shortcuts', label: 'Keyboard shortcuts', icon: Keyboard, keys: ['?'], run: actions.openShortcuts })
   if (actions.steering) rows.push({ id: 'steering', label: 'Steering mode', icon: Presentation, keys: ['g', 't'], run: actions.steering })
+  if (actions.reportIssue) rows.push({ id: 'report-issue', label: 'Report an issue…', icon: Bug, run: actions.reportIssue })
   if (actions.newProject) rows.push({ id: 'new-project', label: 'New project…', icon: Plus, run: actions.newProject })
   if (actions.openFolder) rows.push({ id: 'open-folder', label: 'Open folder…', icon: FolderOpen, run: actions.openFolder })
   return rows

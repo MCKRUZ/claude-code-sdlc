@@ -14,7 +14,7 @@ import type { LaneId } from './types'
 /** The screens Studio can show inside a project. `planning` and `steering` are the command
  * center's two lazy screens (togo-command-center.md §3.2, §3.5): planning is the sprint home's
  * planning board, steering the read-only committee view of the standard's numbers. */
-export type Area = 'documents' | 'build' | 'sprint' | 'explain' | 'closing' | 'settings' | 'planning' | 'steering'
+export type Area = 'documents' | 'build' | 'sprint' | 'explain' | 'closing' | 'settings' | 'planning' | 'steering' | 'issues'
 
 /** Where an entry takes you: an area, and for documents, which stage's. */
 export interface NavTarget {
@@ -46,7 +46,7 @@ export function groupStages<T extends { id: string }>(stages: T[]): { label: str
 
 // --- where entries lead -------------------------------------------------------------------
 
-export type BuildView = 'board' | 'sprint' | 'planning' | 'going' | 'closing' | 'documents'
+export type BuildView = 'board' | 'sprint' | 'planning' | 'issues' | 'going' | 'closing' | 'documents'
 
 /** Build Loop's own screens — everything that used to be a top tab except the documents. The
  * sprint home leads (`sprint`, relabelled **Home**: the loop is the work — togo-command-center.md
@@ -55,6 +55,8 @@ export const BUILD_VIEWS: { id: BuildView; label: string }[] = [
   { id: 'sprint', label: 'Home' },
   { id: 'planning', label: 'Planning' },
   { id: 'board', label: 'Board' },
+  // Bugs in the product, from report to a bugfix spec (/sdlc-report-issue; plugin 1.8.0).
+  { id: 'issues', label: 'Issues' },
   { id: 'going', label: 'How it is going' },
   { id: 'closing', label: 'Closing' },
   { id: 'documents', label: 'Documents' },
@@ -69,6 +71,7 @@ export function targetForBuildView(view: BuildView): NavTarget {
     case 'board': return { area: 'build' }
     case 'sprint': return { area: 'sprint' }
     case 'planning': return { area: 'planning' }
+    case 'issues': return { area: 'issues' }
     case 'going': return { area: 'explain' }
     case 'closing': return { area: 'closing' }
     case 'documents': return { area: 'documents', stageId: BUILD_STAGE_ID }
@@ -94,6 +97,7 @@ export function activeNav(area: Area, viewedStageId: string | undefined, current
     case 'closing': return { stageId: BUILD_STAGE_ID, buildView: 'closing', footer: null }
     // Planning is the sprint home's screen; steering is the read-only view of "How it is going".
     case 'planning': return { stageId: BUILD_STAGE_ID, buildView: 'planning', footer: null }
+    case 'issues': return { stageId: BUILD_STAGE_ID, buildView: 'issues', footer: null }
     case 'steering': return { stageId: BUILD_STAGE_ID, buildView: 'going', footer: null }
     case 'documents': {
       const stageId = viewedStageId ?? currentStageId

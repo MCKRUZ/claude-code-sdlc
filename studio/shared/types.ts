@@ -2044,6 +2044,9 @@ export interface CommandCenter {
   scorecard: SourcedBlock<Scorecard>
   roster: SourcedBlock<ProjectSettings['roster']>
   log: SourcedBlock<SprintLogView>
+  /** `report_issue.py list --json` (plugin 1.8.0): the product's bug reports, for the Issues view and
+   * the Today column's "awaiting review" line. Absent on a read model built before the block existed. */
+  issues?: SourcedBlock<IssuesView>
   needsYou: NeedsYouItem[]
   /** Why `needsYou` is empty when it is for a reason other than "nothing": `reasons.NO_ACTOR`. */
   needsYouReason: string | null
@@ -2188,4 +2191,198 @@ export interface CommandCenterApi {
   confirmTier(projectPath: string, specPath: string): Promise<ConfirmTierResult>
   assignRoles(projectPath: string, specPath: string, roles: { developer?: string; checker?: string }): Promise<AssignRolesResult>
   checkHandOff(projectPath: string, specPath: string, developer: string): Promise<HandOffCheck>
+}
+
+// --- /sdlc-report-issue (plugin 1.8.0) — bugs in the PRODUCT, from report to fix ------------------
+// The plugin owns the questions, the minimum, the refusals and the lifecycle (`issue_model.py`); the
+// app renders the plan it is handed, holds the screenshot the person pasted or chose, and writes
+// through ONE `report_issue.py` line per action built by `shared/issueArgv.ts` with the resolved
+// actor as `--by`. Exit 0 / 1 / 2 read Done / Not done / Refused, stdout verbatim; `show --json`
+// says which lifecycle actions a report allows and the plugin's own sentence for each it refuses.
+
+export type IssueQuestionKind = 'choice' | 'text' | 'multiline' | 'lines' | 'number' | 'file' | 'confirm'
+
+export interface IssueQuestion {
+  id: string
+  prompt: string
+  kind: IssueQuestionKind
+  required: boolean
+  options: { value: string; label: string }[] | null
+  hint: string | null
+  /** The product channels this follow-up belongs to; null for a base question. */
+  channels: string[] | null
+  pattern?: string | null
+  /** The app may fill this itself (the build under test); the person may change it. */
+  auto?: boolean
+}
+
+export interface IssueLifecycleWords {
+  statuses: string[]
+  triage_verdicts: string[]
+  priorities: string[]
+  priority_labels: Record<string, string>
+  status_labels: Record<string, string>
+  triage_verdict_labels: Record<string, string>
+}
+
+export interface IssueQuestionPlan {
+  channel: string | null
+  questions: IssueQuestion[]
+  lifecycle: IssueLifecycleWords
+  minimum: { title_chars: [number, number]; what_happened_chars: number; expected_chars: number; screenshots: number; screenshot_bytes: number }
+}
+
+/** `report_issue.py env --json`: the build under test, as far as the machine can tell. */
+export interface IssueEnvironment {
+  repo: { host: string; slug: string | null; web_url: string | null; branch: string | null; commit: string | null; describe: string | null }
+  machine: { os: string; python: string }
+  tooling: { plugin_version: string | null; app_version: string | null }
+  captured_at: string
+}
+
+/** The environment document and the temp file main wrote it to — the path `--env-json` names. */
+export type IssueEnvironmentRead = { ok: true; env: IssueEnvironment; envPath: string } | { ok: false; error: string }
+
+/** A screenshot main holds for the report: pasted from the clipboard, chosen as a file, or this
+ * window as a fallback. The preview is a small data URL; the file on disk is what the plugin copies. */
+export type IssueCapture =
+  | { ok: true; path: string; previewUrl: string; width: number; height: number; bytes: number; source: 'clipboard' | 'file' | 'window'; name: string }
+  | { ok: false; error: string }
+
+export interface IssueReportRequest {
+  channel: string
+  title: string
+  whatHappened: string
+  expected: string
+  steps: string[]
+  environment: string
+  productVersion?: string
+  severity: string
+  frequency: string
+  dataImpact: string
+  persona: string
+  reporterRole: string
+  spec?: string
+  /** Paths main handed out (`pasteScreenshot` / `pickScreenshot` / `captureWindow`); anything else is refused. */
+  screenshots: string[]
+  noClientData: boolean
+  /** The channel follow-ups (`browser_device`, `endpoint`, `utterance`, …) by question id. */
+  answers: Record<string, string>
+  /** The path `getIssueEnvironment` returned. */
+  environmentPath: string
+  escapedFrom?: string
+}
+
+export interface IssueReportResult {
+  ok: boolean
+  exitCode: number | null
+  refused: boolean
+  stdout: string
+  stderr: string
+  argv: string[]
+  issue: string | null
+  path: string | null
+  /** Exit 1: the plugin's own gap lines, `field: what clears it`. */
+  gaps: string[]
+  advisory: string[]
+  warnings: string[]
+  proposedRisk: string | null
+  proposedPriority: string | null
+}
+
+export type IssueStatus = 'new' | 'needs-info' | 'triaged' | 'prioritized' | 'promoted' | 'fixed' | 'wont-fix' | 'duplicate'
+
+export interface IssueRow {
+  issue: string
+  title: string
+  status: IssueStatus
+  channel: string
+  environment: string
+  product_version: string | null
+  severity: string
+  frequency: string
+  data_impact: string
+  persona: string
+  reporter_role: string
+  spec: string | null
+  priority: string | null
+  target_sprint: string | null
+  triaged_by: string | null
+  triage_verdict: string | null
+  prioritized_by: string | null
+  duplicate_of: string | null
+  bugfix_spec: string | null
+  reported_by: string
+  reported_at: string
+  screenshots: number
+  filed_host: string | null
+  filed_url: string | null
+  escaped_from: string | null
+  path: string
+  proposed_risk: string
+  proposed_priority: string
+}
+
+export interface IssuesView {
+  issues: IssueRow[]
+  count: number
+  /** Reports by status — counts of items, never per person. */
+  counts: Record<string, number>
+  /** The ids awaiting review (new, needs-info), in decision order. */
+  queue: string[]
+  dir: string
+}
+
+/** `show --json`: one report with its sections verbatim and the actions the lifecycle allows. */
+export interface IssueAction { ok: boolean; reason: string | null; to: string | null }
+export interface IssueDetail extends IssueRow {
+  sections: Record<string, string>
+  screenshot_paths: string[]
+  actions: Record<string, IssueAction>
+}
+
+export type IssuesRead = { ok: true; data: IssuesView } | { ok: false; error: string }
+export type IssueDetailRead = { ok: true; data: IssueDetail } | { ok: false; error: string }
+export type IssuePlanRead = { ok: true; plan: IssueQuestionPlan } | { ok: false; error: string }
+
+/** The lifecycle writes, each ONE `report_issue.py <verb>` line. `--by` is never a field: main fills it. */
+export type IssueVerbRequest =
+  | { verb: 'triage'; issue: string; verdict: 'confirmed' | 'needs-info' | 'duplicate' | 'wont-fix'; severity?: string; dataImpact?: string; question?: string; of?: string; reason?: string; override?: boolean }
+  | { verb: 'prioritize'; issue: string; priority: 'P1' | 'P2' | 'P3'; targetSprint?: string; reason?: string }
+  | { verb: 'promote'; issue: string; risk: 'HIGH' | 'MEDIUM' | 'LOW'; owner?: string; team?: string; slate?: boolean }
+  | { verb: 'note'; issue: string; note: string }
+  | { verb: 'reopen'; issue: string; reason: string }
+  | { verb: 'set-status'; issue: string; status: 'fixed' | 'wont-fix' | 'duplicate'; reason?: string; of?: string }
+  | { verb: 'file'; issue: string; dryRun: boolean; host?: 'github' | 'azure-devops'; label?: string }
+  | { verb: 'sync' }
+
+export type IssueVerb = IssueVerbRequest['verb']
+
+export interface IssueVerbResult {
+  ok: boolean
+  exitCode: number | null
+  refused: boolean
+  stdout: string
+  stderr: string
+  argv: string[]
+  verb: IssueVerb
+  /** The `--json` document the verb printed, when it printed one (`status`, `spec`, `url`, `argv` of a dry run…). */
+  doc: Record<string, unknown> | null
+}
+
+export interface IssueApi {
+  getIssueQuestions(projectPath: string, channel?: string): Promise<IssuePlanRead>
+  getIssueEnvironment(projectPath: string): Promise<IssueEnvironmentRead>
+  /** An image on the clipboard (⌘⇧4 / Win+Shift+S then copy); `ok: false` with the reason when there is none. */
+  pasteScreenshot(): Promise<IssueCapture>
+  /** An image file the person picks; null when they cancel. */
+  pickScreenshot(): Promise<IssueCapture | null>
+  /** This window — the fallback when the bug is visible in the app itself. */
+  captureWindow(): Promise<IssueCapture>
+  reportIssue(projectPath: string, request: IssueReportRequest): Promise<IssueReportResult>
+  listIssues(projectPath: string): Promise<IssuesRead>
+  getIssue(projectPath: string, issue: string): Promise<IssueDetailRead>
+  /** A screenshot the plugin copied under `.sdlc/issues/`, as a data URL — nothing else is readable this way. */
+  readIssueScreenshot(projectPath: string, relPath: string): Promise<{ ok: true; dataUrl: string } | { ok: false; error: string }>
+  runIssueVerb(projectPath: string, request: IssueVerbRequest): Promise<IssueVerbResult>
 }

@@ -10,9 +10,14 @@ describe('reasons', () => {
     expect(reasons.isReason('sprint home arrives with a newer plugin: lacks sprint-status')).toBe(true)
   })
 
-  it('names the ten command-center capabilities of §2.6 plus the three it already read', () => {
+  it('names the ten command-center capabilities of §2.6, the three it already read, and the ten of /sdlc-report-issue', () => {
+    // Re-recorded (plugin 1.8.0): the Issues view and the Report-an-issue dialog read `issue-questions`,
+    // `issue-env`, `issue-list`, `issue-show`; write through `issue-report`, `issue-triage`,
+    // `issue-prioritize`, `issue-promote`, `issue-sync`, `issue-file`.
     expect(Object.values(reasons.CAPABILITIES).sort()).toEqual([
-      'assign-roles', 'confirm-tier', 'decision-decide', 'decision-open', 'findings-json', 'handoff-check', 'readiness-all',
+      'assign-roles', 'confirm-tier', 'decision-decide', 'decision-open', 'findings-json', 'handoff-check',
+      'issue-env', 'issue-file', 'issue-list', 'issue-prioritize', 'issue-promote', 'issue-questions', 'issue-report', 'issue-show',
+      'issue-sync', 'issue-triage', 'readiness-all',
       'sprint-carry', 'sprint-edit', 'sprint-list', 'sprint-log', 'sprint-status', 'sprint-write',
     ])
   })

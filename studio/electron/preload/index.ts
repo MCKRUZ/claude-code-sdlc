@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { BatchState, ChatActivity, CommandCenterApi, ConsoleEntry, DraftProgressEvent, StudioApi, SyncState } from '../../shared/types'
+import type { BatchState, ChatActivity, CommandCenterApi, ConsoleEntry, DraftProgressEvent, IssueApi, StudioApi, SyncState } from '../../shared/types'
 
 // The ONLY surface the renderer gets. No generic ipcRenderer passthrough, no Node access,
 // no arbitrary command execution — every call here maps to exactly one narrow main-process
@@ -7,7 +7,7 @@ import type { BatchState, ChatActivity, CommandCenterApi, ConsoleEntry, DraftPro
 // when it needs to run anything, so every command Studio runs is recorded to the console.
 // Typed against the shared StudioApi interface, so a mismatch with what the renderer
 // expects is a compile error here, not a runtime surprise.
-const studio: StudioApi & CommandCenterApi = {
+const studio: StudioApi & CommandCenterApi & IssueApi = {
   detectTooling: () => ipcRenderer.invoke('studio:detectTooling'),
   getSettings: () => ipcRenderer.invoke('studio:getSettings'),
   setToolOverride: (kind, path) => ipcRenderer.invoke('studio:setToolOverride', kind, path),
@@ -177,6 +177,20 @@ const studio: StudioApi & CommandCenterApi = {
   confirmTier: (projectPath, specPath) => ipcRenderer.invoke('studio:confirmTier', projectPath, specPath),
   assignRoles: (projectPath, specPath, roles) => ipcRenderer.invoke('studio:assignRoles', projectPath, specPath, roles),
   checkHandOff: (projectPath, specPath, developer) => ipcRenderer.invoke('studio:checkHandOff', projectPath, specPath, developer),
+
+  // Issues (/sdlc-report-issue): the plugin's questions and build facts, the screenshot sources,
+  // the report write, the queue and one report, a report's own screenshot, and the lifecycle verbs
+  // through one closed table. Pass-through only.
+  getIssueQuestions: (projectPath, channel) => ipcRenderer.invoke('studio:getIssueQuestions', projectPath, channel),
+  getIssueEnvironment: (projectPath) => ipcRenderer.invoke('studio:getIssueEnvironment', projectPath),
+  pasteScreenshot: () => ipcRenderer.invoke('studio:pasteScreenshot'),
+  pickScreenshot: () => ipcRenderer.invoke('studio:pickScreenshot'),
+  captureWindow: () => ipcRenderer.invoke('studio:captureWindow'),
+  reportIssue: (projectPath, request) => ipcRenderer.invoke('studio:reportIssue', projectPath, request),
+  listIssues: (projectPath) => ipcRenderer.invoke('studio:listIssues', projectPath),
+  getIssue: (projectPath, issue) => ipcRenderer.invoke('studio:getIssue', projectPath, issue),
+  readIssueScreenshot: (projectPath, relPath) => ipcRenderer.invoke('studio:readIssueScreenshot', projectPath, relPath),
+  runIssueVerb: (projectPath, request) => ipcRenderer.invoke('studio:runIssueVerb', projectPath, request),
 }
 
 contextBridge.exposeInMainWorld('studio', studio)

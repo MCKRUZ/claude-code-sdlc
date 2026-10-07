@@ -105,6 +105,7 @@ export function buildActionEntries(hooks: PaletteActionHooks): PaletteEntry[] {
   if (hooks.openShortcuts) out.push(action('shortcuts', 'Keyboard shortcuts', ['shortcuts', 'keys', 'help', 'keyboard'], hooks.openShortcuts, ['Mod', '/']))
   // The committee's read-only view of the standard's numbers (§3.5): a navigation, never a write.
   if (hooks.steering) out.push(action('steering', 'Steering mode', ['steering', 'committee', 'scorecard', 'presentation', 'read-only', 'sprint'], hooks.steering, undefined, 'Read-only: the scorecard and the review page, no controls'))
+  if (hooks.reportIssue) out.push(action('report-issue', 'Report an issue…', ['report', 'issue', 'bug', 'problem', 'broken', 'feedback', 'screenshot'], hooks.reportIssue, undefined, 'Captures this window, then asks the plugin\'s questions'))
   if (hooks.back) out.push(action('back', 'Back', ['back', 'return', 'previous'], hooks.back, ['Esc']))
   if (hooks.newProject) out.push(action('new-project', 'New project…', ['new', 'project', 'create'], hooks.newProject))
   if (hooks.openFolder) out.push(action('open-folder', 'Open folder…', ['open', 'folder', 'project', 'switch'], hooks.openFolder))

@@ -97,6 +97,8 @@ describe('guides', () => {
       ['planning', 'planning-dark'], ['spec-card', 'spec-card-dark'], ['stage-light', 'stage-dark'], ['lifecycle-home', 'lifecycle-home-dark'],
       ['board-list', 'board-list-dark'], ['board-graph', 'board-graph-dark'], ['palette', 'palette-dark'], ['settings', 'settings-dark'],
       ['spec-view', 'spec-view-dark'], ['review', 'review-dark'], ['closing', 'closing-dark'], ['steering-light', 'steering'], ['welcome', 'welcome-dark'],
+      // Plugin 1.8.0: the Issues view (/sdlc-report-issue) is a command-center screen too.
+      ['issues', 'issues-dark'],
     ]
     for (const [light, dark] of pairs) {
       expect(produced.has(light), `light shot "${light}" is not produced`).toBe(true)

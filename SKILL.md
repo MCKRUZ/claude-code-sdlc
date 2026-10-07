@@ -40,6 +40,7 @@ This plugin makes structured SDLC methodology executable in Claude Code. It prov
 | `/sdlc-spec-status` | Report a spec's status read from its pull request — checks, grader verdict, approvals, merge |
 | `/sdlc-sprint` | Sprint board — slate a count of specs by risk-tier mix, ready the sprint once every slated spec clears the DoR and its Eng/Data verdicts, close it with kept / carried / dropped (advisory; never a gate) |
 | `/sdlc-refine` | Refinement agenda for the sprint's specs — DoR gaps, pending verdicts, overdue decisions; refine one spec or the whole slate; record Eng/Data verdicts; route upstream fixes without regressing a phase |
+| `/sdlc-report-issue` | Bugs in the product, from report to fix — an interview that forces the minimum a fixer needs (what / expected / steps, the product's channel with its follow-ups, environment and build, severity, frequency, data impact, the type of user and your role, a real screenshot, a privacy statement); reviewed by someone other than the reporter, prioritized P1–P3 with a target sprint, promoted to a `type: bugfix` spec that `--slate` puts into the sprint; `sync` marks it fixed when the spec merges; `file` opens it on GitHub / Azure DevOps |
 | `/sdlc-review` | Multi-perspective artifact review (council, adversarial, or edge-case modes) |
 | `/sdlc-phase-report` | Generate phase HTML report with artifact inventory and gate results |
 | `/sdlc-audit` | Analyze gate effectiveness across completed phases — identify always-pass and high-fail gates |

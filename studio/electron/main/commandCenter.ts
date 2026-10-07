@@ -20,7 +20,7 @@ import { parseDocument, readDecisions, readFindings, readRoster, readScorecard }
 import { samePerson } from '../../shared/identity'
 import { CAPABILITIES, NO_ACTOR, newerPlugin } from '../../shared/reasons'
 import type {
-  ActorInfo, Board, CommandCenter, DecisionsView, NeedsYouItem, SinceWindow, SourcedBlock, SprintLogView, SprintView,
+  ActorInfo, Board, CommandCenter, DecisionsView, IssuesView, NeedsYouItem, SinceWindow, SourcedBlock, SprintLogView, SprintView,
   StreamRow,
 } from '../../shared/types'
 
@@ -30,6 +30,7 @@ export const SOURCES = {
   board: 'spec_status.py --all --json + track_specs.py --json', decisions: 'track_decisions.py --json',
   findings: 'record_findings.py report --json', scorecard: 'scorecard.py report --json',
   roster: 'project_settings.py --json', log: (since: string) => `sprint.py log --since ${since} --json`,
+  issues: 'report_issue.py list --json',
   capabilities: 'generate_status.py --json',
 } as const
 
@@ -262,7 +263,7 @@ async function readCommandCenter(
   const capabilities = await getCapabilities(projectPath, scriptsDir)
   const gated = <T>(cap: string, source: string, fetch: () => Promise<Read<T>>) =>
     capabilities.includes(cap) ? fetch() : Promise.resolve<Read<T>>({ ok: false, error: newerPlugin(cap) })
-  const [actor, sprint, sprints, host, decisions, findings, scorecard, roster, log] = await Promise.all([
+  const [actor, sprint, sprints, host, decisions, findings, scorecard, roster, log, issues] = await Promise.all([
     opts.actor !== undefined ? opts.actor : resolveActor(projectPath, scriptsDir),
     local(projectPath, 'sprint', SOURCES.sprint, async () => {
       const r = await getSprintStatus(projectPath, scriptsDir)
@@ -275,13 +276,25 @@ async function readCommandCenter(
     local(projectPath, 'scorecard', SOURCES.scorecard, () => readOne(scriptsDir, 'scorecard.py', ['report', ...sourceArgs(projectPath), '--json'], readScorecard)),
     local(projectPath, 'roster', SOURCES.roster, () => readOne(scriptsDir, 'project_settings.py', ['--repo', projectPath, '--json'], readRoster)),
     local(projectPath, `log:${sinceDate}`, SOURCES.log(sinceDate), () => gated(CAPABILITIES.sprintLog, SOURCES.log(sinceDate), () => getSprintLog(projectPath, scriptsDir, sinceDate))),
+    // The product's bug reports (plugin 1.8.0): the Issues view's queue and the Today column's
+    // "awaiting review" line read this one block; the count is a count of reports, never of people.
+    local(projectPath, 'issues', SOURCES.issues, () => gated(CAPABILITIES.issueList, SOURCES.issues, () =>
+      readOne<IssuesView>(scriptsDir, 'report_issue.py', ['list', ...sourceArgs(projectPath), '--json'], readIssues))),
   ])
   const board = host.block
   const needs = needsYou({ actor, sprint, board, decisions, capabilities, unconfirmedTierSpecs: host.unconfirmedTierSpecs })
   // The stamp is the stalest block's, so a cache hit never reads "as of now" (freshness is a fact).
-  const fetchedAt = oldestFetchedAt([sprint, sprints, board, decisions, findings, scorecard, roster, log]) ?? now.toISOString()
+  const fetchedAt = oldestFetchedAt([sprint, sprints, board, decisions, findings, scorecard, roster, log, issues]) ?? now.toISOString()
   return {
-    projectPath, fetchedAt, actor, capabilities, sprint, sprints, board, decisions, findings, scorecard, roster, log,
+    projectPath, fetchedAt, actor, capabilities, sprint, sprints, board, decisions, findings, scorecard, roster, log, issues,
     needsYou: needs.items, needsYouReason: needs.reason, sinceYesterday: sinceYesterday({ log, board, since: sinceDate }), since,
   }
+}
+
+/** `report_issue.py list --json` as the plugin printed it: the rows, the counts by status, the queue. */
+function readIssues(raw: unknown): IssuesView | null {
+  if (!raw || typeof raw !== 'object') return null
+  const doc = raw as Record<string, unknown>
+  if (!Array.isArray(doc.issues) || typeof doc.counts !== 'object' || !Array.isArray(doc.queue)) return null
+  return doc as unknown as IssuesView
 }

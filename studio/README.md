@@ -168,6 +168,26 @@ ledger with nothing in it); no velocity, points, PR counts, lines or hours appea
 disabled control always carries its reason, as a tooltip and as its accessible description
 (`aria-describedby`), and every such sentence is in `shared/reasons.ts` or is the plugin's own.
 
+### Issues — bugs in the product, from report to a bugfix spec
+
+`/sdlc-report-issue` in the app (plugin 1.8.0; CLAUDE.md's rule that every tooling upgrade reaches the
+UI). **Report an issue** (the band's bug control, the `…` menu, the palette) renders the plugin's own
+question plan (`report_issue.py questions --json`, re-read when the product channel changes), shows
+the build under test from `env --json`, takes the screenshot of the product from the clipboard or a
+file (this window as a fallback), never pre-ticks the privacy statement, previews the exact
+`report_issue.py new` line and answers in the plugin's words; exit 1 gaps sit beside their fields.
+The **Issues** Build view reads the command center's `issues` block (`report_issue.py list --json`):
+the queue in the plugin's order with counts by status, each report opened in place (`show --json`)
+with its screenshots (`readIssueScreenshot`, readable only under `.sdlc/issues/`), and every lifecycle
+action — triage, prioritize, promote (`--slate` into the sprint), note, reopen, fixed / won't fix /
+duplicate, file — as a confirm dialog through one closed argv table (`shared/issueArgv.ts`,
+`electron/main/issues.ts runIssueVerb`). A refused action is present and disabled with the plugin's
+own sentence from `show`; the plugin's proposals for priority and tier are pre-selected and marked.
+Main hands the renderer every file path it may name (a paste, a pick, a capture, the environment
+document) and `reportIssue` accepts no other. Tests: `issueArgv.test.ts` (golden lines),
+`issuesMain.test.ts` (the real plugin), `issuesModel.test.ts`, `reportIssueDialog.test.tsx`,
+`issuesScreen.test.tsx`, `e2e/cc/issues.spec.ts` (the whole lifecycle in the real window).
+
 ### The kit
 
 Every screen is composed from `src/ui/` (typed contracts in `contract.ts`, exports in `index.ts`).

@@ -48,6 +48,8 @@ export interface SprintHomeProps {
   handedOff?: string | null
   /** Bumped by the host after a write elsewhere landed exit 0 (the omnibar, "Refresh this screen"): re-read. */
   refreshKey?: number
+  /** The Issues view (/sdlc-report-issue): the Today column's "awaiting review" line leans there. */
+  onOpenIssues?: () => void
   /** Coming back from the spec card: the control that opened it takes focus again once the read
    * lands (a lane card, or a Refining row's "refine in place →"). Accessibility, not decoration. */
   focusBack?: { spec: string; where: 'lane' | 'refining'; seq?: number } | null
@@ -83,7 +85,7 @@ export function boardRowFor(row: LaneRow): BoardRow {
   return row.board ?? slateToBoardRow(row.slate)
 }
 
-export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, claudeLine = null, handedOff = null, refreshKey = 0, focusBack = null }: SprintHomeProps) {
+export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, claudeLine = null, handedOff = null, refreshKey = 0, focusBack = null, onOpenIssues }: SprintHomeProps) {
   const [cc, setCc] = useState<CommandCenter | null>(null)
   const [readiness, setReadiness] = useState<ReadinessAll | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -260,7 +262,7 @@ export function SprintHome({ projectPath, onOpenSpec, onHandOff, onNewSprint, cl
             content — and scrolls inside, so the cockpit (four lanes AND the rail) fits the first
             screen; v13's probe measured the uncapped rail at 1467 px. */}
         <TodayColumn cc={cc} onRun={runVerb} onDecide={decide} onConfirmTier={(id) => confirmTier(specPathFor(id))} onSince={setSince} onActed={reload} claudeLine={claudeLine}
-          strip={todayIs === 'strip'} className={cn(TODAY_STRIP_CLASS, TODAY_RAIL_CLASS, TODAY_SCROLL_MASK_CLASS)} />
+          strip={todayIs === 'strip'} className={cn(TODAY_STRIP_CLASS, TODAY_RAIL_CLASS, TODAY_SCROLL_MASK_CLASS)} onOpenIssues={onOpenIssues} />
         {view && view.sprint ? (
           // In the rail branch the wrapper is a flex column of the row's height, so the lane board
           // can hand its wells the height left under the filter row (`LaneBoard`: `flex-1 min-h-0`).

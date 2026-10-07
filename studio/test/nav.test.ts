@@ -60,7 +60,11 @@ describe('what an entry opens', () => {
   })
 
   it('offers the Build Loop views with the sprint home first, relabelled Home, and its Planning beside it (command center §1, §3.2)', () => {
-    expect(BUILD_VIEWS.map((v) => v.id)).toEqual(['sprint', 'planning', 'board', 'going', 'closing', 'documents'])
+    // Re-recorded (plugin 1.8.0): `issues` — the product's bug reports, from report to a bugfix
+    // spec — joins the Build Loop's views after the Board (/sdlc-report-issue reaches the UI).
+    expect(BUILD_VIEWS.map((v) => v.id)).toEqual(['sprint', 'planning', 'board', 'issues', 'going', 'closing', 'documents'])
+    expect(BUILD_VIEWS.find((v) => v.id === 'issues')?.label).toBe('Issues')
+    expect(targetForBuildView('issues')).toEqual({ area: 'issues' })
     expect(BUILD_VIEWS.find((v) => v.id === 'sprint')?.label).toBe('Home')
     expect(BUILD_VIEWS.find((v) => v.id === 'planning')?.label).toBe('Planning')
     expect(BUILD_VIEWS.map((v) => v.label)).not.toContain('Sprint')

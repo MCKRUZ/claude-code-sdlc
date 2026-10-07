@@ -22,6 +22,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 - [/sdlc-spec -- Author a Ready Spec](#sdlc-spec----author-a-ready-spec)
 - [/sdlc-sprint -- Sprint Board](#sdlc-sprint----sprint-board)
 - [/sdlc-refine -- Refinement Agenda](#sdlc-refine----refinement-agenda)
+- /sdlc-report-issue -- see [Additional Commands](#additional-commands-summaries)
 - [Additional Commands (summaries)](#additional-commands-summaries)
 - [Command Interaction Flow](#command-interaction-flow)
 - [Python Script Invocation](#python-script-invocation)
@@ -51,6 +52,7 @@ Comprehensive documentation for all slash commands provided by the claude-code-s
 | `/sdlc-handoff` | Hand a ready spec to a developer in one step | Writes the branch + `status`/`developer` frontmatter commit; assigns on the code host (GitHub via `gh`, Azure DevOps via `az` — chosen by the `origin` remote) | The Build-loop Delegate beat, right after `/sdlc-spec`; also runs standalone via `--repo` |
 | `/sdlc-spec-status` | Report a spec's status read from its pull request, on GitHub or Azure DevOps | Writes `status: merged` on the default branch, once, when the PR has actually merged (`--all` never writes) | The Build-loop Discern beat, to see where a change is and who it's waiting on; also runs standalone via `--repo` |
 | `/sdlc-spike` | Open a bounded spike for a question nobody can answer yet | Writes `spikes/NNNN-name.md` | When a story fails the Definition of Ready because the ground truth is unknown, not because the spec is badly written |
+| `/sdlc-report-issue` | Bugs in the product, from report to fix — a report that carries the minimum a fixer needs (channel, environment, severity, data impact, type of user, a real screenshot, a privacy statement), reviewed by someone other than the reporter, prioritized P1–P3 with a target sprint, promoted to a `type: bugfix` spec a sprint can slate; `sync` on merge; `file` to the code host after a dry run | Writes `.sdlc/issues/ISS-NNNN-<slug>.md` + screenshots, `issue-log.jsonl`; `promote` runs `new_spec.py` (+ `sprint.py slate`); `--escaped-from` records `scorecard.py`'s `escaped_bug`; **never `state.yaml`** | Whenever anyone — tester, builder, checker, Product, a client stakeholder — sees the product misbehave; the Mon/Wed/Fri review triages the queue; also standalone via `--repo`; the Tōgō app's *Issues* view is the same model |
 | `/sdlc-doctor` | Day-1 environment check — proves the installed harness can actually run here; pack-aware, checks `gh` on GitHub installs and `az` on Azure DevOps installs, never the other (the PR-facing commands pick their CLI from the `origin` remote instead) | No | After `/sdlc-setup`, when onboarding a second developer, and any time a gate behaves inexplicably |
 
 ---
@@ -889,7 +891,7 @@ Writes spec bodies only through `/sdlc-spec --spec`; writes `eng_review` / `data
 
 ## Additional Commands (summaries)
 
-Seventeen commands have their full flow documented in their command files rather than here.
+Eighteen commands have their full flow documented in their command files rather than here.
 One line each; see `commands/<name>.md` for the complete instructions.
 
 | Command | What it does |
@@ -910,6 +912,7 @@ One line each; see `commands/<name>.md` for the complete instructions.
 | `/sdlc-audit-artifacts` | Read-only sibling to `/sdlc-audit`: artifact freshness dashboard, forward `--impact`, and `--history` change trail (advisory; never blocks) |
 | `/sdlc-version` | Content history for any pre-Build artifact — list/show/diff versions derived from the change-ledger's hashes; rollback is preview → named-human confirm, append-only ("restored from vX"), `--ack-signoff` for signed-off artifacts; `gc` prunes the local store safely |
 | `/sdlc-refresh` | Reverse propagation — back-propagate a merged spec's shipped reality into pre-Build artifacts: detect (review-first, divergence-aware) → draft a `.proposed` → named-human apply/reject → status. The One Rule throughout: agent proposes, human decides |
+| `/sdlc-report-issue` | Bugs in the product the team is building, as records that become specs: an `AskUserQuestion` interview over `issue_model.py`'s plan (title, what / expected / steps, the product's channel with its follow-ups, environment and build, severity, frequency, data impact, the type of user and the reporter's role, one screenshot that is an image by its bytes, the privacy statement) writes nothing until the minimum is met (exit 1 lists every gap; an AI name or a token-shaped string is exit 2). Then `triage` by someone other than the reporter, `prioritize` P1–P3 with an open target sprint, `promote` to a `type: bugfix` spec through `new_spec.py` with `--slate` into the sprint (agent proposes tier and priority, a named human confirms), `sync` to `fixed` when the spec merges, `note`, `reopen`, `show` (allowed actions and why not), `list --queue`, and `file` → `gh issue create` / `az boards work-item create --type Bug` after `--dry-run`. `references/issue-lifecycle.md` |
 | `/sdlc-retro` | Read-only cross-ledger retro roll-up: recurring findings (permanent-check candidates), repeat-stale artifacts, the refresh funnel (divergence-heuristic tuning signal), a disposition-debt rollup, and — when `sprint-log.jsonl` exists — carry-over recurrence per spec (≥2 sprints; the only cross-sprint number) and bounce causes by lane and reason. Patterns, not people; never blocks |
 
 ---

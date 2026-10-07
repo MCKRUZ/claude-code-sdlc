@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.8.0 — 2026-10-07
+
+### `/sdlc-report-issue` — bugs in the product, from report to fix, in the plugin and in the app
+
+- **The report.** An interview over one list (`scripts/issue_model.py`): a one-line title, what happened,
+  what was expected, steps to reproduce, **where in the product** — its channel (the web UI, the API,
+  voice, chat, a report or dataset, mobile; the library's own channel words) with follow-ups per channel
+  (the page and browser; the endpoint and status code; what was said and what was heard; the dataset and
+  the expected vs actual value) — **which environment** (local → production) and build, severity,
+  frequency, **data impact** (none / wrong shown / wrong written / exposed), the **type of user** the
+  reporter was acting as in the product's own terms and their **role on the team**, at least one
+  **screenshot that is an image by its bytes**, and the reporter's own privacy statement. `new` writes
+  nothing until the minimum is met and lists every gap (exit 1); an AI-looking name or a token-shaped
+  string is refused outright (exit 2, the kind named, never the value). Reports land at
+  `.sdlc/issues/ISS-NNNN-<slug>.md` with the screenshots beside them; `.sdlc/metrics/issue-log.jsonl` is
+  the ledger. `--escaped-from <check>` records the scorecard's `escaped_bug` through `scorecard.py`.
+- **The lifecycle** (`references/issue-lifecycle.md`): `triage` by **someone other than the reporter**
+  (confirmed — correcting severity or data impact — / needs-info with a question / duplicate / won't fix
+  with a reason; `--override --reason` for a team of one); `prioritize` P1 / P2 / P3 with an open target
+  sprint; `promote` to a **`type: bugfix` spec** through `new_spec.py`, `--slate` putting it into the
+  sprint through `sprint.py slate`; `sync` marking it fixed when the spec merges; `note`, `reopen`,
+  `show` (the allowed actions and the plugin's reason for each refused one), `list --queue`, and `file`
+  → `gh issue create` / `az boards work-item create --type Bug` after a `--dry-run`. The agent proposes
+  the priority and the tier from the report; a named human confirms or changes both. Ten capabilities,
+  proven against the real `--help`.
+- **The app.** An **Issues** view in the Build loop: the queue in decision order with counts by status,
+  each report opened in place with its screenshots, and every lifecycle action as a confirm dialog that
+  shows the exact `report_issue.py` line and answers in the plugin's words under Done / Not done /
+  Refused by the plugin — buttons disabled with the plugin's own reason for what the lifecycle refuses.
+  *Report an issue* in the band, the `…` menu and the palette: the plugin's questions as a form, the
+  build facts pre-filled, the screenshot pasted from the clipboard or chosen (this window as a fallback),
+  the privacy confirmation never pre-ticked. The sprint home's Today column says how many reports await
+  review. Every control disables with its reason on an older plugin.
+- **The rule, written down** (CLAUDE.md): every tooling upgrade reaches the Tōgō UI in the same change.
+
 ## 1.7.0 — 2026-10-06
 
 ### SDLC Studio — the command center

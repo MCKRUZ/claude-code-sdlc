@@ -56,8 +56,9 @@ import { resolveActor } from './actor'
 import { runSprintVerb } from './sprintWrites'
 import { decideDecision, getDecisions, openDecision } from './decisions'
 import { assignRoles, confirmTier, getReadinessAll, getSpecCard } from './specCard'
+import { captureWindow, getIssue, getIssueEnvironment, getIssueQuestions, listIssues, pasteScreenshot, pickScreenshot, readIssueScreenshot, reportIssue, runIssueVerb } from './issues'
 import { getSlateProposal } from './sprint'
-import type { SinceWindow, SprintVerbRequest } from '../../shared/types'
+import type { IssueReportRequest, IssueVerbRequest, SinceWindow, SprintVerbRequest } from '../../shared/types'
 import type { ChatActivity, ClashChoice, DraftOutcome } from '../../shared/types'
 
 /** Two minutes, matching spec 0009's own acceptance check ("Studio pulls every 2 minutes
@@ -654,7 +655,7 @@ function registerIpcHandlers() {
         projectPath, fetchedAt: new Date().toISOString(), actor: null, capabilities: [],
         sprint: b('sprint.py status --json'), sprints: b('sprint.py list --json'), board: b('spec_status.py --all --json + track_specs.py --json'),
         decisions: b('track_decisions.py --json'), findings: b('record_findings.py report --json'), scorecard: b('scorecard.py report --json'),
-        roster: b('project_settings.py --json'), log: b('sprint.py log --json'),
+        roster: b('project_settings.py --json'), log: b('sprint.py log --json'), issues: b('report_issue.py list --json'),
         needsYou: [], needsYouReason: 'claude-code-sdlc plugin scripts not found', sinceYesterday: [], since: window,
       }
     }
@@ -694,6 +695,48 @@ function registerIpcHandlers() {
     }
     const actor = await resolveActor(projectPath, scriptsDir)
     return runSprintVerb(projectPath, scriptsDir, request, actor)
+  })
+
+  // Issues (/sdlc-report-issue in the app): the plugin's question plan and build facts, the queue and
+  // one report with its allowed actions, the screenshot sources (clipboard · file · this window), the
+  // report write, and every lifecycle verb through one closed table — each via issues.ts, the writes
+  // with the actor resolved here. A report's own screenshot is the only file readable back.
+  const NO_PLUGIN = 'claude-code-sdlc plugin scripts not found'
+  ipcMain.handle('studio:getIssueQuestions', async (_event, projectPath: string, channel?: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: NO_PLUGIN }
+    return getIssueQuestions(projectPath, scriptsDir, channel)
+  })
+  ipcMain.handle('studio:getIssueEnvironment', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: NO_PLUGIN }
+    return getIssueEnvironment(projectPath, scriptsDir, { appVersion: app.getVersion() })
+  })
+  ipcMain.handle('studio:pasteScreenshot', () => pasteScreenshot())
+  ipcMain.handle('studio:pickScreenshot', () => pickScreenshot(win))
+  ipcMain.handle('studio:captureWindow', () => captureWindow(win))
+  ipcMain.handle('studio:reportIssue', async (_event, projectPath: string, request: IssueReportRequest) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) {
+      return { ok: false, exitCode: null, refused: false, stdout: '', stderr: NO_PLUGIN, argv: [], issue: null, path: null, gaps: [], advisory: [], warnings: [], proposedRisk: null, proposedPriority: null }
+    }
+    return reportIssue(projectPath, scriptsDir, request, await resolveActor(projectPath, scriptsDir))
+  })
+  ipcMain.handle('studio:listIssues', async (_event, projectPath: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: NO_PLUGIN }
+    return listIssues(projectPath, scriptsDir)
+  })
+  ipcMain.handle('studio:getIssue', async (_event, projectPath: string, issue: string) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, error: NO_PLUGIN }
+    return getIssue(projectPath, scriptsDir, issue)
+  })
+  ipcMain.handle('studio:readIssueScreenshot', (_event, projectPath: string, relPath: string) => readIssueScreenshot(projectPath, relPath))
+  ipcMain.handle('studio:runIssueVerb', async (_event, projectPath: string, request: IssueVerbRequest) => {
+    const scriptsDir = await resolvePluginScriptsDir()
+    if (!scriptsDir) return { ok: false, exitCode: null, refused: false, stdout: '', stderr: NO_PLUGIN, argv: [], verb: request?.verb ?? 'note', doc: null }
+    return runIssueVerb(projectPath, scriptsDir, request, await resolveActor(projectPath, scriptsDir))
   })
 
   ipcMain.handle('studio:openDecision', async (_event, projectPath: string, decision: string, owner?: string) => {

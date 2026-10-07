@@ -67,6 +67,24 @@ CAPABILITIES: dict[str, dict] = {
     "findings-json": {"script": "record_findings.py", "argv": ["report"], "flags": ["--json", "--spec"]},
     # Its presence also means `--spec --json` carries `ladder{}`: both landed in the same change.
     "readiness-all": {"script": "spec_readiness.py", "flags": ["--all", "--json"]},
+    # /sdlc-report-issue (1.8.0): bugs in the product, from report to a bugfix spec. The app's Issues
+    # view and its Report-an-issue dialog read the question plan and the build facts from the plugin,
+    # write through `new`, decide through `triage` / `prioritize` / `promote`, and file through
+    # `file` — each disabled on an older plugin with the reason naming the capability.
+    "issue-questions": {"script": "report_issue.py", "argv": ["questions"], "flags": ["--channel", "--json"]},
+    "issue-env": {"script": "report_issue.py", "argv": ["env"], "flags": ["--repo", "--state", "--app-version", "--json"]},
+    "issue-report": {"script": "report_issue.py", "argv": ["new"],
+                     "flags": ["--title", "--channel", "--what", "--expected", "--steps", "--environment", "--severity", "--frequency",
+                               "--data-impact", "--persona", "--reporter-role", "--screenshot", "--no-client-data", "--answer",
+                               "--env-json", "--escaped-from", "--by", "--json"]},
+    "issue-list": {"script": "report_issue.py", "argv": ["list"], "flags": ["--repo", "--state", "--status", "--queue", "--json"]},
+    "issue-show": {"script": "report_issue.py", "argv": ["show"], "flags": ["--issue", "--json"]},
+    "issue-triage": {"script": "report_issue.py", "argv": ["triage"],
+                     "flags": ["--issue", "--verdict", "--severity", "--data-impact", "--question", "--of", "--reason", "--override", "--by"]},
+    "issue-prioritize": {"script": "report_issue.py", "argv": ["prioritize"], "flags": ["--issue", "--priority", "--target-sprint", "--reason", "--by"]},
+    "issue-promote": {"script": "report_issue.py", "argv": ["promote"], "flags": ["--issue", "--risk", "--owner", "--team", "--slate", "--by"]},
+    "issue-sync": {"script": "report_issue.py", "argv": ["sync"], "flags": ["--repo", "--state", "--json"]},
+    "issue-file": {"script": "report_issue.py", "argv": ["file"], "flags": ["--issue", "--host", "--label", "--dry-run", "--by", "--json"]},
 }
 
 
