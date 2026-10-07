@@ -181,8 +181,9 @@ describe('useDraftJob: progress and cancel', () => {
     const { result } = setup()
     await act(async () => { await result.current.start(ENHANCE) })
     // The clearInterval runs in the effect cleanup of the commit that moves phase off 'running';
-    // under load (ubuntu CI) that commit could land after the act above, so flush once more.
-    await act(async () => { await Promise.resolve() })
+    // under load (the CI runners) that commit lands a few microtasks after the act above, so
+    // flush until the timer is gone or twenty cycles have passed — the assertion is the same.
+    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await Promise.resolve() })
     expect(vi.getTimerCount()).toBe(0)
   })
 

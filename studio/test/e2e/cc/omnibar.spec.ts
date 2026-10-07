@@ -57,7 +57,8 @@ test.describe('[command center P7] the omnibar in the real window', () => {
     await page.locator(SEL.paletteInput).fill(`verdict ${fx.specIds[1]} accepted`)
     const first = page.locator(SEL.paletteOption).first()
     await expect(first).toContainText(`Run: sprint.py verdict --spec ${fx.specIds[1]} --lane eng --verdict accepted`)
-    await expect(first).toContainText(`--by ${actor}`)
+    // The option shows the argv as it runs: a name with whitespace is quoted ("Priya N.").
+    await expect(first).toContainText(`--by ${/\s/.test(actor) ? `"${actor}"` : actor}`)
     // The verbs group is the first group when a phrase matches.
     const groupLabel = page.locator(`${SEL.palette} [role="group"]`).first().locator('[role="presentation"]').first()
     await expect(groupLabel).toContainText(/verb/i)
