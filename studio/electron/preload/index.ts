@@ -41,6 +41,7 @@ const studio: StudioApi & CommandCenterApi = {
   getStageReadiness: (projectPath, stageId) => ipcRenderer.invoke('studio:getStageReadiness', projectPath, stageId),
   gatherPipelineEvidence: (projectPath) => ipcRenderer.invoke('studio:gatherPipelineEvidence', projectPath),
   startActivity: (projectPath, stageId, activityId) => ipcRenderer.invoke('studio:startActivity', projectPath, stageId, activityId),
+  startDocument: (projectPath, relPath) => ipcRenderer.invoke('studio:startDocument', projectPath, relPath),
   runActivityCheck: (projectPath, activityId) => ipcRenderer.invoke('studio:runActivityCheck', projectPath, activityId),
   getStageGuide: (definition) => ipcRenderer.invoke('studio:getStageGuide', definition),
   exportPhaseReport: (projectPath, stageId, all) => ipcRenderer.invoke('studio:exportPhaseReport', projectPath, stageId, all),

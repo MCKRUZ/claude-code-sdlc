@@ -33,6 +33,12 @@ function describe(s: SyncState): { label: string; tone: ChipTone; dot: DotStatus
       return { label: `Waiting for ${s.approver}`, tone: 'warn', dot: 'warn', pulse: false, detail: `Approver: ${s.approver}. The stage's documents merge once they approve.` }
     case 'waitingForChecks':
       return { label: 'Waiting for checks', tone: 'neutral', dot: 'running', pulse: false, detail: 'The code host is still running its checks on the saved change.' }
+    case 'localOnly':
+      // Not a failure: every new project starts here. Calm tone, and the way out in the hover card.
+      return {
+        label: 'Saved on this computer only', tone: 'neutral', dot: 'ok', pulse: false,
+        detail: "Not shared with a team yet. This project is not connected to a shared repository, so nothing syncs. To work with a team, connect one (git remote add origin <the repository's address>) and Studio will start syncing.",
+      }
     case 'error':
       return { label: 'Sync error', tone: 'error', dot: 'error', pulse: false, detail: s.message }
     case 'idle':

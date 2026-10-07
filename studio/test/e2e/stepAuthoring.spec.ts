@@ -134,12 +134,23 @@ test.describe('[spec 0018] the step-authoring panel, in the real window', () => 
     await expect(page.getByText('epics.md').first()).toBeVisible({ timeout: 10_000 })
   })
 
-  test('Edit opens the real structured editor for the document currently showing', async () => {
-    await page.getByRole('button', { name: 'Edit' }).first().click()
+  test('a document that does not exist offers Start this document, not Edit', async () => {
+    // epics.md is the current step and is deliberately never written. Edit on it used to open an
+    // editor onto a file that is not there ("does not exist"); it now offers to start it instead.
+    await expect(page.getByRole('button', { name: 'Start this document' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0)
+  })
+
+  test('Edit opens the real structured editor for a document that exists', async () => {
+    // Previous from epics.md is non-functional-requirements.md, which the fixture wrote.
+    await page.getByRole('button', { name: /^Previous/i }).first().click()
+    await expect(page.getByRole('heading', { name: 'non-functional-requirements.md', level: 3 })).toBeVisible({ timeout: 10_000 })
+    await page.getByRole('button', { name: 'Edit', exact: true }).click()
     // DocumentView's own back control, proving this really navigated to the structured editor
     // (documents.spec.ts's own screen) rather than just toggling a class in place.
     await expect(page.getByText(/Back to the stage/i)).toBeVisible({ timeout: 10_000 })
-    await expect(page.getByText('epics.md').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'non-functional-requirements.md', level: 2 })).toBeVisible()
+    await expect(page.getByText(/does not exist/)).toHaveCount(0)
     await page.getByText(/Back to the stage/i).click()
     await expect(page.getByRole('tab', { name: 'Workflow' })).toBeVisible({ timeout: 10_000 })
   })

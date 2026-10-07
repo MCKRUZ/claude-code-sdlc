@@ -213,7 +213,9 @@ function DocumentStepPanel({
         previousDisabled={viewedIndex <= 0}
         nextDisabled={viewedIndex === -1 || viewedIndex >= documentSteps.length - 1}
         onEdit={() => onOpenDocument(viewed.document.path)}
-        editDisabled={viewed.document.folder}
+        // Edit on a document that is not there only ever failed ("<path> does not exist"); the panel
+        // below says it is not started and offers to start it.
+        editDisabled={viewed.document.folder || !viewed.document.exists}
       />
       {viewed.document.folder ? (
         <p className="text-sm text-ink-3">
@@ -412,11 +414,20 @@ function EmptyStepPanel({
         figure="page"
         title="Not started yet — this will appear here as soon as it is created."
         body={viewed.document.description}
-        action={startable && (
+        action={startable ? (
           <StartFromTemplate
             projectPath={projectPath}
             stageId={readiness.stageId}
             activity={startable.activity}
+            onOpenDocument={onOpenDocument}
+            onRefresh={onRefresh}
+          />
+        ) : creators.length === 0 && (
+          // No `create` activity covers this document (most do not), so there was no way to start it
+          // from here at all. Starting it from its own template is the same never-overwrite write.
+          <StartThisDocument
+            projectPath={projectPath}
+            relPath={viewed.document.path}
             onOpenDocument={onOpenDocument}
             onRefresh={onRefresh}
           />
@@ -480,6 +491,47 @@ function StartFromTemplate({
     <>
       <Button variant="primary" size="sm" onClick={start} loading={busy} loadingLabel="Starting…" disabled={busy}>
         Start from template
+      </Button>
+      {error && <Notice tone="error" role="alert" className="mt-2">{error}</Notice>}
+    </>
+  )
+}
+
+/** Starts ONE document from the plugin's template when no `create` activity covers it. Creates the
+ * file (never over an existing one), re-reads the stage, then opens it. A refusal is shown in words
+ * and nothing opens; the button cannot be pressed twice while it works. */
+function StartThisDocument({
+  projectPath, relPath, onOpenDocument, onRefresh,
+}: {
+  projectPath: string
+  relPath: string
+  onOpenDocument: (relPath: string, focus?: DocumentFocus) => void
+  onRefresh?: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const start = async () => {
+    if (busy) return
+    setBusy(true)
+    setError(null)
+    try {
+      const result = await window.studio.startDocument(projectPath, relPath)
+      if (!result.ok) {
+        setError(result.error ?? 'This document could not be started.')
+        return
+      }
+      await onRefresh?.()
+      onOpenDocument(relPath)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'This document could not be started.')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <>
+      <Button variant="primary" size="sm" onClick={start} loading={busy} loadingLabel="Starting…" disabled={busy}>
+        Start this document
       </Button>
       {error && <Notice tone="error" role="alert" className="mt-2">{error}</Notice>}
     </>

@@ -39,6 +39,31 @@ fail loudly rather than skipping, on purpose; run only the rest with
 - `npm run test:e2e`: build the test-mode bundle and run Playwright end-to-end tests.
 - `npm run typecheck`: run the TypeScript type checker.
 
+## The smoke suite: Studio as a user sees it
+
+`test/e2e/smoke.spec.ts` walks the real window the way a person would: a first-time user (Welcome, New project,
+the setup wizard) and a team a few days in (every stage and tab, the Build screens, a document and its history,
+a spec and its hand-off form, Settings, the Console), at 1280, 1024 and 640 px wide. It clicks every read-only
+control, and lists the ones it deliberately did not (anything that changes something or starts a model run).
+
+```
+npm run pretest
+STUDIO_SKIP_LIVE_MODEL=1 npx playwright test test/e2e/smoke.spec.ts
+```
+
+It takes about 3.5 minutes, needs the plugin checkout and its Python environment, and Studio must not already
+be open. It uses **no live model**: the chat and draft entry points are replaced for the run, because opening a
+stage with an unstarted document otherwise makes the chat greet with a real model call by itself.
+
+What it writes, to `test/screenshots/smoke/` (ignored by git): a screenshot of every screen at every size (plus
+one scrolled to the bottom where the panel scrolls), `observations.json`, and `report.md`. Read the pictures as
+well as the report; the rules in `test/smoke/findings.ts` catch leaked internals, unnamed controls, sideways
+scrolling and unexpected errors, but not a layout that is valid and still confusing.
+
+The run fails only on a **new** bug. Problems already found are listed in `test/smoke/knownIssues.ts`, each with
+what fixing it looks like, and shown under "Known, not yet fixed" in the report; fix one, delete its entry. The
+first review is `docs/studio-smoke-review-2026-10-05.md` in the plugin repo.
+
 ## Project Structure
 
 ```tree

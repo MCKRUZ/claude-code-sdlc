@@ -120,6 +120,19 @@ async function currentBranch(projectPath: string): Promise<string> {
   return (await runGit(['branch', '--show-current'], projectPath)).trim()
 }
 
+/** Does this project have a shared repository to sync with? Asked with `git remote`, which lists
+ * the remotes and succeeds when there are none, rather than by trying to use one and reading the
+ * failure: every new project has no `origin` yet, and a command bound to fail would show up as a
+ * red error on every screen and in the Console. */
+async function hasOrigin(projectPath: string): Promise<boolean> {
+  const remotes = (await runGit(['remote'], projectPath)).split(/\r?\n/).map((r) => r.trim())
+  return remotes.includes('origin')
+}
+
+const NOT_CONNECTED =
+  'This project is not connected to a shared repository yet, so there is nowhere to save changes for your team. '
+  + 'Your work is kept on this computer.'
+
 /** Does the shared branch hold this file, byte for byte as it is here?
  *
  * The question a caller actually wants after saving something is "can somebody else read
@@ -318,10 +331,13 @@ export async function getConnectionInfo(projectPath: string, pluginScriptsDir: s
   const branch = await currentBranch(projectPath).catch(() => '')
 
   let repo = ''
-  try {
-    repo = (await runGit(['remote', 'get-url', 'origin'], projectPath)).trim()
-  } catch {
-    // no remote configured yet
+  const connected = await hasOrigin(projectPath).catch(() => false)
+  if (connected) {
+    try {
+      repo = (await runGit(['remote', 'get-url', 'origin'], projectPath)).trim()
+    } catch {
+      // listed but unreadable: treated as not configured
+    }
   }
 
   const resolved = await resolveHost(projectPath)
@@ -335,10 +351,13 @@ export async function getConnectionInfo(projectPath: string, pluginScriptsDir: s
   // push gets rejected (finding 9); this is purely for the connection screen to show
   // something before the person ever saves. Null is "couldn't read", not "no".
   let branchProtected: boolean | null = null
-  try {
-    branchProtected = await resolved.provider.isBranchProtected(branch)
-  } catch {
-    branchProtected = null
+  // With no shared repository there is nothing to ask the code host about.
+  if (connected) {
+    try {
+      branchProtected = await resolved.provider.isBranchProtected(branch)
+    } catch {
+      branchProtected = null
+    }
   }
 
   const state = getProjectSyncState(projectPath)
@@ -523,6 +542,12 @@ async function pullOneFile(
 }
 
 export async function pull(projectPath: string, pluginScriptsDir: string): Promise<PullResult> {
+  // Nothing to pull from is a state, not a failure: say so and stop, rather than let `git fetch
+  // origin` fail on every cycle and turn the sidebar red for a project that is working as intended.
+  if (!(await hasOrigin(projectPath).catch(() => false))) {
+    emitSyncState({ kind: 'localOnly' })
+    return { ok: true, mergedFiles: [], clashes: [], arrivedChanges: [], entries: [], noRemote: true }
+  }
   emitSyncState({ kind: 'pulling' })
   try {
     await runGit(['fetch', 'origin'], projectPath)
@@ -854,6 +879,10 @@ export async function save(
   changeNote: string,
   options: SaveOptions = {},
 ): Promise<SaveResult> {
+  if (!(await hasOrigin(projectPath).catch(() => false))) {
+    emitSyncState({ kind: 'localOnly' })
+    return { ok: false, entries: [], error: NOT_CONNECTED }
+  }
   emitSyncState({ kind: 'saving' })
 
   const before = getProjectSyncState(projectPath)

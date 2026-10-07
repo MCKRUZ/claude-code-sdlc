@@ -40,7 +40,8 @@ describe('runCommand signal', () => {
       expect(getConsoleLog().length).toBe(before + 1) // recorded once, with the rest of the console
       expect(await gone(pid)).toBe(true)
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      // The killed process had this folder as its working directory; Windows can hold it a moment longer.
+      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
     }
   })
 
@@ -55,7 +56,8 @@ describe('runCommand signal', () => {
       await new Promise((r) => setTimeout(r, 300))
       expect(() => readFileSync(marker)).toThrow()
     } finally {
-      rmSync(dir, { recursive: true, force: true })
+      // The killed process had this folder as its working directory; Windows can hold it a moment longer.
+      rmSync(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 })
     }
   })
 

@@ -235,6 +235,8 @@ export interface PullResult {
   arrivedChanges: ArrivedChange[]
   entries: ConsoleEntry[]
   error?: string
+  /** True when there was no shared repository to pull from. `ok` is true: nothing went wrong. */
+  noRemote?: boolean
 }
 
 export type ClashChoice = 'local' | 'remote' | 'combined'
@@ -854,6 +856,8 @@ export type SyncState =
   | { kind: 'waitingForApproval'; approver: string }
   | { kind: 'waitingForChecks' }
   | { kind: 'error'; message: string }
+  /** No shared repository is configured yet (every new project). A state, not a failure. */
+  | { kind: 'localOnly' }
 
 // --- Chat authoring (spec 0016) ---------------------------------------------------------
 //
@@ -1578,6 +1582,9 @@ export interface StudioApi {
   /** Starts every file a `create` activity declares from the plugin's template for it — never
    * overwriting one that exists — and says which were created. Spec 0024. */
   startActivity(projectPath: string, stageId: string, activityId: string): Promise<StartActivityResult>
+  /** Starts ONE document from the plugin's template (the step panel's "Start this document"). Never
+   * overwrites; `created` is false when it was already there. */
+  startDocument(projectPath: string, relPath: string): Promise<{ ok: boolean; created?: boolean; error?: string }>
   /** Runs one of the Workflow tab's two checks (`rules-check`, `data-check`) and returns it parsed. */
   runActivityCheck(projectPath: string, activityId: string): Promise<ActivityCheckResult>
   /** Reads a stage's guidance file from the plugin (the `definition` path readiness reports). */

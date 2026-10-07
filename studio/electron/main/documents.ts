@@ -20,7 +20,7 @@ import {
   findShapeForPath, readShapeFromBytes, writeShapeUpdates,
   type ShapeField, type ShapeReadResult,
 } from './sectionMerge'
-import { runGitTolerant } from './git'
+import { remoteBranchExists, runGitTolerant } from './git'
 import { resolveProjectDocument } from './projectPaths'
 import type {
   DocumentChange, DocumentField, DocumentSection, OpenDocumentResult,
@@ -442,7 +442,9 @@ export async function getDocumentChanges(
   // back to local history, because a project with no remote configured (or one not yet
   // fetched) still has a real history worth showing, and returning nothing would read as
   // "nobody has touched this" when the truth is "we couldn't see the remote".
-  const tips = [`origin/${branch}`, 'HEAD']
+  // The remote tip is only tried when there is one: a project with no shared repository would
+  // otherwise log a failed command here on every document it opens.
+  const tips = (await remoteBranchExists(projectPath, branch)) ? [`origin/${branch}`, 'HEAD'] : ['HEAD']
   let entry = null
   for (const tip of tips) {
     const range = sinceCommit ? `${sinceCommit}..${tip}` : tip
