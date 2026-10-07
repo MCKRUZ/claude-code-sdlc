@@ -110,8 +110,9 @@ describe('guides', () => {
   // defaulted to v12 — the test was red at HEAD. The builder now defaults to the NEWEST series,
   // v13 (every v12 name has a v13 twin; the capture produced 59 shots), and the pin follows it.
   // Round 4 (the v14 verification pass): the builder moved to v14, the series the guide ships on.
-  // Plugin 1.8.0: v21 — the series that adds the Issues view and the Report-an-issue dialog.
-  it('the guide builder defaults to the v21 shots (the series with the Issues view)', () => {
-    expect(readFileSync(join(guideDir, 'build-user-guide.mjs'), 'utf8')).toContain("'observatory-v21'")
+  // Plugin 1.8.0: v22 — the series that adds the Issues view and the Report-an-issue dialog,
+  // captured on the build whose product name is SDLC Studio (v21 was the same screens under the old name).
+  it('the guide builder defaults to the v22 shots (the series with the Issues view)', () => {
+    expect(readFileSync(join(guideDir, 'build-user-guide.mjs'), 'utf8')).toContain("'observatory-v22'")
   })
 })

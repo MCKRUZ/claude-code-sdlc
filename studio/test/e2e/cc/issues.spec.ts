@@ -1,4 +1,4 @@
-/** Issues in the real window (/sdlc-report-issue; CLAUDE.md: every tooling upgrade reaches the Tōgō
+/** Issues in the real window (/sdlc-report-issue; CLAUDE.md: every tooling upgrade reaches the SDLC Studio
  * UI). The promises a component test cannot make: that the band's Report-an-issue control opens the
  * dialog over the sprint home with the plugin's own questions and refuses to write without a
  * screenshot, in the fixed sentence; that a report the plugin wrote (through its own CLI, with a

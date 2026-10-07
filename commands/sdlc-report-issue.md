@@ -13,7 +13,7 @@ secret-shaped string is refused outright — the file is shared with the code ho
 un-published.
 
 The command owns `report_issue.py`; the user never calls it directly. The questions, the minimum, the
-refusals and the lifecycle live in `scripts/issue_model.py` — the same list the Tōgō desktop app renders
+refusals and the lifecycle live in `scripts/issue_model.py` — the same list the SDLC Studio desktop app renders
 as its *Report an issue* dialog and its *Issues* view, so a bug handled either way is the same record.
 The lifecycle in words is `references/issue-lifecycle.md`. Works inside an SDLC project or standalone
 against any repository.

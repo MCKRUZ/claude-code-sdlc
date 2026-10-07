@@ -1,6 +1,6 @@
 # The issue lifecycle — bugs in the product, from report to fix
 
-The rules behind `/sdlc-report-issue`, `scripts/issue_model.py` and the Tōgō app's *Issues* view. One
+The rules behind `/sdlc-report-issue`, `scripts/issue_model.py` and SDLC Studio's *Issues* view. One
 list; three readers. A bug report here is a **record** that becomes a **spec**: the Build loop's unit is
 the spec (one spec, one branch, one PR), so a bug is fixed the way everything else is built — through a
 `type: bugfix` spec, its Definition of Ready, its checking ladder and its sprint — never through a side

@@ -9,6 +9,7 @@ import { dirtyStore } from './stores/dirtyStore'
 import { backlogStore } from './stores/backlogStore'
 import { stageTabStore } from './stores/stageTabStore'
 import { connectionStore, useConnection } from './stores/connectionStore'
+import { actorFromConnection } from '../shared/actor'
 import { chatStore } from './stores/chatStore'
 import { Notice, ToastRegion, dismiss, toast } from './ui'
 import { motion } from './motion/motion'
@@ -464,6 +465,20 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
     setCommandCenter(await readCommandCenter(screen.projectPath, refresh))
     setRefreshKey((k) => k + 1)
   }, [screen])
+  /** The actor the command center resolved, or — before it has re-read — the one the live
+   * connection names (a name typed in Settings a moment ago is the actor at once). */
+  const ccActor = commandCenter?.actor ?? (connection ? actorFromConnection(connection) : null)
+  /** A sign-in or sign-out changes who every write is recorded against: re-read the command
+   * center (the main process dropped its cached document) so the chip, the needs-you list and
+   * every dialog carry the new name without waiting for the next exit 0. */
+  const account = connection?.account ?? null
+  const accountSeen = useRef<string | null>(null)
+  useEffect(() => {
+    if (screen.kind !== 'project' || !commandCenter) { accountSeen.current = account; return }
+    if (accountSeen.current === account) return
+    accountSeen.current = account
+    void refreshCommandCenter()
+  }, [account, screen.kind, commandCenter, refreshCommandCenter])
 
   const handleOverride = useCallback(
     async (kind: 'claude' | 'uv' | 'pluginScripts' | 'git' | 'gh' | 'az', path: string) => {
@@ -825,7 +840,7 @@ function AppScreens({ setOpening }: { setOpening: (opening: Opening | null) => v
             <ReportIssueDialog
               open
               projectPath={projectPath}
-              actor={commandCenter?.actor ?? null}
+              actor={ccActor}
               capabilities={commandCenter?.capabilities ?? null}
               specs={(commandCenter?.board.data?.rows ?? []).map((r) => ({ id: r.spec, name: r.name }))}
               onClose={() => setIssueReport(false)}

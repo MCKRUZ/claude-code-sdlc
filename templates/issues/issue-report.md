@@ -30,7 +30,7 @@ escaped_from: ""             # optional — the check that should have caught it
 # ISS-NNNN — <title>
 
 <!--
-  Written by `report_issue.py new` from the answers /sdlc-report-issue (or the Tōgō app) collected.
+  Written by `report_issue.py new` from the answers /sdlc-report-issue (or the SDLC Studio app) collected.
   The frontmatter is the record the fixer and the code host read; the sections below are the
   reporter's own words, kept verbatim. The lifecycle verbs — triage, prioritize, promote, note,
   reopen, sync, file, set-status — append to ## History and update the frontmatter; nothing else

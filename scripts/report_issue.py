@@ -1244,7 +1244,7 @@ def build_parser() -> argparse.ArgumentParser:
     src.add_argument("--repo", default=".", help="Target repo root (standalone mode; default: cwd)")
     common.add_argument("--json", action="store_true", help="Emit one JSON document")
     by = argparse.ArgumentParser(add_help=False)
-    by.add_argument("--by", required=True, metavar="NAME", help="A named human — an AI name is refused")
+    by.add_argument("--by", required=True, metavar="NAME", help="A named human - an AI name is refused")
     issue = argparse.ArgumentParser(add_help=False)
     issue.add_argument("--issue", required=True, help="ISS-NNNN, NNNN, or the report's path")
 
@@ -1258,13 +1258,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--channel", default=None, help=f"One of {', '.join(im.CHANNELS)}")
 
     p = sub.add_parser("env", parents=[common], help="The build under test: repository, branch, commit, code host, this machine")
-    p.add_argument("--app-version", default=None, help="The Tōgō app's version, when the app is the caller")
+    p.add_argument("--app-version", default=None, help="The desktop app's version, when the app is the caller")
 
     p = sub.add_parser("new", parents=[common], help="Write a report (only once it clears the minimum)")
-    p.add_argument("--title", required=True, help=f"One line, {im.MIN_TITLE_CHARS}–{im.MAX_TITLE_CHARS} characters")
+    p.add_argument("--title", required=True, help=f"One line, {im.MIN_TITLE_CHARS}-{im.MAX_TITLE_CHARS} characters")
     p.add_argument("--channel", required=True, help=f"Where in the product: one of {', '.join(im.CHANNELS)}")
-    p.add_argument("--what", required=True, help=f"What happened (≥ {im.MIN_WHAT_CHARS} characters)")
-    p.add_argument("--expected", required=True, help=f"What you expected (≥ {im.MIN_EXPECTED_CHARS} characters)")
+    p.add_argument("--what", required=True, help=f"What happened (>= {im.MIN_WHAT_CHARS} characters)")
+    p.add_argument("--expected", required=True, help=f"What you expected (>= {im.MIN_EXPECTED_CHARS} characters)")
     p.add_argument("--steps", action="append", default=[], metavar="STEP", help="A step to reproduce (repeatable; newlines split too)")
     p.add_argument("--environment", required=True, help=f"One of {', '.join(im.ENVIRONMENTS)}")
     p.add_argument("--product-version", default=None, dest="product_version", help="The build, tag or commit under test (local runs take git's)")
@@ -1282,12 +1282,12 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--env-json", default=None, metavar="PATH", help="The document `env --json` printed, saved to a file")
     p.add_argument("--escaped-from", default=None, metavar="CHECK",
                    help="The check that should have caught this; also records scorecard.py's escaped_bug event")
-    p.add_argument("--by", required=True, metavar="NAME", help="The person reporting, by name — an AI name is refused")
+    p.add_argument("--by", required=True, metavar="NAME", help="The person reporting, by name - an AI name is refused")
 
     sub.add_parser("show", parents=[common, issue], help="One report in full, with the actions the lifecycle allows and why not")
     sub.add_parser("check", parents=[common, issue], help="Re-validate an existing report (exit 1 when it falls short)")
 
-    p = sub.add_parser("list", parents=[common], help="The queue — what needs a decision first")
+    p = sub.add_parser("list", parents=[common], help="The queue - what needs a decision first")
     p.add_argument("--status", default=None, help=f"Only one of {', '.join(im.STATUSES)}")
     p.add_argument("--queue", action="store_true", help="Only the reports awaiting review (new, needs-info)")
 
@@ -1298,7 +1298,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--question", default=None, help="needs-info: what the reporter should add")
     p.add_argument("--of", default=None, metavar="ISS-NNNN", help="duplicate: the report it duplicates")
     p.add_argument("--reason", default=None, help="wont-fix: why (required); confirmed: a note; with --override: why the reporter reviews")
-    p.add_argument("--override", action="store_true", help="Let the reporter review their own report (a team of one) — needs --reason")
+    p.add_argument("--override", action="store_true", help="Let the reporter review their own report (a team of one) - needs --reason")
 
     p = sub.add_parser("prioritize", parents=[common, issue, by], help="P1 | P2 | P3 and a target sprint, confirming the proposal or not")
     p.add_argument("--priority", default=None, help="P1 (fix now) | P2 (next sprint) | P3 (backlog)")
@@ -1306,7 +1306,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reason", default=None, help="Why, when the priority differs from the proposal")
 
     p = sub.add_parser("promote", parents=[common, issue, by], help="Scaffold a type: bugfix spec from the report (new_spec.py)")
-    p.add_argument("--risk", default=None, help="HIGH | MEDIUM | LOW — the person confirms or changes the report's proposal")
+    p.add_argument("--risk", default=None, help="HIGH | MEDIUM | LOW - the person confirms or changes the report's proposal")
     p.add_argument("--owner", default=None, help="Code-host handle of the accountable owner (e.g. @priya-n)")
     p.add_argument("--team", default=None, help="The team the fix belongs to")
     p.add_argument("--slate", action="store_true", help="Also slate the new spec into the target sprint through sprint.py slate")

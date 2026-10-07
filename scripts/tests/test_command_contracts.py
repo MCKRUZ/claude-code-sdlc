@@ -76,7 +76,7 @@ def get_help(script: str, chain: tuple[str, ...]) -> tuple[int, str]:
         *chain, "--help",
     ]
     try:
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=90)
+        r = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=90)
         res = (r.returncode, (r.stdout or "") + "\n" + (r.stderr or ""))
     except Exception:  # noqa: BLE001 - a help subprocess failing must never crash the lint
         res = (1, "")

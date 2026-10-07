@@ -173,7 +173,7 @@ test.describe('[smoke] a team a few days in, every screen', () => {
       const label = await stageLabel(i)
       const name = label.replace(/\.\s.*$/, '')
       if (isBuild(label)) {
-        for (const view of ['Board', 'How it is going', 'Closing', 'Documents']) {
+        for (const view of ['Board', 'Issues', 'How it is going', 'Closing', 'Documents']) {
           await openBuildView(view)
           await run.look(page, `${name} › ${view}`, size)
           if (interact) await crawlControls(page, run, `${name} › ${view}`, size, async () => { await openBuildView(view) })

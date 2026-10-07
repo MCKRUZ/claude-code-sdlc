@@ -253,8 +253,13 @@ function registerIpcHandlers() {
 
   // D-OWNER-5. Validation and the "only while the host cannot identify you" rule live in
   // sync.ts/typedActor.ts — main refuses, the renderer only asks. A refusal is a rejection.
-  ipcMain.handle('studio:setTypedActor', async (_event, projectPath: string, name: string) =>
-    setTypedActor(projectPath, await resolvePluginScriptsDir(), name))
+  ipcMain.handle('studio:setTypedActor', async (_event, projectPath: string, name: string) => {
+    const info = await setTypedActor(projectPath, await resolvePluginScriptsDir(), name)
+    // The command center's cached document carries the actor it resolved when it was read; a name
+    // typed now is the actor of every write from here on, so the next read resolves it afresh.
+    invalidateCommandCenter(projectPath)
+    return info
+  })
 
   // The repository file IS the code-host override (code-host-providers.md §7): the plugin's own
   // `set_setting.py code-host` validates and writes `.sdlc/code-host.yaml`, so a person who

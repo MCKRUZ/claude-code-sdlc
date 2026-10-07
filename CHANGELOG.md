@@ -33,7 +33,11 @@
   build facts pre-filled, the screenshot pasted from the clipboard or chosen (this window as a fallback),
   the privacy confirmation never pre-ticked. The sprint home's Today column says how many reports await
   review. Every control disables with its reason on an older plugin.
-- **The rule, written down** (CLAUDE.md): every tooling upgrade reaches the Tōgō UI in the same change.
+- **The rule, written down** (CLAUDE.md): every tooling upgrade reaches the SDLC Studio UI in the same change.
+- **On every runner.** `report_issue.py --help` is plain ASCII, so a Windows pipe reads it whole; the
+  tests read their files as UTF-8. A name typed in Settings is the actor at once — the main process drops
+  its cached command center and the app re-reads it — so *Report an issue* and every write dialog carry
+  the name without waiting for the next refresh. The smoke suite's Build sweep visits the Issues view.
 
 ## 1.7.0 — 2026-10-06
 

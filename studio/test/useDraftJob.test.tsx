@@ -185,7 +185,7 @@ describe('useDraftJob: progress and cancel', () => {
     // React's scheduler may hold a zero-delay timer of its own — so advance the fake clock by 0
     // (zero-delay timers and microtasks run, our 1 s interval would not) until the count is
     // clear or twenty cycles have passed. The assertion is the same.
-    for (let i = 0; i < 20 && vi.getTimerCount() > 0; i++) await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    await act(async () => { await vi.waitFor(() => expect(vi.getTimerCount()).toBe(0)) })
     expect(vi.getTimerCount()).toBe(0)
   })
 

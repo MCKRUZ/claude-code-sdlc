@@ -12,22 +12,10 @@
 
 import { getConnectionInfo } from './sync'
 import type { ActorInfo, ConnectionInfo } from '../../shared/types'
+import { actorFromConnection } from '../../shared/actor'
 
-/** Pure: who `ConnectionInfo` says is acting, in the form the plugin should record. Null when
- * nobody is identified — the caller shows `reasons.NO_ACTOR`, never a blank `--by`. */
-export function actorFromConnection(info: Pick<ConnectionInfo, 'account' | 'accountSource' | 'rosterHandle'>): ActorInfo | null {
-  if (info.accountSource === 'roster' && info.rosterHandle?.trim()) {
-    return { name: info.rosterHandle.trim(), source: 'roster' }
-  }
-  const account = info.account?.trim()
-  if (!account) return null
-  if (info.accountSource === 'host') return { name: account, source: 'host' }
-  if (info.accountSource === 'typed') return { name: account, source: 'typed' }
-  // A roster source without a roster handle is a shape the sync layer never produces; the
-  // account is still a real identity, so it is reported as the host's rather than dropped.
-  if (info.accountSource === 'roster') return { name: account, source: 'host' }
-  return null
-}
+export { actorFromConnection }
+
 
 /** The e2e test hook (togo-command-center.md §7 P7): a DEVELOPMENT run may force the `--by` name so
  * a test can show the plugin's own exit-2 refusal of an AI-looking name — the one identity

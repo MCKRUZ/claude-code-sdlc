@@ -4,7 +4,7 @@ The single source of truth for what a usable bug report must carry, which follow
 depend on where in the product the bug was seen, and the words a report is refused with.
 
 Why a model module (the `risk_model.py` / `findings_model.py` pattern): the slash command asks
-the questions in a conversation, the Tōgō desktop app renders them as a form, and
+the questions in a conversation, the SDLC Studio desktop app renders them as a form, and
 `report_issue.py` enforces the minimum on both. Three readers, one list — so a question added
 here reaches the conversation and the form in the same release and the CLI refuses the same gap
 either way. Nothing in here touches the filesystem except reading a candidate screenshot's

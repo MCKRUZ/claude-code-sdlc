@@ -96,7 +96,7 @@ class TestQuestionsAndEnv:
         assert doc["repo"]["host"] == "none" and doc["repo"]["slug"] is None
         assert doc["repo"]["branch"] is None and doc["repo"]["commit"] is None  # not a repository
         assert doc["machine"]["os"]
-        assert doc["tooling"]["plugin_version"] == json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text())["version"]
+        assert doc["tooling"]["plugin_version"] == json.loads((PLUGIN_ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))["version"]
         assert doc["tooling"]["app_version"] == "0.1.0"
 
     def test_env_reads_the_repository_when_there_is_one(self, repo):
@@ -197,7 +197,7 @@ class TestNew:
         assert "![screenshot 1](ISS-0001/screenshot-1.png)" in report
         assert "Priya N. confirmed on" in report and "reported by Priya N." in report
         assert (repo / ".sdlc" / "issues" / "ISS-0001" / "screenshot-1.png").read_bytes() == shot.read_bytes()
-        ledger = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text().splitlines()]
+        ledger = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text(encoding="utf-8").splitlines()]
         assert ledger[0]["event"] == "reported" and ledger[0]["issue"] == "ISS-0001" and ledger[0]["by"] == "Priya N."
         assert ledger[0]["channel"] == "web" and ledger[0]["environment"] == "test" and ledger[0]["data_impact"] == "wrong-shown"
         assert "velocity" not in str(ledger) and "points" not in str(ledger)
@@ -246,7 +246,7 @@ class TestNew:
         assert proc.returncode == 0, proc.stdout
         doc = json.loads(proc.stdout)
         assert doc["warnings"] == [] and doc["advisory"] == []
-        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "loop-events.jsonl").read_text().splitlines()]
+        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "loop-events.jsonl").read_text(encoding="utf-8").splitlines()]
         assert events[-1]["type"] == "escaped_bug" and events[-1]["which_check"] == "grader" and events[-1]["issue"] == "ISS-0001"
 
     def test_a_production_bug_without_the_check_is_written_with_the_advisory(self, repo, shot):
@@ -330,7 +330,7 @@ class TestCheckListAndStatus:
         assert again.returncode == 0 and "Nothing changed" in again.stdout
         closed = run(["triage", "--repo", str(repo), "--issue", "ISS-0001", "--verdict", "confirmed", "--by", "Sam K"])
         assert closed.returncode == 1 and "closed report" in closed.stdout and "reopen" in closed.stdout
-        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text().splitlines()]
+        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text(encoding="utf-8").splitlines()]
         assert [e["event"] for e in events] == ["reported", "reported", "status"]
         assert events[-1]["from"] == "new" and events[-1]["to"] == "duplicate" and events[-1]["of"] == "ISS-0002"
 
@@ -369,7 +369,7 @@ class TestTriage:
         assert "\nstatus: triaged\n" in text and 'severity: "blocks"' in text and 'data_impact: "wrong-written"' in text
         assert 'triaged_by: "Sam K"' in text and 'triage_verdict: "confirmed"' in text
         assert "triage by Sam K: confirmed (severity degraded → blocks; data impact wrong-shown → wrong-written) — reproduced on test" in text
-        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text().splitlines()]
+        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text(encoding="utf-8").splitlines()]
         assert events[-1]["event"] == "triaged" and events[-1]["verdict"] == "confirmed" and events[-1]["from"] == "new" and events[-1]["to"] == "triaged"
 
     def test_needs_info_asks_a_question_and_a_note_answers_it_then_triage_again(self, repo, shot):
@@ -531,11 +531,11 @@ class TestFile:
         assert proc.returncode == 0, proc.stdout + proc.stderr
         doc = json.loads(proc.stdout)
         assert doc == {"ok": True, "issue": "ISS-0001", "status": "new", "host": "github", "url": "https://github.com/acme/claims/issues/17", "id": "17", "argv": ["gh", "issue", "create"]}
-        assert "--title Claim total doubles" in (bin_dir / "gh.argv").read_text()
+        assert "--title Claim total doubles" in (bin_dir / "gh.argv").read_text(encoding="utf-8")
         text = next((repo / ".sdlc" / "issues").glob("ISS-0001-*.md")).read_text(encoding="utf-8")
         assert "\nstatus: new\n" in text and 'filed_host: "github"' in text and 'filed_url: "https://github.com/acme/claims/issues/17"' in text
         assert "filed on github by Priya N.: https://github.com/acme/claims/issues/17" in text
-        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text().splitlines()]
+        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text(encoding="utf-8").splitlines()]
         assert events[-1]["event"] == "filed" and events[-1]["url"].endswith("/17")
         again = run(["file", "--repo", str(repo), "--issue", "ISS-0001", "--by", "Priya N."], env=env)
         assert again.returncode == 1 and "already filed" in again.stdout
@@ -597,7 +597,7 @@ class TestPromote:
         report = next((repo / ".sdlc" / "issues").glob("ISS-0001-*.md")).read_text(encoding="utf-8")
         assert 'bugfix_spec: "0001"' in report and "\nstatus: promoted\n" in report
         assert "promoted to bugfix spec 0001 (HIGH) by Sam K — the proposal was MEDIUM" in report
-        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text().splitlines()]
+        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text(encoding="utf-8").splitlines()]
         assert events[-1]["event"] == "promoted" and events[-1]["spec"] == "0001" and events[-1]["risk"] == "HIGH" and events[-1]["proposed_risk"] == "MEDIUM"
         again = run(["promote", "--repo", str(repo), "--issue", "ISS-0001", "--risk", "LOW", "--by", "Sam K"])
         assert again.returncode == 1 and "already has a bugfix spec" in again.stdout
@@ -659,7 +659,7 @@ class TestSyncShowReopen:
         assert done.returncode == 0 and "ISS-0001: fixed — spec 0001 merged" in done.stdout
         text = next((repo / ".sdlc" / "issues").glob("ISS-0001-*.md")).read_text(encoding="utf-8")
         assert "\nstatus: fixed\n" in text and "bugfix spec 0001 merged (sync)" in text
-        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text().splitlines()]
+        events = [json.loads(l) for l in (repo / ".sdlc" / "metrics" / "issue-log.jsonl").read_text(encoding="utf-8").splitlines()]
         assert events[-1]["event"] == "fixed" and events[-1]["via"] == "sync" and events[-1]["by"] == "spec 0001"
         assert run(["sync", "--repo", str(repo)]).stdout.startswith("no data")
 

@@ -1,5 +1,5 @@
 // Report an issue — `/sdlc-report-issue new` in the app, for a bug in the PRODUCT the team is
-// building (CLAUDE.md: every tooling upgrade reaches the Tōgō UI). The questions are the plugin's own
+// building (CLAUDE.md: every tooling upgrade reaches the SDLC Studio UI). The questions are the plugin's own
 // plan (`report_issue.py questions --json`), rendered by kind and re-read when the channel changes
 // (the follow-ups change with it); the build under test is the plugin's `env --json`; the screenshot
 // is of the product — pasted from the clipboard or chosen as a file, this window only as a fallback;
