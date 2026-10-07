@@ -189,5 +189,9 @@ export async function sequence(page: Page, first: string, second: string): Promi
 
 export async function closeApp(app: ElectronApplication | undefined, page: Page | undefined, shot: string): Promise<void> {
   await page?.screenshot({ path: `test/screenshots/${shot}.png`, timeout: 15_000 }).catch(() => {})
-  await Promise.race([app?.close().catch(() => {}), new Promise((r) => setTimeout(r, 30_000))])
+  // A close that does not return in 20 s is not waited on twice: the process is killed, or
+  // Playwright's worker teardown waits on the same app and times out after every test passed
+  // (the ubuntu job, twice).
+  const closed = await Promise.race([app?.close().then(() => true).catch(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 20_000))])
+  if (!closed) { try { app?.process().kill('SIGKILL') } catch { /* already gone */ } }
 }

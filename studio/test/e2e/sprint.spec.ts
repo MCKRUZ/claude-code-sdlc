@@ -90,7 +90,8 @@ test.describe('[studio-improvements B2] the Sprint view in the real window', () 
     // tearing down never returned. Each step gets its own ceiling so one slow step cannot strand
     // the rest (the screenshot is a convenience, not an assertion).
     await page?.screenshot({ path: 'test/screenshots/studio-improvements-sprint.png', timeout: 15_000 }).catch(() => {})
-    await Promise.race([app?.close().catch(() => {}), new Promise((r) => setTimeout(r, 30_000))])
+    const closed = await Promise.race([app?.close().then(() => true).catch(() => true), new Promise<boolean>((r) => setTimeout(() => r(false), 20_000))])
+    if (!closed) { try { app?.process().kill('SIGKILL') } catch { /* already gone */ } }
     try {
       if (workspace) rmSync(workspace, { recursive: true, force: true })
     } catch {
