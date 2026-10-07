@@ -39,11 +39,11 @@ function document(viewBox: { width: number; height: number }, comment: string, b
 }
 
 export function emptyFigureSvg(name: CcEmptyFigureName): string {
-  return document(CC_FIGURE_VIEWBOX, `Tōgō command center — empty state "${name}". Two tones from the accent ramp.`, CC_EMPTY_FIGURES[name].map(shapeToSvg))
+  return document(CC_FIGURE_VIEWBOX, `SDLC Studio command center — empty state "${name}". Two tones from the accent ramp.`, CC_EMPTY_FIGURES[name].map(shapeToSvg))
 }
 
 export function batonSvg(): string {
-  return document(BATON_VIEWBOX, 'Tōgō command center — the baton.', BATON_SHAPES.map(shapeToSvg))
+  return document(BATON_VIEWBOX, 'SDLC Studio command center — the baton.', BATON_SHAPES.map(shapeToSvg))
 }
 
 export function laneGlyphSvg(lane: LaneGlyphName): string {
@@ -52,7 +52,7 @@ export function laneGlyphSvg(lane: LaneGlyphName): string {
     const dash = part.dash ? ` stroke-dasharray="${part.dash}"` : ''
     return `  <path d="${part.d}" fill="none" stroke="${CC_STATIC_HEX.glyph}" stroke-width="${part.stroke}"${dash} stroke-linecap="round"/>`
   })
-  return document(LANE_GLYPH_VIEWBOX, `Tōgō command center — lane glyph "${lane}" (currentColor in the app).`, body)
+  return document(LANE_GLYPH_VIEWBOX, `SDLC Studio command center — lane glyph "${lane}" (currentColor in the app).`, body)
 }
 
 /** The ring style at 20 px, light values: `surface-2` disc, a `surface-1` gap, the `you-ring`. */
@@ -62,7 +62,7 @@ export function roomRingSvg(): string {
   const c = size / 2
   return document(
     { width: size, height: size },
-    'Tōgō command center — the "In the room" ring: initials disc, 2 px gap, 2 px you-ring.',
+    'SDLC Studio command center — the "In the room" ring: initials disc, 2 px gap, 2 px you-ring.',
     [
       `  <circle cx="${c}" cy="${c}" r="${r + PERSON_RING_GAP_PX + PERSON_RING_WIDTH_PX / 2}" fill="none" stroke="${CC_STATIC_HEX.glyph}" stroke-width="${PERSON_RING_WIDTH_PX}"/>`,
       `  <circle cx="${c}" cy="${c}" r="${r + PERSON_RING_GAP_PX}" fill="#FFFFFF"/>`,
@@ -75,8 +75,8 @@ export function roomRingSvg(): string {
  * 48 px beside the wordmark and the eyebrow. Text is allowed here — it is a lockup, not a figure. */
 export function steeringLockupSvg(): string {
   return [
-    `<svg ${XMLNS} viewBox="0 0 320 64" width="320" height="64" role="img" aria-label="Tōgō — Steering">`,
-    '  <!-- Tōgō command center — steering-mode title lockup, Depth. One user-space gradient, bar top-left (17, 9) → disc bottom-right (47, 56), light pair #6FD1D4 → #0A3F47; the app draws it inline so the stops follow the theme. Generated from studio/src/components/brand/figures/ccStaticSvg.ts; do not hand-edit. -->',
+    `<svg ${XMLNS} viewBox="0 0 320 64" width="320" height="64" role="img" aria-label="SDLC Studio — Steering">`,
+    '  <!-- SDLC Studio command center — steering-mode title lockup, Depth. One user-space gradient, bar top-left (17, 9) → disc bottom-right (47, 56), light pair #6FD1D4 → #0A3F47; the app draws it inline so the stops follow the theme. Generated from studio/src/components/brand/figures/ccStaticSvg.ts; do not hand-edit. -->',
     '  <defs>',
     '    <linearGradient id="depth" gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56">',
     '      <stop offset="0" stop-color="#6FD1D4"/>',
@@ -87,7 +87,7 @@ export function steeringLockupSvg(): string {
     '    <rect x="17" y="9" width="30" height="7" rx="3.5" fill="url(#depth)"/>',
     '    <circle cx="32" cy="38.5" r="17.5" fill="url(#depth)"/>',
     '  </g>',
-    '  <text x="64" y="36" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="650" font-size="22" letter-spacing="-0.33" fill="#0B1120">Tōgō</text>',
+    '  <text x="64" y="36" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="650" font-size="22" letter-spacing="-0.33" fill="#0B1120">SDLC Studio</text>',
     '  <text x="64" y="52" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="600" font-size="11" letter-spacing="0.88" fill="#5D6C84">STEERING</text>',
     '</svg>',
     '',

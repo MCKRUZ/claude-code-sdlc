@@ -1,6 +1,6 @@
 # What a person can do in each phase, beyond the documents it requires (spec 0023).
 #
-# This is the plugin's own declaration; Tōgō (the desktop app) draws it instead of keeping a second
+# This is the plugin's own declaration; SDLC Studio (the desktop app) draws it instead of keeping a second
 # list of its own, so adding a command here needs no app change. It lives in a file of its own, not in
 # phase-registry.yaml, because the registry and phase_model.py are protected core.
 #

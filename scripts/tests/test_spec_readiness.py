@@ -153,7 +153,7 @@ class TestRosterResolution:
 
 
 # ---------------------------------------------------------------------------
-# Tōgō command center (togo-command-center.md §2.5 row 8): `ladder{}` and `--all`
+# SDLC Studio command center (togo-command-center.md §2.5 row 8): `ladder{}` and `--all`
 # ---------------------------------------------------------------------------
 
 import json  # noqa: E402

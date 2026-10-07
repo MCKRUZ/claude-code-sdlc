@@ -1,7 +1,7 @@
 {
   "name": "claude-code-sdlc",
   "version": "1.7.0",
-  "description": "Tōgō (統合): SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters), on GitHub or Azure DevOps.",
+  "description": "SDLC orchestration for Claude Code + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters), on GitHub or Azure DevOps.",
   "author": {
     "name": "Matt Kruczek",
     "url": "https://github.com/MCKRUZ"
@@ -22,7 +22,6 @@
     "azure",
     "dotnet",
     "angular",
-    "togo",
     "azure-devops",
     "github"
   ]

@@ -52,7 +52,7 @@ CAPABILITIES: dict[str, dict] = {
     # and whether its CLI is usable — the `host` block Studio reads before enabling PR features.
     "code-host": {"script": "code_host.py", "flags": ["--repo", "--state", "--host", "--json"]},
     "import-outcomes": {"script": "import_outcomes.py", "flags": ["--since", "--repo", "--state", "--host", "--json"]},
-    # The Tōgō command center (docs/proposals/togo-command-center.md §2.6). Each name disables one
+    # The SDLC Studio command center (docs/proposals/togo-command-center.md §2.6). Each name disables one
     # control on an older plugin, with the reason "arrives with a newer plugin: lacks <name>".
     # `sprint-write` is true of 1.6.x already — it is what lets an older plugin's omnibar verbs be
     # disabled honestly rather than fail on argv.

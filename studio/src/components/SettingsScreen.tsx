@@ -173,7 +173,7 @@ export function SettingsScreen({
         <PageHeader
           eyebrow="Project · Settings"
           title="Settings"
-          lede="Every setting here is stored in the project itself, not in Tōgō — so it travels with the repository and changes like any other file."
+          lede="Every setting here is stored in the project itself, not in SDLC Studio — so it travels with the repository and changes like any other file."
           actions={(
             <Button
               size="sm"

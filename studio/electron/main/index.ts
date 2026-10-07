@@ -943,7 +943,7 @@ async function createWindow() {
   const areas = screen.getAllDisplays().map((d) => d.workArea)
   const bounds = fitSavedBounds(readSavedBounds(userData), areas) ?? firstOpenBounds(screen.getPrimaryDisplay().workArea)
   win = new BrowserWindow({
-    title: 'Tōgō',
+    title: 'SDLC Studio',
     ...bounds,
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,

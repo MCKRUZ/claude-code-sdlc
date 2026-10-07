@@ -68,7 +68,7 @@ describe('public/brand/cc is generated from the figure geometry', () => {
     expect(svg).toContain('gradientUnits="userSpaceOnUse" x1="17" y1="9" x2="47" y2="56"')
     expect(svg).toContain('stop-color="#6FD1D4"')
     expect(svg).toContain('stop-color="#0A3F47"')
-    expect(svg).toMatch(/font-weight="650"[^>]*>Tōgō</)
+    expect(svg).toMatch(/font-weight="650"[^>]*>SDLC Studio</)
     expect(svg).toContain('>STEERING<')
     // The mark is drawn at 48 px: the 64-unit grid scaled by 0.75.
     expect(svg).toContain('scale(0.75)')

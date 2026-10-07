@@ -1268,7 +1268,7 @@ uv run scripts/code_host.py --repo <path> --host azure-devops --json   # overrid
 
 **Exit codes:** `0` always; `2` on a usage error.
 
-**Consumers:** `spec_status.py`, `handoff.py`, `connection_report.py`, `gate_auth.py`, `pipeline_proof.py` (PR reads), `gate_inventory.py` (CI axis), `import_outcomes.py`, and Tōgō (the desktop app), which reads the block before enabling a PR feature and shows the `detail` as the reason a control is off.
+**Consumers:** `spec_status.py`, `handoff.py`, `connection_report.py`, `gate_auth.py`, `pipeline_proof.py` (PR reads), `gate_inventory.py` (CI axis), `import_outcomes.py`, and SDLC Studio (the desktop app), which reads the block before enabling a PR feature and shows the `detail` as the reason a control is off.
 
 ---
 

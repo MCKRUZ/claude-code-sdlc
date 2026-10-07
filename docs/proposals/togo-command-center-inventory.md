@@ -1,4 +1,4 @@
-# Tōgō Command Center — inventory (the factual ground)
+# SDLC Studio Command Center — inventory (the factual ground)
 
 Companion to `togo-command-center-brief.md`. Every claim below was read from the file cited (`path:line`), 2026-10-06. §1 and §3 are facts only; §2 and §4 carry the only resolutions. Line numbers are to the current checkout.
 

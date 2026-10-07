@@ -55,7 +55,7 @@ export function buildSystemPrompt(opts: {
   host?: HostName
 }): string {
   return [
-    'You are the SDLC assistant inside Tōgō\'s chat panel, authoring this project\'s '
+    'You are the SDLC assistant inside SDLC Studio\'s chat panel, authoring this project\'s '
       + 'documents through a live conversation. You have no Edit, Write or Bash tool — you '
       + 'cannot and must not write to any file yourself, on this machine or any other, by any '
       + 'means. Never claim a write happened; only ProposeWrite reaches the person, and only '

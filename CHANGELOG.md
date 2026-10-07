@@ -2,7 +2,7 @@
 
 ## 1.7.0 — 2026-10-06
 
-### Tōgō — the command center
+### SDLC Studio — the command center
 
 The desktop app reorganises around the Build loop (`docs/proposals/togo-command-center.md`, built
 as eight packages with disjoint file ownership, integrated and verified end to end). The sidebar
@@ -110,7 +110,7 @@ byte-for-byte unchanged. New, all additive and tested:
   `sprint-log`, `sprint-carry`, `sprint-edit`, `sprint-write`, `confirm-tier`, `assign-roles`,
   `handoff-check`, `findings-json`, `readiness-all` — each proven against the real `--help`.
 
-### Tōgō — upgrade round 2: the instrument, the ceremonies, the craft
+### SDLC Studio — upgrade round 2: the instrument, the ceremonies, the craft
 
 A second design round on the desktop app, planned in `docs/proposals/studio-upgrade-2.md` from
 five independent design lenses and two judges, built as eight packages with disjoint file
@@ -118,7 +118,7 @@ ownership, reviewed adversarially and verified end to end. What a team sees:
 
 - **Brand in the product.** The solid Macron stays the mark everywhere in the UI; a sanctioned
   gradient treatment — *Depth* (`#6FD1D4 → #0A3F47`, theme-aware) — lives only at hero size
-  (Welcome, the opening card, the dock icon). The dock icon is finally Tōgō's tile, not the
+  (Welcome, the opening card, the dock icon). The dock icon is finally SDLC Studio's tile, not the
   scaffold's; `docs/brand/togo/build-assets.mjs` regenerates every export deterministically;
   the brandbook says exactly where Depth may live.
 - **Readable everywhere.** Dark-mode links and plate text use a dedicated accent-text pair;
@@ -211,9 +211,9 @@ unmodified. The host is **chosen by the repository**, never by a global setting.
   --allow-no-subscriptions` for guest identities, `email:` in `team.yaml`,
   `.sdlc/code-host.yaml`); the commands that named `gh` now name both CLIs.
 
-### Tōgō — the name, the brand, and the Observatory UI
+### SDLC Studio — the brand and the Observatory UI
 
-The plugin and its desktop app now ship under one name: **Tōgō** (TOH-goh, 統合 — integration). The plugin id `claude-code-sdlc`, the `studio/` folder and the `window.studio` bridge are unchanged; the window title, `productName`, favicon and Welcome lockup are Tōgō. The identity is deterministic SVG — a solid mark ("Macron", with "Lens" and "Seam" alternates), a wordmark with its macrons kept, a teal–cyan accent (`#0E7C86`, 4.95:1 on white) with a 50–900 scale for light and dark, Inter for UI and JetBrains Mono for code — recorded in `docs/brand/togo/` (`palette.json`, PNG exports, `togo.ico`, `brandbook.html`). Two standalone HTML guides for teams live in `docs/guide/`: how to stand the tool up, and how to use the app. The install path is unchanged (`/plugin marketplace add MCKRUZ/claude-code-sdlc`, `/plugin install claude-code-sdlc@mckruz`); the desktop app's bundle id is `com.mckruz.togo`.
+The desktop app keeps its name, **SDLC Studio**, and gains one visual identity; the plugin id `claude-code-sdlc`, the `studio/` folder and the `window.studio` bridge are unchanged, and the window title, `productName`, favicon and Welcome lockup carry the identity. The identity is deterministic SVG — a solid mark ("Macron", with "Lens" and "Seam" alternates), a wordmark, a teal–cyan accent (`#0E7C86`, 4.95:1 on white) with a 50–900 scale for light and dark, Inter for UI and JetBrains Mono for code — recorded in `docs/brand/togo/` (`palette.json`, PNG exports, `togo.ico`, `brandbook.html`). Two standalone HTML guides for teams live in `docs/guide/`: how to stand the tool up, and how to use the app. The install path is unchanged (`/plugin marketplace add MCKRUZ/claude-code-sdlc`, `/plugin install claude-code-sdlc@mckruz`); the desktop app's bundle id is `com.mckruz.sdlc-studio`.
 
 The app's screens had grown one spec at a time, each carrying its own Tailwind strings, so there
 was no dark theme, no shared control vocabulary, no keyboard route through the app and nothing
@@ -297,7 +297,7 @@ reaches for `window.studio`.
   is now synced — previously absent from the allowlist, so a frozen layer would have stayed
   local forever.
 
-### Studio (now Tōgō) — the sprint layer surfaced, CLI compatibility, hardening
+### Studio — the sprint layer surfaced, CLI compatibility, hardening
 
 Studio shipped with no sprint surface at all: `phases/activities.yaml` declared nothing for the
 Build phase, nothing in `studio/` called `sprint.py`, and a team running `/sdlc-sprint` saw their

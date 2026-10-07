@@ -1,6 +1,6 @@
 {
   "name": "mckruz",
-  "description": "Tōgō (統合) — SDLC orchestration for Claude Code, the one-command delivery harness, and the Tōgō desktop app.",
+  "description": "MCKRUZ delivery tooling — SDLC orchestration plus the one-command delivery harness, and the SDLC Studio desktop app.",
   "owner": {
     "name": "MCKRUZ",
     "url": "https://github.com/MCKRUZ"
@@ -10,7 +10,7 @@
       "name": "claude-code-sdlc",
       "source": ".",
       "version": "1.7.0",
-      "description": "Tōgō: SDLC orchestration + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters) — GitHub or Azure DevOps, with an optional desktop app.",
+      "description": "SDLC orchestration + one-command install of the full delivery harness (governance CLAUDE.md, CI rail gates + eval workflows, Stop/review hooks, build-loop agents & skills, IaC starters) — GitHub or Azure DevOps, with an optional desktop app.",
       "category": "sdlc",
       "keywords": [
         "sdlc",
@@ -18,7 +18,6 @@
         "gates",
         "quality",
         "enterprise",
-        "togo",
         "azure-devops",
         "github"
       ]

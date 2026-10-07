@@ -1,6 +1,6 @@
 # Studio Observatory — master design for the SDLC Studio UI and interaction overhaul
 
-> **Name:** on 2026-10-05 the product (plugin + desktop app) was named **Tōgō** (TOH-goh, 統合 — integration). "Studio" below is the desktop app now shipped as Tōgō; file paths (`studio/`) and the `window.studio` bridge keep their names. Brand: `docs/brand/togo/`.
+> **Name:** on 2026-10-05 the product (plugin + desktop app) was named **SDLC Studio**. "Studio" below is the desktop app now shipped as SDLC Studio; file paths (`studio/`) and the `window.studio` bridge keep their names. Brand: `docs/brand/togo/`.
 
 Status: design, synthesised from three judged concepts (Orrery / spatial, Meridian / motion, Plumb / system) and two judge panels. No code is written by this document.
 Studio root `S` = `studio/` inside the nested repo `claude-code-sdlc/`. Renderer paths are relative to `S` unless absolute.

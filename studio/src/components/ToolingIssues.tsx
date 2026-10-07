@@ -33,7 +33,7 @@ const LABELS: Record<ToolKey, string> = {
   az: 'the Azure CLI (az)',
 }
 
-/** One missing tool: the probe's own error, the install page, and a way to point Tōgō at a
+/** One missing tool: the probe's own error, the install page, and a way to point SDLC Studio at a
  * copy it did not find. "Use this" carries no `disabledReason` — the hidden reason text would
  * join the button's accessible name, and an e2e locates it by the exact name. */
 function IssueRow({
@@ -111,7 +111,7 @@ function CliRow({
   )
 }
 
-/** Shown before any project when a REQUIRED tool is missing. Nothing is installed by Tōgō;
+/** Shown before any project when a REQUIRED tool is missing. Nothing is installed by SDLC Studio;
  * the person installs it or points at it. The code-host CLIs are listed too, as facts with
  * the same override inputs, but a project opens without them (code-host providers, D4). */
 export function ToolingIssues({
@@ -138,9 +138,9 @@ export function ToolingIssues({
   return (
     <EntryShell>
       <Card className="mx-auto w-full max-w-lg space-y-3 rounded-4 p-6 shadow-2">
-        <h1 className="text-lg text-ink-1">Before Tōgō can open a project</h1>
+        <h1 className="text-lg text-ink-1">Before SDLC Studio can open a project</h1>
         <p className="text-sm text-ink-3">
-          Tōgō needs these on this machine — nothing gets installed automatically.
+          SDLC Studio needs these on this machine — nothing gets installed automatically.
         </p>
         <div ref={listRef} className="space-y-4">
           <section aria-labelledby="tooling-required-title" className="space-y-3">

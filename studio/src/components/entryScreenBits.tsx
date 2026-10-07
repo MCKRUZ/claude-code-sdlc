@@ -1,5 +1,5 @@
 // What the pre-project screens (Welcome, New project, Set up, Tooling, Clash) share: the centred
-// full-window shell, the Ambient Field slot behind it, the small Tōgō lockup in the top-left,
+// full-window shell, the Ambient Field slot behind it, the small SDLC Studio lockup in the top-left,
 // the theme toggle as window chrome in the top-right, and the one way a screen builds a
 // choreography context from the motion module. Kept here so each screen imports a line, not a
 // recipe — and so the "scene behind, content above" layering is decided once.

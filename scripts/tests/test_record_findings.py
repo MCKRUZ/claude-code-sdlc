@@ -187,7 +187,7 @@ class TestCommandsEndToEnd:
 
 
 # ---------------------------------------------------------------------------
-# Tōgō command center (togo-command-center.md §2.5 row 9): findings[], recurrence{}, --spec
+# SDLC Studio command center (togo-command-center.md §2.5 row 9): findings[], recurrence{}, --spec
 # ---------------------------------------------------------------------------
 
 from record_findings import attribute_to_spec, findings_rows, scope_paths, target_under  # noqa: E402

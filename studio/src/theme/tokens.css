@@ -44,7 +44,7 @@
   --color-focus: #0e7c86;
 
   /* The one accent. */
-  /* Tōgō accent — teal–cyan (green/blue), docs/brand/togo/palette.json; 600 is the one fill used
+  /* SDLC Studio accent — teal–cyan (green/blue), docs/brand/togo/palette.json; 600 is the one fill used
      with white text (4.95:1). The scale is the product's single accent; stage/status hues stay semantic. */
   --color-accent-50: #edfafa;
   --color-accent-100: #d3f3f3;

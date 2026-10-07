@@ -458,7 +458,7 @@ class TestOnAzureDevOps:
 
 
 # ---------------------------------------------------------------------------
-# Tōgō command center (togo-command-center.md §2.5 row 7): `--check`, the dry run
+# SDLC Studio command center (togo-command-center.md §2.5 row 7): `--check`, the dry run
 # ---------------------------------------------------------------------------
 
 import subprocess  # noqa: E402

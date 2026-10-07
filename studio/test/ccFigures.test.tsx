@@ -110,7 +110,7 @@ describe('SteeringLockup', () => {
     expect(root).toBeTruthy()
     expect(root.innerHTML).toContain('linearGradient')
     expect(root.querySelector('svg')?.getAttribute('class')).toContain('h-12 w-12')
-    expect(root.textContent).toContain('Tōgō')
+    expect(root.textContent).toContain('SDLC Studio')
     expect(root.textContent).toContain(STEERING_LOCKUP_LABEL)
     expect(root.querySelector('h1, h2, h3, button, a, input')).toBeNull()
   })

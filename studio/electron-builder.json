@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
-  "appId": "com.mckruz.togo",
-  "productName": "Tōgō",
+  "appId": "com.mckruz.sdlc-studio",
+  "productName": "SDLC Studio",
   "asar": true,
   "directories": {
     "output": "release/${version}"

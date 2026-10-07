@@ -87,7 +87,7 @@ export function GateAuthPanel({
       <p className="mt-1 text-xs text-ink-3">
         The correctness, security and grader checks run on {status.repo ?? 'the code host'},
         not on this machine, so they need their own way to reach Claude.
-        {hostCli ? ` Tōgō sets and reads the credential through the ${hostCli}.` : ''}
+        {hostCli ? ` SDLC Studio sets and reads the credential through the ${hostCli}.` : ''}
       </p>
 
       {cliReason && (

@@ -333,7 +333,7 @@ class TestAValueCannotBecomeAnotherField:
 
 
 # ---------------------------------------------------------------------------
-# Tōgō command center (togo-command-center.md §2.5 rows 5–6): confirm-tier and assign
+# SDLC Studio command center (togo-command-center.md §2.5 rows 5–6): confirm-tier and assign
 # ---------------------------------------------------------------------------
 
 import json  # noqa: E402

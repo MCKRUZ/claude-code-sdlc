@@ -1,4 +1,4 @@
-# Tōgō Command Center — the brief
+# SDLC Studio Command Center — the brief
 
 Owner's direction (2026-10-06): "a command center for the team". Not another polish round over the
 screens-plus-sidebar app. The product reorganises around how a team actually works in the Build

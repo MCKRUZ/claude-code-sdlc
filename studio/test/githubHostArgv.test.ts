@@ -12,14 +12,14 @@ import { GitHubHost, GITHUB_ARGV, type GitHubHostDeps } from '../electron/main/h
 const SIX = {
   whoAmI: ['api', 'user', '--jq', '.login'],
   rulesets: ['api', 'repos/{owner}/{repo}/rulesets'],
-  prCreateNoReviewer: ['pr', 'create', '--base', 'main', '--head', 'studio/1758700000000', '--title', 'Edited requirements', '--body', 'Saved from Tōgō.\n\nEdited requirements'],
-  prCreateReviewer: ['pr', 'create', '--base', 'main', '--head', 'studio/1758700000000', '--title', 'Edited requirements', '--body', 'Saved from Tōgō.\n\nEdited requirements', '--reviewer', 'priya-n'],
+  prCreateNoReviewer: ['pr', 'create', '--base', 'main', '--head', 'studio/1758700000000', '--title', 'Edited requirements', '--body', 'Saved from SDLC Studio.\n\nEdited requirements'],
+  prCreateReviewer: ['pr', 'create', '--base', 'main', '--head', 'studio/1758700000000', '--title', 'Edited requirements', '--body', 'Saved from SDLC Studio.\n\nEdited requirements', '--reviewer', 'priya-n'],
   repoOwner: ['repo', 'view', '--json', 'owner', '--jq', '.owner.login'],
   prList: ['pr', 'list', '--head', 'studio/1758700000000', '--state', 'open', '--json', 'number,headRefName,author,headRepositoryOwner,files,statusCheckRollup,reviews'],
   prMerge: ['pr', 'merge', '7', '--merge'],
 }
 
-const create = { base: 'main', head: 'studio/1758700000000', title: 'Edited requirements', body: 'Saved from Tōgō.\n\nEdited requirements' }
+const create = { base: 'main', head: 'studio/1758700000000', title: 'Edited requirements', body: 'Saved from SDLC Studio.\n\nEdited requirements' }
 
 describe('GITHUB_ARGV golden', () => {
   it('is exactly what sync.ts issued', () => {

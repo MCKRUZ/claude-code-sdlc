@@ -1,4 +1,4 @@
-# Tōgō — build the desktop installers and attach them to a GitHub Release.
+# SDLC Studio — build the desktop installers and attach them to a GitHub Release.
 #
 # Trigger: a version tag (`v1.7.0`) pushed to the repository, or Run workflow by hand.
 # The .dmg (+ .zip) is built on a macOS runner and the .exe installer on a Windows runner by
@@ -62,7 +62,7 @@ jobs:
           if [ "$TAG" != "v$VERSION" ]; then
             echo "::error::tag $TAG does not match plugin.json version $VERSION"; exit 1
           fi
-          echo "building Tōgō $VERSION"
+          echo "building SDLC Studio $VERSION"
       - name: Build (macOS)
         if: runner.os == 'macOS'
         shell: bash
@@ -116,7 +116,7 @@ jobs:
         run: |
           TAG="${{ github.event.inputs.tag || github.ref_name }}"
           {
-            echo "Tōgō $TAG — desktop installers."
+            echo "SDLC Studio $TAG — desktop installers."
             echo
             echo "- macOS: the .dmg (or .zip). Unsigned builds: right-click → Open the first time."
             echo "- Windows: the .exe installer (choose the folder; settings survive uninstall). Unsigned builds: SmartScreen → More info → Run anyway."
@@ -128,6 +128,6 @@ jobs:
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: Tōgō ${{ github.event.inputs.tag || github.ref_name }}
+          name: SDLC Studio ${{ github.event.inputs.tag || github.ref_name }}
           body_path: notes.md
           files: artifacts/*

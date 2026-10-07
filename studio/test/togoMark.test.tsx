@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-/** The Tōgō mark has two variants and one geometry. `flat` is the mark: two `currentColor`
+/** The SDLC Studio mark has two variants and one geometry. `flat` is the mark: two `currentColor`
  * shapes and nothing else, so a wrapper's text colour is the only thing that paints it. `depth`
  * is its hero treatment: one linear gradient in user space, bar top-left to disc bottom-right,
  * referenced by both shapes — and by the traced outline when the mark draws in. Two marks on a

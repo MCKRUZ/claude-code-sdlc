@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Stand up Tōgō — a team guide</title>
+<title>Stand up SDLC Studio — a team guide</title>
 <style>
 :root{
   --accent-50:#EDFAFA;--accent-100:#D3F3F3;--accent-200:#A7E6E7;--accent-300:#6FD1D4;--accent-400:#3AB5BC;
@@ -87,22 +87,22 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 <main>
 
 <header>
-  <svg class="lockup" viewBox="0 0 320 64" role="img" aria-label="Tōgō" xmlns="http://www.w3.org/2000/svg">
+  <svg class="lockup" viewBox="0 0 320 64" role="img" aria-label="SDLC Studio" xmlns="http://www.w3.org/2000/svg">
     <rect x="17" y="9" width="30" height="7" rx="3.5" fill="#0E7C86"/>
     <circle cx="32" cy="38.5" r="17.5" fill="#0E7C86"/>
-    <text x="80" y="46" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="650" font-size="48" letter-spacing="-1">Tōgō</text>
+    <text x="80" y="42" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="650" font-size="30" letter-spacing="-0.6">SDLC Studio</text>
   </svg>
   <div>
     <div class="eyebrow">Team guide</div>
-    <h1>Stand up Tōgō — a team guide</h1>
-    <p class="meta">Tōgō — plugin 1.7.0 (the command center; sprint layer, Observatory, code-host providers). For an engineer or product manager starting a project with the plugin. Every command below was checked against its <code>--help</code> on 2026-10-05.</p>
+    <h1>Stand up SDLC Studio — a team guide</h1>
+    <p class="meta">SDLC Studio — plugin 1.7.0 (the command center; sprint layer, Observatory, code-host providers). For an engineer or product manager starting a project with the plugin. Every command below was checked against its <code>--help</code> on 2026-10-05.</p>
   </div>
 </header>
 
 <nav class="toc" aria-label="Contents">
   <div class="eyebrow">Contents</div>
   <ol start="0">
-    <li><a href="#what">What Tōgō is</a></li>
+    <li><a href="#what">What SDLC Studio is</a></li>
     <li><a href="#prereq">Prerequisites per machine</a></li>
     <li><a href="#install">Install the plugin</a></li>
     <li><a href="#studio">Start the desktop app</a></li>
@@ -116,8 +116,8 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 </nav>
 
 <!-- 0 ------------------------------------------------------------------ -->
-<h2 id="what">0. What Tōgō is</h2>
-<p>Tōgō (TOH-goh, 統合, integration) is two things that work as one. The <b>plugin</b>, <code>claude-code-sdlc</code>, runs inside Claude Code: 32 slash commands, 14 agents, and a set of Python scripts that read and write a project's lifecycle state. The <b>desktop app</b> in <code>studio/</code> is an optional Electron front end. It never reimplements plugin logic. Every fact it shows and every change it makes goes through the plugin's own scripts, run the way a person would run them.</p>
+<h2 id="what">0. What SDLC Studio is</h2>
+<p>SDLC Studio is two things that work as one. The <b>plugin</b>, <code>claude-code-sdlc</code>, runs inside Claude Code: 32 slash commands, 14 agents, and a set of Python scripts that read and write a project's lifecycle state. The <b>desktop app</b> in <code>studio/</code> is an optional Electron front end. It never reimplements plugin logic. Every fact it shows and every change it makes goes through the plugin's own scripts, run the way a person would run them.</p>
 
 <h3>The spine</h3>
 <div class="phases" role="img" aria-label="Nine phases: 0 Discovery, 1 Requirements, 2 Design, 3 Foundation, the Build loop, 7 Documentation, 8 Deployment, 9 Monitoring, Close">
@@ -191,8 +191,8 @@ cd claude-code-sdlc/scripts &amp;&amp; uv sync   <span class="c"># optional warm
 <!-- 3 ------------------------------------------------------------------ -->
 <h2 id="studio">3. Start the desktop app</h2>
 <h3>Install a release (most people)</h3>
-<p>Download the installer for your machine from the repository's <b>Releases</b> page: the <code>.dmg</code> on macOS, the <code>.exe</code> on Windows. Each release is built by CI from a version tag, so the file name carries the plugin version it matches (<code>Tōgō_1.7.0.dmg</code>). The installers are not in the repository itself.</p>
-<p>First launch of an unsigned build: on macOS right-click the app and choose <i>Open</i>, then <i>Open</i> again; on Windows choose <i>More info → Run anyway</i> on the SmartScreen prompt. A signed release has neither prompt. The app still needs Claude Code, <code>uv</code> and <code>git</code> on the machine (§1) and the plugin installed in Claude Code (§2): a packaged Tōgō finds the plugin in Claude Code's marketplace cache on its own.</p>
+<p>Download the installer for your machine from the repository's <b>Releases</b> page: the <code>.dmg</code> on macOS, the <code>.exe</code> on Windows. Each release is built by CI from a version tag, so the file name carries the plugin version it matches (<code>SDLC Studio_1.7.0.dmg</code>). The installers are not in the repository itself.</p>
+<p>First launch of an unsigned build: on macOS right-click the app and choose <i>Open</i>, then <i>Open</i> again; on Windows choose <i>More info → Run anyway</i> on the SmartScreen prompt. A signed release has neither prompt. The app still needs Claude Code, <code>uv</code> and <code>git</code> on the machine (§1) and the plugin installed in Claude Code (§2): a packaged SDLC Studio finds the plugin in Claude Code's marketplace cache on its own.</p>
 <h3>Run from source (developers)</h3>
 <p>The app is a Node project inside the plugin repository. Everything runs from <code>studio/</code>, not the repository root.</p>
 <pre><code>cd claude-code-sdlc/studio
@@ -201,7 +201,7 @@ npm run dev</code></pre>
 <p><code>npm run build</code> packages the app with electron-builder. <code>npm test</code> runs the unit tests; the integration tests also need the plugin's Python environment (<code>uv run --project scripts pytest scripts/tests -q</code> from the repository root) and fail loudly without it. Set <code>STUDIO_SKIP_PLUGIN_TESTS=1</code> to run only the rest.</p>
 
 <aside class="see"><b>What you should see on first open</b>
-<p>A window titled <b>Tōgō</b>. The Welcome screen offers <i>New project…</i>, <i>Open folder…</i> and a <i>Recent</i> list that starts empty ("No recent projects"). Before that screen, the app probes five tools: Claude Code, uv, the plugin's <code>scripts/</code> folder, git, and the GitHub CLI. Each missing one appears as an amber notice, "&lt;tool&gt; wasn't found.", with the probe's own error, an <i>Install instructions</i> link, and a path field with <i>Use this</i> to point the app at a copy it did not find. The Azure CLI is probed only when a project's repository is on Azure DevOps and is never required to open a project. Nothing is installed by the app.</p>
+<p>A window titled <b>SDLC Studio</b>. The Welcome screen offers <i>New project…</i>, <i>Open folder…</i> and a <i>Recent</i> list that starts empty ("No recent projects"). Before that screen, the app probes five tools: Claude Code, uv, the plugin's <code>scripts/</code> folder, git, and the GitHub CLI. Each missing one appears as an amber notice, "&lt;tool&gt; wasn't found.", with the probe's own error, an <i>Install instructions</i> link, and a path field with <i>Use this</i> to point the app at a copy it did not find. The Azure CLI is probed only when a project's repository is on Azure DevOps and is never required to open a project. Nothing is installed by the app.</p>
 </aside>
 
 <h3>Settings › Tooling on this machine</h3>
@@ -560,7 +560,7 @@ Next: /sdlc-refine --spec 0012 · /sdlc-sprint ready --by &lt;name&gt; when the 
   <tr><td><code>scripts/tests/fixtures/code_host/azure_devops/captured/CAPTURE-NOTES.md</code></td><td>What real Azure DevOps output looks like, including the sign-in facts in §1.</td></tr>
   <tr><td><code>studio/README.md</code></td><td>The desktop app: scripts, appearance, shortcuts, scenes, bundle, security.</td></tr>
   <tr><td><code>docs/proposals/studio-observatory.md</code></td><td>The Observatory design: tokens, kit, motion, scenes, interaction mechanics.</td></tr>
-  <tr><td><code>docs/brand/togo/brandbook.html</code></td><td>The Tōgō brand guide: name, mark, colour, type, voice. The solid mark is the mark; its <i>Depth</i> gradient treatment lives in four places only — the Welcome hero, the opening card, the app icon and the steering-mode lockup (48 px and above) — never on a control, chip, status, data row or behind text. <code>docs/brand/togo/build-assets.mjs</code> regenerates every raster and the app icon from the SVG sources.</td></tr>
+  <tr><td><code>docs/brand/togo/brandbook.html</code></td><td>The SDLC Studio brand guide: name, mark, colour, type, voice. The solid mark is the mark; its <i>Depth</i> gradient treatment lives in four places only — the Welcome hero, the opening card, the app icon and the steering-mode lockup (48 px and above) — never on a control, chip, status, data row or behind text. <code>docs/brand/togo/build-assets.mjs</code> regenerates every raster and the app icon from the SVG sources.</td></tr>
 </table>
 <table>
   <tr><th style="width:330px">Path (your project, after <code>/sdlc-setup</code>)</th><th>Covers</th></tr>
@@ -571,7 +571,7 @@ Next: /sdlc-refine --spec 0012 · /sdlc-sprint ready --by &lt;name&gt; when the 
 </table>
 
 <footer>
-  <p>Tōgō — plugin 1.7.0 (the command center; sprint layer, Observatory, code-host providers).</p>
+  <p>SDLC Studio — plugin 1.7.0 (the command center; sprint layer, Observatory, code-host providers).</p>
   <p>Commands were checked against <code>--help</code> on 2026-10-05: <code>code_host.py</code>, <code>set_setting.py</code> (<code>person</code>, <code>code-host</code>), <code>sprint.py</code> (all ten verbs), <code>check_spec.py</code>, <code>new_spec.py</code>, <code>track_specs.py</code>, <code>init_project.py</code>, <code>validate_profile.py</code>, <code>validate_team.py</code>, <code>check_gates.py</code>, <code>doctor.py</code>, <code>track_decisions.py</code>, <code>scorecard.py</code>, <code>install_harness.py</code>, <code>generate_status.py</code>, <code>generate_phase_report.py</code>, <code>audit_artifacts.py</code>. Slash commands against <code>commands/*.md</code>. Sample outputs are shapes, not transcripts; your names, counts and dates will differ.</p>
 </footer>
 

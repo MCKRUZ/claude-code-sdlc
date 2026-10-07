@@ -769,7 +769,7 @@ class TestOnAzureDevOps:
 
 
 # ---------------------------------------------------------------------------
-# Tōgō command center (togo-command-center.md §2.5 row 10): the row carries `deferred_reason`
+# SDLC Studio command center (togo-command-center.md §2.5 row 10): the row carries `deferred_reason`
 # ---------------------------------------------------------------------------
 
 class TestReportAllDeferredReason:

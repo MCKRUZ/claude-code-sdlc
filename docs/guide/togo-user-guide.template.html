@@ -10,7 +10,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Using the Tōgō desktop app — a user guide</title>
+<title>Using the SDLC Studio desktop app — a user guide</title>
 <style>
 :root{
   --accent-50:#EDFAFA;--accent-100:#D3F3F3;--accent-200:#A7E6E7;--accent-300:#6FD1D4;--accent-400:#3AB5BC;
@@ -129,15 +129,15 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 <main>
 
 <header>
-  <svg class="lockup" viewBox="0 0 320 64" role="img" aria-label="Tōgō" xmlns="http://www.w3.org/2000/svg">
+  <svg class="lockup" viewBox="0 0 320 64" role="img" aria-label="SDLC Studio" xmlns="http://www.w3.org/2000/svg">
     <rect x="17" y="9" width="30" height="7" rx="3.5" fill="#0E7C86"/>
     <circle cx="32" cy="38.5" r="17.5" fill="#0E7C86"/>
-    <text x="80" y="46" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="650" font-size="48" letter-spacing="-1">Tōgō</text>
+    <text x="80" y="42" font-family="Inter Variable, Inter, ui-sans-serif, system-ui, sans-serif" font-weight="650" font-size="30" letter-spacing="-0.6">SDLC Studio</text>
   </svg>
   <div>
     <div class="eyebrow">User guide</div>
-    <h1>Using the Tōgō desktop app — a user guide</h1>
-    <p class="meta">Tōgō — plugin 1.7.0 (the command center: sprint home, planning, spec card, close, steering; sprint layer, Observatory, code-host providers). For anyone who opens a project in the desktop app: what each screen shows, what each control does, and what the app will refuse to pretend. Companion to <i>Stand up Tōgō</i>, which covers installation and the command line. Every label below was read from the app's source on 2026-10-06.</p>
+    <h1>Using the SDLC Studio desktop app — a user guide</h1>
+    <p class="meta">SDLC Studio — plugin 1.7.0 (the command center: sprint home, planning, spec card, close, steering; sprint layer, Observatory, code-host providers). For anyone who opens a project in the desktop app: what each screen shows, what each control does, and what the app will refuse to pretend. Companion to <i>Stand up SDLC Studio</i>, which covers installation and the command line. Every label below was read from the app's source on 2026-10-06.</p>
   </div>
   <div class="theme" role="group" aria-label="Theme for this page">
     <button type="button" data-theme-choice="system" aria-pressed="true">System</button>
@@ -172,12 +172,12 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 
 <!-- 1 ------------------------------------------------------------------ -->
 <h2 id="welcome">1. Welcome and opening a project</h2>
-<p>Tōgō (TOH-goh, <span lang="ja">統合</span>, integration) is the desktop front end for the <code>claude-code-sdlc</code> plugin. It never reimplements plugin logic: everything it shows is read through the plugin's own scripts, and everything it changes goes through them too. This guide is about the window. The plugin and the slash commands are covered by the setup guide beside this one.</p>
+<p>SDLC Studio is the desktop front end for the <code>claude-code-sdlc</code> plugin. It never reimplements plugin logic: everything it shows is read through the plugin's own scripts, and everything it changes goes through them too. This guide is about the window. The plugin and the slash commands are covered by the setup guide beside this one.</p>
 
 <p>On launch the window reads <i>Loading…</i> while it probes the tools it depends on. If a required one is missing it stops at the tooling screen described in <a href="#trouble">§15</a>; otherwise it opens on Welcome. The code-host CLIs are never required to open a project.</p>
 
 <figure class="shot">
-  <img src="{{shot:welcome}}" width="1200" height="750" loading="lazy" alt="The Welcome screen: the Tōgō mark and name on the left with the tagline 統合 — integration, two buttons New project… and Open folder…, a ⌘K hint, and a Recent list on the right holding one project. A System / Light / Dark pill sits in the top-right corner.">
+  <img src="{{shot:welcome}}" width="1200" height="750" loading="lazy" alt="The Welcome screen: the SDLC Studio mark and name on the left with the tagline “The delivery instrument”, two buttons New project… and Open folder…, a ⌘K hint, and a Recent list on the right holding one project. A System / Light / Dark pill sits in the top-right corner.">
   <figcaption>Welcome. The mark and the name appear together here once. The Recent card lists up to six projects; hovering a row shows its full path and when it was last opened.</figcaption>
 </figure>
 
@@ -426,7 +426,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 
 <h3>Steering mode</h3>
 <figure class="shot">
-  <img src="{{shot:steering}}" width="1200" height="750" loading="lazy" alt="Steering mode in the dark theme: a near-black ground, the Tōgō mark in its Depth gradient beside the word Steering and the sprint id, a Leave steering button, then large tiles — Accepted as-is, Rework or revert, Sent back, Review wait, Security review wait, Deployments and the rest — each with a 56-pixel number or the words no data and its scorecard field named beneath.">
+  <img src="{{shot:steering}}" width="1200" height="750" loading="lazy" alt="Steering mode in the dark theme: a near-black ground, the SDLC Studio mark in its Depth gradient beside the word Steering and the sprint id, a Leave steering button, then large tiles — Accepted as-is, Rework or revert, Sent back, Review wait, Security review wait, Deployments and the rest — each with a 56-pixel number or the words no data and its scorecard field named beneath.">
   <figcaption>The committee's room: the standard's numbers at reading-from-across-the-room size, every one naming its field. No chat, no console, nothing to click that writes.</figcaption>
 </figure>
 <p><kbd>g</kbd> <kbd>t</kbd>, or <i>Steering mode</i> in the band's <i>…</i> menu, is the read-only view of "How it is going" for a steering committee: the chat and the console are hidden, the omnibar's verbs withdrawn, and the screen holds no control that writes. Each tile is one field of <code>scorecard.py report --window-days 14 --json</code>, named beneath its number; <i>no data</i> never animates or tints; the window is a label only. <i>Open the review page</i> opens the active sprint's review; each <code>.narrative.md</code> companion the plugin reports present opens read-only. <kbd>Esc</kbd> leaves, back to the screen you came from.</p>
@@ -524,7 +524,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 </figure>
 
 <h3>Appearance</h3>
-<p>Four preferences of this machine, kept by Tōgō rather than in the project. They do not travel with the repository and change nothing about the work. The first three also sit under the band's <i>Appearance</i> button, and each takes effect without a reload.</p>
+<p>Four preferences of this machine, kept by SDLC Studio rather than in the project. They do not travel with the repository and change nothing about the work. The first three also sit under the band's <i>Appearance</i> button, and each takes effect without a reload.</p>
 <table>
   <tr><th style="width:120px">Preference</th><th style="width:220px">Options</th><th>Notes</th></tr>
   <tr><td>Theme</td><td>System / Light / Dark</td><td>System follows the operating system. Dark remaps every colour ramp at once. Also <kbd>⌘</kbd><kbd>⇧</kbd><kbd>D</kbd>.</td></tr>
@@ -535,13 +535,13 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 
 <h3>About the mark</h3>
 <figure class="shot">
-  <img src="{{shot:welcome-dark}}" width="1200" height="750" loading="lazy" alt="The Welcome screen in the dark theme: the Tōgō mark at hero size in its teal Depth gradient beside the name, the tagline, the two buttons, and the Recent card on the right over a faint field of dots gathered behind the title.">
+  <img src="{{shot:welcome-dark}}" width="1200" height="750" loading="lazy" alt="The Welcome screen in the dark theme: the SDLC Studio mark at hero size in its teal Depth gradient beside the name, the tagline, the two buttons, and the Recent card on the right over a faint field of dots gathered behind the title.">
   <figcaption>Welcome in dark. The hero mark is the one place on this screen the gradient appears; the dock icon is the same tile, and the small mark in the band stays solid.</figcaption>
 </figure>
-<p>Tōgō's mark is the solid teal macron over a disc: in the band, on the small lockup of the pre-project screens, and in every list it is a flat colour. Four places show its <i>Depth</i> treatment — the same shape filled from one light-to-dark teal gradient: the Welcome hero (56 px), the card that covers the window while a project opens (48 px), the app icon in the dock, taskbar and Finder (from 64 px; at 16 and 32 px the icon is the flat tile), and the steering-mode title lockup (48 px). The gradient follows the theme — darker on light, luminous on dark — and never carries meaning: it is not a status, not a state, and never appears on a control, a chip, a data row or behind text. There is no About dialog yet; the version and the plugin driving the session are under Settings › <i>Tooling on this machine</i>. The brand guide itself is <code>docs/brand/togo/brandbook.html</code>.</p>
+<p>SDLC Studio's mark is the solid teal macron over a disc: in the band, on the small lockup of the pre-project screens, and in every list it is a flat colour. Four places show its <i>Depth</i> treatment — the same shape filled from one light-to-dark teal gradient: the Welcome hero (56 px), the card that covers the window while a project opens (48 px), the app icon in the dock, taskbar and Finder (from 64 px; at 16 and 32 px the icon is the flat tile), and the steering-mode title lockup (48 px). The gradient follows the theme — darker on light, luminous on dark — and never carries meaning: it is not a status, not a state, and never appears on a control, a chip, a data row or behind text. There is no About dialog yet; the version and the plugin driving the session are under Settings › <i>Tooling on this machine</i>. The brand guide itself is <code>docs/brand/togo/brandbook.html</code>.</p>
 
 <h3>Settings</h3>
-<p>"Every setting here is stored in the project itself, not in Tōgō — so it travels with the repository and changes like any other file." Each section names the file it lives in. A section whose file does not exist says "This project has not set this up. Nothing is wrong — the file simply does not exist yet."; a file that exists but could not be read cleanly is a different answer, shown as a warning with the lines that failed. Nothing changes until <i>Edit</i> is on, and the controls are absent rather than greyed outside it. A change is written by the plugin, which validates before it writes, so a refusal means the file is untouched; the changed files are then listed under <i>Changed here, not yet in the repository</i> with a required <i>Why did this change?</i> that becomes the commit message, and <i>Save to the repository</i> commits them under your name.</p>
+<p>"Every setting here is stored in the project itself, not in SDLC Studio — so it travels with the repository and changes like any other file." Each section names the file it lives in. A section whose file does not exist says "This project has not set this up. Nothing is wrong — the file simply does not exist yet."; a file that exists but could not be read cleanly is a different answer, shown as a warning with the lines that failed. Nothing changes until <i>Edit</i> is on, and the controls are absent rather than greyed outside it. A change is written by the plugin, which validates before it writes, so a refusal means the file is untouched; the changed files are then listed under <i>Changed here, not yet in the repository</i> with a required <i>Why did this change?</i> that becomes the commit message, and <i>Save to the repository</i> commits them under your name.</p>
 <table>
   <tr><th style="width:190px">Section</th><th>Lives</th><th>Shows</th></tr>
   <tr><td>Repository</td><td>the project folder; the pin in <code>.sdlc/code-host.yaml</code></td><td>The repository the origin points at (or "no remote configured"), the branch, <i>Signed in as</i> (with the typed-name form when the host cannot identify you), <i>Default branch protected</i> as yes / no / could not tell — a best guess from the host's settings; what decides is whether a direct push is refused — then <i>Code host</i>, <i>CLI</i> and the other CLI's <i>not needed for this repository</i> (<a href="#host">§10</a>). In edit mode, <i>Pin the code host</i>. The app reads and writes the project's documents and specs and never writes your code.</td></tr>
@@ -585,7 +585,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 <h2 id="trouble">15. Troubleshooting</h2>
 <table>
   <tr><th style="width:240px">Symptom</th><th>What it means</th><th>Do</th></tr>
-  <tr><td>A screen headed "Before Tōgō can open a project" with amber rows, "&lt;tool&gt; wasn't found."</td><td>At first open the app probes four required tools — Claude Code, uv (the script runner), the <code>claude-code-sdlc</code> plugin's <code>scripts/</code> folder, and git — and one is missing from PATH. Under <i>Required</i>, each missing one is a row. Under <i>Code-host CLIs</i>, the GitHub CLI (gh) and the Azure CLI (az) are listed as found or not found with the line "Optional — needed when a project's repository is on GitHub / Azure DevOps. You can open a project without it." Neither ever blocks.</td><td>Each row has the probe's own error, an <i>Install instructions</i> link, and a path field with <i>Use this</i> to point the app at a copy it did not find (<i>Path to the binary</i>, or <i>Path to the plugin's scripts/ folder</i>). Nothing is installed by the app.</td></tr>
+  <tr><td>A screen headed "Before SDLC Studio can open a project" with amber rows, "&lt;tool&gt; wasn't found."</td><td>At first open the app probes four required tools — Claude Code, uv (the script runner), the <code>claude-code-sdlc</code> plugin's <code>scripts/</code> folder, and git — and one is missing from PATH. Under <i>Required</i>, each missing one is a row. Under <i>Code-host CLIs</i>, the GitHub CLI (gh) and the Azure CLI (az) are listed as found or not found with the line "Optional — needed when a project's repository is on GitHub / Azure DevOps. You can open a project without it." Neither ever blocks.</td><td>Each row has the probe's own error, an <i>Install instructions</i> link, and a path field with <i>Use this</i> to point the app at a copy it did not find (<i>Path to the binary</i>, or <i>Path to the plugin's scripts/ folder</i>). Nothing is installed by the app.</td></tr>
   <tr><td>An amber banner across the top of the project, "This project's repository is on …"</td><td>The project opened, but the CLI its host needs is missing, lacks its extension, or is signed out (<a href="#host">§10</a>). Everything local works; the pull-request features are off, each saying why.</td><td>Install or sign in to that CLI, then <i>Refresh</i>; or <i>Dismiss</i> the banner for this session. If the origin is not GitHub or Azure DevOps and should be, pin the host in Settings › Repository (edit mode).</td></tr>
   <tr><td>Which plugin is the app running?</td><td>Unpackaged, it prefers the <code>scripts/</code> folder beside the app when it carries <code>capabilities.py</code>, then the newest marketplace-cached plugin under <code>~/.claude/plugins/cache/</code>, then a path set in the app.</td><td>Settings › <i>Tooling on this machine</i> shows the path, the version and the origin.</td></tr>
   <tr><td>"Claude Code &lt;version&gt; lacks &lt;flags&gt; — update with <code>claude update</code>"</td><td>The installed CLI predates a flag the app emits. The project stays readable; only the model controls — chat, drafts, sign-off — are off, each with this sentence as its reason.</td><td><code>claude update</code>, then reopen the project.</td></tr>
@@ -604,7 +604,7 @@ footer{margin-top:72px;padding-top:20px;border-top:1px solid var(--line);color:v
 </div>
 
 <footer>
-  <p>Tōgō — plugin 1.6.2 (Unreleased: sprint layer, Observatory, code-host providers).</p>
+  <p>SDLC Studio — plugin 1.6.2 (Unreleased: sprint layer, Observatory, code-host providers).</p>
   <p>Labels, sentences and behaviour were read from <code>studio/src</code>, <code>studio/shared</code> and <code>studio/electron/main</code> on 2026-10-06; screenshots are the <code>observatory-v8</code> captures in <code>studio/test/screenshots</code>, taken against a sample project with the code host unreachable. Your project's names, counts and dates will differ.</p>
 </footer>
 

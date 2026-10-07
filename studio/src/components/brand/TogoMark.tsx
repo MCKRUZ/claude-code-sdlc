@@ -1,4 +1,4 @@
-// Mark A "Macron" — the Tōgō mark, inline (CSP: no remote assets, `img-src` never consulted).
+// Mark A "Macron" — the SDLC Studio mark, inline (CSP: no remote assets, `img-src` never consulted).
 // Geometry is copied from docs/brand/togo/mark-a-macron.svg on its 64-unit grid: a 30×7 bar
 // (the macron) over a disc of radius 17.5.
 //

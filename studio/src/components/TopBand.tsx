@@ -1,5 +1,5 @@
 // The top band (togo-command-center.md §1, visual §4 "Shell"): 48 px on `surface-0` with a
-// `line-1` hairline — the Tōgō mark and the project name as ONE button that leans out to the
+// `line-1` hairline — the SDLC Studio mark and the project name as ONE button that leans out to the
 // lifecycle home, the omnibar trigger (a `<button>` styled as a field, never an `<input>` at
 // rest — the palette overlay owns the input while open), the needs-you chip, the sync chip, and
 // the project-wide controls: Console (⌘J, `aria-pressed`), Appearance (a disclosure holding the

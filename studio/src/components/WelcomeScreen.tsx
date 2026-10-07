@@ -8,7 +8,7 @@ import { welcomeOpen } from '../motion/choreo'
 import { readFamiliarity, recordFamiliarityOpen } from '../scenes/ambient/familiarity'
 import { CornerThemeToggle, EntryShell, choreoContext } from './entryScreenBits'
 import { TogoMark } from './brand/TogoMark'
-import { PRODUCT_KANJI, PRODUCT_NAME } from './brand/TogoWordmark'
+import { PRODUCT_NAME } from './brand/TogoWordmark'
 
 /** A list in one card reads as one instrument panel; more rows than this read as a feed. */
 const RECENT_ROWS = 6
@@ -100,10 +100,8 @@ export function WelcomeScreen({
               <TogoMark variant="depth" className="mt-[2px] h-14 w-14 shrink-0" />
               <h1 ref={titleRef} className="text-display text-ink-1">{PRODUCT_NAME}</h1>
             </div>
-            {/* `lang="ja"` lets the OS pick a CJK face and switches the screen reader's voice;
-                no font is bundled (CSP: nothing remote). 統合 is an explanation, not a logotype. */}
             <p className="mt-3 text-sm text-ink-3">
-              <span lang="ja">{PRODUCT_KANJI}</span> — integration. The delivery instrument.
+              The delivery instrument.
             </p>
             <p data-welcome-subtitle="" className="mt-6 text-sm text-ink-2">Start a new project, or open one you already have.</p>
           </div>

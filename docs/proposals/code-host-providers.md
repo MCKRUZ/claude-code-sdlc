@@ -1,6 +1,6 @@
 # Code-host providers — GitHub (`gh`) and Azure DevOps (`az`), chosen by the repository
 
-> **Name:** "Studio" below is the desktop app, shipped as **Tōgō** since 2026-10-05; paths (`studio/`) and the `window.studio` bridge are unchanged.
+> **Name:** "Studio" below is the desktop app, shipped as **SDLC Studio** since 2026-10-05; paths (`studio/`) and the `window.studio` bridge are unchanged.
 
 Repo: `claude-code-sdlc` at `acab7cf`. Status: **master design** (merges the two candidate designs; see Appendix A for how they were judged).
 Method: local reads only — source, tests, `git remote -v`, and `az <cmd> --help` (azure-devops extension 1.0.8). Nothing reached a network or a code host.

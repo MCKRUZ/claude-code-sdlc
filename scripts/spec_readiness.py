@@ -12,7 +12,7 @@ every message is the protected module's; if the two ever disagree, this file is 
 The one thing it adds is grouping — MUST-failures separated from advisory notes — because
 the distinction is already in the data (`severity`) and every caller was re-deriving it.
 
-Two additive keys/modes for the Tōgō command center (togo-command-center.md §2.5 row 8), both
+Two additive keys/modes for the SDLC Studio command center (togo-command-center.md §2.5 row 8), both
 still judgement-free:
   - `ladder` — the checking ladder the tier requires, straight from `risk_model.required_rungs`
     (the single source of truth), so a card can draw the rungs as data rather than re-derive

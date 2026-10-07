@@ -1,4 +1,4 @@
-# Tōgō — before and after, for Matt
+# SDLC Studio — before and after, for Matt
 
 Written 2026-10-06 on `feat/togo-overhaul` (the Command Center committed at 98e257a, the cockpit round on top). Paths are relative to the repository root; `studio/` is the Electron app, `scripts/` the plugin. Everything below was measured on this checkout; nothing is quoted from a plan.
 
@@ -53,5 +53,5 @@ the first screen at 1440×900 with nothing under the fold (the two-page version 
 Outcomes and hidden half the standard behind a scroll). One leftover remains:
 
 1. **Console**: `THREE.Clock: This module has been deprecated` warnings come from
-   react-three-fiber 9.8.1's own `new THREE.Clock()`, not from Tōgō's code; the capture reports
+   react-three-fiber 9.8.1's own `new THREE.Clock()`, not from SDLC Studio's code; the capture reports
    0 GPU-related lines. Clears when R3F moves to `THREE.Timer`.

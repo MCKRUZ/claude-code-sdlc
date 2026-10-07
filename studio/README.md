@@ -1,21 +1,21 @@
-# Tōgō
+# SDLC Studio
 
-Tōgō (TOH-goh, 統合 — integration) is the desktop shell for the [claude-code-sdlc](../) plugin,
-which is the repository this folder lives in — so the plugin Tōgō drives is always the one
-beside it. Tōgō is an **optional add-on** — the plugin is fully usable on its own; Tōgō just
-gives it a visual front end for people who want one. Tōgō never reimplements plugin logic:
+SDLC Studio is the desktop shell for the [claude-code-sdlc](../) plugin,
+which is the repository this folder lives in — so the plugin SDLC Studio drives is always the one
+beside it. SDLC Studio is an **optional add-on** — the plugin is fully usable on its own; SDLC Studio just
+gives it a visual front end for people who want one. SDLC Studio never reimplements plugin logic:
 every piece of project state it shows, and every change it makes, goes through the plugin's
 own scripts, run the same way a person would run them from the command line.
 
 The folder is still `studio/` and the npm package `sdlc-studio`; the product, window title and
-packaged app are Tōgō — see `docs/brand/togo/brandbook.html`.
+packaged app are SDLC Studio — see `docs/brand/togo/brandbook.html`.
 
 Scaffolded from [electron-vite-react](https://github.com/electron-vite/electron-vite-react)
 (Electron + Vite + React + TypeScript + Tailwind).
 
 ## Quick Start
 
-Tōgō is a Node project inside a Python plugin repository, so everything below runs from
+SDLC Studio is a Node project inside a Python plugin repository, so everything below runs from
 this folder, not the repository root.
 
 ```sh
@@ -118,7 +118,7 @@ business-day bar; four lanes — Ready, Building, Checking, Merged — a *partit
 `status`, `dor`, `verdicts_pending` and the pull request's `waiting_on` (anything else is listed
 as "slated, not in a lane"); the hand-off **baton** on the Building→Checking edge (`↵` acks); the
 Today column ("needs you" with one action each, "Team is waiting on", "since yesterday" from
-`sprint.py log`, Tōgō's own record of Claude's work, Standup notes disabled with its reason);
+`sprint.py log`, SDLC Studio's own record of Claude's work, Standup notes disabled with its reason);
 **In the room** (roster people with lane dots — presence, never digits; hover lights their cards);
 **Refining** for the next sprint with the checker's own DoR gaps; **How it is going** from the
 scorecard. The slate constellation keeps its Graph surface below, with the slate table as its twin.
@@ -229,7 +229,7 @@ every shot and exits 3 on a violation; `SHOT_PROBE=ghost` measures the band abov
 Installers are never committed: `studio/release/` is gitignored and the artifacts live on GitHub
 Releases. `.github/workflows/release.yml` builds them on a version tag — the `.dmg` (and `.zip`)
 on a macOS runner, the `.exe` installer on a Windows runner, both from `electron-builder.json`
-with the Tōgō icon and bundle id `com.mckruz.togo` — and attaches them to one Release with
+with the SDLC Studio icon and bundle id `com.mckruz.sdlc-studio` — and attaches them to one Release with
 install notes. The tag must match `.claude-plugin/plugin.json`'s version:
 
 ```bash
@@ -241,7 +241,7 @@ on by secrets alone (macOS: `CSC_LINK`, `CSC_KEY_PASSWORD`, `APPLE_ID`,
 `APPLE_APP_SPECIFIC_PASSWORD`, `APPLE_TEAM_ID`; Windows: `WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`);
 without them the builds are unsigned and the first launch needs right-click → Open on macOS or
 SmartScreen's "run anyway" on Windows. There is no auto-update channel: people install the new
-release. A packaged Tōgō finds the plugin in Claude Code's marketplace cache
+release. A packaged SDLC Studio finds the plugin in Claude Code's marketplace cache
 (`/plugin install claude-code-sdlc@mckruz`), or at the path set in Settings.
 
 ## Window
@@ -317,8 +317,8 @@ unsaved edit — the field editor, hand-off form and an open AI proposal registe
 Two 3D scenes and one background, all built on `src/scenes/core/SceneShell.tsx`: a lazily
 loaded `<canvas>` with a **Graph / Table** toggle, where the Table twin is the real content, not
 a fallback. The Table is what renders when WebGL is unavailable, the window is under 400 px,
-the canvas has crashed, or Tōgō is under test. Scenes draw only what the plugin reports —
-Tōgō computes no status of its own, and a value the plugin reports as null reads "no data".
+the canvas has crashed, or SDLC Studio is under test. Scenes draw only what the plugin reports —
+SDLC Studio computes no status of its own, and a value the plugin reports as null reads "no data".
 
 - **Lifecycle strip** (`scenes/spine/SpineStrip.tsx`) — the shell's navigation: the same nine
   stations as the Spine, as plain SVG (no canvas) from `spineModel` — a 2 px lit rail for the
@@ -395,15 +395,15 @@ calls in plain words. Design: `../docs/proposals/code-host-providers.md`.
 
 ## Status
 
-Tōgō drives the plugin **beside it**. Unpackaged, tool detection prefers `<studio>/../scripts`
+SDLC Studio drives the plugin **beside it**. Unpackaged, tool detection prefers `<studio>/../scripts`
 when it carries `capabilities.py`, then the newest marketplace-cached plugin that does, then a
-path set in Tōgō — and Settings › *Tooling on this machine* says which one is in use and the
+path set in SDLC Studio — and Settings › *Tooling on this machine* says which one is in use and the
 version it declares. Every `claude` call uses the flags listed in `shared/claudeContract.ts`,
 checked once against the installed CLI's `--help`: an older Claude Code is reported ("Claude Code
 <version> lacks <flags> — update with `claude update`") and the model controls stay off until it is
 updated, while the project itself stays readable.
 
-The specs in the repository's `specs/` directory (0008 onward) record Tōgō's build order;
+The specs in the repository's `specs/` directory (0008 onward) record SDLC Studio's build order;
 `docs/proposals/studio-improvements.md` is the plan (Batches 1–2 built; its D4/D5 became the
 code-host providers plan, built through Wave 7), `docs/proposals/studio-observatory.md` the visual
 overhaul (spec 0033, built), `docs/proposals/studio-upgrade-2.md` the second round (built;
