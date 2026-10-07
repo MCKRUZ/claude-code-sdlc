@@ -23,7 +23,8 @@ export const CHANGES_SOMETHING = new RegExp(
     'declare', 'approve', 'merge', 'publish', 'undo', 'revert', 'clear',
     // These start or feed a model run (the smoke run also switches the live model off, as a second guard).
     'talk it through', 'run the review', 'ask ',
-    'catalogue', 'write', 'set up', 'resolve', 'combine', 'pull', 'sync now', 'stop', 'cancel (the )?(run|job|batch)',
+    // 'sync' covers the band's "Sync now" and the Issues view's "Sync with the specs", which runs report_issue.py sync.
+    'catalogue', 'write', 'set up', 'resolve', 'combine', 'pull', 'sync', 'stop', 'cancel (the )?(run|job|batch)',
   ].join('|'),
   'i',
 )
@@ -116,8 +117,25 @@ export async function crawlControls(
     await settle(page)
     run.click(screen, name, 'clicked')
     await run.look(page, `${screen} › after "${name}"`, size)
+    await dismissDialog(page, name)
     await reopen()
   }
+}
+
+/** A click that opened a dialog ("Report an issue…") is a result worth looking at, and the look above
+ * records it; but a modal hides the rest of the page from the accessibility tree, so `reopen` would wait
+ * on a button it can never find. Escape closes every dialog in Studio; a dialog that stays open gets its
+ * own Close or Cancel; one that still stays is a finding in its own right, named after the control. */
+async function dismissDialog(page: Page, name: string): Promise<void> {
+  const dialog = page.getByRole('dialog')
+  if ((await dialog.count()) === 0) return
+  await page.keyboard.press('Escape')
+  await page.waitForTimeout(300)
+  if ((await dialog.count()) === 0) return
+  const close = dialog.first().getByRole('button', { name: /^(close|cancel)$/i }).first()
+  if ((await close.count()) > 0) await close.click({ timeout: 5_000 }).catch(() => undefined)
+  await page.waitForTimeout(300)
+  if ((await dialog.count()) > 0) throw new Error(`"${name}" opened a dialog that neither Escape nor its own Close/Cancel closes`)
 }
 
 /** A long unbroken string in each ordinary text box, to see whether the layout holds. Nothing is submitted. */
